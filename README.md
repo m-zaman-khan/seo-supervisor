@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/YOUR-USERNAME/seo-supervisor/actions/workflows/ci.yml"><img alt="Tests" src="https://github.com/YOUR-USERNAME/seo-supervisor/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/m-zaman-khan/seo-supervisor/actions/workflows/ci.yml"><img alt="Tests" src="https://github.com/m-zaman-khan/seo-supervisor/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://www.npmjs.com/package/seo-supervisor"><img alt="npm" src="https://img.shields.io/npm/v/seo-supervisor?color=2459c9"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-238a52"></a>
   <img alt="Node 20+" src="https://img.shields.io/badge/node-20%2B-3a4757">
@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://YOUR-USERNAME.github.io/seo-supervisor/"><b>See a live sample report →</b></a>
+  <a href="https://m-zaman-khan.github.io/seo-supervisor/"><b>See a live sample report →</b></a>
 </p>
 
 <p align="center">
@@ -45,7 +45,7 @@ Pick **one** of these per machine.
 **Claude Code plugin**
 
 ```text
-/plugin marketplace add YOUR-USERNAME/seo-supervisor
+/plugin marketplace add m-zaman-khan/seo-supervisor
 /plugin install seo-supervisor@seo-supervisor
 ```
 
@@ -66,7 +66,7 @@ The commands are then plain `/seo-audit`, `/seo-fix`, `/seo-review` and `/seo-la
 ```bash
 npx seo-supervisor --agents     # also installs the skill to ~/.agents/skills
 # or
-npx skills add YOUR-USERNAME/seo-supervisor
+npx skills add m-zaman-khan/seo-supervisor
 ```
 
 Then ask your agent to "audit the SEO of this site".
