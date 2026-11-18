@@ -65,12 +65,18 @@ test("the crawler finds every planted problem on the fixture site", async () => 
     "content-signal-invalid": "Content-Signal: ai-train=maybe in robots.txt",
     "markdown-no-vary": "Markdown served for Accept: text/markdown without Vary: Accept",
     "llms-structure": "an llms.txt with no # heading and no links",
+    "product-aggregate-offer": "AggregateOffer for one product at one price (/shop/widget/)",
+    "product-no-shipping": "an offer without shippingDetails (/shop/widget/)",
+    "product-no-returns": "an offer without hasMerchantReturnPolicy (/shop/widget/)",
+    "product-price-mismatch": "schema price 19.99 while the page shows $24.99 (/shop/widget/)",
   };
   for (const [key, what] of Object.entries(plantedChecks)) assert.ok(byCheck.has(key), `missed ${key}: ${what}`);
   const paths = key => (byCheck.get(key)?.evidence || []).map(e => new URL(e.url).pathname);
   for (const key of ["doc-basics", "robots-conflict"])
     assert.ok(!paths(key).includes("/"), `the home page is fine for ${key}`);
   assert.deepEqual(paths("robots-conflict"), ["/conflict/"]);
+  for (const key of ["product-aggregate-offer", "product-no-shipping", "product-no-returns", "product-price-mismatch"])
+    assert.deepEqual(paths(key), ["/shop/widget/"], key);
   assert.ok(
     report.findings.some(f => f.rule === "REND-01" && f.severity === "blocker"),
     "a JS-only page is a blocker",

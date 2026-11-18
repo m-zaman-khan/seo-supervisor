@@ -68,6 +68,7 @@ const RULES = {
   "CONTENT-05": ["Indexable pages have substantial content", "Headings & content"],
   "CONTENT-08": ["Images have alt text", "Headings & content"],
   "SCHEMA-01": ["JSON-LD parses without errors", "Structured data"],
+  "SHOP-05": ["Product schema from live data", "Structured data"],
   "SCHEMA-02": ["Organization and WebSite schema on the home page", "Structured data"],
   "SCHEMA-03": ["Indexable pages carry structured data", "Structured data"],
   "SCHEMA-04": ["Schema matches what the page visibly shows", "Structured data"],
@@ -626,6 +627,34 @@ const CHECKS = {
     "The format starts with a `# Site name` heading, then a short summary and Markdown lists of links. Tools that read llms.txt expect that structure.",
     "Start with `# Site name`, add a one-line `>` summary, then sections of `- [Page](url): description` links.",
   ],
+  "product-aggregate-offer": [
+    "SHOP-05",
+    "medium",
+    n => `${n} product page(s) use AggregateOffer for a single offer`,
+    "Merchant listings need an `Offer`. `AggregateOffer` is meant for several sellers, so a shop's own product may not qualify for the shopping features.",
+    "Emit an `Offer` with `price`, `priceCurrency` and `availability` for products you sell yourself.",
+  ],
+  "product-no-shipping": [
+    "SHOP-05",
+    "low",
+    n => `${n} product page(s) have no shipping details in their schema`,
+    "Shipping costs and delivery times can show in Google's merchant listings; without them the listing is less complete.",
+    "Add `shippingDetails` to each Offer, or a site-wide shipping policy (`hasShippingService` on the Organization).",
+  ],
+  "product-no-returns": [
+    "SHOP-05",
+    "low",
+    n => `${n} product page(s) have no return policy in their schema`,
+    "The return policy can show in merchant listings and helps shoppers choose.",
+    "Add `hasMerchantReturnPolicy` to each Offer, or once on the Organization.",
+  ],
+  "product-price-mismatch": [
+    "SHOP-05",
+    "high",
+    n => `${n} product page(s) show a different price from their schema`,
+    "Google checks structured data against the visible page; a price mismatch can remove the product's rich results or get the listing disapproved.",
+    "Generate the schema price from the same data the page displays.",
+  ],
   "llms-txt": [
     "MAP-07",
     "low",
@@ -906,6 +935,47 @@ function analyze(url, html, headers) {
     shingles = new Set();
     for (let i = 0; i + 5 <= mw.length; i++) shingles.add(mw.slice(i, i + 5).join(" "));
   }
+  const products = nodes
+    .filter(n => typesOf(n).includes("Product"))
+    .map(n => {
+      const offers = [].concat(n.offers || []).filter(o => o && typeof o === "object");
+      const orgHas = key => nodes.some(o => typesOf(o).some(t => ORG_RE.test(t)) && o[key]);
+      const price = offers.map(o => o.price ?? o.lowPrice).find(v => v != null && !isNaN(parseFloat(v)));
+      return {
+        name: n.name || "a product",
+        singleAggregate: offers.some(
+          o =>
+            typesOf(o).includes("AggregateOffer") &&
+            (o.offerCount == null ||
+              Number(o.offerCount) <= 1 ||
+              (o.highPrice != null && Number(o.highPrice) === Number(o.lowPrice))),
+        ),
+        noShipping: offers.length > 0 && !offers.some(o => o.shippingDetails) && !orgHas("hasShippingService"),
+        noReturns:
+          offers.length > 0 &&
+          !offers.some(o => o.hasMerchantReturnPolicy) &&
+          !n.hasMerchantReturnPolicy &&
+          !orgHas("hasMerchantReturnPolicy"),
+        price: price == null ? null : Number(String(price).replace(/,/g, "")),
+      };
+    });
+  // Parses a shown amount whatever its thousands and decimal separators.
+  const toNum = s => {
+    s = s.replace(/\s/g, "");
+    const i = Math.max(s.lastIndexOf("."), s.lastIndexOf(","));
+    return i >= 0 && s.length - i - 1 !== 3
+      ? Number(s.slice(0, i).replace(/[.,]/g, "") + "." + s.slice(i + 1))
+      : Number(s.replace(/[.,]/g, ""));
+  };
+  const amounts = products.length
+    ? [
+        ...text.matchAll(
+          /(?:[$€£¥₹]|\b(?:USD|EUR|GBP|CAD|AUD|INR)\b)\s?(\d[\d.,\s]*\d|\d)|(\d[\d.,]*\d|\d)\s?(?:[€£]|\b(?:USD|EUR|GBP|CAD|AUD|INR)\b)/g,
+        ),
+      ]
+        .map(m => toNum(m[1] ?? m[2]))
+        .filter(x => !isNaN(x))
+    : [];
   const refresh = metas.find(m => (m["http-equiv"] || "").toLowerCase() === "refresh")?.content || "";
   const emptyRoot = /<div[^>]+id=["'](root|app|__next|__nuxt)["'][^>]*>\s*<\/div>/i.test(bodyRaw);
   return {
@@ -926,6 +996,8 @@ function analyze(url, html, headers) {
     noindex: /noindex/.test(robotsMeta) || /noindex/.test(xRobots),
     canonicals: canon,
     hreflang,
+    products,
+    amounts,
     nosnippet: /nosnippet|max-snippet\s*:\s*0\b/.test(robotsMeta + "," + xRobots),
     headings,
     h1Count: headings.filter(h => h.level === 1).length,
@@ -1489,6 +1561,13 @@ for (const p of htmlPages) {
       c = new URL(p.canonicals[0], u).href;
     if (og !== c) add("og-url-mismatch", u, `og:url ${og} · canonical ${c}`);
   }
+  const prod = test => p.products.find(test);
+  let pr;
+  if ((pr = prod(x => x.singleAggregate))) add("product-aggregate-offer", u, pr.name);
+  if ((pr = prod(x => x.noShipping))) add("product-no-shipping", u, pr.name);
+  if ((pr = prod(x => x.noReturns))) add("product-no-returns", u, pr.name);
+  if (p.amounts.length && (pr = prod(x => x.price != null && !p.amounts.some(a => Math.abs(a - x.price) < 0.005))))
+    add("product-price-mismatch", u, `schema ${pr.price} · page shows ${p.amounts.slice(0, 3).join(", ")}`);
   if (!/max-image-preview\s*:\s*large/.test(p.robotsMeta + "," + p.xRobots)) add("no-large-preview", u);
   for (const i of p.imgs) {
     try {
@@ -1575,6 +1654,7 @@ if (checkedPages === 0)
       });
 for (const [t, us] of titleMap) if (us.length > 1) for (const u of us) add("title-dup", u, t);
 for (const [d, us] of descMap) if (us.length > 1) for (const u of us) add("desc-dup", u, d.slice(0, 80));
+if (htmlPages.some(p => p.products?.length)) evalRules("SHOP-05");
 evalRules("META-08");
 checkHreflang(htmlPages, {
   add,
