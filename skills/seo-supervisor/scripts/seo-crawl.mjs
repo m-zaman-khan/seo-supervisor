@@ -90,6 +90,10 @@ const RULES = {
   "TRUST-02": ["security.txt published", "Trust & security"],
   "AI-01": ["Pages are eligible for snippets and AI answers", "AI search"],
   "REND-08": ["HTML stays under Googlebot's 2 MB limit", "Rendering"],
+  "REND-09": ["Pages declare a doctype, a charset and a mobile viewport", "Rendering"],
+  "META-06": ["Robots meta and the X-Robots-Tag header agree", "Metadata"],
+  "MEDIA-03": ["Each page signals its preferred thumbnail", "Media"],
+  "PERF-08": ["Images are a sensible weight and in a modern format", "Performance"],
 };
 
 // key -> [rule, severity, title(n), why, fix]
@@ -289,6 +293,55 @@ const CHECKS = {
     n => `${n} page(s) show placeholder, test or broken-encoding text`,
     "Lorem ipsum, TODO, template tokens or mangled characters on a live page look unfinished to visitors and quality reviewers.",
     "Replace the text with real content and add a build check that fails on these strings.",
+  ],
+  "doc-basics": [
+    "REND-09",
+    "medium",
+    n => `${n} page(s) lack a doctype, a charset or a mobile viewport`,
+    "Without a doctype browsers fall back to quirks mode; without a viewport the page renders as a zoomed-out desktop page on phones, and Google indexes the mobile version.",
+    'Start every page with `<!doctype html>`, `<meta charset="utf-8">` and `<meta name="viewport" content="width=device-width, initial-scale=1">` in the shared layout.',
+  ],
+  "meta-refresh": [
+    "CRAWL-08",
+    "medium",
+    n => `${n} page(s) redirect with a meta refresh`,
+    "A meta refresh is a slow, client-side redirect. Search engines may treat it as a redirect or may index the empty page; visitors see a flash first.",
+    "Replace it with a server-side 301/308 redirect to the final URL.",
+  ],
+  "og-url-mismatch": [
+    "META-04",
+    "low",
+    n => `${n} page(s) have an og:url that differs from the canonical`,
+    "Shares then point at a different URL from the one search engines rank, splitting share counts and signals.",
+    "Build og:url from the same value as the canonical in the metadata helper.",
+  ],
+  "robots-conflict": [
+    "META-06",
+    "high",
+    n => `${n} page(s) get contradicting robots rules from the meta tag and the X-Robots-Tag header`,
+    "When the two disagree, search engines follow the stricter one, so a page that says “index” in its HTML can still be dropped by a header nobody looks at.",
+    "Set robots in one place. Remove the header rule (often a CDN or server config) or make the meta tag match it.",
+  ],
+  "no-large-preview": [
+    "MEDIA-03",
+    "low",
+    n => `${n} indexable page(s) don't allow large image previews`,
+    "Without `max-image-preview:large`, Google shows small thumbnails at most, and pages are less likely to appear with large images in Discover.",
+    "Add `max-image-preview:large` to the robots meta of indexable pages through the metadata helper.",
+  ],
+  "heavy-image": [
+    "PERF-08",
+    "low",
+    n => `${n} image(s) weigh over 200 KB`,
+    "Heavy images slow down the largest paint on mobile connections and cost visitors data.",
+    "Resize images to their displayed size and compress them, or serve them through the framework's image optimiser.",
+  ],
+  "legacy-image-format": [
+    "PERF-08",
+    "low",
+    n => `${n} image(s) over 100 KB are served as JPEG or PNG`,
+    "WebP and AVIF are usually 25–50% smaller at the same quality, and every current browser supports them.",
+    "Serve WebP or AVIF (most image CDNs and framework image components do this from the Accept header).",
   ],
   "mixed-content": [
     "TRUST-01",
@@ -825,12 +878,22 @@ function analyze(url, html, headers) {
     shingles = new Set();
     for (let i = 0; i + 5 <= mw.length; i++) shingles.add(mw.slice(i, i + 5).join(" "));
   }
+  const refresh = metas.find(m => (m["http-equiv"] || "").toLowerCase() === "refresh")?.content || "";
   const emptyRoot = /<div[^>]+id=["'](root|app|__next|__nuxt)["'][^>]*>\s*<\/div>/i.test(bodyRaw);
   return {
     title: titleM ? textOf(titleM[1]) : null,
     description: meta("description") ?? null,
     ogTitle: meta("og:title") ?? null,
     ogImage: meta("og:image") ?? null,
+    ogUrl: meta("og:url") ?? null,
+    doctype: /^\s*(?:<!--[\s\S]*?-->\s*)*<!doctype html/i.test(html.replace(/^\uFEFF/, "")),
+    charset:
+      metas.some(m => m.charset || /charset=/i.test(m.content || "")) ||
+      /charset=/i.test(headers.get("content-type") || ""),
+    viewport: /width\s*=\s*device-width/i.test(meta("viewport") || ""),
+    refreshTo: (refresh.match(/url\s*=\s*['"]?([^'"\s;]+)/i) || [])[1] || null,
+    robotsMeta,
+    xRobots,
     lang: (html.match(/<html\b[^>]*\blang\s*=\s*["']?([\w-]+)/i) || [])[1] || null,
     noindex: /noindex/.test(robotsMeta) || /noindex/.test(xRobots),
     canonicals: canon,
@@ -1203,6 +1266,10 @@ evalRules(
   "PERF-03",
   "PERF-04",
   "PERF-06",
+  "REND-09",
+  "META-06",
+  "MEDIA-03",
+  "PERF-08",
 );
 if (BRAND) evalRules("META-03");
 if (BANNED || VERIFY) evalRules("CONTENT-10");
@@ -1234,6 +1301,7 @@ const titleMap = new Map(),
   descMap = new Map(),
   faqMap = new Map();
 let checkedPages = 0;
+const images = new Map(); // same-origin image URL -> first indexable page using it
 const notChecked = [];
 const noindexShare = htmlPages.length ? htmlPages.filter(p => p.noindex).length / htmlPages.length : 0;
 if (IGNORE_NOINDEX)
@@ -1288,6 +1356,10 @@ for (const p of htmlPages) {
     p.clientOnly = true;
     continue;
   }
+  const says = s =>
+    /\bnoindex\b/.test(s) ? "noindex" : /(?:^|[\s,:])(?:index|all)(?:$|[\s,])/.test(s) ? "index" : null;
+  if (says(p.robotsMeta) && says(p.xRobots) && says(p.robotsMeta) !== says(p.xRobots))
+    add("robots-conflict", u, `meta: “${p.robotsMeta}” · header: “${p.xRobots}”`);
   if (p.noindex && !IGNORE_NOINDEX) continue;
 
   if (sitewide.canonical.has(p)) add("canonical-missing-sitewide", u);
@@ -1348,6 +1420,23 @@ for (const p of htmlPages) {
   if (p.bytes > 2 * 1024 * 1024) add("html-over-2mb", u, `${Math.round(p.bytes / 1024)} KB`);
   else if (p.bytes > 500 * 1024) add("html-size", u, `${Math.round(p.bytes / 1024)} KB`);
   if (p.nosnippet) add("nosnippet", u);
+  const basics = [!p.doctype && "no doctype", !p.charset && "no charset", !p.viewport && "no mobile viewport"].filter(
+    Boolean,
+  );
+  if (basics.length) add("doc-basics", u, basics.join(", "));
+  if (p.refreshTo) add("meta-refresh", u, `→ ${p.refreshTo}`);
+  if (p.ogUrl && p.canonicals.length) {
+    const og = new URL(p.ogUrl, u).href,
+      c = new URL(p.canonicals[0], u).href;
+    if (og !== c) add("og-url-mismatch", u, `og:url ${og} · canonical ${c}`);
+  }
+  if (!/max-image-preview\s*:\s*large/.test(p.robotsMeta + "," + p.xRobots)) add("no-large-preview", u);
+  for (const i of p.imgs) {
+    try {
+      const src = new URL(i.src, u);
+      if (src.origin === new URL(u).origin && !images.has(src.href)) images.set(src.href, u);
+    } catch {}
+  }
   if (p.jsonldErrors.length) add("jsonld-invalid", u, p.jsonldErrors[0]);
   if (!p.types.length) add("jsonld-none", u);
   if (!isHome(p) && !p.types.includes("BreadcrumbList")) add("breadcrumb-missing", u);
@@ -1412,6 +1501,9 @@ const PER_PAGE_RULES = [
   "PERF-03",
   "PERF-04",
   "PERF-06",
+  "REND-09",
+  "MEDIA-03",
+  "PERF-08",
 ];
 if (checkedPages === 0)
   for (const r of PER_PAGE_RULES)
@@ -1424,6 +1516,28 @@ if (checkedPages === 0)
       });
 for (const [t, us] of titleMap) if (us.length > 1) for (const u of us) add("title-dup", u, t);
 for (const [d, us] of descMap) if (us.length > 1) for (const u of us) add("desc-dup", u, d.slice(0, 80));
+// Image weight and format by HEAD request. Same-origin images only, so no third party is contacted.
+const imageList = [...images].slice(0, 50);
+for (let i = 0; i < imageList.length; i += CONC)
+  await Promise.all(
+    imageList.slice(i, i + CONC).map(async ([src, page]) => {
+      try {
+        const r = await fetch(src, {
+          method: "HEAD",
+          headers: { "user-agent": UA, accept: "image/avif,image/webp,image/*,*/*;q=0.8" },
+          signal: AbortSignal.timeout(15000),
+        });
+        const size = Number(r.headers.get("content-length")),
+          type = (r.headers.get("content-type") || "").split(";")[0];
+        if (!r.ok || !size) return;
+        const kb = Math.round(size / 1024);
+        if (size > 200 * 1024) add("heavy-image", page, `${src} · ${kb} KB`);
+        if (/^image\/(jpeg|png)$/.test(type) && size > 100 * 1024)
+          add("legacy-image-format", page, `${src} · ${type} · ${kb} KB`);
+      } catch {}
+    }),
+  );
+if (images.size > 50) notes.push(`Image weight was checked for the first 50 of ${images.size} images.`);
 if (home && home.html) {
   if (!home.lang) add("lang-missing", home.finalUrl);
   if (!home.types.some(t => ORG_RE.test(t))) add("org-missing", home.finalUrl);

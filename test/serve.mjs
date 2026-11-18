@@ -6,12 +6,22 @@ import { join, extname, normalize } from "node:path";
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".xml": "application/xml", ".txt": "text/plain; charset=utf-8" };
 
-export function serve(root) {
+// headers: extra response headers by path; files: generated files by path ({ type, body });
+// markdown: a Markdown body by path, served when the request asks for text/markdown.
+// before(req, res): return true when it has answered the request itself.
+export function serve(root, { headers = {}, files = {} } = {}) {
   const server = createServer(async (req, res) => {
     const path = decodeURIComponent(new URL(req.url, "http://x").pathname);
     const file = normalize(join(root, path));
     if (!file.startsWith(normalize(root))) {
       res.writeHead(400).end();
+      return;
+    }
+    const extra = headers[path] || {};
+    if (files[path]) {
+      res
+        .writeHead(200, { "Content-Type": files[path].type, "Content-Length": files[path].body.length, ...extra })
+        .end(files[path].body);
       return;
     }
     try {
@@ -22,7 +32,7 @@ export function serve(root) {
           return;
         }
         const body = await readFile(join(file, "index.html"));
-        res.writeHead(200, { "Content-Type": TYPES[".html"] }).end(body);
+        res.writeHead(200, { "Content-Type": TYPES[".html"], ...extra }).end(body);
         return;
       }
       res

@@ -8,7 +8,10 @@ import { ROOT, SCRIPTS, node, tmp } from "./helpers.mjs";
 
 // The fixture site has one planted problem per rule below, and a few things that are deliberately right.
 test("the crawler finds every planted problem on the fixture site", async () => {
-  const site = await serve(join(ROOT, "test", "fixture-site"));
+  const site = await serve(join(ROOT, "test", "fixture-site"), {
+    headers: { "/conflict/": { "X-Robots-Tag": "noindex" } },
+    files: { "/big.png": { type: "image/png", body: Buffer.alloc(320 * 1024) } },
+  });
   const out = join(tmp(), "crawl.json");
   try {
     await node([
@@ -47,6 +50,21 @@ test("the crawler finds every planted problem on the fixture site", async () => 
     "MAP-06": "robots.txt blocking an AI crawler",
   };
   for (const [rule, what] of Object.entries(planted)) assert.ok(found.has(rule), `missed ${rule}: ${what}`);
+  const byCheck = new Map(report.findings.map(f => [f.check, f]));
+  const plantedChecks = {
+    "doc-basics": "a page with no doctype or viewport (/legacy/)",
+    "meta-refresh": "a meta refresh redirect (/legacy/)",
+    "og-url-mismatch": "an og:url that differs from the canonical (/legacy/)",
+    "robots-conflict": "robots meta index with an X-Robots-Tag noindex header (/conflict/)",
+    "no-large-preview": "indexable pages without max-image-preview:large",
+    "heavy-image": "a 320 KB image (/big.png)",
+    "legacy-image-format": "a PNG over 100 KB (/big.png)",
+  };
+  for (const [key, what] of Object.entries(plantedChecks)) assert.ok(byCheck.has(key), `missed ${key}: ${what}`);
+  const paths = key => (byCheck.get(key)?.evidence || []).map(e => new URL(e.url).pathname);
+  for (const key of ["doc-basics", "robots-conflict"])
+    assert.ok(!paths(key).includes("/"), `the home page is fine for ${key}`);
+  assert.deepEqual(paths("robots-conflict"), ["/conflict/"]);
   assert.ok(
     report.findings.some(f => f.rule === "REND-01" && f.severity === "blocker"),
     "a JS-only page is a blocker",
