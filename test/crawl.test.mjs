@@ -48,6 +48,7 @@ test("the crawler finds every planted problem on the fixture site", async () => 
     "CONTENT-10": "a banned claim",
     "AI-01": "an indexable page that blocks snippets",
     "MAP-06": "robots.txt blocking an AI crawler",
+    "META-08": "an hreflang pair without a return link and with an invalid code (/en/, /es/)",
   };
   for (const [rule, what] of Object.entries(planted)) assert.ok(found.has(rule), `missed ${rule}: ${what}`);
   const byCheck = new Map(report.findings.map(f => [f.check, f]));

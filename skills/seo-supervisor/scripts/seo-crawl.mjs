@@ -4,6 +4,7 @@
 
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { CHECKS as HREFLANG_CHECKS, checkHreflang } from "./checks/hreflang.mjs";
 
 const VERSION = "1.0.0";
 const UA = "seo-supervisor-crawler/" + VERSION;
@@ -90,6 +91,7 @@ const RULES = {
   "TRUST-02": ["security.txt published", "Trust & security"],
   "AI-01": ["Pages are eligible for snippets and AI answers", "AI search"],
   "REND-08": ["HTML stays under Googlebot's 2 MB limit", "Rendering"],
+  "META-08": ["hreflang only when there are real language or region versions", "Metadata"],
   "REND-09": ["Pages declare a doctype, a charset and a mobile viewport", "Rendering"],
   "META-06": ["Robots meta and the X-Robots-Tag header agree", "Metadata"],
   "MEDIA-03": ["Each page signals its preferred thumbnail", "Media"],
@@ -688,6 +690,7 @@ const CHECKS = {
   ],
 };
 
+Object.assign(CHECKS, HREFLANG_CHECKS);
 const findings = new Map(); // key -> {evidence:[], count}
 function add(key, url, detail) {
   if (!CHECKS[key]) throw new Error("unknown check " + key);
@@ -832,6 +835,9 @@ function analyze(url, html, headers) {
     .join(",")
     .toLowerCase(); // Google honours robots meta in <body> too
   const xRobots = (headers.get("x-robots-tag") || "").toLowerCase();
+  const hreflang = tagsOf(head, "link")
+    .filter(l => (l.rel || "").toLowerCase().split(/\s+/).includes("alternate") && l.hreflang && l.href)
+    .map(l => ({ lang: l.hreflang, href: l.href }));
   const canon = tagsOf(head, "link")
     .filter(l => (l.rel || "").toLowerCase().split(/\s+/).includes("canonical"))
     .map(l => l.href);
@@ -897,6 +903,7 @@ function analyze(url, html, headers) {
     lang: (html.match(/<html\b[^>]*\blang\s*=\s*["']?([\w-]+)/i) || [])[1] || null,
     noindex: /noindex/.test(robotsMeta) || /noindex/.test(xRobots),
     canonicals: canon,
+    hreflang,
     nosnippet: /nosnippet|max-snippet\s*:\s*0\b/.test(robotsMeta + "," + xRobots),
     headings,
     h1Count: headings.filter(h => h.level === 1).length,
@@ -1516,6 +1523,13 @@ if (checkedPages === 0)
       });
 for (const [t, us] of titleMap) if (us.length > 1) for (const u of us) add("title-dup", u, t);
 for (const [d, us] of descMap) if (us.length > 1) for (const u of us) add("desc-dup", u, d.slice(0, 80));
+evalRules("META-08");
+checkHreflang(htmlPages, {
+  add,
+  canonicalFor,
+  statusOf: href => pages.get(clean(toCrawl(href)))?.status,
+  origin: EXPECT_ORIGIN,
+});
 // Image weight and format by HEAD request. Same-origin images only, so no third party is contacted.
 const imageList = [...images].slice(0, 50);
 for (let i = 0; i < imageList.length; i += CONC)
