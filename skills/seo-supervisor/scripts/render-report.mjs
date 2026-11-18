@@ -769,6 +769,7 @@ const JS = `
     history.replaceState(null,'','#findings');show('findings');window.scrollTo(0,0);});});
   function route(e){var h=decodeURIComponent(location.hash.slice(1));if(!h){show(DEFAULT_TAB);return;}
     if(show(h))return;var f=d.getElementById(h);if(f&&f.classList.contains('f')){show('findings');f.hidden=false;setOpen(f,true);f.scrollIntoView({block:'start'});if(e)f.querySelector('.f-head').focus({preventScroll:true});}else show(DEFAULT_TAB);}
+  window.addEventListener('beforeprint',function(){[].forEach.call(d.querySelectorAll('.prow'),function(r){r.open=true;});});
   window.addEventListener('hashchange',route);route();
 })();
 `;

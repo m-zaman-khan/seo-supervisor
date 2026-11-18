@@ -44,6 +44,10 @@ A free security-tools site with a docs section. Setup added one metadata helper,
 | /docs | Docs hub | Built | example security api docs | Docs \| Example Security |  | Docs | CollectionPage, BreadcrumbList | / |  |
 | /security | Disclosure policy | To create | example security vulnerability disclosure | Report a Vulnerability \| Example Security |  | Report a vulnerability | WebPage | / | Copy: Approve the drafted disclosure policy and add the security contact (draft: drafts/security.md) |
 
+Intros for new pages (approving the plan approves these words):
+
+- /docs: Guides and API reference for Example Security. Start with the API guide to run checks from your own scripts.
+
 ## Decisions needed
 
 ### Launch the 36 DNS tools now or after rewriting?

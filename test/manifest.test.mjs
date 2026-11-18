@@ -44,3 +44,16 @@ test("every rule file the skill links to exists", () => {
   for (const doc of ["planning.md", "report-format.md", "profile-template.md"])
     if (skill.includes("`" + doc + "`")) assert.doesNotThrow(() => readFileSync(join(SKILL, doc)), `${doc} exists`);
 });
+
+test("setup rules keep every change behind approval: profile, robots and declined items", () => {
+  const planning = readFileSync(join(SKILL, "planning.md"), "utf8");
+  const format = readFileSync(join(SKILL, "report-format.md"), "utf8");
+  assert.doesNotMatch(planning, /update that instead/, "no edits to docs/ before approval");
+  assert.match(planning, /copy it to `seo-audit\/seo-profile\.draft\.md`/);
+  assert.match(planning, /move the draft profile to `docs\/seo-profile\.md`/);
+  assert.match(planning, /any robots\.txt change beyond adding the `Sitemap:` line is a yes item/);
+  assert.match(planning, /`declined: true`/);
+  assert.match(planning, /`intro`/);
+  assert.match(format, /`pages\[\]\.intro`/);
+  assert.match(format, /`declined`/);
+});

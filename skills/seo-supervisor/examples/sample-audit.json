@@ -408,7 +408,8 @@
         ],
         "linksTo": [
           "/docs/api"
-        ]
+        ],
+        "intro": "Guides and API reference for Example Security. Start with the API guide to run checks from your own scripts."
       },
       {
         "url": "/security",

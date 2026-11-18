@@ -11,7 +11,8 @@ const NEEDS = { copy: "Copy", facts: "Facts", decision: "A decision", yes: "Your
 
 const key = r => r.url || r.pattern || "";
 const isDone = r => r.status === "exists" || r.status === "built";
-const ownerOpen = r => r.owner && r.owner.done !== true;
+const ownerOpen = r => r.owner && r.owner.done !== true && r.owner.declined !== true;
+const yesOpen = y => y.approved !== true && y.declined !== true;
 
 export function planStats(plan) {
   const pages = Array.isArray(plan?.pages) ? plan.pages : [];
@@ -22,7 +23,7 @@ export function planStats(plan) {
     if (isDone(r)) done += 1;
     else if (r.pattern && r.count > 0) done += Math.min(1, Math.max(0, (Number(r.built) || 0) / r.count));
   }
-  const yesItems = (plan?.yes || []).filter(y => y.approved !== true).length;
+  const yesItems = (plan?.yes || []).filter(yesOpen).length;
   return {
     rows: pages.length,
     byStatus,
@@ -52,7 +53,7 @@ export function planHtml(plan, { esc, inl, num }) {
 
   const yes = [
     ...(plan.yes || [])
-      .filter(y => y.approved !== true)
+      .filter(yesOpen)
       .map(
         y =>
           `<li><b>${esc(y.id || "")}</b> ${inl(y.what)}${y.why ? `<span class="quiet"> · ${inl(y.why)}</span>` : ""}</li>`,
@@ -61,10 +62,18 @@ export function planHtml(plan, { esc, inl, num }) {
       .filter(r => ownerOpen(r) && r.owner.needs === "yes")
       .map(r => `<li><code>${esc(key(r))}</code> ${inl(r.owner.what || "")}</li>`),
   ];
-  const yesHtml = yes.length
-    ? `<section class="panel plan-yes" aria-labelledby="h-yes"><h2 id="h-yes">Needs your yes</h2>
-    <p class="quiet">Each of these changes needs its own yes before the agent makes it. Approving the plan doesn't cover them.</p><ol>${yes.join("")}</ol></section>`
-    : "";
+  const declined = [
+    ...(plan.yes || []).filter(y => y.declined === true).map(y => `<b>${esc(y.id || "")}</b> ${inl(y.what)}`),
+    ...pages
+      .filter(r => r.owner && r.owner.declined === true)
+      .map(r => `<code>${esc(key(r))}</code> ${inl(r.owner.what || "")}`),
+  ];
+  const yesHtml =
+    yes.length || declined.length
+      ? `<section class="panel plan-yes" aria-labelledby="h-yes"><h2 id="h-yes">Needs your yes</h2>
+    ${yes.length ? `<p class="quiet">Each of these changes needs its own yes before the agent makes it. Approving the plan doesn't cover them.</p><ol>${yes.join("")}</ol>` : `<p class="quiet">Nothing is waiting for your yes.</p>`}
+    ${declined.length ? `<p class="plan-declined"><span class="quiet">Declined by you, so the agent won't make these changes:</span> ${declined.join("; ")}</p>` : ""}</section>`
+      : "";
 
   // Site structure from `parent`; rows whose parent isn't in the plan are roots.
   const keys = new Set(pages.map(key));
@@ -94,7 +103,7 @@ export function planHtml(plan, { esc, inl, num }) {
     const o = r.owner;
     return `<details class="prow" data-status="${esc(r.status)}">
       <summary><span class="pu"><code>${esc(key(r))}</code>${r.pattern ? ` <span class="pcount">×${num(r.count || 0)}</span>` : ""}</span><span class="pt">${r.target ? esc(r.target) : `<span class="quiet">—</span>`}</span><span class="ptype">${esc(r.type || "")}</span><span class="pst">${chip(r.status)}${ownerOpen(r) ? `<span class="own">Needs you</span>` : ""}</span></summary>
-      <dl class="pd">${field("Intent", r.intent)}${field("Other targets", r.secondary)}${field(r.pattern ? "Title template" : "Title", r.title)}${field(r.pattern ? "Description template" : "Description", r.description)}${field(r.pattern ? "H1 template" : "H1", r.h1)}${field("Schema", r.schema)}${field("Parent", r.parent)}${field("Links to", r.linksTo)}${r.from ? field("Moves from", `${r.from} → ${key(r)}`) : ""}${r.pattern && r.count ? field("Built", `${num(r.status === "built" || r.status === "exists" ? r.count : Number(r.built) || 0)} of ${num(r.count)}`) : ""}${(r.samples || []).length ? `<dt>Examples</dt><dd><ul class="psamples">${r.samples.map(x => `<li><code>${esc(x.url)}</code>${x.title ? ` ${esc(x.title)}` : ""}</li>`).join("")}</ul></dd>` : ""}${o ? `<dt>${o.done === true ? "Done by you" : "Needs you"}</dt><dd>${esc(NEEDS[o.needs] || o.needs || "")}: ${inl(o.what || "")}${o.draft ? ` · <a href="${esc(o.draft)}">Read the draft</a>` : ""}</dd>` : ""}${r.finding ? `<dt>Finding</dt><dd><a href="#${esc(r.finding)}">${esc(r.finding)}</a></dd>` : ""}</dl>
+      <dl class="pd">${field("Intent", r.intent)}${field("Other targets", r.secondary)}${field(r.pattern ? "Title template" : "Title", r.title)}${field(r.pattern ? "Description template" : "Description", r.description)}${field(r.pattern ? "H1 template" : "H1", r.h1)}${field("Intro", r.intro)}${field("Schema", r.schema)}${field("Parent", r.parent)}${field("Links to", r.linksTo)}${r.from ? field("Moves from", `${r.from} → ${key(r)}`) : ""}${r.pattern && r.count ? field("Built", `${num(r.status === "built" || r.status === "exists" ? r.count : Number(r.built) || 0)} of ${num(r.count)}`) : ""}${(r.samples || []).length ? `<dt>Examples</dt><dd><ul class="psamples">${r.samples.map(x => `<li><code>${esc(x.url)}</code>${x.title ? ` ${esc(x.title)}` : ""}</li>`).join("")}</ul></dd>` : ""}${o ? `<dt>${o.done === true ? "Done by you" : "Needs you"}</dt><dd>${esc(NEEDS[o.needs] || o.needs || "")}: ${inl(o.what || "")}${o.draft ? ` · <a href="${esc(o.draft)}">Read the draft</a>` : ""}</dd>` : ""}${r.finding ? `<dt>Finding</dt><dd><a href="#${esc(r.finding)}">${esc(r.finding)}</a></dd>` : ""}</dl>
     </details>`;
   };
   const present = STATUSES.filter(st => s.byStatus[st]);
@@ -120,6 +129,7 @@ export const PLAN_CSS = `
 .pchip.s-built{color:var(--b5-ink);background:var(--ok-soft)}
 .pchip.s-to-create{color:var(--ink2);border-color:var(--ink2)}
 .plan-yes ol{margin:12px 0 0;padding-left:22px;display:grid;gap:8px}
+.plan-declined{margin-top:12px;font-size:14px}
 .plan-tree ul{list-style:none;margin:0;padding-left:20px;border-left:1px solid var(--line)}
 .plan-tree h2+ul{padding-left:0;border-left:0;margin-top:10px}
 .plan-tree li{padding:4px 0}.plan-tree li>ul{margin-top:4px}
@@ -161,13 +171,17 @@ export function planMarkdown(plan) {
   );
   if (plan.summary) L.push(plan.summary, "");
   const yes = [
-    ...(plan.yes || [])
-      .filter(y => y.approved !== true)
-      .map(y => `- ${y.id ? `${y.id}: ` : ""}${y.what}${y.why ? ` (${y.why})` : ""}`),
+    ...(plan.yes || []).filter(yesOpen).map(y => `- ${y.id ? `${y.id}: ` : ""}${y.what}${y.why ? ` (${y.why})` : ""}`),
     ...pages.filter(r => ownerOpen(r) && r.owner.needs === "yes").map(r => `- ${key(r)}: ${r.owner.what || ""}`),
   ];
   if (yes.length)
     L.push("### Needs your yes", "", "Each needs its own yes; approving the plan doesn't cover them.", "", ...yes, "");
+  for (const y of (plan.yes || []).filter(y => y.declined === true))
+    L.push(`Declined: ${y.id ? `${y.id}: ` : ""}${y.what}`);
+  for (const r of pages.filter(r => r.owner && r.owner.declined === true))
+    L.push(`Declined: ${key(r)}: ${r.owner.what || ""}`);
+  if ((plan.yes || []).some(y => y.declined === true) || pages.some(r => r.owner && r.owner.declined === true))
+    L.push("");
   if (!pages.length) {
     L.push("No pages in this plan yet.", "");
     return L;
@@ -186,5 +200,13 @@ export function planMarkdown(plan) {
     );
   }
   L.push("");
+  const intros = pages.filter(r => r.intro);
+  if (intros.length)
+    L.push(
+      "Intros for new pages (approving the plan approves these words):",
+      "",
+      ...intros.map(r => `- ${key(r)}: ${r.intro}`),
+      "",
+    );
   return L;
 }

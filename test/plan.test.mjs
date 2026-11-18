@@ -112,3 +112,33 @@ test("the plan CSS only uses the report's design tokens for colour", () => {
   assert.ok(PLAN_CSS.length > 0);
   assert.doesNotMatch(PLAN_CSS, /#[0-9a-f]{3,6}\b/i, "no hard-coded colours");
 });
+
+test("a missing parent page shows the intro the owner approves, in HTML and Markdown", () => {
+  const plan = {
+    status: "proposed",
+    pages: [
+      {
+        url: "/docs",
+        type: "Docs hub",
+        status: "to-create",
+        h1: "Docs",
+        intro: "Guides for setting up and using Acme.",
+      },
+    ],
+  };
+  assert.match(planHtml(plan, ctx), /<dt>Intro<\/dt><dd>Guides for setting up and using Acme\.<\/dd>/);
+  assert.match(planMarkdown(plan).join("\n"), /Guides for setting up and using Acme\./);
+});
+
+test("a declined yes item is recorded, shown as declined and no longer counted as open", () => {
+  const plan = {
+    status: "approved",
+    yes: [{ id: "Y1", what: "Redirect www to the apex domain", approved: false, declined: true }],
+    pages: [{ url: "/", status: "built" }],
+  };
+  assert.equal(planStats(plan).yesOpen, 0);
+  const html = planHtml(plan, ctx);
+  assert.match(html, /Declined[\s\S]*Redirect www to the apex domain/);
+  assert.doesNotMatch(html, /<ol>[\s\S]*Redirect www/, "not listed as waiting");
+  assert.match(planMarkdown(plan).join("\n"), /Declined: Y1/);
+});

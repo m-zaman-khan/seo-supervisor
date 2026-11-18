@@ -29,7 +29,7 @@ If the request doesn't name a mode, run **audit**. Finish an audit by offering t
 
 - **Framework:** read the matching file in `frameworks/` (`nextjs.md`, `rails.md`, `spa.md`). Other stacks: apply the rules directly.
 - **Site type(s):** read each matching file in `site-types/`: `tools.md`, `local-business.md`, `content.md`, `services.md`, `ecommerce.md`.
-- **SEO profile:** look for `docs/seo-profile.md` (or the project's docs folder). If missing, draft one from `profile-template.md` by reading routes, layouts and content data, and save it as `seo-audit/seo-profile.draft.md`. Put every guess you made in the report as a decision. It moves to `docs/` only in fix mode, once the owner approves. `examples/security-tools-profile.md` shows a finished one.
+- **SEO profile:** look for `docs/seo-profile.md` (or the project's docs folder). If missing, draft one from `profile-template.md` by reading routes, layouts and content data, and save it as `seo-audit/seo-profile.draft.md`. Put every guess you made in the report as a decision. It moves to `docs/` only in fix mode, or in setup mode once the plan is approved. `examples/security-tools-profile.md` shows a finished one.
 - **Launch state: check the real domain, don't infer it from local env.** Local `.env` values tell you how your build behaves, not what production serves. Find the public origin (profile, env files, README, deploy config) and fetch its `robots.txt`, `sitemap.xml` and the home page headers and robots meta with a few GET requests. Record one of three states:
   - **Not live:** DNS fails, or the domain shows a placeholder.
   - **Live but hidden:** noindex or `Disallow: /`. This is pre-launch, which changes how you crawl (see step 2).
