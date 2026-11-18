@@ -90,6 +90,7 @@ const RULES = {
   "TRUST-01": ["HTTPS security headers are set", "Trust & security"],
   "TRUST-02": ["security.txt published", "Trust & security"],
   "AI-01": ["Pages are eligible for snippets and AI answers", "AI search"],
+  "AI-05": ["Pages work for AI agents that browse", "AI search"],
   "REND-08": ["HTML stays under Googlebot's 2 MB limit", "Rendering"],
   "META-08": ["hreflang only when there are real language or region versions", "Metadata"],
   "REND-09": ["Pages declare a doctype, a charset and a mobile viewport", "Rendering"],
@@ -603,6 +604,27 @@ const CHECKS = {
     n => `robots.txt blocks ${n} AI crawler(s)`,
     "Blocking AI crawlers can keep the site out of ChatGPT, Claude, Perplexity and Google AI answers.",
     "Confirm this is deliberate. A common middle ground blocks training crawlers and allows search crawlers.",
+  ],
+  "content-signal-invalid": [
+    "MAP-06",
+    "low",
+    n => `robots.txt has ${n} invalid Content-Signal value(s)`,
+    "Content-Signal states how AI systems may use the content (search, ai-input, ai-train), each set to yes or no. Anything else is ignored, so the stated preference doesn't apply.",
+    "Use only `search`, `ai-input` and `ai-train`, each `yes` or `no`, for example `Content-Signal: search=yes, ai-train=no`.",
+  ],
+  "markdown-no-vary": [
+    "AI-05",
+    "low",
+    () => "Markdown responses don't send Vary: Accept",
+    "The site returns Markdown to agents that ask for it, but without `Vary: Accept` a cache or CDN can serve that Markdown to browsers, or HTML to agents.",
+    "Send `Vary: Accept` with every response whose body depends on the Accept header.",
+  ],
+  "llms-structure": [
+    "MAP-07",
+    "low",
+    () => "llms.txt doesn't follow the llms.txt format",
+    "The format starts with a `# Site name` heading, then a short summary and Markdown lists of links. Tools that read llms.txt expect that structure.",
+    "Start with `# Site name`, add a one-line `>` summary, then sections of `- [Page](url): description` links.",
   ],
   "llms-txt": [
     "MAP-07",
@@ -1139,6 +1161,15 @@ else {
     if (g && !allowedBy(g, "/")) add("ai-bots-blocked", START_ORIGIN + "/robots.txt", bot);
   }
   if (!robots.sitemaps.length) add("sitemap-not-in-robots", START_ORIGIN + "/robots.txt");
+  for (const m of robotsRes.body.matchAll(/^\s*content-signal\s*:\s*(.*)$/gim))
+    for (const pair of m[1]
+      .split(",")
+      .map(x => x.trim())
+      .filter(Boolean)) {
+      const [k, v] = pair.split("=").map(x => (x || "").trim().toLowerCase());
+      if (!["search", "ai-input", "ai-train"].includes(k) || !["yes", "no"].includes(v))
+        add("content-signal-invalid", START_ORIGIN + "/robots.txt", pair);
+    }
 }
 const smUrls = robots && robots.sitemaps.length ? robots.sitemaps : [START_ORIGIN + "/sitemap.xml"];
 const firstSm = smUrls[0];
@@ -1213,6 +1244,27 @@ if (llms.status !== 200 || /<html/i.test(llms.body || ""))
     START_ORIGIN + "/llms.txt",
     llms.status === 200 ? "returns an HTML page instead (soft 404)" : `status ${llms.status}`,
   );
+else {
+  const problems = [
+    !/^# \S/.test(llms.body.replace(/^\uFEFF/, "").trimStart()) && "no # heading first",
+    !/\[[^\]]+\]\([^)\s]+\)/.test(llms.body) && "no Markdown links",
+  ].filter(Boolean);
+  if (problems.length) add("llms-structure", START_ORIGIN + "/llms.txt", problems.join(", "));
+}
+// A Markdown response must vary on Accept so caches keep it apart from the HTML.
+evalRules("AI-05");
+try {
+  const md = await fetch(START.href, {
+    headers: { "user-agent": UA, accept: "text/markdown" },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (
+    /^text\/markdown/i.test(md.headers.get("content-type") || "") &&
+    !/\baccept\b/i.test(md.headers.get("vary") || "")
+  )
+    add("markdown-no-vary", START.href, `Vary: ${md.headers.get("vary") || "(none)"}`);
+  await md.body?.cancel();
+} catch {}
 const sectxt = await get(START_ORIGIN + "/.well-known/security.txt", { manual: false });
 if (sectxt.status !== 200 || /<html/i.test(sectxt.body || ""))
   add(

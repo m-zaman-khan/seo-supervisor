@@ -9,7 +9,7 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".xml": "application/xml", 
 // headers: extra response headers by path; files: generated files by path ({ type, body });
 // markdown: a Markdown body by path, served when the request asks for text/markdown.
 // before(req, res): return true when it has answered the request itself.
-export function serve(root, { headers = {}, files = {} } = {}) {
+export function serve(root, { headers = {}, files = {}, markdown = {} } = {}) {
   const server = createServer(async (req, res) => {
     const path = decodeURIComponent(new URL(req.url, "http://x").pathname);
     const file = normalize(join(root, path));
@@ -18,6 +18,10 @@ export function serve(root, { headers = {}, files = {} } = {}) {
       return;
     }
     const extra = headers[path] || {};
+    if (markdown[path] && /text\/markdown/.test(req.headers.accept || "")) {
+      res.writeHead(200, { "Content-Type": "text/markdown; charset=utf-8", ...extra }).end(markdown[path]);
+      return;
+    }
     if (files[path]) {
       res
         .writeHead(200, { "Content-Type": files[path].type, "Content-Length": files[path].body.length, ...extra })

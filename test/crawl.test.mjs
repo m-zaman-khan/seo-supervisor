@@ -11,6 +11,7 @@ test("the crawler finds every planted problem on the fixture site", async () => 
   const site = await serve(join(ROOT, "test", "fixture-site"), {
     headers: { "/conflict/": { "X-Robots-Tag": "noindex" } },
     files: { "/big.png": { type: "image/png", body: Buffer.alloc(320 * 1024) } },
+    markdown: { "/": "# Free security tools\n" },
   });
   const out = join(tmp(), "crawl.json");
   try {
@@ -48,6 +49,7 @@ test("the crawler finds every planted problem on the fixture site", async () => 
     "CONTENT-10": "a banned claim",
     "AI-01": "an indexable page that blocks snippets",
     "MAP-06": "robots.txt blocking an AI crawler",
+    "AI-05": "Markdown served without Vary: Accept",
     "META-08": "an hreflang pair without a return link and with an invalid code (/en/, /es/)",
   };
   for (const [rule, what] of Object.entries(planted)) assert.ok(found.has(rule), `missed ${rule}: ${what}`);
@@ -60,6 +62,9 @@ test("the crawler finds every planted problem on the fixture site", async () => 
     "no-large-preview": "indexable pages without max-image-preview:large",
     "heavy-image": "a 320 KB image (/big.png)",
     "legacy-image-format": "a PNG over 100 KB (/big.png)",
+    "content-signal-invalid": "Content-Signal: ai-train=maybe in robots.txt",
+    "markdown-no-vary": "Markdown served for Accept: text/markdown without Vary: Accept",
+    "llms-structure": "an llms.txt with no # heading and no links",
   };
   for (const [key, what] of Object.entries(plantedChecks)) assert.ok(byCheck.has(key), `missed ${key}: ${what}`);
   const paths = key => (byCheck.get(key)?.evidence || []).map(e => new URL(e.url).pathname);

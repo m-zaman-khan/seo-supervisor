@@ -1,6 +1,7 @@
 User-agent: *
 Allow: /
 Disallow: /private/
+Content-Signal: search=yes, ai-train=maybe
 
 User-agent: GPTBot
 Disallow: /
