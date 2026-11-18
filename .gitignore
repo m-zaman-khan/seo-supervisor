@@ -3,3 +3,4 @@ seo-audit/
 *.log
 .DS_Store
 Thumbs.db
+.impeccable/
