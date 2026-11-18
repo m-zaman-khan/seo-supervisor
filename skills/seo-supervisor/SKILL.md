@@ -19,6 +19,7 @@ Supervise a site's SEO the way a senior technical SEO would: measure, cite evide
 | **fix** | The user asks to fix, after an audit | Only findings the user approved | Same report, updated with what changed |
 | **review** | A diff, PR, new page or template | Never | Short report on regressions only |
 | **launch** | Going live or switching indexing on | Never | Pass/fail gate |
+| **setup** | No SEO yet, "set up SEO", "SEO from scratch" | Only after the plan is approved | Same report, with a Plan tab |
 
 If the request doesn't name a mode, run **audit**. Finish an audit by offering to fix; never start fixing on your own.
 
@@ -97,7 +98,7 @@ The score is computed by the renderer from findings and passed rules; the model 
 
 The report labels these **Needs you**. While blockers are open, the score panel shows the score the site reaches once they are fixed, so the owner sees what their part unlocks.
 
-In chat, give: the score and band, and while blockers are open, the score fixing them unlocks and who has to do it. Then the verdict (the first sentence of `summary`), counts by severity, the top three problems, both report paths, and an offer to fix. Ask before committing `seo-audit/`.
+In chat, give: the score and band, and while blockers are open, the score fixing them unlocks and who has to do it. Then the verdict (the first sentence of `summary`), counts by severity, the top three problems, both report paths, and an offer to fix. If the site has almost no SEO in place (no titles, sitemap or schema on most pages), offer `/seo-setup` as well: it plans everything first. Ask before committing `seo-audit/`.
 
 ### 5. Fix (fix mode only)
 
@@ -124,6 +125,18 @@ List the changed routes, templates and content. Apply only the rules they touch.
 ### 7. Launch mode
 
 Run the audit. Launch passes only with **zero open blockers** and **zero open high findings** in the CRAWL, URL, REND and MAP rules, plus the steps in `rules/launch-monitoring.md`.
+
+### 8. Setup mode
+
+For a site with no SEO yet. Follow `planning.md` exactly.
+
+1. Work out what the site is from the site itself, never from a template.
+2. Propose a plan (a `plan` in `seo-audit.json`, shown on the report's Plan tab) and stop for approval.
+3. Build the code-level foundation once it's approved.
+4. Draft the content the owner must approve.
+5. Verify with an audit.
+
+Each risky item on the "Needs your yes" list gets its own yes. Re-running setup continues from `plan.status`.
 
 ## Never
 
