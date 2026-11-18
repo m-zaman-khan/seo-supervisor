@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, SKILL, SCRIPTS, node, tmp } from "./helpers.mjs";
 
@@ -23,6 +23,43 @@ test("the report renders the score, the unlock line and the owner labels, fully 
   const md = readFileSync(out.replace(/\.html$/, ".md"), "utf8");
   assert.match(md, /Fix the 2 blockers and the score rises to 90\/100/);
   assert.match(md, /## Findings/);
+});
+
+const renderWithPlan = async plan => {
+  const dir = tmp();
+  const data = JSON.parse(readFileSync(SAMPLE, "utf8"));
+  if (plan) data.plan = plan; else delete data.plan;
+  writeFileSync(join(dir, "audit.json"), JSON.stringify(data));
+  await node([join(SCRIPTS, "render-report.mjs"), join(dir, "audit.json"), "--out", join(dir, "audit.html")]);
+  return { html: readFileSync(join(dir, "audit.html"), "utf8"), md: readFileSync(join(dir, "audit.md"), "utf8") };
+};
+const twoRows = [{ url: "/", type: "Home", status: "to-build" }, { url: "/pricing", type: "Pricing page", status: "to-create", parent: "/" }];
+
+test("a proposed plan opens the report on the Plan tab, first in the tab row", async () => {
+  const { html, md } = await renderWithPlan({ status: "proposed", pages: twoRows });
+  assert.match(html, /role="tablist"[^>]*><button[^>]*id="t-plan"/, "Plan is the first tab");
+  assert.match(html, /id="t-plan"[^>]*aria-selected="true"/);
+  assert.match(html, /id="p-overview"[^>]*hidden/);
+  assert.match(html, /var DEFAULT_TAB='plan'/);
+  assert.match(md, /^## SEO plan$/m);
+});
+
+test("an approved or built plan keeps Overview first, with Plan next to it", async () => {
+  const { html } = await renderWithPlan({ status: "built", pages: twoRows });
+  assert.match(html, /role="tablist"[^>]*><button[^>]*id="t-overview"[^>]*aria-selected="true"[^>]*>.*?<\/button><button[^>]*id="t-plan"/);
+  assert.match(html, /id="p-plan"[^>]*hidden/);
+});
+
+test("a report without a plan has no Plan tab and no plan styles", async () => {
+  const { html, md } = await renderWithPlan(null);
+  assert.doesNotMatch(html, /id="t-plan"|\.plan-counts\{|\.prow>summary/);
+  assert.doesNotMatch(md, /## SEO plan/);
+});
+
+test("the plan filter and the findings filter each control only their own buttons", async () => {
+  const { html } = await renderWithPlan({ status: "built", pages: twoRows });
+  assert.match(html, /querySelectorAll\('\.segb\[data-sev\]'\)/);
+  assert.match(html, /querySelectorAll\('\.segb\[data-pstatus\]'\)/);
 });
 
 test("the live demo and the bundled sample are up to date (run `npm run demo` after changing the renderer)", async () => {

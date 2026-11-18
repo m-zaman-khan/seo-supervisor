@@ -10,6 +10,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, resolve, basename } from "node:path";
+import { planStats, planHtml, planMarkdown, PLAN_CSS } from "./report-plan.mjs";
 
 const argv = process.argv.slice(2);
 const inPath = argv.find(a => !a.startsWith("--"));
@@ -336,6 +337,7 @@ const limitsHtml = () => (notChecked.length || notes.length) ? `<div class="limi
 </div>` : `<section class="panel empty-state"><h2>No limits recorded</h2><p>Every planned check ran.</p></section>`;
 
 // ---------- page ----------
+const plan = raw.plan && typeof raw.plan === "object" ? raw.plan : null;
 const tabs = [
   ["overview", "Overview", null],
   ["findings", "Findings", findings.length],
@@ -344,6 +346,9 @@ const tabs = [
   ["passed", "Passed", passed.length + fixed.length],
   ["limits", "Limits", notChecked.length],
 ];
+if (plan) tabs.splice(plan.status === "proposed" ? 0 : 1, 0, ["plan", "Plan", planStats(plan).rows]);
+const DEFAULT_TAB = tabs[0][0];
+const PANELS = { overview: overviewHtml, plan: () => planHtml(plan, { esc, inl, num }), findings: findingsHtml, decisions: decisionsHtml, changes: changesHtml, passed: passedHtml, limits: limitsHtml };
 const metaBits = [site.url && `<a href="${esc(site.url)}" rel="noopener">${esc(site.url.replace(/^https?:\/\//, ""))}</a>`, run.pagesCrawled != null && `${num(run.pagesCrawled)} pages crawled`, esc(fmtDate(run.date)), run.mode === "fix" && "Includes fixes"].filter(Boolean);
 
 const CSS = `
@@ -559,6 +564,7 @@ footer .wrap{padding-block:20px 40px;display:flex;flex-wrap:wrap;gap:6px 18px;ju
 
 const JS = `
 (function(){
+  var DEFAULT_TAB='${DEFAULT_TAB}';
   var d=document;d.documentElement.classList.add('js');
   var root=d.documentElement,tb=d.querySelector('.theme-btn');
   if(tb){var syncTheme=function(){var light=root.dataset.theme==='light';tb.querySelector('.tl').textContent=light?'Dark':'Light';tb.setAttribute('aria-label','Switch to '+(light?'dark':'light')+' theme');};
@@ -579,17 +585,18 @@ const JS = `
       var ok=(state.sev==='all'||f.dataset.sev===state.sev)&&(state.status==='all'||f.dataset.status===state.status)&&(state.area==='all'||f.dataset.area===state.area)&&(!state.q||f.dataset.text.indexOf(state.q)>-1);
       f.hidden=!ok;if(ok)n++;});
     d.getElementById('showing').textContent=(n===all?all:n+' of '+all)+' findings';d.getElementById('fnone').hidden=n>0;}
-  [].forEach.call(d.querySelectorAll('.segb'),function(b){b.addEventListener('click',function(){[].forEach.call(d.querySelectorAll('.segb'),function(x){x.setAttribute('aria-pressed',x===b);});state.sev=b.dataset.sev;apply();});});
+  [].forEach.call(d.querySelectorAll('.segb[data-sev]'),function(b){b.addEventListener('click',function(){[].forEach.call(d.querySelectorAll('.segb[data-sev]'),function(x){x.setAttribute('aria-pressed',x===b);});state.sev=b.dataset.sev;apply();});});
+  var pb=[].slice.call(d.querySelectorAll('.segb[data-pstatus]'));pb.forEach(function(b){b.addEventListener('click',function(){pb.forEach(function(x){x.setAttribute('aria-pressed',x===b);});var st=b.dataset.pstatus;[].forEach.call(d.querySelectorAll('.prow'),function(r){r.hidden=st!=='all'&&r.dataset.status!==st;});});});
   var q=d.getElementById('q');if(q)q.addEventListener('input',function(){state.q=q.value.trim().toLowerCase();apply();});
   var fs=d.getElementById('fstatus');if(fs)fs.addEventListener('change',function(){state.status=fs.value;apply();});
   var fa=d.getElementById('farea');if(fa)fa.addEventListener('change',function(){state.area=fa.value;apply();});
   var fr=d.getElementById('freset');if(fr)fr.addEventListener('click',function(){state={sev:'all',status:'all',area:'all',q:''};if(q)q.value='';if(fs)fs.value='all';if(fa)fa.value='all';
-    [].forEach.call(d.querySelectorAll('.segb'),function(x){x.setAttribute('aria-pressed',x.dataset.sev==='all');});apply();});
+    [].forEach.call(d.querySelectorAll('.segb[data-sev]'),function(x){x.setAttribute('aria-pressed',x.dataset.sev==='all');});apply();});
   [].forEach.call(d.querySelectorAll('.area[data-sev]'),function(a){a.addEventListener('click',function(e){e.preventDefault();var b=d.querySelector('.segb[data-sev="'+a.dataset.sev+'"]');if(b)b.click();history.replaceState(null,'','#findings');show('findings');window.scrollTo(0,0);});});
   [].forEach.call(d.querySelectorAll('.area[data-area]'),function(a){a.addEventListener('click',function(e){e.preventDefault();if(fa){fa.value=a.dataset.area;state.area=a.dataset.area;apply();}
     history.replaceState(null,'','#findings');show('findings');window.scrollTo(0,0);});});
-  function route(e){var h=decodeURIComponent(location.hash.slice(1));if(!h){show('overview');return;}
-    if(show(h))return;var f=d.getElementById(h);if(f&&f.classList.contains('f')){show('findings');f.hidden=false;setOpen(f,true);f.scrollIntoView({block:'start'});if(e)f.querySelector('.f-head').focus({preventScroll:true});}else show('overview');}
+  function route(e){var h=decodeURIComponent(location.hash.slice(1));if(!h){show(DEFAULT_TAB);return;}
+    if(show(h))return;var f=d.getElementById(h);if(f&&f.classList.contains('f')){show('findings');f.hidden=false;setOpen(f,true);f.scrollIntoView({block:'start'});if(e)f.querySelector('.f-head').focus({preventScroll:true});}else show(DEFAULT_TAB);}
   window.addEventListener('hashchange',route);route();
 })();
 `;
@@ -604,7 +611,7 @@ const html = `<!doctype html>
 <title>SEO report · ${esc(site.name)}</title>
 <script>(function(h){h.classList.add('js');try{if(localStorage.getItem('seo-report-theme')==='light')h.dataset.theme='light'}catch(e){}})(document.documentElement)</script>
 <style>${FONT_FACES}
-${CSS}</style>
+${CSS}${plan ? PLAN_CSS : ""}</style>
 </head>
 <body>
 <header class="top"><div class="wrap">
@@ -614,12 +621,7 @@ ${CSS}</style>
   <nav class="tabs" role="tablist" aria-label="Report sections">${tabs.map(([id, label, n], i) => `<button class="tab" role="tab" id="t-${id}" data-tab="${id}" aria-controls="p-${id}" aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}">${label}${n != null ? `<span class="cnt">${n}</span>` : ""}</button>`).join("")}</nav>
 </div></header>
 <main class="wrap">
-  <section class="tp" id="p-overview" role="tabpanel" aria-labelledby="t-overview" data-title="Overview">${overviewHtml()}</section>
-  <section class="tp" id="p-findings" role="tabpanel" aria-labelledby="t-findings" data-title="Findings" hidden>${findingsHtml()}</section>
-  <section class="tp" id="p-decisions" role="tabpanel" aria-labelledby="t-decisions" data-title="Decisions" hidden>${decisionsHtml()}</section>
-  <section class="tp" id="p-changes" role="tabpanel" aria-labelledby="t-changes" data-title="Changes" hidden>${changesHtml()}</section>
-  <section class="tp" id="p-passed" role="tabpanel" aria-labelledby="t-passed" data-title="Passed" hidden>${passedHtml()}</section>
-  <section class="tp" id="p-limits" role="tabpanel" aria-labelledby="t-limits" data-title="Limits" hidden>${limitsHtml()}</section>
+  ${tabs.map(([id, label]) => `<section class="tp" id="p-${id}" role="tabpanel" aria-labelledby="t-${id}" data-title="${label}"${id === DEFAULT_TAB ? "" : " hidden"}>${PANELS[id]()}</section>`).join("\n  ")}
 </main>
 <footer><div class="wrap"><span>${mdFile ? `Full detail for every finding: <code>${esc(mdFile)}</code> in the same folder.` : ""}</span><span>Generated by the seo-supervisor skill${run.auditor && run.auditor !== "seo-supervisor" ? ` · ${esc(run.auditor)}` : ""} · ${esc(fmtDate(run.date))}</span></div></footer>
 <script>${JS}</script>
@@ -650,6 +652,7 @@ function markdown() {
     for (const a of areas) L.push(`| ${mdEsc(a.name)} | ${a.value} | ${a.top.length} | ${mdEsc(a.top[0]?.title || "All checks pass")} |`);
     L.push("");
   }
+  if (plan) L.push(...planMarkdown(plan));
   if (decisions.length) {
     L.push("## Decisions needed", "");
     for (const d of decisions) {
