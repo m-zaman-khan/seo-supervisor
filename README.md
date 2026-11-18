@@ -103,7 +103,7 @@ New site, or an old app that never had any SEO? Run `/seo-setup`. It plans first
 1. **It works out what your site is** from your own pages and routes. A landing page, a SaaS app, a blog, a shop, a portfolio and a local business each get a different plan, and none of them get pages they don't need.
 2. **It proposes the plan on a Plan tab.** That covers every page's title, description, H1, schema, target search phrase and links. Big sets like posts or products get one template instead of thousands of rows. New pages are proposed only where your site shows a gap, such as a missing `/docs` parent or a privacy page your forms need.
 3. **You approve it.** Risky changes are listed separately under **Needs your yes**, and each one needs its own yes: a domain change, robots, AI crawlers, anything in your CMS.
-4. **It builds the foundation:** the metadata helper, sitemap, robots, schema, headings, breadcrumbs and internal links. It drafts any copy you still need to approve, with visible placeholders instead of invented facts.
+4. **It builds the foundation and fixes the rest.** First the metadata helper, sitemap, robots, schema, headings, breadcrumbs and internal links. Then the other code problems the audit found, such as forms, results output, rendering and speed. Those are listed in the plan, so you approve them too. It drafts any copy you still need to approve, with visible placeholders instead of invented facts.
 5. **It proves it with an audit:** the score before and after, and what's still waiting for you.
 
 Run `/seo-setup` again at any point and it continues where it stopped.

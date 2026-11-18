@@ -227,6 +227,7 @@ footer .wrap{padding-block:20px 40px;display:flex;flex-wrap:wrap;gap:6px 18px;ju
 .plan-counts{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13.5px}
 .plan-counts li{display:inline-flex;align-items:center;gap:6px}.plan-counts b{font:600 13px var(--mono);color:var(--ink)}
 .plan-summary{margin-top:14px;color:var(--ink2);max-width:78ch}
+.plan-fixes{margin-top:10px;color:var(--ink2);font-size:14px}
 .pchip{display:inline-block;font:600 12px/1.6 var(--sans);padding:0 9px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
 .pchip.s-exists{color:var(--mute);border-color:var(--line2)}
 .pchip.s-to-build{color:var(--blue);background:var(--blue-soft)}
@@ -346,6 +347,7 @@ footer .wrap{padding-block:20px 40px;display:flex;flex-wrap:wrap;gap:6px 18px;ju
     </div>
     <ul class="plan-counts"><li><span class="pchip s-exists">Already right</span><b>1</b></li><li><span class="pchip s-built">Built</span><b>4</b></li><li><span class="pchip s-to-create">To create</span><b>1</b></li><li><span class="own">Needs you</span><b>2</b></li></ul>
     <p class="plan-summary">A free security-tools site with a docs section. Setup added one metadata helper, the sitemap and robots.txt, Organization and SoftwareApplication schema, breadcrumbs, and the missing /docs parent page. The security disclosure page is waiting for the owner to approve its draft.</p>
+    <p class="plan-fixes">Setup also fixed 2 audit findings in code: <a href="#F-003">F-003</a>, <a href="#F-004">F-004</a></p>
   </section><section class="panel plan-tree" aria-labelledby="h-tree"><h2 id="h-tree">Site structure</h2><ul><li><code>/</code> <span class="pchip s-exists">Already right</span><ul><li><code>/tools</code> <span class="pchip s-built">Built</span><ul><li><code>/tools/{slug}</code> <span class="pcount">×36</span> <span class="pchip s-built">Built</span></li></ul></li><li><code>/pricing</code> <span class="pchip s-built">Built</span></li><li><code>/docs</code> <span class="pchip s-built">Built</span></li><li><code>/security</code> <span class="pchip s-to-create">To create</span></li></ul></li></ul></section><section class="panel plan-pages" aria-labelledby="h-pages">
     <div class="ph"><h2 id="h-pages">Pages</h2><div class="seg" role="group" aria-label="Filter pages by status"><button type="button" class="segb" data-pstatus="all" aria-pressed="true">All</button><button type="button" class="segb" data-pstatus="exists" aria-pressed="false">Already right<span class="mono">1</span></button><button type="button" class="segb" data-pstatus="built" aria-pressed="false">Built<span class="mono">4</span></button><button type="button" class="segb" data-pstatus="to-create" aria-pressed="false">To create<span class="mono">1</span></button></div></div>
     <div class="prow-h" aria-hidden="true"><span>Page</span><span>Targets</span><span>Type</span><span>Status</span></div>

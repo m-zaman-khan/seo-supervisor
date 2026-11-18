@@ -47,6 +47,11 @@ export function planHtml(plan, { esc, inl, num }) {
       .map(st => `<li>${chip(st)}<b>${num(s.byStatus[st])}</b></li>`)
       .join("")}${s.ownerOpen ? `<li><span class="own">Needs you</span><b>${num(s.ownerOpen)}</b></li>` : ""}</ul>
     ${plan.summary ? `<p class="plan-summary">${inl(plan.summary)}</p>` : ""}
+    ${fixesLine(
+      plan,
+      n => num(n),
+      ids => ids.map(id => `<a href="#${esc(id)}">${esc(id)}</a>`).join(", "),
+    )}
   </section>`;
   if (!pages.length)
     return `<div class="plan">${head}<section class="panel empty-state"><h2>No pages in this plan yet</h2><p>Run /seo-setup to propose one.</p></section></div>`;
@@ -123,6 +128,7 @@ export const PLAN_CSS = `
 .plan-counts{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13.5px}
 .plan-counts li{display:inline-flex;align-items:center;gap:6px}.plan-counts b{font:600 13px var(--mono);color:var(--ink)}
 .plan-summary{margin-top:14px;color:var(--ink2);max-width:78ch}
+.plan-fixes{margin-top:10px;color:var(--ink2);font-size:14px}
 .pchip{display:inline-block;font:600 12px/1.6 var(--sans);padding:0 9px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
 .pchip.s-exists{color:var(--mute);border-color:var(--line2)}
 .pchip.s-to-build{color:var(--blue);background:var(--blue-soft)}
@@ -152,6 +158,18 @@ export const PLAN_CSS = `
 @media (max-width:560px){.prow-h{display:none}.prow>summary{grid-template-columns:minmax(0,1fr);gap:4px}.pst{justify-content:flex-start}.pd{grid-template-columns:minmax(0,1fr);gap:2px}.pd dt{margin-top:8px}}
 `;
 
+// The audit findings setup fixes in code after approval (plan.alsoFixes), as one sentence.
+function fixesLine(plan, count, list, html = true) {
+  const ids = Array.isArray(plan.alsoFixes) ? plan.alsoFixes : [];
+  if (!ids.length) return "";
+  const what = `${count(ids.length)} audit finding${ids.length === 1 ? "" : "s"} in code`;
+  const text =
+    plan.status === "built"
+      ? `Setup also fixed ${what}: ${list(ids)}`
+      : `After the build, setup also fixes ${what}: ${list(ids)}`;
+  return html ? `<p class="plan-fixes">${text}</p>` : `${text}.`;
+}
+
 const cell = v =>
   String(Array.isArray(v) ? v.join(", ") : (v ?? ""))
     .replace(/\|/g, "\\|")
@@ -170,6 +188,8 @@ export function planMarkdown(plan) {
     "",
   );
   if (plan.summary) L.push(plan.summary, "");
+  const fixes = fixesLine(plan, String, ids => ids.join(", "), false);
+  if (fixes) L.push(fixes, "");
   const yes = [
     ...(plan.yes || []).filter(yesOpen).map(y => `- ${y.id ? `${y.id}: ` : ""}${y.what}${y.why ? ` (${y.why})` : ""}`),
     ...pages.filter(r => ownerOpen(r) && r.owner.needs === "yes").map(r => `- ${key(r)}: ${r.owner.what || ""}`),

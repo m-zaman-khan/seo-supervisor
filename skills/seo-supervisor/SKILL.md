@@ -132,7 +132,7 @@ For a site with no SEO yet. Follow `planning.md` exactly.
 
 1. Work out what the site is from the site itself, never from a template.
 2. Propose a plan (a `plan` in `seo-audit.json`, shown on the report's Plan tab) and stop for approval.
-3. Build the code-level foundation once it's approved.
+3. Build the code-level foundation once it's approved, then fix the audit's other code findings listed in the plan (`plan.alsoFixes`).
 4. Draft the content the owner must approve.
 5. Verify with an audit.
 

@@ -142,3 +142,19 @@ test("a declined yes item is recorded, shown as declined and no longer counted a
   assert.doesNotMatch(html, /<ol>[\s\S]*Redirect www/, "not listed as waiting");
   assert.match(planMarkdown(plan).join("\n"), /Declined: Y1/);
 });
+
+test("the plan lists the audit findings setup will also fix in code, linked to the findings", () => {
+  const proposed = planHtml(
+    { status: "proposed", alsoFixes: ["F-003", "F-007"], pages: [{ url: "/", status: "to-build" }] },
+    ctx,
+  );
+  assert.match(proposed, /After the build, setup also fixes 2 audit findings in code/);
+  assert.match(proposed, /<a href="#F-003">F-003<\/a>, <a href="#F-007">F-007<\/a>/);
+  const built = planHtml({ status: "built", alsoFixes: ["F-003"], pages: [{ url: "/", status: "built" }] }, ctx);
+  assert.match(built, /Setup also fixed 1 audit finding in code/);
+  assert.doesNotMatch(planHtml({ status: "proposed", pages: [{ url: "/", status: "to-build" }] }, ctx), /also fix/);
+  assert.match(
+    planMarkdown({ status: "proposed", alsoFixes: ["F-003"], pages: [] }).join("\n"),
+    /also fixes 1 audit finding in code: F-003/,
+  );
+});

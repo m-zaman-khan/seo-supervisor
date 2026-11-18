@@ -57,3 +57,12 @@ test("setup rules keep every change behind approval: profile, robots and decline
   assert.match(format, /`pages\[\]\.intro`/);
   assert.match(format, /`declined`/);
 });
+
+test("setup fixes the audit's code findings after approval, and the plan shows which", () => {
+  const planning = readFileSync(join(SKILL, "planning.md"), "utf8");
+  assert.match(planning, /## 5\. Fix the audit's code findings/);
+  assert.match(planning, /`plan\.alsoFixes`/);
+  assert.match(planning, /\| `approved` \| Steps 4–8/);
+  assert.match(readFileSync(join(SKILL, "report-format.md"), "utf8"), /`plan\.alsoFixes`/);
+  assert.match(readFileSync(join(ROOT, "commands", "seo-setup.md"), "utf8"), /fixes the audit's other code findings/);
+});
