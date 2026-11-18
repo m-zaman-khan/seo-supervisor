@@ -29,6 +29,21 @@ Open: 7 (2 blocker, 1 high, 1 decision, 2 medium, 1 low) · Fixed: 2 · Rules pa
 | Structured data | 100 | 0 | All checks pass |
 | URLs & canonicals | 100 | 0 | All checks pass |
 
+## SEO plan
+
+Status: Built (approved 2026-11-16) · Progress: 83% · 1 already right, 4 built, 1 to create · 2 need you
+
+A free security-tools site with a docs section. Setup added one metadata helper, the sitemap and robots.txt, Organization and SoftwareApplication schema, breadcrumbs, and the missing /docs parent page. The security disclosure page is waiting for the owner to approve its draft.
+
+| Page | Type | Status | Target | Title | Description | H1 | Schema | Parent | Needs you |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| / | Home | Already right | free website security tools | Free Website Security Tools \| Example Security |  | Free security tools | Organization, WebSite |  |  |
+| /tools | Tools listing | Built | website security checker tools | Security Checkers: SSL, DNS, Headers \| Example Security |  | Security tools | CollectionPage, ItemList, BreadcrumbList | / |  |
+| /tools/{slug} ×36 | Tool page | Built | {tool} checker | {Tool name}: Free {Check} \| Example Security | Check {thing} for any domain in seconds. Free, no sign-up: see what's wrong and how to fix it. | {Tool name} | WebApplication, BreadcrumbList | /tools |  |
+| /pricing | Pricing page | Built | security monitoring pricing | Pricing \| Example Security |  | Simple pricing for teams | WebPage, BreadcrumbList | / | Facts: Confirm the Team plan price before it goes into the page copy |
+| /docs | Docs hub | Built | example security api docs | Docs \| Example Security |  | Docs | CollectionPage, BreadcrumbList | / |  |
+| /security | Disclosure policy | To create | example security vulnerability disclosure | Report a Vulnerability \| Example Security |  | Report a vulnerability | WebPage | / | Copy: Approve the drafted disclosure policy and add the security contact (draft: drafts/security.md) |
+
 ## Decisions needed
 
 ### Launch the 36 DNS tools now or after rewriting?

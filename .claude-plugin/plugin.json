@@ -1,7 +1,7 @@
 {
   "name": "seo-supervisor",
   "displayName": "SEO Supervisor",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "SEO audit, safe fixes, PR review and a launch gate. Crawls any site, scores it 0-100 and writes a polished offline report.",
   "author": {
     "name": "Zaman Khan",

@@ -219,6 +219,40 @@ footer .wrap{padding-block:20px 40px;display:flex;flex-wrap:wrap;gap:6px 18px;ju
 .lim li{grid-template-columns:1fr;gap:4px}.showing{margin-left:0;width:100%}.cards,.pgrid{grid-template-columns:1fr}.changes li{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 @media print{body{background:#fff}.tabs,.toolbar,.how,.theme-btn,footer .wrap>:last-child{display:none}html.js .tp[hidden]{display:grid}.tp+.tp{margin-top:28px}.f-body{display:grid!important}.chev{display:none}.panel,.f{box-shadow:none;break-inside:avoid}.flist.focus .f{background:#fff}}
+
+.plan{display:grid;gap:18px}
+.plan-prog{display:grid;gap:8px;margin-top:14px}
+.plan-n{color:var(--mute);font-size:13.5px}.plan-n .n{font:700 34px/1 var(--display);letter-spacing:-.02em;color:var(--ink);margin-right:8px}
+.pbar{height:10px;border-radius:5px;background:var(--line2);overflow:hidden}.pbar i{display:block;height:100%;background:var(--pass)}
+.plan-counts{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13.5px}
+.plan-counts li{display:inline-flex;align-items:center;gap:6px}.plan-counts b{font:600 13px var(--mono);color:var(--ink)}
+.plan-summary{margin-top:14px;color:var(--ink2);max-width:78ch}
+.pchip{display:inline-block;font:600 12px/1.6 var(--sans);padding:0 9px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
+.pchip.s-exists{color:var(--mute);border-color:var(--line2)}
+.pchip.s-to-build{color:var(--blue);background:var(--blue-soft)}
+.pchip.s-built{color:var(--b5-ink);background:var(--ok-soft)}
+.pchip.s-to-create{color:var(--ink2);border-color:var(--ink2)}
+.plan-yes ol{margin:12px 0 0;padding-left:22px;display:grid;gap:8px}
+.plan-tree ul{list-style:none;margin:0;padding-left:20px;border-left:1px solid var(--line)}
+.plan-tree h2+ul{padding-left:0;border-left:0;margin-top:10px}
+.plan-tree li{padding:4px 0}.plan-tree li>ul{margin-top:4px}
+.plan-tree code,.pu code,.psamples code{font:500 13px var(--mono);overflow-wrap:anywhere}
+.pcount{font:500 12px var(--mono);color:var(--mute)}
+.plan-pages .ph{flex-wrap:wrap;gap:10px}
+.prow-h,.prow>summary{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,2fr) minmax(0,1.3fr) minmax(150px,auto);gap:12px;align-items:center}
+.prow-h span:last-child{text-align:right}
+.prow-h{margin-top:12px;padding:8px 12px;font-size:12px;font-weight:600;color:var(--mute);border-bottom:1px solid var(--line)}
+.prow{border-bottom:1px solid var(--line)}.prow[hidden]{display:none}
+.prow>summary{padding:12px;cursor:pointer;list-style:none;border-radius:6px}
+.prow>summary::-webkit-details-marker{display:none}
+.prow>summary:hover{background:var(--bg)}
+.prow>summary:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
+.pu{min-width:0}.pt{min-width:0;color:var(--ink2);font-size:14px;overflow-wrap:anywhere}.ptype{color:var(--mute);font-size:13.5px}
+.pst{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.pd{display:grid;grid-template-columns:150px minmax(0,1fr);gap:6px 16px;margin:0;padding:4px 12px 16px;font-size:14px}
+.pd dt{color:var(--mute);font-weight:600;font-size:12.5px;padding-top:2px}.pd dd{margin:0;overflow-wrap:anywhere}
+.psamples{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+@media (max-width:560px){.prow-h{display:none}.prow>summary{grid-template-columns:minmax(0,1fr);gap:4px}.pst{justify-content:flex-start}.pd{grid-template-columns:minmax(0,1fr);gap:2px}.pd dt{margin-top:8px}}
 </style>
 </head>
 <body>
@@ -226,7 +260,7 @@ footer .wrap{padding-block:20px 40px;display:flex;flex-wrap:wrap;gap:6px 18px;ju
   <div class="title-row"><h1>Example Security (sample data)</h1><button class="theme-btn" type="button" hidden><svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg><span class="tl">Light</span></button></div>
   <p class="meta"><span>SEO report</span><span><a href="https://security.example" rel="noopener">security.example</a></span><span>214 pages crawled</span><span>17 Nov 2026</span><span>Includes fixes</span></p>
   <p class="lede">Close to launch-ready: the tool pages are server-rendered and well structured, but two blockers remain. Shareable scan reports are indexable, and 36 DNS-lookup tool pages share most of their text. Two earlier fixes (canonicals and the sitemap host) are in and verified.</p>
-  <nav class="tabs" role="tablist" aria-label="Report sections"><button class="tab" role="tab" id="t-overview" data-tab="overview" aria-controls="p-overview" aria-selected="true" tabindex="0">Overview</button><button class="tab" role="tab" id="t-findings" data-tab="findings" aria-controls="p-findings" aria-selected="false" tabindex="-1">Findings<span class="cnt">9</span></button><button class="tab" role="tab" id="t-decisions" data-tab="decisions" aria-controls="p-decisions" aria-selected="false" tabindex="-1">Decisions<span class="cnt">2</span></button><button class="tab" role="tab" id="t-changes" data-tab="changes" aria-controls="p-changes" aria-selected="false" tabindex="-1">Changes<span class="cnt">2</span></button><button class="tab" role="tab" id="t-passed" data-tab="passed" aria-controls="p-passed" aria-selected="false" tabindex="-1">Passed<span class="cnt">14</span></button><button class="tab" role="tab" id="t-limits" data-tab="limits" aria-controls="p-limits" aria-selected="false" tabindex="-1">Limits<span class="cnt">2</span></button></nav>
+  <nav class="tabs" role="tablist" aria-label="Report sections"><button class="tab" role="tab" id="t-overview" data-tab="overview" aria-controls="p-overview" aria-selected="true" tabindex="0">Overview</button><button class="tab" role="tab" id="t-plan" data-tab="plan" aria-controls="p-plan" aria-selected="false" tabindex="-1">Plan<span class="cnt">6</span></button><button class="tab" role="tab" id="t-findings" data-tab="findings" aria-controls="p-findings" aria-selected="false" tabindex="-1">Findings<span class="cnt">9</span></button><button class="tab" role="tab" id="t-decisions" data-tab="decisions" aria-controls="p-decisions" aria-selected="false" tabindex="-1">Decisions<span class="cnt">2</span></button><button class="tab" role="tab" id="t-changes" data-tab="changes" aria-controls="p-changes" aria-selected="false" tabindex="-1">Changes<span class="cnt">2</span></button><button class="tab" role="tab" id="t-passed" data-tab="passed" aria-controls="p-passed" aria-selected="false" tabindex="-1">Passed<span class="cnt">14</span></button><button class="tab" role="tab" id="t-limits" data-tab="limits" aria-controls="p-limits" aria-selected="false" tabindex="-1">Limits<span class="cnt">2</span></button></nav>
 </div></header>
 <main class="wrap">
   <section class="tp" id="p-overview" role="tabpanel" aria-labelledby="t-overview" data-title="Overview">
@@ -303,6 +337,37 @@ footer .wrap{padding-block:20px 40px;display:flex;flex-wrap:wrap;gap:6px 18px;ju
     <ol><li><a href="#F-001"><i class="dot d-blocker" aria-hidden="true"></i><span class="sev-t">Blocker</span><span class="t">1,240 shareable scan reports are indexable</span><span class="c">Interactive tools</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9.5M8.5 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></li><li><a href="#F-002"><i class="dot d-blocker" aria-hidden="true"></i><span class="sev-t">Blocker</span><span class="t">36 tool pages share most of their text <span class="own">Needs you</span></span><span class="c">Headings &amp; content</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9.5M8.5 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></li><li><a href="#F-005"><i class="dot d-high" aria-hidden="true"></i><span class="sev-t">High</span><span class="t">Unknown URLs return 200 on the first request (soft 404)</span><span class="c">Crawling &amp; indexing</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9.5M8.5 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></li><li><a href="#F-008"><i class="dot d-needs-decision" aria-hidden="true"></i><span class="sev-t">Decision</span><span class="t">robots.txt blocks OAI-SearchBot and PerplexityBot</span><span class="c">AI search</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9.5M8.5 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></li></ol>
   </section>
 </section>
+  <section class="tp" id="p-plan" role="tabpanel" aria-labelledby="t-plan" data-title="Plan" hidden><div class="plan"><section class="panel plan-sum" aria-labelledby="h-plan">
+    <div class="ph"><h2 id="h-plan">SEO plan</h2><span class="sub">Built · approved 2026-11-16</span></div>
+    <div class="plan-prog">
+      <p class="plan-n"><span class="n">83%</span>of the agent's work is done</p>
+      <div class="pbar" role="img" aria-label="Plan progress: 83% of the agent's work is done"><i style="width:83%"></i></div>
+    </div>
+    <ul class="plan-counts"><li><span class="pchip s-exists">Already right</span><b>1</b></li><li><span class="pchip s-built">Built</span><b>4</b></li><li><span class="pchip s-to-create">To create</span><b>1</b></li><li><span class="own">Needs you</span><b>2</b></li></ul>
+    <p class="plan-summary">A free security-tools site with a docs section. Setup added one metadata helper, the sitemap and robots.txt, Organization and SoftwareApplication schema, breadcrumbs, and the missing /docs parent page. The security disclosure page is waiting for the owner to approve its draft.</p>
+  </section><section class="panel plan-tree" aria-labelledby="h-tree"><h2 id="h-tree">Site structure</h2><ul><li><code>/</code> <span class="pchip s-exists">Already right</span><ul><li><code>/tools</code> <span class="pchip s-built">Built</span><ul><li><code>/tools/{slug}</code> <span class="pcount">×36</span> <span class="pchip s-built">Built</span></li></ul></li><li><code>/pricing</code> <span class="pchip s-built">Built</span></li><li><code>/docs</code> <span class="pchip s-built">Built</span></li><li><code>/security</code> <span class="pchip s-to-create">To create</span></li></ul></li></ul></section><section class="panel plan-pages" aria-labelledby="h-pages">
+    <div class="ph"><h2 id="h-pages">Pages</h2><div class="seg" role="group" aria-label="Filter pages by status"><button type="button" class="segb" data-pstatus="all" aria-pressed="true">All</button><button type="button" class="segb" data-pstatus="exists" aria-pressed="false">Already right<span class="mono">1</span></button><button type="button" class="segb" data-pstatus="built" aria-pressed="false">Built<span class="mono">4</span></button><button type="button" class="segb" data-pstatus="to-create" aria-pressed="false">To create<span class="mono">1</span></button></div></div>
+    <div class="prow-h" aria-hidden="true"><span>Page</span><span>Targets</span><span>Type</span><span>Status</span></div>
+    <details class="prow" data-status="exists">
+      <summary><span class="pu"><code>/</code></span><span class="pt">free website security tools</span><span class="ptype">Home</span><span class="pst"><span class="pchip s-exists">Already right</span></span></summary>
+      <dl class="pd"><dt>Intent</dt><dd>Someone who wants to check their site&#39;s security for free, right now</dd><dt>Title</dt><dd>Free Website Security Tools | Example Security</dd><dt>H1</dt><dd>Free security tools</dd><dt>Schema</dt><dd>Organization, WebSite</dd></dl>
+    </details><details class="prow" data-status="built">
+      <summary><span class="pu"><code>/tools</code></span><span class="pt">website security checker tools</span><span class="ptype">Tools listing</span><span class="pst"><span class="pchip s-built">Built</span></span></summary>
+      <dl class="pd"><dt>Title</dt><dd>Security Checkers: SSL, DNS, Headers | Example Security</dd><dt>H1</dt><dd>Security tools</dd><dt>Schema</dt><dd>CollectionPage, ItemList, BreadcrumbList</dd><dt>Parent</dt><dd>/</dd><dt>Links to</dt><dd>/tools/ssl-checker, /tools/dmarc-checker</dd></dl>
+    </details><details class="prow" data-status="built">
+      <summary><span class="pu"><code>/tools/{slug}</code> <span class="pcount">×36</span></span><span class="pt">{tool} checker</span><span class="ptype">Tool page</span><span class="pst"><span class="pchip s-built">Built</span></span></summary>
+      <dl class="pd"><dt>Title template</dt><dd>{Tool name}: Free {Check} | Example Security</dd><dt>Description template</dt><dd>Check {thing} for any domain in seconds. Free, no sign-up: see what&#39;s wrong and how to fix it.</dd><dt>H1 template</dt><dd>{Tool name}</dd><dt>Schema</dt><dd>WebApplication, BreadcrumbList</dd><dt>Parent</dt><dd>/tools</dd><dt>Built</dt><dd>36 of 36</dd><dt>Examples</dt><dd><ul class="psamples"><li><code>/tools/ssl-checker</code> SSL Checker: Free Certificate Check | Example Security</li><li><code>/tools/dmarc-checker</code> DMARC Checker: Free Policy Check | Example Security</li></ul></dd><dt>Finding</dt><dd><a href="#F-007">F-007</a></dd></dl>
+    </details><details class="prow" data-status="built">
+      <summary><span class="pu"><code>/pricing</code></span><span class="pt">security monitoring pricing</span><span class="ptype">Pricing page</span><span class="pst"><span class="pchip s-built">Built</span><span class="own">Needs you</span></span></summary>
+      <dl class="pd"><dt>Title</dt><dd>Pricing | Example Security</dd><dt>H1</dt><dd>Simple pricing for teams</dd><dt>Schema</dt><dd>WebPage, BreadcrumbList</dd><dt>Parent</dt><dd>/</dd><dt>Needs you</dt><dd>Facts: Confirm the Team plan price before it goes into the page copy</dd></dl>
+    </details><details class="prow" data-status="built">
+      <summary><span class="pu"><code>/docs</code></span><span class="pt">example security api docs</span><span class="ptype">Docs hub</span><span class="pst"><span class="pchip s-built">Built</span></span></summary>
+      <dl class="pd"><dt>Intent</dt><dd>Developers looking for the API guide; /docs/api existed but /docs did not</dd><dt>Title</dt><dd>Docs | Example Security</dd><dt>H1</dt><dd>Docs</dd><dt>Schema</dt><dd>CollectionPage, BreadcrumbList</dd><dt>Parent</dt><dd>/</dd><dt>Links to</dt><dd>/docs/api</dd></dl>
+    </details><details class="prow" data-status="to-create">
+      <summary><span class="pu"><code>/security</code></span><span class="pt">example security vulnerability disclosure</span><span class="ptype">Disclosure policy</span><span class="pst"><span class="pchip s-to-create">To create</span><span class="own">Needs you</span></span></summary>
+      <dl class="pd"><dt>Intent</dt><dd>Researchers who found a bug and want to report it</dd><dt>Title</dt><dd>Report a Vulnerability | Example Security</dd><dt>H1</dt><dd>Report a vulnerability</dd><dt>Schema</dt><dd>WebPage</dd><dt>Parent</dt><dd>/</dd><dt>Needs you</dt><dd>Copy: Approve the drafted disclosure policy and add the security contact · <a href="drafts/security.md">Read the draft</a></dd><dt>Finding</dt><dd><a href="#F-009">F-009</a></dd></dl>
+    </details>
+  </section></div></section>
   <section class="tp" id="p-findings" role="tabpanel" aria-labelledby="t-findings" data-title="Findings" hidden><div class="toolbar" role="group" aria-label="Filter findings">
       <label class="search"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span class="sr">Search findings</span><input type="search" id="q" placeholder="Search title, rule or ID" autocomplete="off"></label>
       <div class="seg" role="group" aria-label="Severity"><button type="button" class="segb" data-sev="all" aria-pressed="true">All</button><button type="button" class="segb" data-sev="blocker" aria-pressed="false"><i class="dot d-blocker" aria-hidden="true"></i>Blocker<span class="mono">2</span></button><button type="button" class="segb" data-sev="high" aria-pressed="false"><i class="dot d-high" aria-hidden="true"></i>High<span class="mono">3</span></button><button type="button" class="segb" data-sev="needs-decision" aria-pressed="false"><i class="dot d-needs-decision" aria-hidden="true"></i>Decision<span class="mono">1</span></button><button type="button" class="segb" data-sev="medium" aria-pressed="false"><i class="dot d-medium" aria-hidden="true"></i>Medium<span class="mono">2</span></button><button type="button" class="segb" data-sev="low" aria-pressed="false"><i class="dot d-low" aria-hidden="true"></i>Low<span class="mono">1</span></button></div>
