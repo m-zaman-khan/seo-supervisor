@@ -11,6 +11,7 @@
   Reports without a plan look exactly as before.
 - **The crawler** now records each page's meta description and H1 text, so planned pages can be verified after they're built.
 - **Audits** suggest `/seo-setup` when a site has almost no SEO in place.
+- **The installer asks where and for which agents.** `npx seo-supervisor` asks whether to install for you or for this project, then shows a checklist of 20 coding agents (Claude Code, Codex, Cursor, Windsurf, Gemini CLI, GitHub Copilot, OpenCode, Grok and more). The ones on your machine are found and ticked. Each agent gets the skill in its own folder, and Claude Code also gets the commands. `--agent`, `--scope` and `--yes` skip the questions. The old `--agents` flag now adds the shared `.agents` folder in whichever scope you chose.
 
 ## 1.0.0 (2026-11-18)
 

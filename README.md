@@ -52,25 +52,37 @@ Pick **one** of these per machine.
 
 Claude Code puts the plugin name in front of plugin commands, so they appear as `/seo-supervisor:seo-audit` and so on.
 
-**One command with npx** (Claude Code)
+**One command with npx** (any agent)
 
 ```bash
-npx seo-supervisor              # for you, in every project (~/.claude)
-npx seo-supervisor --project    # into this project's .claude/, to commit for your team
-npx seo-supervisor --uninstall  # remove it again
+npx seo-supervisor
 ```
 
-The commands are then plain `/seo-audit`, `/seo-fix`, `/seo-review` and `/seo-launch`. The installer only ever replaces or removes its own files.
+It asks two things:
 
-**Codex, Cursor, Gemini CLI, Copilot and other agents**
+1. **Install for:** you, in every project, or this project only (to commit for your team).
+2. **Which agents:** a checklist of 20 coding agents, including Claude Code, Codex, Cursor, Windsurf, Gemini CLI, GitHub Copilot, OpenCode, Grok, Cline and Kiro. The agents installed on your machine are found and ticked for you.
+
+```text
+? Which agents? (space to select, a for all, enter to confirm)
+❯ ◉ Claude Code          found · ~/.claude/skills
+  ◉ Codex                found · ~/.agents/skills
+  ◉ Cursor               found · ~/.cursor/skills
+  ◯ Windsurf             ~/.codeium/windsurf/skills
+  …
+```
+
+The skill goes into each agent's own skills folder, and agents that share a folder get one copy. Claude Code also gets the `/seo-audit`, `/seo-fix`, `/seo-review`, `/seo-launch` and `/seo-setup` commands. In other agents, ask them to "audit the SEO of this site". The installer only ever replaces or removes its own files.
+
+For scripts and CI, use flags to skip the questions:
 
 ```bash
-npx seo-supervisor --agents     # also installs the skill to ~/.agents/skills
-# or
-npx skills add m-zaman-khan/seo-supervisor
+npx seo-supervisor --agent claude-code,cursor --scope project   # those agents, in this project
+npx seo-supervisor --yes                                        # the agents it finds, for you
+npx seo-supervisor --uninstall                                  # remove it again
 ```
 
-Then ask your agent to "audit the SEO of this site".
+`npx seo-supervisor --help` lists every agent key. Using an agent that isn't on the list? `npx skills add m-zaman-khan/seo-supervisor` covers 40+ more.
 
 Needs Node 20 or newer. There's nothing else to install, and no API keys.
 
