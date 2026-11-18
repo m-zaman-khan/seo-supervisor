@@ -58,4 +58,9 @@ test("the crawler finds every planted problem on the fixture site", async () => 
 
   for (const f of report.findings)
     assert.ok(f.what && f.why && f.fix, `${f.rule} "${f.title}" needs what, why and fix`);
+
+  // Each page's description and H1 text are recorded, so a planned page can be checked after it is built.
+  const home = report.pages.find(p => new URL(p.url).pathname === "/");
+  assert.equal(home.h1Text, "Free security tools");
+  assert.match(home.description, /^A perfectly reasonable description/);
 });

@@ -1647,6 +1647,8 @@ const report = {
     noindex: p.noindex,
     canonical: canonicalFor(p),
     title: p.title,
+    description: p.description,
+    h1Text: p.headings.find(h => h.level === 1)?.text ?? null,
     words: p.words,
     h1: p.h1Count,
     schema: p.types,
