@@ -248,6 +248,27 @@ const CHECKS = {
     "The HTML the server sends is nearly empty, so crawlers that don't run JavaScript (most AI crawlers, and Google's first pass) see a blank page.",
     "Server-render or pre-render page content. Only interactive widgets should depend on client JavaScript.",
   ],
+  "title-missing-sitewide": [
+    "META-01",
+    "blocker",
+    n => `${n} indexable pages have no title, or all share one default title`,
+    "The title is the headline in search results. With none, or one default title such as “Create Next App” on almost every page, search engines write their own and every page looks the same.",
+    "Give every page a unique title through the shared metadata helper.",
+  ],
+  "h1-missing-sitewide": [
+    "CONTENT-01",
+    "blocker",
+    n => `${n} indexable pages have no H1`,
+    "Almost no page states its topic in a main heading, so search engines have to guess what each page is about.",
+    "Give every page template one H1 that names the page's topic.",
+  ],
+  "canonical-missing-sitewide": [
+    "URL-04",
+    "blocker",
+    n => `${n} indexable pages have no canonical tag`,
+    "With no canonicals anywhere, search engines choose among the slash, parameter and tracking variants of every page themselves.",
+    "Add a self-referencing absolute canonical to every indexable page through the shared metadata helper.",
+  ],
   "title-multiple": [
     "META-01",
     "high",
@@ -1235,6 +1256,25 @@ const indexable = p =>
     const c = canonicalFor(p);
     return !c || samePath(toCrawl(c), p.finalUrl);
   })();
+// A basic missing on most pages is a site-wide blocker (the usual no-SEO site), reported once instead of per page.
+const sitewide = (() => {
+  const idx = htmlPages.filter(
+    p => indexable(p) && !(p.words < 30 && p.h1Count === 0 && (p.emptyRoot || p.scripts > 0)),
+  );
+  const titles = new Map();
+  for (const p of idx) if (p.title) titles.set(p.title, (titles.get(p.title) || 0) + 1);
+  const [topTitle, topCount] = [...titles].sort((a, b) => b[1] - a[1])[0] || [];
+  const defaultTitle = topCount >= 0.8 * idx.length ? topTitle : undefined;
+  const hits = test => {
+    const s = new Set(idx.filter(test));
+    return s.size >= 3 && s.size >= 0.8 * idx.length ? s : new Set();
+  };
+  return {
+    title: hits(p => !p.title || p.title === defaultTitle),
+    h1: hits(p => p.h1Count === 0),
+    canonical: hits(p => !p.canonicals.length),
+  };
+})();
 for (const p of htmlPages) {
   const u = p.finalUrl;
   if (!IGNORE_NOINDEX) {
@@ -1250,7 +1290,8 @@ for (const p of htmlPages) {
   }
   if (p.noindex && !IGNORE_NOINDEX) continue;
 
-  if (!p.canonicals.length) add("canonical-missing", u);
+  if (sitewide.canonical.has(p)) add("canonical-missing-sitewide", u);
+  else if (!p.canonicals.length) add("canonical-missing", u);
   else {
     if (p.canonicals.length > 1) add("canonical-multiple", u, p.canonicals.join(" | "));
     const c = new URL(p.canonicals[0], u);
@@ -1271,7 +1312,8 @@ for (const p of htmlPages) {
   if (p.placeholder) add("placeholder-text", u, `“${p.placeholder}”`);
   if (p.hashLinks) add("href-hash", u, `${p.hashLinks} link(s)`);
   if (p.mixed) add("mixed-content", u);
-  if (!p.title) add("title-missing", u);
+  if (sitewide.title.has(p)) add("title-missing-sitewide", u, p.title ? `“${p.title}”` : undefined);
+  else if (!p.title) add("title-missing", u);
   else {
     if (p.title.length > 60) add("title-long", u, `${p.title.length} chars: ${p.title}`);
     else if (p.title.length < 20) add("title-short", u, p.title);
@@ -1286,7 +1328,8 @@ for (const p of htmlPages) {
   }
   if (!p.ogTitle || !p.ogImage)
     add("og-missing", u, [!p.ogTitle && "og:title", !p.ogImage && "og:image"].filter(Boolean).join(", "));
-  if (p.h1Count !== 1) add("h1-count", u, `${p.h1Count} H1s`);
+  if (sitewide.h1.has(p)) add("h1-missing-sitewide", u);
+  else if (p.h1Count !== 1) add("h1-count", u, `${p.h1Count} H1s`);
   const skips = [];
   let prev = null;
   for (const h of p.headings) {
