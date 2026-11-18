@@ -130,6 +130,7 @@ Consequences for the JSON:
 | `pages[].intro` | For a new missing-parent page: its 1–2 sentence intro, built only from facts already on the site. Shown on the Plan tab; approving the plan approves these exact words. |
 | `pages[].from` | The old URL when a page moves. The redirect is part of building the row, and it always needs its own yes on a live site. |
 | Pattern rows | Used for sets of more than 20 pages. `pattern` + `count` (and `built`, the pages done so far). `title`, `description` and `h1` hold templates, plus up to 3 `samples` with resolved values. |
+| `plan.alsoFixes` | IDs of open findings setup will also fix in code after approval. It never includes owner items, decisions or yes items. Shown on the Plan tab, so approving the plan approves these fixes. |
 | `yes[]` | Site-level items that need their own yes. `approved: true` records a yes, and `declined: true` records a no. A declined item stays as a record and is never carried out. A row's `owner` can be `declined` the same way. |
 | `finding` | The related finding's ID, linked from the row. |
 

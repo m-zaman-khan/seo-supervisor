@@ -4,7 +4,7 @@ Use this for a site with no SEO work: brand new, or an old app that never got it
 
 1. Map the site.
 2. Propose a plan, then **stop for the owner's approval**.
-3. Build the technical foundation exactly as planned.
+3. Build the technical foundation exactly as planned, then fix the audit's other code findings listed in the plan.
 4. Draft the content the owner still has to approve.
 5. Prove the result with an audit.
 
@@ -20,7 +20,7 @@ Read `plan.status` in `seo-audit/seo-audit.json` first:
 | --- | --- |
 | No plan | Steps 1–3: understand, measure, propose. Then stop. |
 | `proposed` | Show the plan and ask for approval. Apply any changes the owner asks for, re-render, and ask again. |
-| `approved` | Steps 4–7: build, draft, verify, hand off. |
+| `approved` | Steps 4–8: build, fix, draft, verify, hand off. |
 | `built` | Create the pages whose drafts the owner has approved, re-check them, then point to `/seo-audit` and `/seo-fix`. |
 
 If no one can answer (for example a subagent run), stop at `proposed`. A proposed plan is a complete result.
@@ -83,9 +83,14 @@ On a live site, any robots.txt change beyond adding the `Sitemap:` line is a yes
 
 **Record each answer.** A yes is `approved: true`. A no is `declined: true` (on the `yes[]` item, or on the row's `owner`). A declined item stays in the plan as a record and is never carried out.
 
+**Code findings setup will also fix.**
+- Put in `plan.alsoFixes` the IDs of the open findings the agent can fix in code: forms, results output, rendering, speed, headers and the like.
+- Leave out `fixBy: "owner"` findings, needs-decision findings, anything on the "Needs your yes" list, and anything a plan row already covers.
+- The Plan tab shows the list, so approving the plan approves these fixes.
+
 **Render, summarise, stop.**
 - Set `plan.status: "proposed"` and render the report. It opens on the Plan tab.
-- In chat, give a short summary: the site's shape, how many pages are planned and to be created, the "Needs your yes" items as a numbered list, and anything the owner must supply.
+- In chat, give a short summary: the site's shape, how many pages are planned and to be created, how many audit findings setup will also fix, the "Needs your yes" items as a numbered list, and anything the owner must supply.
 - Then ask: "Approve the plan? And yes or no to each numbered item?"
 - Change nothing outside `seo-audit/` before the answer.
 
@@ -106,14 +111,22 @@ Set `plan.status: "approved"` and `approvedOn`. On approval, move the draft prof
 
 **Everything else waits:** items without a yes stay as open `owner` items.
 
-## 5. Draft the content the owner must approve
+## 5. Fix the audit's code findings
+
+Run fix mode (SKILL.md step 5) on every finding in `plan.alsoFixes`, most serious first:
+- Fix each cause once, in the shared place.
+- Run the project's tests and linters after each batch.
+- A finding becomes `fixed` only when its re-check passes (step 7).
+- If a fix turns out to need the owner (content, a CMS write, a live URL or robots change), stop on that one, set `fixBy: "owner"`, and carry on with the rest.
+
+## 6. Draft the content the owner must approve
 
 - **One draft per page:** for each row that needs copy, write `seo-audit/drafts/<slug>.md`. It holds an intro, a section outline, and FAQs based on real customer questions.
 - **Facts:** use only facts from the site or the owner. Write anything missing as a visible placeholder, such as `[owner: a real customer result to quote]`. Never invent it.
 - **Linking:** set the row's `owner.draft` to the file.
 - **Creating the page:** new pages other than missing parents are created only after the owner approves their draft. On a CMS site, create them as CMS drafts, with the go-ahead.
 
-## 6. Verify
+## 7. Verify
 
 - **Re-check everything:** re-crawl, re-audit, and run the project's tests and linters.
 - **Confirm each row is live:** the crawler records each page's `title`, `description`, `h1Text`, `canonical` and `schema`. Compare them with the plan.
@@ -121,7 +134,7 @@ Set `plan.status: "approved"` and `approvedOn`. On approval, move the draft prof
 - **Findings:** baseline findings the build resolved become `fixed`, with `fixed.verified`, so the report shows the score before and after setup.
 - **Plan status:** set `plan.status: "built"` once all of the agent's work is done. Owner items can still be open.
 
-## 7. Hand off
+## 8. Hand off
 
 In chat, give:
 - the score before and after

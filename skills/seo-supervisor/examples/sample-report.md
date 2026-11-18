@@ -35,6 +35,8 @@ Status: Built (approved 2026-11-16) · Progress: 83% · 1 already right, 4 built
 
 A free security-tools site with a docs section. Setup added one metadata helper, the sitemap and robots.txt, Organization and SoftwareApplication schema, breadcrumbs, and the missing /docs parent page. The security disclosure page is waiting for the owner to approve its draft.
 
+Setup also fixed 2 audit findings in code: F-003, F-004.
+
 | Page | Type | Status | Target | Title | Description | H1 | Schema | Parent | Needs you |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | / | Home | Already right | free website security tools | Free Website Security Tools \| Example Security |  | Free security tools | Organization, WebSite |  |  |

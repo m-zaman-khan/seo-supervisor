@@ -10,7 +10,7 @@ Use the **seo-supervisor** skill in **setup** mode for this project. Follow its 
   3. **Stop.** Ask the owner to approve the plan, and to give a yes or no to each "Needs your yes" item.
 
   Change nothing outside `seo-audit/` before that.
-- **A plan already exists:** continue from its status, as `planning.md` describes. A proposed plan goes to approval, an approved plan gets built, and a built plan gets the pages whose drafts the owner approved.
+- **A plan already exists:** continue from its status, as `planning.md` describes. A proposed plan goes to approval. An approved plan gets built, and then setup fixes the audit's other code findings listed in the plan. A built plan gets the pages whose drafts the owner approved.
 - **Never:**
   - invent facts, prices, reviews or search volumes
   - switch indexing on

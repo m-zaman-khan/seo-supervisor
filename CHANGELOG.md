@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0 (2026-11-18)
+
+- **`/seo-setup` now takes a site from zero to fully set up in one go.** After building the SEO foundation, it also fixes the audit's other code findings (forms, results output, rendering, speed, headers). Fix mode's usual rules apply: fixed at the root, re-checked, and anything that needs the owner is left as Needs you.
+- **The fixes are shown before you approve.** The plan lists them in a new `plan.alsoFixes` field, and the Plan tab shows them as links to the findings, so approving the plan approves those fixes too.
+
 ## 1.1.0 (2026-11-18)
 
 - **New `/seo-setup` command** for sites with no SEO yet. It works out what the site is from its own pages, proposes a full SEO plan, stops for approval, builds the technical foundation, drafts copy for the owner to approve, and proves the result with an audit. Re-running it continues from where it stopped. The rules are in `skills/seo-supervisor/planning.md`.
