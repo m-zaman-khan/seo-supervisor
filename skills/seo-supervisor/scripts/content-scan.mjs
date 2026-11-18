@@ -2,6 +2,7 @@
 // Audits content data (JSON, CSV or a Markdown folder) before it becomes pages.
 
 import { readFileSync, readdirSync, statSync, mkdirSync, writeFileSync } from "node:fs";
+import { parseCsv } from "./lib/csv.mjs";
 import { join, dirname, resolve, extname, basename } from "node:path";
 
 const args = {};
@@ -29,43 +30,10 @@ const THRESH = Number(args.threshold || 0.5);
 const STRIP = typeof args.strip === "string" ? new RegExp(`\\b(${args.strip})\\b`, "gi") : null;
 const BANNED = typeof args.banned === "string" ? new RegExp(args.banned, "i") : null;
 const VERIFY = typeof args.verify === "string" ? new RegExp(args.verify, "i") : null;
+// Placeholders, plus mojibake: U+FFFD and curly apostrophes turned into "?" (We?re, Don?t).
 const PH =
   /\b[Ll]orem [Ii]psum\b|\bTODO\b|\bTBD\b|\{\{\s*[\w.]+\s*\}\}|\[(?:[A-Z][A-Z _]{2,29})\]|�|\b(?:We|You|They|It|Don|Can|Isn|Won|Doesn|Didn|That|There)\?(?:ve|re|s|t|ll|d)\b/;
 
-function parseCsv(txt) {
-  const rows = [];
-  let row = [],
-    cell = "",
-    q = false;
-  for (let i = 0; i < txt.length; i++) {
-    const c = txt[i];
-    if (q) {
-      if (c === '"' && txt[i + 1] === '"') {
-        cell += '"';
-        i++;
-      } else if (c === '"') q = false;
-      else cell += c;
-      continue;
-    }
-    if (c === '"') q = true;
-    else if (c === ",") {
-      row.push(cell);
-      cell = "";
-    } else if (c === "\n" || c === "\r") {
-      if (c === "\r" && txt[i + 1] === "\n") i++;
-      row.push(cell);
-      rows.push(row);
-      row = [];
-      cell = "";
-    } else cell += c;
-  }
-  if (cell || row.length) {
-    row.push(cell);
-    rows.push(row);
-  }
-  const [head, ...body] = rows.filter(r => r.some(x => x.trim()));
-  return body.map(r => Object.fromEntries(head.map((h, i) => [h.trim(), (r[i] ?? "").trim()])));
-}
 function walk(d) {
   return readdirSync(d).flatMap(f => {
     const p = join(d, f);

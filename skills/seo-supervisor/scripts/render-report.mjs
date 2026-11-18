@@ -234,6 +234,27 @@ const fmtDate = d => {
   return isNaN(x) ? String(d) : x.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 };
 const num = n => Number(n).toLocaleString("en-US");
+// Search Console traffic by path (gsc-import.mjs), shown on findings and plan rows.
+const traffic = raw.traffic && typeof raw.traffic === "object" ? raw.traffic : null;
+const trafficFor = u => {
+  if (!traffic || !u) return null;
+  let x;
+  try {
+    x = new URL(u, "https://site.invalid");
+  } catch {
+    return null;
+  }
+  const t = traffic[x.pathname + x.search] || traffic[x.pathname];
+  return t
+    ? `${num(t.clicks)} clicks · ${num(t.impressions)} impressions${raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : ""}`
+    : null;
+};
+const trafficHtml = f => {
+  const e = (f.evidence || []).find(x => x.url && trafficFor(x.url));
+  return e
+    ? `<p class="quiet">Search Console: ${esc(trafficFor(e.url))} on <code>${esc(new URL(e.url, "https://site.invalid").pathname)}</code></p>`
+    : "";
+};
 const plural = (n, w, p = w + "s") => `${num(n)} ${n === 1 ? w : p}`;
 const firstSentence = s => {
   const m = String(s || "").match(/^.*?[.!?](\s|$)/);
@@ -420,7 +441,7 @@ function findingHtml(f) {
           ${isFixed && f.fixed ? `<div class="donebox"><h4>What was done</h4><p>${inl(f.fixed.summary || "")}</p>${(f.fixed.files || []).length ? `<p class="files">${f.fixed.files.map(x => `<code>${esc(x)}</code>`).join(" ")}</p>` : ""}${f.fixed.verified ? `<p class="quiet">${ICON.check} ${inl(f.fixed.verified)}</p>` : ""}</div>` : ""}
         </div>
       </div>
-      ${evidenceHtml(f)}
+      ${trafficHtml(f)}${evidenceHtml(f)}
     </div>
   </article>`;
 }
@@ -571,7 +592,7 @@ const DEFAULT_TAB = tabs[0][0];
 const PANELS = {
   overview: overviewHtml,
   diff: diffHtml,
-  plan: () => planHtml(plan, { esc, inl, num }),
+  plan: () => planHtml(plan, { esc, inl, num, traffic: trafficFor }),
   findings: findingsHtml,
   decisions: decisionsHtml,
   changes: changesHtml,

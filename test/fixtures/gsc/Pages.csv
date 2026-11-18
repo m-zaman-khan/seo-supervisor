@@ -1,0 +1,8 @@
+﻿"Top pages","Clicks","Impressions","CTR","Position"
+https://example.com/,500,10000,5%,3.1
+https://example.com/pricing/,12,3000,0.4%,4.2
+https://example.com/docs/a/,40,800,5%,4.5
+https://example.com/docs/b/,30,700,4.29%,3.9
+https://example.com/blog/x/,20,600,3.33%,4
+"https://example.com/search?q=a,b",1,60,1.67%,15.2
+https://example.com/guide/,3,400,0.75%,11.6
