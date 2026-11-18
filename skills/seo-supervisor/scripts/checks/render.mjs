@@ -80,15 +80,70 @@ export function renderPage(browser, url, { timeoutMs = 20000 } = {}) {
   );
 }
 
+// Chrome's DOM dump writes characters out literally, so both sides are fully decoded before comparing.
+const NAMED = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  ndash: "–",
+  mdash: "—",
+  lsquo: "‘",
+  rsquo: "’",
+  ldquo: "“",
+  rdquo: "”",
+  hellip: "…",
+  middot: "·",
+  bull: "•",
+  laquo: "«",
+  raquo: "»",
+  copy: "©",
+  reg: "®",
+  trade: "™",
+  times: "×",
+  eacute: "é",
+  egrave: "è",
+  ecirc: "ê",
+  aacute: "á",
+  agrave: "à",
+  iacute: "í",
+  oacute: "ó",
+  uacute: "ú",
+  ntilde: "ñ",
+  ccedil: "ç",
+  ouml: "ö",
+  uuml: "ü",
+  auml: "ä",
+  szlig: "ß",
+};
 const decode = s =>
   s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#0?39;/g, "'")
-    .replace(/\s+/g, " ")
+    .replace(/&#x([0-9a-f]+);/gi, (m, h) => {
+      try {
+        return String.fromCodePoint(parseInt(h, 16));
+      } catch {
+        return m;
+      }
+    })
+    .replace(/&#(\d+);/g, (m, d) => {
+      try {
+        return String.fromCodePoint(Number(d));
+      } catch {
+        return m;
+      }
+    })
+    .replace(/&([a-z]+);/gi, (m, n) => NAMED[n.toLowerCase()] ?? m)
+    .replace(/[\s ]+/g, " ")
     .trim();
+const sameUrl = (a, b) => {
+  try {
+    return new URL(a, "https://x.invalid/").href === new URL(b, "https://x.invalid/").href;
+  } catch {
+    return a === b;
+  }
+};
 const attrsOf = tag =>
   Object.fromEntries(
     [...tag.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)].map(m => [
@@ -102,7 +157,9 @@ function read(html) {
   const h1 = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i);
   return {
     title: title ? decode(title[1]) : null,
-    canonical: tags("link").find(l => (l.rel || "").toLowerCase().split(/\s+/).includes("canonical"))?.href ?? null,
+    canonical: (c => (c == null ? null : decode(c)))(
+      tags("link").find(l => (l.rel || "").toLowerCase().split(/\s+/).includes("canonical"))?.href,
+    ),
     robots:
       tags("meta")
         .find(m => (m.name || "").toLowerCase() === "robots")
@@ -118,9 +175,16 @@ export function compareRendered(rawHtml, renderedHtml) {
   const a = read(rawHtml),
     b = read(renderedHtml),
     out = [];
-  for (const field of ["title", "canonical", "robots", "h1"])
-    if ((a[field] ?? "") !== (b[field] ?? "")) out.push({ field, raw: a[field], rendered: b[field] });
+  for (const field of ["title", "canonical", "robots", "h1"]) {
+    const same =
+      field === "canonical" && a.canonical && b.canonical
+        ? sameUrl(a.canonical, b.canonical)
+        : (a[field] ?? "") === (b[field] ?? "");
+    if (!same) out.push({ field, raw: a[field], rendered: b[field] });
+  }
   if (b.jsonld > a.jsonld) out.push({ field: "jsonld-count", raw: a.jsonld, rendered: b.jsonld });
-  if (b.links > a.links * 1.5) out.push({ field: "link-count", raw: a.links, rendered: b.links });
+  // At least 10 more, since a consent banner in a fresh profile adds a few.
+  if (b.links > a.links * 1.5 && b.links - a.links >= 10)
+    out.push({ field: "link-count", raw: a.links, rendered: b.links });
   return out;
 }

@@ -154,7 +154,7 @@ One HTML file that works offline. It opens in dark mode and has a light-mode swi
 | What your JavaScript changes | Nothing is sent, but up to 10 pages run in a headless Chrome or Edge, so their own scripts (analytics included) run |
 | Search intent | Your pages' target phrases, sent to the agent's web search provider |
 
-To switch them on for one run, say so: `/seo-audit with outside checks`. Real-user speed needs a free PageSpeed Insights API key from Google Cloud in `PSI_API_KEY`: Google refuses almost all requests without one. The render and intent checks need no key. With outside checks off, these three are listed under the report's Limits.
+To switch them on for one run, say so: `/seo-audit with outside checks`. Real-user speed needs a free PageSpeed Insights API key from Google Cloud in `PSI_API_KEY`: Google refuses almost all requests without one. The render and intent checks need no key. Add `CRUX_API_KEY` too and the Overview shows whether real-user speed got better or worse over the last 25 weeks. With outside checks off, these three are listed under the report's Limits.
 
 **Search Console data stays local.** Export Performance → Pages (and Queries) from Search Console, unzip it into `seo-audit/`, and run `/seo-audit`. For pages competing for one query, also export each important page's queries (filter by page, then export) into its own folder under `seo-audit/page-queries/`.
 

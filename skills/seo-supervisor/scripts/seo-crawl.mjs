@@ -6,7 +6,14 @@ import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { CHECKS as HREFLANG_CHECKS, checkHreflang } from "./checks/hreflang.mjs";
 import { CHECKS as TLS_CHECKS, checkLive } from "./checks/tls.mjs";
-import { CHECKS as SPEED_CHECKS, checkSpeed, sampleUrls, PSI_ENDPOINT } from "./checks/speed.mjs";
+import {
+  CHECKS as SPEED_CHECKS,
+  checkSpeed,
+  sampleUrls,
+  PSI_ENDPOINT,
+  speedTrend,
+  CRUX_HISTORY_ENDPOINT,
+} from "./checks/speed.mjs";
 import { CHECKS as RENDER_CHECKS, findBrowser, renderPage, compareRendered } from "./checks/render.mjs";
 
 const VERSION = "2.0.0";
@@ -883,9 +890,10 @@ function analyze(url, html, headers) {
   const body = stripNonContent(bodyRaw);
   const text = textOf(body);
   const words = text ? text.split(" ").filter(w => /[\p{L}\p{N}]/u.test(w)).length : 0;
-  const metas = tagsOf(head, "meta");
+  // Next.js 15.2+ can stream metadata into <body> for non-bot visitors, so metas in the body count too.
+  const metas = [...tagsOf(head, "meta"), ...tagsOf(body, "meta")];
   const meta = n => metas.find(m => (m.name || m.property || "").toLowerCase() === n)?.content;
-  const titleM = head.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+  const titleM = head.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i) || body.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
   const titleCount = (head.match(/<title\b/gi) || []).length;
   const PH =
     /\b[Ll]orem [Ii]psum\b|\bTODO\b|\bTBD\b|\{\{\s*[\w.]+\s*\}\}|\[(?:[A-Z][A-Z _]{2,29})\]|�|\b(?:We|You|They|It|Don|Can|Isn|Won|Doesn|Didn|That|There)\?(?:ve|re|s|t|ll|d)\b/;
@@ -898,9 +906,11 @@ function analyze(url, html, headers) {
   const hreflang = tagsOf(head, "link")
     .filter(l => (l.rel || "").toLowerCase().split(/\s+/).includes("alternate") && l.hreflang && l.href)
     .map(l => ({ lang: l.hreflang, href: l.href }));
-  const canon = tagsOf(head, "link")
-    .filter(l => (l.rel || "").toLowerCase().split(/\s+/).includes("canonical"))
-    .map(l => l.href);
+  const canonIn = h =>
+    tagsOf(h, "link")
+      .filter(l => (l.rel || "").toLowerCase().split(/\s+/).includes("canonical"))
+      .map(l => l.href);
+  const canon = canonIn(head).length ? canonIn(head) : canonIn(body);
   const headings = [...body.matchAll(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi)].map(m => ({
     level: +m[1],
     text: textOf(m[2]),
@@ -951,7 +961,10 @@ function analyze(url, html, headers) {
     .map(n => {
       const offers = [].concat(n.offers || []).filter(o => o && typeof o === "object");
       const orgHas = key => nodes.some(o => typesOf(o).some(t => ORG_RE.test(t)) && o[key]);
-      const price = offers.map(o => o.price ?? o.lowPrice).find(v => v != null && !isNaN(parseFloat(v)));
+      const prices = offers
+        .map(o => o.price ?? o.lowPrice)
+        .filter(v => v != null && !isNaN(parseFloat(v)))
+        .map(v => Number(String(v).replace(/,/g, "")));
       return {
         name: n.name || "a product",
         singleAggregate: offers.some(
@@ -967,7 +980,7 @@ function analyze(url, html, headers) {
           !offers.some(o => o.hasMerchantReturnPolicy) &&
           !n.hasMerchantReturnPolicy &&
           !orgHas("hasMerchantReturnPolicy"),
-        price: price == null ? null : Number(String(price).replace(/,/g, "")),
+        prices, // every offer's price: the page may show any one variant
       };
     });
   // Parses a shown amount whatever its thousands and decimal separators.
@@ -978,13 +991,23 @@ function analyze(url, html, headers) {
       ? Number(s.slice(0, i).replace(/[.,]/g, "") + "." + s.slice(i + 1))
       : Number(s.replace(/[.,]/g, ""));
   };
+  // A number is grouped in threes ("1 299,00", "10.000", "1,299.00") or plain ("29.99"), and "$49 99" (superscript
+  // cents) reads as 49.99 too. Every reading is kept, so a mismatch needs all of them to differ from the schema.
+  const NUM = String.raw`\d{1,3}(?:[.,\s  ]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?`,
+    CUR = String.raw`[$€£¥₹]|\b(?:USD|EUR|GBP|CAD|AUD|INR)\b`;
   const amounts = products.length
     ? [
         ...text.matchAll(
-          /(?:[$€£¥₹]|\b(?:USD|EUR|GBP|CAD|AUD|INR)\b)\s?(\d[\d.,\s]*\d|\d)|(\d[\d.,]*\d|\d)\s?(?:[€£]|\b(?:USD|EUR|GBP|CAD|AUD|INR)\b)/g,
+          new RegExp(
+            `(?:${CUR})\\s?(${NUM})(?:\\s(\\d{2})(?!\\d))?|(${NUM})\\s?(?:[€£]|\\b(?:USD|EUR|GBP|CAD|AUD|INR)\\b)`,
+            "g",
+          ),
         ),
       ]
-        .map(m => toNum(m[1] ?? m[2]))
+        .flatMap(m => {
+          const n = toNum(m[1] ?? m[3]);
+          return m[2] && !/[.,]\d{1,2}$/.test(m[1]) ? [n, n + Number(m[2]) / 100] : [n];
+        })
         .filter(x => !isNaN(x))
     : [];
   const refresh = metas.find(m => (m["http-equiv"] || "").toLowerCase() === "refresh")?.content || "";
@@ -1117,6 +1140,27 @@ async function readSitemaps(urls) {
 
 // ---------- URL helpers ----------
 const isLocal = o => /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d+)?$/i.test(o);
+// Only a public host may be sent to an outside service: no private IP, intranet or reserved name.
+const isPublic = o => {
+  try {
+    const h = new URL(o).hostname;
+    return (
+      !isLocal(o) &&
+      h.includes(".") &&
+      !/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|127\.)/.test(h) &&
+      !/\.(local|internal|lan|localhost|test|home\.arpa)$/i.test(h)
+    );
+  } catch {
+    return false;
+  }
+};
+const urlOr = (u, base) => {
+  try {
+    return new URL(u, base);
+  } catch {
+    return null;
+  }
+}; // template bugs produce invalid URLs
 function toCrawl(u) {
   // maps public-origin URLs onto the crawl origin
   try {
@@ -1184,7 +1228,10 @@ async function crawlOne(u) {
       enqueue(c, r.finalUrl);
     }
     for (const b of a.crumbs) enqueue(toCrawl(b), r.finalUrl);
-    for (const c of a.canonicals.slice(0, 1)) if (c) enqueue(toCrawl(new URL(c, r.finalUrl).href), r.finalUrl);
+    for (const c of a.canonicals.slice(0, 1)) {
+      const x = c && urlOr(c, r.finalUrl);
+      if (x) enqueue(toCrawl(x.href), r.finalUrl);
+    }
   }
 }
 async function runQueue() {
@@ -1334,13 +1381,14 @@ else {
   ].filter(Boolean);
   if (problems.length) add("llms-structure", START_ORIGIN + "/llms.txt", problems.join(", "));
 }
-// A Markdown response must vary on Accept so caches keep it apart from the HTML.
-evalRules("AI-05");
+// A Markdown response must vary on Accept so caches keep it apart from the HTML. AI-05 counts as checked only when
+// the site serves Markdown; otherwise the code-level check decides it.
 try {
   const md = await fetch(START.href, {
     headers: { "user-agent": UA, accept: "text/markdown" },
     signal: AbortSignal.timeout(15000),
   });
+  if (/^text\/markdown/i.test(md.headers.get("content-type") || "")) evalRules("AI-05");
   if (
     /^text\/markdown/i.test(md.headers.get("content-type") || "") &&
     !/\baccept\b/i.test(md.headers.get("vary") || "")
@@ -1416,7 +1464,6 @@ evalRules(
   "REND-09",
   "META-06",
   "MEDIA-03",
-  "PERF-08",
 );
 if (BRAND) evalRules("META-03");
 if (BANNED || VERIFY) evalRules("CONTENT-10");
@@ -1461,7 +1508,7 @@ else if (noindexShare > 0.5)
   );
 const canonicalFor = p => {
   const c = p.canonicals && p.canonicals[0];
-  return c ? new URL(c, p.finalUrl).href : null;
+  return c ? (urlOr(c, p.finalUrl)?.href ?? null) : null;
 };
 const samePath = (a, b) => new URL(a).pathname === new URL(b).pathname;
 const indexable = p =>
@@ -1484,8 +1531,14 @@ const sitewide = (() => {
     const s = new Set(idx.filter(test));
     return s.size >= 3 && s.size >= 0.8 * idx.length ? s : new Set();
   };
+  // A framework's starter title marks a site with no SEO work at any size, even a one-page site.
+  const STARTER =
+    /^(create next app|create react app|react app|vite \+ (react|vue|svelte|preact|lit|solid|ts)( \+ ts)?|vite app|nuxt( app)?|sveltekit( app)?|remix app|astro|welcome to (next\.js|remix|astro|nuxt)!?|gatsby (default )?starter|my gatsby site|angular ?app|document|untitled( document)?)$/i;
+  const starter = new Set(idx.filter(p => !p.title || STARTER.test(p.title.trim())));
+  const starterSitewide =
+    idx.some(p => p.title && STARTER.test(p.title.trim())) && starter.size >= 0.8 * idx.length ? starter : null;
   return {
-    title: hits(p => !p.title || p.title === defaultTitle),
+    title: starterSitewide || hits(p => !p.title || p.title === defaultTitle),
     h1: hits(p => p.h1Count === 0),
     canonical: hits(p => !p.canonicals.length),
   };
@@ -1513,13 +1566,16 @@ for (const p of htmlPages) {
   else if (!p.canonicals.length) add("canonical-missing", u);
   else {
     if (p.canonicals.length > 1) add("canonical-multiple", u, p.canonicals.join(" | "));
-    const c = new URL(p.canonicals[0], u);
-    if (c.search) add("canonical-query", u, c.href);
-    if (c.origin !== EXPECT_ORIGIN) add("canonical-origin", u, c.href);
-    if (!samePath(toCrawl(c.href), u)) add("canonical-not-self", u, `→ ${c.href}`);
-    const t = pages.get(clean(toCrawl(c.href)));
-    if (t && (t.status !== 200 || (t.chain && t.chain.length > 1)))
-      add("canonical-bad-target", u, `${c.href} → ${t.chain && t.chain.length > 1 ? "redirect" : t.status}`);
+    const c = urlOr(p.canonicals[0], u);
+    if (!c) add("canonical-bad-target", u, `not a valid URL: ${p.canonicals[0]}`);
+    else {
+      if (c.search) add("canonical-query", u, c.href);
+      if (c.origin !== EXPECT_ORIGIN) add("canonical-origin", u, c.href);
+      if (!samePath(toCrawl(c.href), u)) add("canonical-not-self", u, `→ ${c.href}`);
+      const t = pages.get(clean(toCrawl(c.href)));
+      if (t && (t.status !== 200 || (t.chain && t.chain.length > 1)))
+        add("canonical-bad-target", u, `${c.href} → ${t.chain && t.chain.length > 1 ? "redirect" : t.status}`);
+    }
   }
   if (!indexable(p)) continue;
   checkedPages++;
@@ -1573,17 +1629,25 @@ for (const p of htmlPages) {
   if (basics.length) add("doc-basics", u, basics.join(", "));
   if (p.refreshTo) add("meta-refresh", u, `→ ${p.refreshTo}`);
   if (p.ogUrl && p.canonicals.length) {
-    const og = new URL(p.ogUrl, u).href,
-      c = new URL(p.canonicals[0], u).href;
-    if (og !== c) add("og-url-mismatch", u, `og:url ${og} · canonical ${c}`);
+    const og = urlOr(p.ogUrl, u)?.href,
+      c = urlOr(p.canonicals[0], u)?.href;
+    if (c && og !== c)
+      add("og-url-mismatch", u, og ? `og:url ${og} · canonical ${c}` : `og:url isn't a valid URL: ${p.ogUrl}`);
   }
   const prod = test => p.products.find(test);
   let pr;
   if ((pr = prod(x => x.singleAggregate))) add("product-aggregate-offer", u, pr.name);
   if ((pr = prod(x => x.noShipping))) add("product-no-shipping", u, pr.name);
   if ((pr = prod(x => x.noReturns))) add("product-no-returns", u, pr.name);
-  if (p.amounts.length && (pr = prod(x => x.price != null && !p.amounts.some(a => Math.abs(a - x.price) < 0.005))))
-    add("product-price-mismatch", u, `schema ${pr.price} · page shows ${p.amounts.slice(0, 3).join(", ")}`);
+  if (
+    p.amounts.length &&
+    (pr = prod(x => x.prices.length && !x.prices.some(v => p.amounts.some(a => Math.abs(a - v) < 0.005))))
+  )
+    add(
+      "product-price-mismatch",
+      u,
+      `schema ${pr.prices.join(" / ")} · page shows ${p.amounts.slice(0, 3).join(", ")}`,
+    );
   if (!/max-image-preview\s*:\s*large/.test(p.robotsMeta + "," + p.xRobots)) add("no-large-preview", u);
   for (const i of p.imgs) {
     try {
@@ -1680,6 +1744,7 @@ checkHreflang(htmlPages, {
 });
 // Image weight and format by HEAD request. Same-origin images only, so no third party is contacted.
 const imageList = [...images].slice(0, 50);
+let weighed = 0; // PERF-08 counts as checked only once an image is weighed
 for (let i = 0; i < imageList.length; i += CONC)
   await Promise.all(
     imageList.slice(i, i + CONC).map(async ([src, page]) => {
@@ -1692,6 +1757,7 @@ for (let i = 0; i < imageList.length; i += CONC)
         const size = Number(r.headers.get("content-length")),
           type = (r.headers.get("content-type") || "").split(";")[0];
         if (!r.ok || !size) return;
+        weighed++;
         const kb = Math.round(size / 1024);
         if (size > 200 * 1024) add("heavy-image", page, `${src} · ${kb} KB`);
         if (/^image\/(jpeg|png)$/.test(type) && size > 100 * 1024)
@@ -1699,6 +1765,7 @@ for (let i = 0; i < imageList.length; i += CONC)
       } catch {}
     }),
   );
+if (weighed) evalRules("PERF-08");
 if (images.size > 50) notes.push(`Image weight was checked for the first 50 of ${images.size} images.`);
 if (home && home.html) {
   if (!home.lang) add("lang-missing", home.finalUrl);
@@ -1842,7 +1909,7 @@ if (redirectSources.length) {
 }
 
 // ---------- live origin: certificate, http→https, HSTS ----------
-if (CHECK_LIVE && EXPECT_ORIGIN.startsWith("https:") && !isLocal(EXPECT_ORIGIN)) {
+if (CHECK_LIVE && EXPECT_ORIGIN.startsWith("https:") && isPublic(EXPECT_ORIGIN)) {
   evalRules("TRUST-07", "URL-03");
   notes.push(...(await checkLive(EXPECT_ORIGIN, { add })).notes);
 } else
@@ -1860,7 +1927,7 @@ let speed;
 let speedReason = OUTSIDE
   ? "Speed data needs the public, live site; pass --site-origin."
   : "Outside checks are off. With the owner's go-ahead, --outside fetches real-user speed data from Google PageSpeed Insights.";
-if (OUTSIDE && !isLocal(EXPECT_ORIGIN)) {
+if (OUTSIDE && isPublic(EXPECT_ORIGIN)) {
   const urls = sampleUrls(
     htmlPages
       .filter(p => indexable(p) && !p.clientOnly)
@@ -1886,6 +1953,16 @@ if (OUTSIDE && !isLocal(EXPECT_ORIGIN)) {
       : "No real-user data came back for the sampled pages (too few Chrome visits, or PageSpeed failed); see the notes.";
 }
 if (speedReason) notChecked.push({ rule: "PERF-01", area: `PERF-01 ${RULES["PERF-01"][0]}`, reason: speedReason });
+// The 25-week trend for the whole origin, only with a key (CRUX_API_KEY, or a PSI_API_KEY with the CrUX API enabled).
+const CRUX_KEY = process.env.CRUX_API_KEY || process.env.PSI_API_KEY;
+if (OUTSIDE && isPublic(EXPECT_ORIGIN) && CRUX_KEY) {
+  const t = await speedTrend(EXPECT_ORIGIN, {
+    key: CRUX_KEY,
+    endpoint: typeof args["crux-endpoint"] === "string" ? args["crux-endpoint"] : CRUX_HISTORY_ENDPOINT,
+  }).catch(e => ({ note: `CrUX history failed (${e.message}).` }));
+  if (t.trend) speed = { ...(speed || { strategy: "mobile", samples: [] }), trend: t.trend };
+  if (t.note) notes.push(t.note);
+}
 
 // ---------- outside checks: what JavaScript changes ----------
 const browser = OUTSIDE ? findBrowser() : null;
@@ -1896,8 +1973,12 @@ if (browser) {
   for (const u of urls) {
     try {
       const [rawRes, dom] = await Promise.all([get(u, { manual: false }), renderPage(browser, u)]);
+      if (rawRes.status !== 200 || !rawRes.body) {
+        renderFailure ||= `the raw HTML of ${u} couldn't be fetched again`;
+        continue;
+      }
       rendered++;
-      const d = compareRendered(rawRes.body || "", dom),
+      const d = compareRendered(rawRes.body, dom),
         say = x => `${x.field}: “${x.raw ?? "none"}” → “${x.rendered ?? "none"}”`;
       const head = d.filter(x => ["title", "canonical", "robots"].includes(x.field)),
         body = d.filter(x => !head.includes(x));

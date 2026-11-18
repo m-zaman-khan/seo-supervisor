@@ -12,6 +12,42 @@ export const CHECKS = {
 };
 
 export const PSI_ENDPOINT = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
+export const CRUX_HISTORY_ENDPOINT = "https://chromeuxreport.googleapis.com/v1/records:queryHistoryRecord";
+
+// The origin's p75s over CrUX History's 25 weekly periods, as [first, last] per metric.
+// https://developer.chrome.com/docs/crux/history-api
+export async function speedTrend(origin, { key, endpoint = CRUX_HISTORY_ENDPOINT, fetchFn = fetch }) {
+  const q = new URL(endpoint);
+  q.searchParams.set("key", key);
+  const r = await fetchFn(q.href, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      origin,
+      formFactor: "PHONE",
+      metrics: ["largest_contentful_paint", "interaction_to_next_paint", "cumulative_layout_shift"],
+    }),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!r.ok)
+    return {
+      note: `CrUX history: ${r.status === 404 ? "not enough Chrome visits to this site for a trend" : `answered ${r.status}${r.status === 403 ? " (enable the Chrome UX Report API for this key)" : ""}`}.`,
+    };
+  const rec = (await r.json()).record || {},
+    m = rec.metrics || {};
+  const ends = s => {
+    const xs = (s?.percentilesTimeseries?.p75s || []).map(Number).filter(x => !isNaN(x));
+    return xs.length ? [xs[0], xs[xs.length - 1]] : null;
+  };
+  return {
+    trend: {
+      weeks: (rec.collectionPeriods || []).length,
+      lcp: ends(m.largest_contentful_paint),
+      inp: ends(m.interaction_to_next_paint),
+      cls: ends(m.cumulative_layout_shift),
+    },
+  };
+}
 const LIMITS = { lcp: 2500, inp: 200, cls: 0.1 };
 
 // PageSpeed reports CLS as its percentile × 100.

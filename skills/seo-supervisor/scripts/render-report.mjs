@@ -312,9 +312,18 @@ function unlockHtml(delta) {
 // Origin field data, else the first page's.
 function speedText() {
   const s = raw.speed;
-  if (!s || !(s.samples || []).length) return "";
-  const v = s.samples.find(x => x.origin)?.origin || s.samples.find(x => x.field)?.field;
-  return `Real-user speed (${s.strategy || "mobile"}): ${v ? `${fmtCwv(v)} (${passes(v) ? "passes" : "fails"})` : "not enough visits for field data yet"}`;
+  if (!s || (!(s.samples || []).length && !s.trend)) return "";
+  const v = (s.samples || []).find(x => x.origin)?.origin || (s.samples || []).find(x => x.field)?.field;
+  const now = (s.samples || []).length
+    ? v
+      ? `${fmtCwv(v)} (${passes(v) ? "passes" : "fails"})`
+      : "not enough visits for field data yet"
+    : "";
+  const l = s.trend?.lcp,
+    trend = l
+      ? `over ${s.trend.weeks} weeks: LCP ${(l[0] / 1000).toFixed(1)} → ${(l[1] / 1000).toFixed(1)} s (${l[1] < l[0] * 0.95 ? "better" : l[1] > l[0] * 1.05 ? "worse" : "steady"})`
+      : "";
+  return `Real-user speed (${s.strategy || "mobile"}): ${[now, trend].filter(Boolean).join(" · ")}`;
 }
 function overviewHtml() {
   if (!overall)

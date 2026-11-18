@@ -92,7 +92,13 @@ export async function checkLive(origin, { add, now = Date.now(), connect = tlsCe
     o = new URL(origin),
     host = o.hostname,
     port = Number(o.port) || 443;
-  const other = host.startsWith("www.") ? host.slice(4) : "www." + host;
+  // The www/apex pair only exists for www.X and for a registrable apex (example.com, example.co.uk);
+  // a subdomain such as user.github.io or blog.example.com has no www twin to check.
+  const labels = host.split("."),
+    apex =
+      labels.length === 2 ||
+      (labels.length === 3 && /^(co|com|org|net|ac|gov|edu)$/.test(labels[1]) && labels[2].length === 2);
+  const other = host.startsWith("www.") ? host.slice(4) : apex ? "www." + host : null;
   let c;
   try {
     c = await connect(host, port);
@@ -100,7 +106,9 @@ export async function checkLive(origin, { add, now = Date.now(), connect = tlsCe
     notes.push(`Live check: couldn't open an HTTPS connection to ${host} (${e.message}).`);
   }
   if (c) {
-    if (!c.authorized) add("cert-untrusted", origin, c.authorizationError || "not trusted");
+    // Node also calls an expired certificate untrusted; it's reported once, as expired.
+    if (!c.authorized && c.authorizationError !== "CERT_HAS_EXPIRED")
+      add("cert-untrusted", origin, c.authorizationError || "not trusted");
     const to = Date.parse(c.valid_to),
       from = Date.parse(c.valid_from),
       left = to - now;
@@ -109,9 +117,10 @@ export async function checkLive(origin, { add, now = Date.now(), connect = tlsCe
       add("cert-expiring", origin, `${Math.floor(left / DAY)} days left, valid until ${c.valid_to}`);
     // The other host only matters when it answers; then its certificate must name it.
     let oc = null;
-    try {
-      oc = await connect(other, port);
-    } catch {}
+    if (other)
+      try {
+        oc = await connect(other, port);
+      } catch {}
     if (oc && !covers(oc.subjectaltname, other))
       add("cert-host-mismatch", `https://${other}`, `certificate names: ${oc.subjectaltname || "none"}`);
   }

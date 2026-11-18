@@ -38,7 +38,7 @@ test("an H1, JSON-LD or many links that appear only after rendering are reported
   assert.deepEqual(fields(page({ h1: "" }), page()), ["h1"]);
   assert.deepEqual(fields(page({ jsonld: 0 }), page({ jsonld: 2 })), ["jsonld-count"]);
   assert.deepEqual(fields(page({ links: 4 }), page({ links: 6 })), [], "1.5× more links is still fine");
-  assert.deepEqual(fields(page({ links: 4 }), page({ links: 7 })), ["link-count"]);
+  assert.deepEqual(fields(page({ links: 4 }), page({ links: 20 })), ["link-count"], "1.5× more and at least 10 more");
 });
 
 test("Chrome or Edge is found in the standard places, CHROME_PATH first", () => {

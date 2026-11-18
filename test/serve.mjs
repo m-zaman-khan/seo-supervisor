@@ -9,8 +9,9 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".xml": "application/xml", 
 // headers: extra response headers by path; files: generated files by path ({ type, body });
 // markdown: a Markdown body by path, served when the request asks for text/markdown.
 // before(req, res): return true when it has answered the request itself.
-export function serve(root, { headers = {}, files = {}, markdown = {} } = {}) {
+export function serve(root, { headers = {}, files = {}, markdown = {}, before } = {}) {
   const server = createServer(async (req, res) => {
+    if (before && before(req, res)) return;
     const path = decodeURIComponent(new URL(req.url, "http://x").pathname);
     const file = normalize(join(root, path));
     if (!file.startsWith(normalize(root))) {

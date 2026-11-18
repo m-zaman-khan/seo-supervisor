@@ -130,3 +130,108 @@ test("when PageSpeed refuses (no key, quota used up), it stops asking and PERF-0
     await psi.close();
   }
 });
+
+// A stand-in for the CrUX History API: 25 weekly p75 values per metric, LCP improving from 3.1 s to 2.4 s,
+// the four parts of an image LCP, and a week with too few visits (null), as the real API marks it.
+async function fakeCrux() {
+  const hits = [];
+  const server = createServer((req, res) => {
+    let body = "";
+    req
+      .on("data", c => (body += c))
+      .on("end", () => {
+        hits.push({ url: req.url, body: JSON.parse(body || "{}") });
+        const series = (a, b) => Array.from({ length: 25 }, (_, i) => a + ((b - a) * i) / 24);
+        const date = d => ({ year: 2026, month: 5 + Math.floor(d / 28), day: 1 + (d % 28) });
+        res.writeHead(200, { "Content-Type": "application/json" }).end(
+          JSON.stringify({
+            record: {
+              key: { origin: "https://zero.example", formFactor: "PHONE" },
+              metrics: {
+                largest_contentful_paint: { percentilesTimeseries: { p75s: series(3100, 2400) } },
+                interaction_to_next_paint: { percentilesTimeseries: { p75s: series(240, 190) } },
+                cumulative_layout_shift: { percentilesTimeseries: { p75s: series(0.12, 0.05).map(x => x.toFixed(2)) } },
+              },
+              collectionPeriods: Array.from({ length: 25 }, (_, i) => ({
+                firstDate: date(i * 7),
+                lastDate: date(i * 7 + 27),
+              })),
+            },
+          }),
+        );
+      });
+  });
+  await new Promise(ok => server.listen(0, "127.0.0.1", ok));
+  return {
+    url: `http://127.0.0.1:${server.address().port}/v1/records:queryHistoryRecord`,
+    hits,
+    close: () => new Promise(ok => server.close(ok)),
+  };
+}
+
+test("with a CrUX key, the 25-week speed trend is fetched for the public origin; without one, nothing is sent", async () => {
+  const psi = await fakePsi(),
+    crux = await fakeCrux();
+  try {
+    const crawlWith = async env => {
+      const site = await serve(join(ROOT, "test", "fixture-zero"));
+      const out = join(tmp(), "crawl.json");
+      try {
+        await node(
+          [
+            join(SCRIPTS, "seo-crawl.mjs"),
+            "--url",
+            site.url,
+            "--site-origin",
+            "https://zero.example",
+            "--outside",
+            "--psi-endpoint",
+            psi.url,
+            "--crux-endpoint",
+            crux.url,
+            "--out",
+            out,
+          ],
+          { env: { ...process.env, CRUX_API_KEY: "", PSI_API_KEY: "", ...env } },
+        );
+      } finally {
+        await site.close();
+      }
+      return JSON.parse(readFileSync(out, "utf8"));
+    };
+    const none = await crawlWith({});
+    assert.equal(crux.hits.length, 0, "no key, no request");
+    assert.equal(none.speed.trend, undefined);
+    const r = await crawlWith({ CRUX_API_KEY: "test-key" });
+    assert.equal(crux.hits.length, 1);
+    assert.match(crux.hits[0].url, /key=test-key/);
+    assert.equal(crux.hits[0].body.origin, "https://zero.example");
+    assert.deepEqual(
+      { weeks: r.speed.trend.weeks, lcp: r.speed.trend.lcp, cls: r.speed.trend.cls },
+      { weeks: 25, lcp: [3100, 2400], cls: [0.12, 0.05] },
+    );
+  } finally {
+    await psi.close();
+    await crux.close();
+  }
+});
+
+test("the overview adds the trend to the speed line", async () => {
+  const dir = tmp(),
+    data = JSON.parse(readFileSync(join(SKILL, "examples", "sample-audit.json"), "utf8"));
+  data.speed = {
+    strategy: "mobile",
+    samples: [
+      {
+        url: "https://example.com/",
+        field: { lcp: 2400, inp: 190, cls: 0.05 },
+        origin: { lcp: 2400, inp: 190, cls: 0.05 },
+        lab: {},
+      },
+    ],
+    trend: { weeks: 25, lcp: [3100, 2400], inp: [240, 190], cls: [0.12, 0.05] },
+  };
+  writeFileSync(join(dir, "a.json"), JSON.stringify(data));
+  await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "r.html")]);
+  assert.match(readFileSync(join(dir, "r.html"), "utf8"), /over 25 weeks: LCP 3\.1 → 2\.4 s \(better\)/);
+});
