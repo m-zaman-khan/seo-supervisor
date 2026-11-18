@@ -303,5 +303,133 @@
   "notes": [
     "Crawled a production build on localhost:3123, mapped to https://security.example.",
     "Lighthouse (mobile, lab): LCP 1.9 s, CLS 0.02, TBT 140 ms on the SSL checker."
-  ]
+  ],
+  "plan": {
+    "status": "built",
+    "approvedOn": "2026-11-16",
+    "summary": "A free security-tools site with a docs section. Setup added one metadata helper, the sitemap and robots.txt, Organization and SoftwareApplication schema, breadcrumbs, and the missing /docs parent page. The security disclosure page is waiting for the owner to approve its draft.",
+    "yes": [
+      {
+        "id": "Y1",
+        "what": "Redirect www.security.example to security.example",
+        "why": "One host for every URL; it redirects every page",
+        "approved": true
+      }
+    ],
+    "pages": [
+      {
+        "url": "/",
+        "type": "Home",
+        "status": "exists",
+        "target": "free website security tools",
+        "intent": "Someone who wants to check their site's security for free, right now",
+        "title": "Free Website Security Tools | Example Security",
+        "h1": "Free security tools",
+        "schema": [
+          "Organization",
+          "WebSite"
+        ]
+      },
+      {
+        "url": "/tools",
+        "type": "Tools listing",
+        "status": "built",
+        "parent": "/",
+        "target": "website security checker tools",
+        "title": "Security Checkers: SSL, DNS, Headers | Example Security",
+        "h1": "Security tools",
+        "schema": [
+          "CollectionPage",
+          "ItemList",
+          "BreadcrumbList"
+        ],
+        "linksTo": [
+          "/tools/ssl-checker",
+          "/tools/dmarc-checker"
+        ]
+      },
+      {
+        "pattern": "/tools/{slug}",
+        "count": 36,
+        "built": 36,
+        "type": "Tool page",
+        "status": "built",
+        "parent": "/tools",
+        "target": "{tool} checker",
+        "title": "{Tool name}: Free {Check} | Example Security",
+        "description": "Check {thing} for any domain in seconds. Free, no sign-up: see what's wrong and how to fix it.",
+        "h1": "{Tool name}",
+        "schema": [
+          "WebApplication",
+          "BreadcrumbList"
+        ],
+        "samples": [
+          {
+            "url": "/tools/ssl-checker",
+            "title": "SSL Checker: Free Certificate Check | Example Security"
+          },
+          {
+            "url": "/tools/dmarc-checker",
+            "title": "DMARC Checker: Free Policy Check | Example Security"
+          }
+        ],
+        "finding": "F-007"
+      },
+      {
+        "url": "/pricing",
+        "type": "Pricing page",
+        "status": "built",
+        "parent": "/",
+        "target": "security monitoring pricing",
+        "title": "Pricing | Example Security",
+        "h1": "Simple pricing for teams",
+        "schema": [
+          "WebPage",
+          "BreadcrumbList"
+        ],
+        "owner": {
+          "needs": "facts",
+          "what": "Confirm the Team plan price before it goes into the page copy",
+          "done": false
+        }
+      },
+      {
+        "url": "/docs",
+        "type": "Docs hub",
+        "status": "built",
+        "parent": "/",
+        "target": "example security api docs",
+        "intent": "Developers looking for the API guide; /docs/api existed but /docs did not",
+        "title": "Docs | Example Security",
+        "h1": "Docs",
+        "schema": [
+          "CollectionPage",
+          "BreadcrumbList"
+        ],
+        "linksTo": [
+          "/docs/api"
+        ]
+      },
+      {
+        "url": "/security",
+        "type": "Disclosure policy",
+        "status": "to-create",
+        "parent": "/",
+        "target": "example security vulnerability disclosure",
+        "intent": "Researchers who found a bug and want to report it",
+        "title": "Report a Vulnerability | Example Security",
+        "h1": "Report a vulnerability",
+        "schema": [
+          "WebPage"
+        ],
+        "owner": {
+          "needs": "copy",
+          "what": "Approve the drafted disclosure policy and add the security contact",
+          "draft": "drafts/security.md",
+          "done": false
+        },
+        "finding": "F-009"
+      }
+    ]
+  }
 }

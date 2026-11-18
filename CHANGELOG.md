@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0 (2026-11-18)
+
+- **New `/seo-setup` command** for sites with no SEO yet. It works out what the site is from its own pages, proposes a full SEO plan, stops for approval, builds the technical foundation, drafts copy for the owner to approve, and proves the result with an audit. Re-running it continues from where it stopped. The rules are in `skills/seo-supervisor/planning.md`.
+- **A Plan tab in the report** whenever the audit JSON has a `plan`:
+  - progress, counts by status, a "Needs your yes" list, the site structure as a tree, and a filterable page table with templates for large page sets
+  - the report opens on it while a plan waits for approval
+  - the plan also appears in the Markdown twin
+
+  Reports without a plan look exactly as before.
+- **The crawler** now records each page's meta description and H1 text, so planned pages can be verified after they're built.
+- **Audits** suggest `/seo-setup` when a site has almost no SEO in place.
+
 ## 1.0.0 (2026-11-18)
 
 First public release.

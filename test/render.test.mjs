@@ -70,6 +70,12 @@ test("the plan filter and the findings filter each control only their own button
   assert.match(html, /querySelectorAll\('\.segb\[data-pstatus\]'\)/);
 });
 
+test("the live demo shows a built plan on a Plan tab next to Overview", () => {
+  const demo = readFileSync(join(ROOT, "docs", "index.html"), "utf8");
+  assert.match(demo, /id="t-overview"[^>]*aria-selected="true"[^>]*>.*?<\/button><button[^>]*id="t-plan"/);
+  assert.match(demo, /Already right/);
+});
+
 test("the live demo and the bundled sample are up to date (run `npm run demo` after changing the renderer)", async () => {
   const dir = tmp();
   // docs/index.html is rendered without the Markdown twin; the bundled sample comes with sample-report.md.

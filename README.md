@@ -32,6 +32,7 @@ npx seo-supervisor        # then, in Claude Code: /seo-audit
 
 - [Install](#install)
 - [Commands](#commands)
+- [Starting from zero](#starting-from-zero)
 - [The report](#the-report)
 - [What it checks](#what-it-checks)
 - [Safe by default](#safe-by-default)
@@ -81,6 +82,23 @@ Needs Node 20 or newer. There's nothing else to install, and no API keys.
 | `/seo-fix [F-001 F-004]` | Fixes the named findings, or all open ones, at the root (the shared metadata helper, sitemap or layout), re-checks each fix and updates the report | Only what you approved |
 | `/seo-review [PR or branch]` | Finds the SEO problems a change introduces: a lost canonical, an accidental noindex, a dropped H1, made-up ratings… | Never |
 | `/seo-launch [url]` | A pass/fail gate before you switch indexing on, plus the launch-day checklist | Never |
+| `/seo-setup [url]` | For a site with **no SEO yet**: proposes a full SEO plan, then builds it once you approve | Only after you approve the plan |
+
+## Starting from zero
+
+New site, or an old app that never had any SEO? Run `/seo-setup`. It plans first instead of handing you 60 problems:
+
+1. **It works out what your site is** from your own pages and routes. A landing page, a SaaS app, a blog, a shop, a portfolio and a local business each get a different plan, and none of them get pages they don't need.
+2. **It proposes the plan on a Plan tab.** That covers every page's title, description, H1, schema, target search phrase and links. Big sets like posts or products get one template instead of thousands of rows. New pages are proposed only where your site shows a gap, such as a missing `/docs` parent or a privacy page your forms need.
+3. **You approve it.** Risky changes are listed separately under **Needs your yes**, and each one needs its own yes: a domain change, robots, AI crawlers, anything in your CMS.
+4. **It builds the foundation:** the metadata helper, sitemap, robots, schema, headings, breadcrumbs and internal links. It drafts any copy you still need to approve, with visible placeholders instead of invented facts.
+5. **It proves it with an audit:** the score before and after, and what's still waiting for you.
+
+Run `/seo-setup` again at any point and it continues where it stopped.
+
+<p align="center">
+  <img src="docs/images/report-plan-dark.png" alt="The Plan tab: 83% of the agent's work done, the site structure as a tree, and every planned page with its target phrase and status" width="900">
+</p>
 
 ## The report
 
