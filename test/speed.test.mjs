@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { serve } from "./serve.mjs";
+import { findBrowser } from "../skills/seo-supervisor/scripts/checks/render.mjs";
 import { ROOT, SKILL, SCRIPTS, node, tmp } from "./helpers.mjs";
 
 const fixture = name => readFileSync(join(ROOT, "test", "fixtures", name), "utf8");
@@ -64,6 +65,12 @@ test("with outside checks on, failing real-user Core Web Vitals become a finding
     assert.match(f.evidence[0].detail, /LCP 4\.1 s/);
     assert.ok(r.speed.samples.length === psi.hits.length);
     assert.ok(!r.notChecked.some(n => n.rule === "PERF-01"));
+    if (findBrowser())
+      assert.ok(
+        r.notes.some(n => /^Rendered \d+ of \d+ sample page/.test(n)),
+        "outside checks also render sample pages when Chrome is installed",
+      );
+    else assert.match(r.notChecked.find(n => n.rule === "REND-06")?.reason || "", /isn't installed/);
   } finally {
     await psi.close();
   }

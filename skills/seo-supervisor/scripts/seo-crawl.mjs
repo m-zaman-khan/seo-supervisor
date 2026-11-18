@@ -7,6 +7,7 @@ import { dirname, resolve } from "node:path";
 import { CHECKS as HREFLANG_CHECKS, checkHreflang } from "./checks/hreflang.mjs";
 import { CHECKS as TLS_CHECKS, checkLive } from "./checks/tls.mjs";
 import { CHECKS as SPEED_CHECKS, checkSpeed, sampleUrls, PSI_ENDPOINT } from "./checks/speed.mjs";
+import { CHECKS as RENDER_CHECKS, findBrowser, renderPage, compareRendered } from "./checks/render.mjs";
 
 const VERSION = "1.0.0";
 const UA = "seo-supervisor-crawler/" + VERSION;
@@ -99,6 +100,7 @@ const RULES = {
   "URL-03": ["One host, HTTPS only", "URLs & canonicals"],
   "AI-01": ["Pages are eligible for snippets and AI answers", "AI search"],
   "AI-05": ["Pages work for AI agents that browse", "AI search"],
+  "REND-06": ["JavaScript doesn't fight the HTML", "Rendering"],
   "REND-08": ["HTML stays under Googlebot's 2 MB limit", "Rendering"],
   "META-08": ["hreflang only when there are real language or region versions", "Metadata"],
   "REND-09": ["Pages declare a doctype, a charset and a mobile viewport", "Rendering"],
@@ -748,7 +750,7 @@ const CHECKS = {
   ],
 };
 
-Object.assign(CHECKS, HREFLANG_CHECKS, TLS_CHECKS, SPEED_CHECKS);
+Object.assign(CHECKS, HREFLANG_CHECKS, TLS_CHECKS, SPEED_CHECKS, RENDER_CHECKS);
 const findings = new Map(); // key -> {evidence:[], count}
 function add(key, url, detail) {
   if (!CHECKS[key]) throw new Error("unknown check " + key);
@@ -1877,6 +1879,38 @@ if (OUTSIDE && !isLocal(EXPECT_ORIGIN)) {
     reason: OUTSIDE
       ? "Speed data needs the public, live site; pass --site-origin."
       : "Outside checks are off. With the owner's go-ahead, --outside fetches real-user speed data from Google PageSpeed Insights.",
+  });
+
+// ---------- outside checks: what JavaScript changes ----------
+const browser = OUTSIDE ? findBrowser() : null;
+if (browser) {
+  evalRules("REND-06");
+  const urls = sampleUrls(htmlPages.filter(p => indexable(p) && !p.refreshTo).map(p => p.finalUrl)); // a meta refresh would render its target
+  let rendered = 0;
+  for (const u of urls) {
+    try {
+      const [rawRes, dom] = await Promise.all([get(u, { manual: false }), renderPage(browser, u)]);
+      rendered++;
+      const d = compareRendered(rawRes.body || "", dom),
+        say = x => `${x.field}: “${x.raw ?? "none"}” → “${x.rendered ?? "none"}”`;
+      const head = d.filter(x => ["title", "canonical", "robots"].includes(x.field)),
+        body = d.filter(x => !head.includes(x));
+      if (head.length) add("render-changes-head", u, head.map(say).join("; "));
+      if (body.length) add("render-adds-content", u, body.map(say).join("; "));
+    } catch (e) {
+      notes.push(`Render: ${u} failed (${String(e.message).split("\n")[0].slice(0, 120)}).`);
+    }
+  }
+  notes.push(
+    `Rendered ${rendered} of ${urls.length} sample page(s) in headless ${/edge/i.test(browser) ? "Edge" : "Chrome"} and compared them with the raw HTML.`,
+  );
+} else
+  notChecked.push({
+    rule: "REND-06",
+    area: `REND-06 ${RULES["REND-06"][0]}`,
+    reason: OUTSIDE
+      ? "Chrome or Edge isn't installed (or set CHROME_PATH), so rendered pages couldn't be compared with the raw HTML."
+      : "Outside checks are off. With the owner's go-ahead, --outside renders sample pages in headless Chrome (running the site's own scripts) and compares them with the raw HTML.",
   });
 
 // ---------- what the crawler cannot check ----------
