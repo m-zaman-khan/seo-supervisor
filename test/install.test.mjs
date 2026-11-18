@@ -6,7 +6,11 @@ import { ROOT, node, tmp } from "./helpers.mjs";
 
 const BIN = join(ROOT, "bin", "seo-supervisor.mjs");
 const COMMANDS = ["seo-audit", "seo-fix", "seo-review", "seo-launch", "seo-setup"];
-const withHome = home => ({ env: { ...process.env, HOME: home, USERPROFILE: home } });
+const withHome = home => {
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  for (const k of ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME", "APPDATA", "GROK_HOME"]) delete env[k];
+  return { env };
+};
 
 test("npx seo-supervisor installs, updates and uninstalls cleanly", async () => {
   const home = tmp();
@@ -25,13 +29,13 @@ test("npx seo-supervisor installs, updates and uninstalls cleanly", async () => 
   for (const c of COMMANDS) assert.ok(!existsSync(join(home, ".claude", "commands", `${c}.md`)));
 });
 
-test("--project installs into ./.claude and --agents adds ~/.agents/skills", async () => {
+test("--project installs into ./.claude, and the old --agents flag adds the shared .agents folder in the same scope", async () => {
   const home = tmp(),
     project = tmp();
   await node([BIN, "--project", "--agents"], { ...withHome(home), cwd: project });
   assert.ok(existsSync(join(project, ".claude", "skills", "seo-supervisor", "SKILL.md")));
   assert.ok(existsSync(join(project, ".claude", "commands", "seo-audit.md")));
-  assert.ok(existsSync(join(home, ".agents", "skills", "seo-supervisor", "SKILL.md")));
+  assert.ok(existsSync(join(project, ".agents", "skills", "seo-supervisor", "SKILL.md")));
   assert.ok(!existsSync(join(home, ".claude")), "--project leaves ~/.claude alone");
 });
 
