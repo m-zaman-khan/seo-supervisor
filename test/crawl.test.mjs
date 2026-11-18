@@ -75,6 +75,12 @@ test("the crawler finds every planted problem on the fixture site", async () => 
   for (const key of ["doc-basics", "robots-conflict"])
     assert.ok(!paths(key).includes("/"), `the home page is fine for ${key}`);
   assert.deepEqual(paths("robots-conflict"), ["/conflict/"]);
+  for (const rule of ["TRUST-07", "URL-03"])
+    assert.match(
+      report.notChecked.find(n => n.rule === rule)?.reason || "",
+      /--check-live/,
+      `${rule} waits for --check-live`,
+    );
   for (const key of ["product-aggregate-offer", "product-no-shipping", "product-no-returns", "product-price-mismatch"])
     assert.deepEqual(paths(key), ["/shop/widget/"], key);
   assert.ok(

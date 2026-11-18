@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-// Read-only SEO crawler: GET requests only.
+// Read-only SEO crawler: GET and HEAD only, plus a TLS handshake with --check-live.
 // Regex HTML parsing is enough for audit evidence. Swap in a real parser if a site breaks it.
 
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { CHECKS as HREFLANG_CHECKS, checkHreflang } from "./checks/hreflang.mjs";
+import { CHECKS as TLS_CHECKS, checkLive } from "./checks/tls.mjs";
 
 const VERSION = "1.0.0";
 const UA = "seo-supervisor-crawler/" + VERSION;
@@ -36,6 +37,7 @@ const CONC = Math.max(1, Number(args.concurrency || 4));
 const SLASH = ["always", "never"].includes(args["trailing-slash"]) ? args["trailing-slash"] : "auto";
 const BRAND = typeof args.brand === "string" ? args.brand : "";
 const INCLUDE_QUERY = !!args["include-query"];
+const CHECK_LIVE = !!args["check-live"];
 const OUT = resolve(typeof args.out === "string" ? args.out : "seo-audit/seo-crawl.json");
 let SITE_ORIGIN = typeof args["site-origin"] === "string" ? new URL(args["site-origin"]).origin : "";
 const notes = [];
@@ -90,6 +92,8 @@ const RULES = {
   "PERF-06": ["HTML documents stay lightweight", "Performance"],
   "TRUST-01": ["HTTPS security headers are set", "Trust & security"],
   "TRUST-02": ["security.txt published", "Trust & security"],
+  "TRUST-07": ["The HTTPS certificate is trusted, covers every host and renews in time", "Trust & security"],
+  "URL-03": ["One host, HTTPS only", "URLs & canonicals"],
   "AI-01": ["Pages are eligible for snippets and AI answers", "AI search"],
   "AI-05": ["Pages work for AI agents that browse", "AI search"],
   "REND-08": ["HTML stays under Googlebot's 2 MB limit", "Rendering"],
@@ -741,7 +745,7 @@ const CHECKS = {
   ],
 };
 
-Object.assign(CHECKS, HREFLANG_CHECKS);
+Object.assign(CHECKS, HREFLANG_CHECKS, TLS_CHECKS);
 const findings = new Map(); // key -> {evidence:[], count}
 function add(key, url, detail) {
   if (!CHECKS[key]) throw new Error("unknown check " + key);
@@ -1347,7 +1351,12 @@ if (sectxt.status !== 200 || /<html/i.test(sectxt.body || ""))
 if (home && home.headers) {
   const h = home.headers,
     missing = [];
-  if (EXPECT_ORIGIN.startsWith("https") && START_ORIGIN.startsWith("https") && !h.get("strict-transport-security"))
+  if (
+    !CHECK_LIVE &&
+    EXPECT_ORIGIN.startsWith("https") &&
+    START_ORIGIN.startsWith("https") &&
+    !h.get("strict-transport-security")
+  )
     missing.push("Strict-Transport-Security");
   if (!h.get("x-content-type-options")) missing.push("X-Content-Type-Options");
   if (!h.get("referrer-policy")) missing.push("Referrer-Policy");
@@ -1825,6 +1834,20 @@ if (redirectSources.length) {
   notes.push(`Tested ${Math.min(list.length, 2000)} old/redirect URLs, each with and without a trailing slash.`);
 }
 
+// ---------- live origin: certificate, http→https, HSTS ----------
+if (CHECK_LIVE && EXPECT_ORIGIN.startsWith("https:") && !isLocal(EXPECT_ORIGIN)) {
+  evalRules("TRUST-07", "URL-03");
+  notes.push(...(await checkLive(EXPECT_ORIGIN, { add })).notes);
+} else
+  for (const rule of ["TRUST-07", "URL-03"])
+    notChecked.push({
+      rule,
+      area: `${rule} ${RULES[rule][0]}`,
+      reason: CHECK_LIVE
+        ? "--check-live needs a public https:// origin; pass --site-origin."
+        : "Pass --check-live once the site is live.",
+    });
+
 // ---------- what the crawler cannot check ----------
 const NOT_CRAWLABLE = [
   ["PERF-01", "Core Web Vitals", "Needs field data (Search Console, CrUX) or a Lighthouse run."],
@@ -1837,11 +1860,6 @@ const NOT_CRAWLABLE = [
     "CRAWL-11",
     "Drafts and publish flags",
     "The crawler can't see publish flags; check the content layer (scripts/content-scan.mjs).",
-  ],
-  [
-    "URL-03",
-    "http→https and www redirects",
-    "Probe production's http:// and other-host variants, or check server/CDN config.",
   ],
   ["SCHEMA-08", "Rich result eligibility", "Run one URL per template through Google's Rich Results Test."],
   ["META-07", "Search Console and Bing verification", "Check DNS or ask the owner."],
