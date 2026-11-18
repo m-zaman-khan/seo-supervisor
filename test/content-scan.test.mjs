@@ -9,7 +9,7 @@ const towns = ["Dallas", "Plano", "Frisco", "Allen", "Wylie"];
 const items = towns.map((t, i) => ({
   slug: `towing-${t.toLowerCase()}`,
   title: `Towing in ${t}`,
-  description: `Fast, friendly towing in ${t} and nearby. Call us any time for a quote and a truck on the way.`,
+  description: `Fast, friendly towing in ${t} and nearby. Call us any time for a quote and a truck on the way.${i < 3 ? " Learn more" : ""}`,
   intro: `Need a tow in ${t}? Our drivers cover every road in ${t} day and night, with flatbeds for cars, vans and light trucks, and we answer the phone in under a minute every single time you call us.`,
   faqs: [
     { q: `Do you tow in ${t}?`, a: `Yes, we tow across ${t} around the clock.` },
@@ -23,7 +23,7 @@ items.push({
   title: "Heavy duty towing",
   description: "Lorem ipsum placeholder",
   intro:
-    "Semi trucks, buses and RVs need a rotator and a crew trained for big loads. We bring both, plus traffic control when a highway lane has to close.",
+    "Semi trucks, buses and\u200B RVs need a rotator and a crew trained for big loads. We bring both, plus traffic control when a highway lane has to close. 73% of drivers we tow call us again.",
   faqs: [],
   proof: "Recovered a jackknifed semi on US-75",
   published: true,
@@ -83,4 +83,15 @@ test("the content scanner catches templated pages before they are published", as
     titles.some(t => /^CRAWL-11 .*unpublished/.test(t)),
     "unpublished item",
   );
+
+  const by = check => scan.findings.find(f => f.check === check);
+  assert.match(by("invisible-unicode")?.evidence[0].detail || "", /U\+200B/, "a zero-width space, named");
+  assert.equal(by("invisible-unicode").evidence[0].url, "/heavy-duty/");
+  assert.ok(
+    by("templated-desc")?.evidence.some(e => /Learn more/.test(e.detail)),
+    "descriptions ending in a stock call to action",
+  );
+  assert.equal(by("templated-desc").rule, "META-02");
+  assert.match(by("unsourced-stat")?.evidence[0].detail || "", /73% of drivers/);
+  assert.equal(by("unsourced-stat").severity, "needs-decision");
 });

@@ -200,6 +200,27 @@ const CHECKS = {
     "Placeholders and mangled characters look unfinished.",
     "Replace them with real content; keep the patterns in a build check.",
   ],
+  "invisible-unicode": [
+    "CONTENT-09",
+    "medium",
+    n => `${n} item(s) contain invisible characters`,
+    "Zero-width spaces, stray byte-order marks and soft hyphens usually come from copy-pasting. They split words for search engines and break matching, while readers see nothing wrong.",
+    "Strip them at the source, and normalise pasted text when content is saved.",
+  ],
+  "templated-desc": [
+    "META-02",
+    "medium",
+    n => `${n} description(s) repeat their title or end in a stock call to action`,
+    "Descriptions built from one template (the title again, or a closing “Learn more”) all read alike in results and give searchers no reason to pick this page.",
+    "Write each description from what the page offers, in about 120–160 characters; leave calls to action to the page itself.",
+  ],
+  "unsourced-stat": [
+    "CONTENT-10",
+    "needs-decision",
+    n => `${n} item(s) state a statistic with no source`,
+    "Figures like “73% of drivers” or “studies show” without a source can't be checked by readers or quality reviewers, and become a liability if they're wrong.",
+    "Link the source next to the figure, or remove the figure until the owner can back it.",
+  ],
   "banned": [
     "CONTENT-10",
     "high",
@@ -317,9 +338,50 @@ for (const [field, lenKey, dupKey, lo, hi] of [
   });
   for (const [v, us] of m) if (us.length > 1) for (const u of us) add(dupKey, u, v.slice(0, 80));
 }
+// A shared ending counts only on 3+ items. The share is split by --group or the URL's first folder.
+if (typeof args.desc === "string") {
+  const CTA = /(?:learn more|click here|contact us today|find out more|read more)[.!…\s]*$/i;
+  const hits = [];
+  live.forEach(r => {
+    const d = str(get(r, args.desc)).trim(),
+      t = typeof args.title === "string" ? str(get(r, args.title)).trim() : "";
+    if (!d) return;
+    const cta = d.match(CTA);
+    if (cta) hits.push([urlOf(r, records.indexOf(r)), `ends with “${cta[0].trim()}”`]);
+    else if (t.length >= 10 && d.toLowerCase().includes(t.toLowerCase()))
+      hits.push([urlOf(r, records.indexOf(r)), `repeats the title “${t}”`]);
+  });
+  if (hits.length >= 3) for (const [u, why] of hits) add("templated-desc", u, why);
+}
+// Zero-width spaces, word joiners and BOMs always count; soft hyphens and zero-width (non-)joiners only inside Latin
+// words.
+const INVISIBLE = /[\u200B\u2060\uFEFF]|(?<=[A-Za-z])[\u00AD\u200C\u200D](?=[A-Za-z])/;
+const INVISIBLE_NAME = {
+  "\u200B": "zero-width space",
+  "\u2060": "word joiner",
+  "\uFEFF": "byte-order mark",
+  "\u00AD": "soft hyphen",
+  "\u200C": "zero-width non-joiner",
+  "\u200D": "zero-width joiner",
+};
+// A statistic counts as sourced when anything in the same item cites a source.
+const STAT =
+  /\b\d{1,3}(?:\.\d+)?\s?%\s+of\b|\b(?:studies|research|surveys?)\s+(?:show|shows|suggests?|proves?|found|finds|has shown|have shown)\b/i;
+const CITED = /https?:\/\/|\[\d+\]|\bsource:|\baccording to\b/i;
 
 records.forEach((r, i) => {
   const all = str(r);
+  const inv = all.match(INVISIBLE);
+  if (inv) {
+    const c = inv[0],
+      at = inv.index;
+    add(
+      "invisible-unicode",
+      urlOf(r, i),
+      `U+${c.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0")} (${INVISIBLE_NAME[c]}) in “${all.slice(Math.max(0, at - 20), at + 20).replace(INVISIBLE, "⟨here⟩")}”`,
+    );
+  }
+  if (STAT.test(all) && !CITED.test(all)) add("unsourced-stat", urlOf(r, i), ctx(all, STAT));
   const ph = all.match(PH);
   if (ph) add("placeholder", urlOf(r, i), `“${ph[0]}”`);
   if (BANNED) {
