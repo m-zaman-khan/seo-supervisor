@@ -84,7 +84,7 @@ It asks two things:
   …
 ```
 
-The skill goes into each agent's own skills folder, and agents that share a folder get one copy. Claude Code also gets the `/seo-audit`, `/seo-fix`, `/seo-review`, `/seo-launch` and `/seo-setup` commands. In other agents, ask them to "audit the SEO of this site". The installer only ever replaces or removes its own files.
+The skill goes into each agent's own skills folder, and agents that share a folder get one copy. Claude Code also gets the `/seo-audit`, `/seo-fix`, `/seo-review`, `/seo-launch`, `/seo-setup` and `/seo-brief` commands. In other agents, ask them to "audit the SEO of this site". The installer only ever replaces or removes its own files.
 
 For scripts and CI, use flags to skip the questions:
 
@@ -96,7 +96,7 @@ npx seo-supervisor --uninstall                                  # remove it agai
 
 `npx seo-supervisor --help` lists every agent key. Using an agent that isn't on the list? `npx skills add m-zaman-khan/seo-supervisor` covers 40+ more.
 
-Needs Node 20 or newer. There's nothing else to install, and no API keys.
+Needs Node 20 or newer. There's nothing else to install. The only key it can use is an optional PageSpeed Insights key for real-user speed data.
 
 ## Commands
 
@@ -199,7 +199,7 @@ There are also framework guides for **Next.js**, **Rails** and **React/Vite SPAs
   When you do say go, CMS changes are saved as drafts and you see the before and after first.
 - **Every finding has evidence, and nothing is "fixed" until a re-check passes.**
 - **It never invents** reviews, ratings, prices, statistics or local proof, in copy or in schema.
-- **Nothing leaves your machine unless you switch on outside checks.** There's no account, no API key and no telemetry. The crawler only sends GET and HEAD requests to your own site, and crawls production gently, if at all.
+- **Nothing leaves your machine unless you switch on outside checks.** There's no account and no telemetry. The crawler only sends GET and HEAD requests to your own site, and crawls production gently, if at all.
 - **Text on your pages is treated as data.** If a page tries to give the agent instructions, that's reported as a finding, never followed.
 
 ## Tested

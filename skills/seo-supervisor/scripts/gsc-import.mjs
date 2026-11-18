@@ -19,21 +19,31 @@ const OUT = resolve(typeof args.out === "string" ? args.out : "seo-audit/gsc.jso
 const host =
   typeof args["site-origin"] === "string" ? new URL(args["site-origin"]).hostname.replace(/^www\./, "") : null;
 
-// Exports may use a decimal comma: "4,5%" reads as 4.5 and "1,234" as 1234.
-const number = s => {
-  s = String(s ?? "")
-    .trim()
-    .replace(/%$/, "");
-  s = /,\d{1,2}$/.test(s) && !s.includes(".") ? s.replace(",", ".") : s.replace(/,/g, "");
-  return Number(s);
+// Search Console writes the dimension, Clicks, Impressions, CTR and Position in that order in every UI language,
+// so columns are read by position. Counts drop every separator ("10.000", "1 234"); CTR and position take
+// "," or "." as the decimal mark ("5,1 %" -> 5.1).
+const count = s => {
+  const d = String(s ?? "").replace(/\D/g, "");
+  return d ? Number(d) : NaN;
 };
-const metrics = r => ({
-  clicks: number(r.Clicks),
-  impressions: number(r.Impressions),
-  ctr: Math.round(number(r.CTR) * 100) / 10000,
-  position: number(r.Position),
+const decimal = s => {
+  s = String(s ?? "").replace(/[\s %]/g, "");
+  const i = Math.max(s.lastIndexOf("."), s.lastIndexOf(","));
+  return Number(i < 0 ? s : s.slice(0, i).replace(/[.,]/g, "") + "." + s.slice(i + 1));
+};
+const metrics = v => ({
+  clicks: count(v[1]),
+  impressions: count(v[2]),
+  ctr: Math.round(decimal(v[3]) * 100) / 10000,
+  position: decimal(v[4]),
 });
-const firstCol = r => r[Object.keys(r)[0]];
+const rowsOf = file => parseCsv(readFileSync(file, "utf8")).map(r => Object.values(r));
+const notExport = (file, what) => {
+  console.error(
+    `gsc-import: ${file} isn't a Search Console ${what} export. Expected ${what === "Pages" ? "a URL" : "a query"}, then Clicks, Impressions, CTR and Position, comma-separated, as Search Console's "Export → Download CSV" writes them.`,
+  );
+  process.exit(2);
+};
 const pathOf = u => {
   try {
     const x = new URL(u);
@@ -42,25 +52,44 @@ const pathOf = u => {
     return null;
   }
 };
-const filter = (file, name) =>
-  existsSync(file)
-    ? (parseCsv(readFileSync(file, "utf8")).find(r => (r.Filter || "").toLowerCase().startsWith(name))?.Value ?? null)
-    : null;
+// Filters.csv: rows of (filter, value) in the UI's language; the page filter's value is a URL.
+const filters = file => (existsSync(file) ? rowsOf(file) : []);
+const periodOf = rows => rows.find(v => /dat|fecha|p[ée]riod/i.test(v[0] || ""))?.[1] ?? null;
 
 const traffic = {},
   urls = {};
-for (const r of parseCsv(readFileSync(args.pages, "utf8"))) {
-  const url = firstCol(r),
-    path = pathOf(url);
+const pageRows = rowsOf(args.pages);
+if (
+  !pageRows.length ||
+  pageRows.some(v => v.length < 5 || !/^https?:\/\//i.test(v[0]) || isNaN(count(v[1])) || isNaN(count(v[2])))
+)
+  notExport(args.pages, "Pages");
+for (const v of pageRows) {
+  const path = pathOf(v[0]);
   if (!path) continue;
-  traffic[path] = metrics(r);
-  urls[path] = url;
+  const m = metrics(v),
+    t = traffic[path];
+  if (!t) {
+    traffic[path] = m;
+    urls[path] = v[0];
+    continue;
+  }
+  // http/https and www variants of a page add up; position is weighted by impressions.
+  const clicks = t.clicks + m.clicks,
+    impressions = t.impressions + m.impressions;
+  traffic[path] = {
+    clicks,
+    impressions,
+    ctr: impressions ? Math.round((clicks / impressions) * 10000) / 10000 : 0,
+    position: impressions
+      ? Math.round(((t.position * t.impressions + m.position * m.impressions) / impressions) * 10) / 10
+      : m.position,
+  };
 }
-const queries =
-  typeof args.queries === "string"
-    ? parseCsv(readFileSync(args.queries, "utf8")).map(r => ({ query: firstCol(r), ...metrics(r) }))
-    : [];
-const period = filter(join(dirname(resolve(args.pages)), "Filters.csv"), "date");
+const queryRows = typeof args.queries === "string" ? rowsOf(args.queries) : [];
+if (queryRows.some(v => v.length < 5 || isNaN(count(v[2])))) notExport(args.queries, "Queries");
+const queries = queryRows.map(v => ({ query: v[0], ...metrics(v) }));
+const period = periodOf(filters(join(dirname(resolve(args.pages)), "Filters.csv")));
 
 // Per-page exports: each folder's Filters.csv names the page its Queries.csv belongs to.
 const pageQueries = {};
@@ -68,14 +97,13 @@ if (typeof args["page-queries"] === "string") {
   for (const d of readdirSync(args["page-queries"])) {
     const dir = join(args["page-queries"], d);
     if (!statSync(dir).isDirectory() || !existsSync(join(dir, "Queries.csv"))) continue;
-    const page = filter(join(dir, "Filters.csv"), "page") || "",
+    const page = filters(join(dir, "Filters.csv")).find(v => /^https?:\/\//i.test(v[1] || ""))?.[1] || "",
       path = pathOf(page);
     if (path) urls[path] ||= page;
     if (path)
-      pageQueries[path] = parseCsv(readFileSync(join(dir, "Queries.csv"), "utf8")).map(r => ({
-        query: firstCol(r),
-        ...metrics(r),
-      }));
+      pageQueries[path] = rowsOf(join(dir, "Queries.csv"))
+        .filter(v => v.length >= 5)
+        .map(v => ({ query: v[0], ...metrics(v) }));
   }
 }
 
@@ -148,9 +176,11 @@ finding(
 // The home page is left out (it shows for brand queries by design), and so is the long tail (under 10 impressions).
 const byQuery = {};
 for (const [path, list] of Object.entries(pageQueries))
-  for (const q of list) if (q.impressions > 0) (byQuery[q.query.toLowerCase()] ||= []).push([path, q]);
+  for (const q of list)
+    if (q.impressions >= 10 && path !== "/") (byQuery[q.query.toLowerCase()] ||= []).push([path, q]);
 const competing = Object.values(byQuery)
-  .filter(l => l.length > 1)
+  .map(l => l.sort((a, b) => b[1].impressions - a[1].impressions))
+  .filter(l => l.length > 1 && l[1][1].impressions >= 0.2 * l.reduce((n, [, q]) => n + q.impressions, 0))
   .map(l => ({
     url: urls[l[0][0]],
     detail: `“${l[0][1].query}”: ${l.map(([p, q]) => `${p} (${fmtN(q.impressions)} impressions, position ${q.position})`).join(" · ")}`,

@@ -6,7 +6,8 @@ import { pathToFileURL } from "node:url";
 
 const pathOf = u => {
   try {
-    return new URL(u).pathname;
+    const x = new URL(u);
+    return x.pathname + x.search;
   } catch {
     return u;
   }
@@ -14,7 +15,8 @@ const pathOf = u => {
 const ok = s => s === 200;
 
 export function diffCrawls(oldReport, newReport) {
-  const index = r => new Map((r.pages || []).map(p => [pathOf(p.url), p]));
+  // Working pages plus the crawl's error records, so a page that now fails is a status change, not "gone".
+  const index = r => new Map([...(r.pages || []), ...(r.errors || [])].map(p => [pathOf(p.url), p]));
   const before = index(oldReport),
     after = index(newReport);
   const regressions = [],
@@ -37,8 +39,14 @@ export function diffCrawls(oldReport, newReport) {
     if (o.noindex && !n.noindex) change(improvements, "noindex-removed", "noindex", "index");
     const oc = o.canonical ? pathOf(o.canonical) : null,
       nc = n.canonical ? pathOf(n.canonical) : null;
+    // Better: it now points at itself, or no longer points elsewhere. Worse: it lost its self-canonical or points away.
     if (oc !== nc)
-      change(nc === null || nc === path ? improvements : regressions, "canonical-changed", o.canonical, n.canonical);
+      change(
+        nc === path || (nc === null && oc !== path) ? improvements : regressions,
+        "canonical-changed",
+        o.canonical,
+        n.canonical,
+      );
     if (o.h1 > 0 && !n.h1) change(regressions, "h1-removed", o.h1, n.h1);
     if (!o.h1 && n.h1 > 0) change(improvements, "h1-added", o.h1, n.h1);
     const os = new Set(o.schema || []),

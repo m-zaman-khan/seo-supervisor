@@ -3,6 +3,7 @@
 ### CONTENT-01 · Exactly one H1 per page · high
 - **Check:** crawler `h1-count`.
 - **Pass:** one H1 that states the page's main topic. Logos, card titles and modal titles are not H1s.
+- **Site-wide:** when the H1 is missing on at least 80% of indexable pages (and at least 3), the crawler reports one `*-sitewide` finding as a **blocker**, not one high per page. Keep it a blocker: it's the usual sign of a site with no SEO work.
 
 ### CONTENT-02 · Heading levels are never skipped · medium
 - **Check:** crawler `heading-skip`. Footer and sidebar headings count too.

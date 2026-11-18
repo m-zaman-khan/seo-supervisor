@@ -62,3 +62,26 @@ test("without a diff there's no Since last audit tab", async () => {
   const { html } = await render(null);
   assert.doesNotMatch(html, /id="t-diff"/);
 });
+
+test("pages are keyed by path and query, a lost self-canonical is a regression, and crawl errors count as status changes", () => {
+  const P = (url, extra = {}) => ({
+    url,
+    status: 200,
+    noindex: false,
+    canonical: url,
+    title: url,
+    h1: 1,
+    schema: [],
+    ...extra,
+  });
+  const d = diffCrawls(
+    { pages: [P("https://e.com/blog"), P("https://e.com/blog?page=2"), P("https://e.com/a/"), P("https://e.com/x/")] },
+    {
+      pages: [P("https://e.com/blog?page=2"), P("https://e.com/blog"), P("https://e.com/a/", { canonical: null })],
+      errors: [{ url: "https://e.com/x/", status: 500 }],
+    },
+  );
+  assert.deepEqual(d.changed, [], "?page=2 isn't confused with /blog");
+  assert.deepEqual(kinds(d.regressions), ["/a/ canonical-changed", "/x/ status-error"]);
+  assert.deepEqual(d.removed, [], "a page that now errors isn't 'gone'");
+});

@@ -4,6 +4,7 @@
 - **Check:** crawler `title-missing`, `title-long`, `title-short`, `title-dup`, `title-multiple`.
 - **Pass:** unique, about 30–60 characters (some projects allow 65), main keyword first, brand once at the end.
 - **Fix:** a title pattern per page type in the profile, e.g. tool pages: "DMARC Checker - Free DMARC Record Lookup | Brand". Where pages compete for one phrase, give that phrase to one page and retitle the others (CONTENT-04).
+- **Site-wide:** when the title is missing, or one title is shared, on at least 80% of indexable pages (and at least 3), the crawler reports one `*-sitewide` finding as a **blocker**, not one high per page. Keep it a blocker: it's the usual sign of a site with no SEO work.
 
 ### META-02 · Every indexable page has a unique meta description of 120–160 characters · medium
 - **Check:** crawler `desc-missing`, `desc-length`, `desc-dup`.

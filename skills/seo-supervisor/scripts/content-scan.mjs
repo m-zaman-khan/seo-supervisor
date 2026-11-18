@@ -348,7 +348,15 @@ if (typeof args.desc === "string") {
     if (!d) return;
     const cta = d.match(CTA);
     if (cta) hits.push([urlOf(r, records.indexOf(r)), `ends with “${cta[0].trim()}”`]);
-    else if (t.length >= 10 && d.toLowerCase().includes(t.toLowerCase()))
+    // The title alone or with a few words; a description that goes on to say something specific is fine.
+    else if (
+      t.length >= 10 &&
+      d.toLowerCase().startsWith(t.toLowerCase()) &&
+      d
+        .slice(t.length)
+        .split(/\s+/)
+        .filter(w => /[\p{L}\p{N}]/u.test(w)).length < 5
+    )
       hits.push([urlOf(r, records.indexOf(r)), `repeats the title “${t}”`]);
   });
   if (hits.length >= 3) for (const [u, why] of hits) add("templated-desc", u, why);

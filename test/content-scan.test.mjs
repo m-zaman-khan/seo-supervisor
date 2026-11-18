@@ -95,3 +95,28 @@ test("the content scanner catches templated pages before they are published", as
   assert.match(by("unsourced-stat")?.evidence[0].detail || "", /73% of drivers/);
   assert.equal(by("unsourced-stat").severity, "needs-decision");
 });
+
+test("descriptions that start with their title and then say something specific aren't templated", async () => {
+  const dir = tmp();
+  const recs = ["How to winterize your RV", "How to store your boat", "How to clean a camper roof"].map((t, i) => ({
+    slug: `p${i}`,
+    title: t,
+    description: `${t} in five steps, from draining every tank to checking the seals before the first frost arrives.`,
+  }));
+  writeFileSync(join(dir, "c.json"), JSON.stringify(recs));
+  const out = join(dir, "scan.json");
+  await node([
+    join(SCRIPTS, "content-scan.mjs"),
+    "--in",
+    join(dir, "c.json"),
+    "--id",
+    "slug",
+    "--title",
+    "title",
+    "--desc",
+    "description",
+    "--out",
+    out,
+  ]);
+  assert.ok(!JSON.parse(readFileSync(out, "utf8")).findings.some(f => f.check === "templated-desc"));
+});

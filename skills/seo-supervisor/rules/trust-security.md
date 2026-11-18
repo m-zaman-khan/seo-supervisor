@@ -27,6 +27,6 @@
 
 ### TRUST-07 · The HTTPS certificate is trusted, covers every host and renews in time · blocker
 - **Check:** `--check-live` on the production origin: trust, both the apex and www host (when the other host answers), and time left.
-- **Pass:** trusted; covers every host that answers; more than a third of its lifetime left, and at least 30 days.
-- **Severity:** blocker when untrusted, missing a host, expired or under 2 days left; high when under a third of its lifetime (or 30 days) is left. The threshold scales because certificates are getting shorter: CA/Browser Forum limits fall to 200 days from March 2026 and 47 days by 2029, and some CAs issue 6-day certificates. A healthy short certificate isn't flagged.
+- **Pass:** trusted; covers every host that answers; and not yet near expiry: more time left than a third of its lifetime or 30 days, whichever is sooner. A healthy 6-day certificate with 4 days left passes.
+- **Severity:** blocker when untrusted, missing a host, expired or under 2 days left; high when less time is left than a third of its lifetime or 30 days, whichever is sooner (30 days when the lifetime can't be read). The threshold scales because certificates are getting shorter: CA/Browser Forum limits fall to 200 days from March 2026 and 47 days by 2029, and some CAs issue 6-day certificates. A healthy short certificate isn't flagged.
 - **Fix:** automatic renewal at the host or CDN, issued for both hosts.

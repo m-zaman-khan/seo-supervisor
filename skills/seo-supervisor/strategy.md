@@ -25,7 +25,7 @@ Without a search tool, or with outside checks off, skip this and list intent und
 
 ## Topic clusters
 
-Build them from the site's own pages and real queries only: Search Console queries, the profile's target phrases, and what the site already covers.
+Build them from the site's own pages and real queries only: Search Console queries, the profile's target phrases, and what the site already covers. Testing phrases against search results needs outside checks on; without them, group by meaning and the site's own structure.
 
 1. **Group** phrases that share one intent and would be answered by one page. Two phrases are one group when the same results rank for both.
 2. **Pick a hub** for each topic: the page that covers it broadly (a service, a category, a guide). The other pages in the group are its spokes.

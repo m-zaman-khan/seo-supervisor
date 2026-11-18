@@ -2,12 +2,12 @@
 
 > Intent findings rest on what was observed, never on a guess. Each one names its source: the search engine and date the results were looked at, or the Search Console export and its period. **Medium at most**, because the agent's search tool may not be Google, and rankings move. Never state search volumes, difficulty or rankings you didn't observe.
 
-> Target phrases come only from a recorded source: the last plan's `target`, the profile's "Target phrases" table, or a page's own Search Console export. Pages without one are skipped and counted under Limits. INTENT-01 needs outside checks on (the phrase goes to a search provider); INTENT-02 to 04 come from `gsc-import.mjs`, which reads local files only.
+> Target phrases come only from a recorded source: the last approved plan's `target`, the approved profile's "Target phrases" table (a draft profile doesn't count), or a page's own Search Console export. Pages without one are skipped and counted under Limits. INTENT-01 needs outside checks on (the phrase goes to a search provider); INTENT-02 to 04 come from `gsc-import.mjs`, which reads local files only.
 
 ### INTENT-01 · The page type matches what ranks · medium
 - **Check:** for each key page with a recorded target phrase, search the phrase and record the engine, the date and the type of each of the top 10 results (guide, product, category, tool, local listing, forum, video). Method: `strategy.md`.
 - **Pass:** the page is the kind of page most top results are. A product page aiming at a phrase where guides rank, or a blog post aiming at a phrase where product listings rank, fails.
-- **Fix:** change the page to fit the intent (add the guide content, or the comparison table), or aim it at a phrase whose results match what it is. Content changes are the owner's call.
+- **Fix:** change the page to fit the intent (add the guide content, or the comparison table), or aim it at a phrase whose results match what it is. Content changes are the owner's call: set `fixBy: "owner"`.
 
 ### INTENT-02 · One page per query · medium
 - **Check:** `gsc-import.mjs` with per-page exports: two or more of the site's pages getting impressions for the same query.
@@ -22,7 +22,7 @@
 ### INTENT-04 · Pages almost on page one get attention first · low
 - **Check:** `gsc-import.mjs`: average position 8–20 with 50+ impressions.
 - **Pass:** these pages are worked on before pages with no impressions.
-- **Fix:** match the main query's intent, add what the top results cover and this page lacks, and add internal links from related pages.
+- **Fix:** add internal links from related pages (code, the agent can do it). Content changes are the owner's: set `fixBy: "owner"` and suggest matching the main query's intent; comparing with what the top results cover needs outside checks on.
 
 ### INTENT-05 · Content opportunities are the owner's decision · needs-decision
 - **Check:** topic clusters (`strategy.md`): a group of queries or phrases with evidence of demand and no page that answers it. Evidence is required, e.g. "Search Console: 1,200 impressions for 'flatbed towing cost', no page about cost".

@@ -126,3 +126,45 @@ test("2.0 is documented: untrusted content, outside checks, history, intent, bri
   assert.match(brief, /seo-audit\/briefs\//);
   assert.match(readFileSync(join(ROOT, "NOTICE"), "utf8"), /MIT License/);
 });
+
+test("the docs agree with the code and keep every outside or content step behind the owner", () => {
+  const read = p => readFileSync(join(ROOT, p), "utf8");
+  const S = "skills/seo-supervisor/";
+  const trust = read(S + "rules/trust-security.md");
+  assert.doesNotMatch(trust, /and at least 30 days/, "TRUST-07 passes healthy short certificates");
+  assert.match(trust, /whichever is sooner/);
+  const launch = read("commands/seo-launch.md");
+  assert.match(launch, /--check-live/);
+  assert.match(launch, /TRUST-07/);
+  assert.match(read(S + "SKILL.md"), /draft profile's phrases don't count/);
+  const intent = read(S + "rules/search-intent.md");
+  for (const id of ["INTENT-01", "INTENT-04"])
+    assert.match(
+      intent.split(`### ${id} ·`)[1].split("\n### ")[0],
+      /`fixBy: "owner"`/,
+      `${id} content changes are the owner's`,
+    );
+  assert.match(
+    read(S + "strategy.md")
+      .split("## Topic clusters")[1]
+      .split("\n## ")[0],
+    /outside checks/i,
+    "cluster lookups need the opt-in",
+  );
+  for (const [file, id] of [
+    ["rules/metadata.md", "META-01"],
+    ["rules/content.md", "CONTENT-01"],
+    ["rules/urls.md", "URL-04"],
+  ])
+    assert.match(
+      read(S + file)
+        .split(`### ${id} ·`)[1]
+        .split("\n### ")[0],
+      /80%.*blocker/,
+      `${id} documents the site-wide blocker`,
+    );
+  const readme = read("README.md");
+  assert.doesNotMatch(readme, /no API keys?\b/i);
+  assert.match(readme, /`\/seo-setup` and `\/seo-brief` commands/);
+  assert.match(read(S + "NOTICE"), /MIT License/, "installed skill copies carry the MIT notice");
+});

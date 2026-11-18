@@ -95,7 +95,7 @@ node <skill-dir>/scripts/content-scan.mjs --in seo-audit/content.json --items pa
 `--strip` removes swapped names (cities, products) before comparing, which shows how many genuinely different texts exist.
 3. Check that the code honours what the data says, e.g. that unpublished items really aren't routed, linked or in the sitemap.
 
-**Search intent.** With outside checks on and a web search tool, check the pages that have a recorded target phrase as `rules/search-intent.md` says. The phrase comes from the last plan's `target`, the profile's "Target phrases" table or a per-page Search Console export, never from a guess. Pages without one are skipped, and Limits says how many. `strategy.md` covers reading the results, topic clusters and the brief format.
+**Search intent.** With outside checks on and a web search tool, check the pages that have a recorded target phrase as `rules/search-intent.md` says. The phrase comes from the last approved plan's `target`, the "Target phrases" table of the approved profile in `docs/`, or a per-page Search Console export, never from a guess; a draft profile's phrases don't count. Pages without one are skipped, and Limits says how many. `strategy.md` covers reading the results, topic clusters and the brief format.
 
 ### 4. Write the report
 

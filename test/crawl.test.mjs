@@ -81,6 +81,10 @@ test("the crawler finds every planted problem on the fixture site", async () => 
       /Outside checks are off/,
       `${rule} waits for outside checks`,
     );
+  assert.ok(
+    report.errors.some(e => new URL(e.url).pathname === "/broken/" && e.status === 404),
+    "pages that fail are listed, so a later diff sees the status change",
+  );
   for (const rule of ["TRUST-07", "URL-03"])
     assert.match(
       report.notChecked.find(n => n.rule === rule)?.reason || "",

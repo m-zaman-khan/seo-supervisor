@@ -2039,6 +2039,7 @@ const report = {
   passed,
   notChecked,
   ...(speed ? { speed } : {}),
+  errors: all.filter(p => !p.html && (p.status >= 400 || p.status === 0)).map(p => ({ url: p.url, status: p.status })),
   pages: htmlPages.map(p => ({
     url: p.finalUrl,
     status: p.status,
