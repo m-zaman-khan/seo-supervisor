@@ -1,0 +1,19 @@
+{
+  "id": "https://zero.example/pricing/",
+  "loadingExperience": {
+    "id": "https://zero.example/pricing/",
+    "metrics": {
+      "LARGEST_CONTENTFUL_PAINT_MS": { "percentile": 4100, "category": "SLOW" },
+      "INTERACTION_TO_NEXT_PAINT": { "percentile": 320, "category": "AVERAGE" },
+      "CUMULATIVE_LAYOUT_SHIFT_SCORE": { "percentile": 22, "category": "AVERAGE" }
+    },
+    "overall_category": "SLOW"
+  },
+  "lighthouseResult": {
+    "audits": {
+      "largest-contentful-paint": { "numericValue": 5200.9 },
+      "cumulative-layout-shift": { "numericValue": 0.24 },
+      "total-blocking-time": { "numericValue": 640 }
+    }
+  }
+}

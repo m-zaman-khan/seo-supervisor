@@ -1,0 +1,28 @@
+{
+  "id": "https://zero.example/",
+  "loadingExperience": {
+    "id": "https://zero.example/",
+    "metrics": {
+      "LARGEST_CONTENTFUL_PAINT_MS": { "percentile": 2100, "category": "FAST" },
+      "INTERACTION_TO_NEXT_PAINT": { "percentile": 180, "category": "FAST" },
+      "CUMULATIVE_LAYOUT_SHIFT_SCORE": { "percentile": 5, "category": "FAST" }
+    },
+    "overall_category": "FAST"
+  },
+  "originLoadingExperience": {
+    "id": "https://zero.example",
+    "metrics": {
+      "LARGEST_CONTENTFUL_PAINT_MS": { "percentile": 2200, "category": "FAST" },
+      "INTERACTION_TO_NEXT_PAINT": { "percentile": 150, "category": "FAST" },
+      "CUMULATIVE_LAYOUT_SHIFT_SCORE": { "percentile": 4, "category": "FAST" }
+    },
+    "overall_category": "FAST"
+  },
+  "lighthouseResult": {
+    "audits": {
+      "largest-contentful-paint": { "numericValue": 2350.4 },
+      "cumulative-layout-shift": { "numericValue": 0.031 },
+      "total-blocking-time": { "numericValue": 120 }
+    }
+  }
+}

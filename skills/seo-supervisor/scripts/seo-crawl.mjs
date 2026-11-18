@@ -6,6 +6,7 @@ import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { CHECKS as HREFLANG_CHECKS, checkHreflang } from "./checks/hreflang.mjs";
 import { CHECKS as TLS_CHECKS, checkLive } from "./checks/tls.mjs";
+import { CHECKS as SPEED_CHECKS, checkSpeed, sampleUrls, PSI_ENDPOINT } from "./checks/speed.mjs";
 
 const VERSION = "1.0.0";
 const UA = "seo-supervisor-crawler/" + VERSION;
@@ -38,6 +39,7 @@ const SLASH = ["always", "never"].includes(args["trailing-slash"]) ? args["trail
 const BRAND = typeof args.brand === "string" ? args.brand : "";
 const INCLUDE_QUERY = !!args["include-query"];
 const CHECK_LIVE = !!args["check-live"];
+const OUTSIDE = !!args.outside; // a separate opt-in: it sends the sample URLs to Google a second time
 const OUT = resolve(typeof args.out === "string" ? args.out : "seo-audit/seo-crawl.json");
 let SITE_ORIGIN = typeof args["site-origin"] === "string" ? new URL(args["site-origin"]).origin : "";
 const notes = [];
@@ -87,6 +89,7 @@ const RULES = {
   "LINK-02": ["No orphan pages", "Internal linking"],
   "LINK-05": ["Descriptive anchor text", "Internal linking"],
   "LINK-06": ["Link counts per page stay reasonable", "Internal linking"],
+  "PERF-01": ["Core Web Vitals pass for real visitors", "Performance"],
   "PERF-03": ["The first image is not lazy-loaded", "Performance"],
   "PERF-04": ["Images reserve their space (width and height)", "Performance"],
   "PERF-06": ["HTML documents stay lightweight", "Performance"],
@@ -745,7 +748,7 @@ const CHECKS = {
   ],
 };
 
-Object.assign(CHECKS, HREFLANG_CHECKS, TLS_CHECKS);
+Object.assign(CHECKS, HREFLANG_CHECKS, TLS_CHECKS, SPEED_CHECKS);
 const findings = new Map(); // key -> {evidence:[], count}
 function add(key, url, detail) {
   if (!CHECKS[key]) throw new Error("unknown check " + key);
@@ -1848,9 +1851,36 @@ if (CHECK_LIVE && EXPECT_ORIGIN.startsWith("https:") && !isLocal(EXPECT_ORIGIN))
         : "Pass --check-live once the site is live.",
     });
 
+// ---------- outside checks: real-user speed ----------
+let speed;
+if (OUTSIDE && !isLocal(EXPECT_ORIGIN)) {
+  evalRules("PERF-01");
+  const urls = sampleUrls(
+    htmlPages
+      .filter(p => indexable(p) && !p.clientOnly)
+      .map(p => {
+        const x = new URL(p.finalUrl);
+        return EXPECT_ORIGIN + x.pathname + x.search;
+      }),
+  );
+  const r = await checkSpeed(urls, {
+    add,
+    endpoint: typeof args["psi-endpoint"] === "string" ? args["psi-endpoint"] : PSI_ENDPOINT,
+    key: process.env.PSI_API_KEY,
+  });
+  speed = { strategy: "mobile", samples: r.samples };
+  notes.push(...r.notes);
+} else
+  notChecked.push({
+    rule: "PERF-01",
+    area: `PERF-01 ${RULES["PERF-01"][0]}`,
+    reason: OUTSIDE
+      ? "Speed data needs the public, live site; pass --site-origin."
+      : "Outside checks are off. With the owner's go-ahead, --outside fetches real-user speed data from Google PageSpeed Insights.",
+  });
+
 // ---------- what the crawler cannot check ----------
 const NOT_CRAWLABLE = [
-  ["PERF-01", "Core Web Vitals", "Needs field data (Search Console, CrUX) or a Lighthouse run."],
   [
     "CRAWL-09",
     "Bot protection and firewall",
@@ -1960,6 +1990,7 @@ const report = {
   findings: out,
   passed,
   notChecked,
+  ...(speed ? { speed } : {}),
   pages: htmlPages.map(p => ({
     url: p.finalUrl,
     status: p.status,

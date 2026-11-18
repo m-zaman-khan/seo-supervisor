@@ -5,6 +5,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, resolve, basename } from "node:path";
 import { planStats, planHtml, planMarkdown, PLAN_CSS } from "./report-plan.mjs";
+import { fmtCwv, passes } from "./checks/speed.mjs";
 
 const argv = process.argv.slice(2);
 const inPath = argv.find(a => !a.startsWith("--"));
@@ -308,6 +309,13 @@ function unlockHtml(delta) {
         ${who ? `<p class="u-s">${who}</p>` : ""}
       </div>`;
 }
+// Origin field data, else the first page's.
+function speedText() {
+  const s = raw.speed;
+  if (!s || !(s.samples || []).length) return "";
+  const v = s.samples.find(x => x.origin)?.origin || s.samples.find(x => x.field)?.field;
+  return `Real-user speed (${s.strategy || "mobile"}): ${v ? `${fmtCwv(v)} (${passes(v) ? "passes" : "fails"})` : "not enough visits for field data yet"}`;
+}
 function overviewHtml() {
   if (!overall)
     return `<section class="panel empty-state"><h2>Nothing to score</h2><p>This file has no findings or passed rules. Run the audit to fill it.</p></section>`;
@@ -359,7 +367,7 @@ function overviewHtml() {
         <p class="quiet"><span class="key k-fail" aria-hidden="true"></span>${num(overall.rules - overall.passing)} failing${notChecked.length ? ` · ${num(notChecked.length)} not checked` : ""}</p>
       </div>
     </section>
-
+    ${speedText() ? `<p class="quiet">${esc(speedText())}</p>` : ""}
     </div>
     <div class="ov-right">
     <section class="panel factors" aria-labelledby="h-factors">
@@ -929,6 +937,7 @@ function markdown() {
     "",
   );
   if (areas.length) {
+    if (speedText()) L.push(speedText(), "");
     L.push("## Area scores", "", "| Area | Score | Open findings | Top issue |", "| --- | ---: | ---: | --- |");
     for (const a of areas)
       L.push(`| ${mdEsc(a.name)} | ${a.value} | ${a.top.length} | ${mdEsc(a.top[0]?.title || "All checks pass")} |`);
