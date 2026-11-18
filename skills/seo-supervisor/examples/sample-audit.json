@@ -1,0 +1,307 @@
+{
+  "site": {
+    "name": "Example Security (sample data)",
+    "url": "https://security.example",
+    "framework": "Next.js 16 (App Router)",
+    "siteTypes": [
+      "tools",
+      "content",
+      "services"
+    ],
+    "profile": "docs/seo-profile.md"
+  },
+  "run": {
+    "mode": "fix",
+    "date": "2026-11-17",
+    "pagesCrawled": 214,
+    "auditor": "seo-supervisor"
+  },
+  "summary": "Close to launch-ready: the tool pages are server-rendered and well structured, but two blockers remain. Shareable scan reports are indexable, and 36 DNS-lookup tool pages share most of their text. Two earlier fixes (canonicals and the sitemap host) are in and verified.",
+  "findings": [
+    {
+      "id": "F-001",
+      "rule": "TOOL-05",
+      "severity": "blocker",
+      "category": "Interactive tools",
+      "status": "open",
+      "title": "1,240 shareable scan reports are indexable",
+      "what": "Every scan creates a public `/r/{id}/` page with no noindex. 1,240 were found through internal links, each showing another company's domain and results. Related: CRAWL-10.",
+      "why": "Thousands of thin, near-identical pages look like scaled content to Google, and they publish data about other people's domains.",
+      "evidence": [
+        {
+          "url": "https://security.example/r/8f2k1/",
+          "detail": "200, no robots meta, no X-Robots-Tag"
+        },
+        {
+          "file": "src/app/r/[id]/page.tsx",
+          "line": 12,
+          "detail": "metadata has no robots field"
+        }
+      ],
+      "count": 1240,
+      "fix": "Send `X-Robots-Tag: noindex, follow` for `/r/:path*` in `next.config.ts` headers, keep them out of the sitemap, and expire them after 30 days."
+    },
+    {
+      "id": "F-002",
+      "rule": "CONTENT-04",
+      "severity": "blocker",
+      "category": "Headings & content",
+      "status": "open",
+      "title": "36 tool pages share most of their text",
+      "what": "The DNS-record tools (A, AAAA, MX, TXT, CNAME and 31 more) use one intro, one how-to and one FAQ set with only the record type swapped. The crawler found 418 page pairs sharing over 60% of their main text; the content scan found 36 intros collapse to 2 distinct texts.",
+      "why": "Pages that differ only by a swapped name are treated as scaled or doorway content and can hold down the whole site.",
+      "evidence": [
+        {
+          "url": "https://security.example/tools/mx-lookup/",
+          "detail": "78% shared with /tools/txt-lookup/"
+        },
+        {
+          "file": "src/data/tools/dns.ts",
+          "line": 8,
+          "detail": "intro: `Look up the ${type} records for any domain…`"
+        }
+      ],
+      "count": 418,
+      "fix": "Write a specific intro, checks and FAQs for each record type in `src/data/tools/dns.ts`, or merge the rare types into one DNS lookup tool with a type selector.",
+      "fixBy": "owner"
+    },
+    {
+      "id": "F-003",
+      "rule": "URL-04",
+      "severity": "high",
+      "category": "URLs & canonicals",
+      "status": "fixed",
+      "title": "52 canonicals pointed at the staging host",
+      "what": "Canonicals on tool and guide pages used `https://staging.security.example` because `NEXT_PUBLIC_SITE_URL` was unset in the production build.",
+      "why": "Canonicals on the wrong host send ranking signals to a site that shouldn't be indexed.",
+      "evidence": [
+        {
+          "url": "https://security.example/tools/ssl-checker/",
+          "detail": "canonical → https://staging.security.example/tools/ssl-checker/"
+        }
+      ],
+      "count": 52,
+      "fix": "Set the production origin in one place and use it for `metadataBase`.",
+      "fixed": {
+        "summary": "metadataBase now reads SITE_URL, which fails the build if missing; production env updated.",
+        "files": [
+          "src/lib/seo.ts",
+          "next.config.ts"
+        ],
+        "verified": "re-crawl 17 Nov: 0 canonicals on the wrong host"
+      }
+    },
+    {
+      "id": "F-004",
+      "rule": "MAP-02",
+      "severity": "high",
+      "category": "Sitemaps & robots",
+      "status": "fixed",
+      "title": "The sitemap listed localhost URLs",
+      "what": "All 214 `<loc>` entries used `http://localhost:3000`.",
+      "why": "Google ignores sitemap URLs on the wrong host, so new pages are found slowly.",
+      "evidence": [
+        {
+          "url": "https://security.example/sitemap.xml",
+          "detail": "<loc>http://localhost:3000/tools/</loc>"
+        }
+      ],
+      "count": 214,
+      "fix": "Build sitemap URLs from the production origin.",
+      "fixed": {
+        "summary": "sitemap.ts uses the same SITE_URL constant as the metadata helper.",
+        "files": [
+          "src/app/sitemap.ts"
+        ],
+        "verified": "re-crawl 17 Nov: all 214 URLs on https://security.example"
+      }
+    },
+    {
+      "id": "F-005",
+      "rule": "CRAWL-05",
+      "severity": "high",
+      "category": "Crawling & indexing",
+      "status": "open",
+      "title": "Unknown URLs return 200 on the first request (soft 404)",
+      "what": "A never-seen URL like `/tools/does-not-exist/` returns 200 with an empty page the first time, then 404 on later requests.",
+      "why": "Google wastes crawls on these and may index junk URLs.",
+      "evidence": [
+        {
+          "url": "https://security.example/seo-supervisor-404-probe-x1/",
+          "detail": "200, x-nextjs-postponed: 1"
+        }
+      ],
+      "fix": "Validate the slug at the top of `src/app/tools/[slug]/page.tsx` and call `notFound()` before anything suspends."
+    },
+    {
+      "id": "F-006",
+      "rule": "TOOL-03",
+      "severity": "medium",
+      "category": "Interactive tools",
+      "status": "open",
+      "title": "9 tool forms use placeholder text instead of labels",
+      "what": "The domain field on 9 tools has `placeholder=\"Enter domain\"` and no `<label>`; errors appear only as a red border.",
+      "why": "Unlabelled fields hurt accessibility and leave the page without clear text about what it does; visitors who hit an error leave.",
+      "evidence": [
+        {
+          "file": "src/components/tools/DomainInput.tsx",
+          "line": 21,
+          "detail": "<input placeholder=\"Enter domain\">"
+        }
+      ],
+      "count": 9,
+      "fix": "Add a visible `<label for>`, helper text via `aria-describedby`, and a text error with `role=alert` in the shared `DomainInput` component."
+    },
+    {
+      "id": "F-007",
+      "rule": "META-01",
+      "severity": "medium",
+      "category": "Metadata",
+      "status": "open",
+      "title": "14 titles are longer than 60 characters",
+      "what": "Tool titles append “Free Online Tool” and the brand, e.g. 74 characters for the SSL checker.",
+      "why": "Long titles get cut off in results, often losing the brand or the key phrase.",
+      "evidence": [
+        {
+          "url": "https://security.example/tools/ssl-checker/",
+          "detail": "74 chars: SSL Certificate Checker - Free Online SSL Test Tool | Example Security"
+        }
+      ],
+      "count": 14,
+      "fix": "Shorten the tool title pattern in `src/lib/seo.ts` to “{Tool} - Free {Thing} Check”."
+    },
+    {
+      "id": "F-008",
+      "rule": "AI-02",
+      "severity": "needs-decision",
+      "category": "AI search",
+      "status": "needs-decision",
+      "title": "robots.txt blocks OAI-SearchBot and PerplexityBot",
+      "what": "The robots file blocks every AI crawler, including the search crawlers that decide whether the site is cited in ChatGPT and Perplexity answers.",
+      "why": "Blocking search crawlers keeps a free-tools brand out of AI answers; blocking only training crawlers is a common middle ground.",
+      "evidence": [
+        {
+          "url": "https://security.example/robots.txt",
+          "detail": "User-agent: OAI-SearchBot / Disallow: /"
+        }
+      ],
+      "fix": "Decide the policy and record it in the SEO profile.",
+      "decision": {
+        "question": "Should AI search crawlers be allowed?",
+        "options": [
+          "Allow all AI crawlers",
+          "Block training crawlers only (GPTBot, ClaudeBot, Google-Extended, CCBot)",
+          "Block all (current)"
+        ],
+        "recommendation": "Block training only, so the tools can still be cited in AI answers."
+      }
+    },
+    {
+      "id": "F-009",
+      "rule": "TRUST-02",
+      "severity": "low",
+      "category": "Trust & security",
+      "status": "open",
+      "title": "No /.well-known/security.txt",
+      "what": "The path returns 404.",
+      "why": "Researchers look for it first; a security company without one looks careless.",
+      "evidence": [
+        {
+          "url": "https://security.example/.well-known/security.txt",
+          "detail": "status 404"
+        }
+      ],
+      "fix": "Publish one following RFC 9116 (template in the skill's examples/snippets.md)."
+    }
+  ],
+  "decisions": [
+    {
+      "question": "Launch the 36 DNS tools now or after rewriting?",
+      "context": "They're live in staging and linked from the tools hub.",
+      "options": [
+        "Rewrite first (2–3 days)",
+        "Launch 6 core types now, hold the rest"
+      ],
+      "recommendation": "Launch the 6 most-searched types now with unique copy and hold the rest."
+    }
+  ],
+  "passed": [
+    {
+      "rule": "REND-01",
+      "title": "Content is in the server HTML, not only in JavaScript",
+      "category": "Rendering",
+      "detail": "src/app/tools/[slug]/page.tsx is a server component"
+    },
+    {
+      "rule": "REND-02",
+      "title": "Collapsed content stays in the HTML",
+      "category": "Rendering"
+    },
+    {
+      "rule": "CONTENT-01",
+      "title": "Exactly one H1 per page",
+      "category": "Headings & content"
+    },
+    {
+      "rule": "CONTENT-02",
+      "title": "Heading levels are not skipped",
+      "category": "Headings & content"
+    },
+    {
+      "rule": "SCHEMA-01",
+      "title": "JSON-LD parses without errors",
+      "category": "Structured data"
+    },
+    {
+      "rule": "SCHEMA-02",
+      "title": "Organization and WebSite schema on the home page",
+      "category": "Structured data",
+      "detail": "src/app/layout.tsx:44"
+    },
+    {
+      "rule": "SCHEMA-04",
+      "title": "Schema matches what the page visibly shows",
+      "category": "Structured data"
+    },
+    {
+      "rule": "URL-02",
+      "title": "One trailing-slash style, the other variant redirects",
+      "category": "URLs & canonicals"
+    },
+    {
+      "rule": "CRAWL-07",
+      "title": "No internal links to broken pages",
+      "category": "Crawling & indexing"
+    },
+    {
+      "rule": "LINK-02",
+      "title": "No orphan pages",
+      "category": "Internal linking"
+    },
+    {
+      "rule": "TOOL-06",
+      "title": "Secrets never leave the browser",
+      "category": "Interactive tools",
+      "detail": "JWT and hash tools run client-side"
+    },
+    {
+      "rule": "PERF-03",
+      "title": "The first image is not lazy-loaded",
+      "category": "Performance"
+    }
+  ],
+  "notChecked": [
+    {
+      "area": "Core Web Vitals field data",
+      "reason": "Site not live yet; no CrUX data. Lighthouse lab scores are in notes."
+    },
+    {
+      "area": "CDN/WAF behaviour toward search and AI crawlers",
+      "reason": "Can't be seen from a local crawl; check after launch with URL Inspection."
+    }
+  ],
+  "notes": [
+    "Crawled a production build on localhost:3123, mapped to https://security.example.",
+    "Lighthouse (mobile, lab): LCP 1.9 s, CLS 0.02, TBT 140 ms on the SSL checker."
+  ]
+}

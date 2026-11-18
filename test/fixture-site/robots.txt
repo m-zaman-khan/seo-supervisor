@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /private/
+
+User-agent: GPTBot
+Disallow: /
+
+Sitemap: https://example-security.com/sitemap.xml

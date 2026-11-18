@@ -1,0 +1,33 @@
+# Performance and Core Web Vitals (PERF)
+
+> Thresholds checked **16 Nov 2026**, unchanged since INP replaced FID (March 2024): LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1, measured at the 75th percentile of real mobile visits.
+
+> Google says only Core Web Vitals are used by its ranking systems; other page-experience factors (HTTPS, popups) "don't directly help your website rank". Rate those by their effect on visitors and crawling, not as ranking levers.
+
+### PERF-07 · Popups don't block content or crawlers · high
+- **Check:** code: modals, consent walls, age gates, app banners.
+- **Pass:** no popup covers the whole page on arrival. Users aren't redirected to a separate consent or input page (Googlebot would see only that page). Required gates (age, legal) overlay the content instead of replacing it.
+
+### PERF-01 · Core Web Vitals pass on mobile · high
+- **Check:** field data (Search Console CWV report, PageSpeed Insights or CrUX) when the site is live; lab data (Lighthouse) before launch. The crawler can't measure CWV, so list it under `notChecked` unless you ran one of these.
+- **Fix:** send real-user metrics to analytics with the `web-vitals` library, and fix the worst template first.
+
+### PERF-02 · Each page loads only its own code · medium
+- **Check:** code: shared bundles importing every widget or heavy library; client components wrapping whole pages.
+- **Fix:** dynamic import per widget, with server rendering kept on for anything with text.
+
+### PERF-03 · The LCP element loads first · medium
+- **Check:** crawler `lazy-lcp`. Code: hero components.
+- **Pass:** the LCP is a real `<img>` (never a CSS background) or text. It's never lazy-loaded on any template, and gets `fetchpriority="high"` / framework `priority`. Exactly one preload per page. Fonts use `font-display: swap` and are self-hosted or preloaded.
+
+### PERF-04 · Layout doesn't jump · medium
+- **Check:** crawler `img-dimensions`. Code: banners injected after load, results areas that grow, embeds.
+- **Pass:** images and embeds have width and height or an aspect-ratio box. Dynamic areas reserve space. Nothing is inserted above content after load.
+
+### PERF-05 · Interactions stay fast · low
+- **Check:** code: heavy work on input (parsing, hashing, large lists).
+- **Fix:** debounce, move CPU work to a Web Worker, and show progress.
+
+### PERF-06 · Documents and third parties stay light · low
+- **Check:** crawler `html-size` (over 500 KB). Code: third-party scripts and iframes (maps, chat, video).
+- **Pass:** third-party domains kept to a minimum. Iframes load on interaction or below the fold and carry a descriptive `title`. Images are no more than about 2× their display size and use modern formats.
