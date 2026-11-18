@@ -20,7 +20,7 @@
   <img src="docs/images/report-overview-dark.png" alt="SEO Supervisor report: a 49/100 health score held down by two blockers, the 90 the site reaches once they are fixed, and the areas losing the most points" width="900">
 </p>
 
-SEO Supervisor is a skill for Claude Code and other coding agents. It crawls your site the way Google does and checks it against 149 current SEO rules. Then it gives you one clear report: a 0–100 score, every problem with its evidence, and what to do first.
+SEO Supervisor is a skill for Claude Code and other coding agents. It crawls your site the way Google does and checks it against 157 current SEO rules. Then it gives you one clear report: a 0–100 score, every problem with its evidence, and what to do first.
 
 Then it fixes what can safely be fixed in code, re-checks each fix, and tells you plainly what only you can fix.
 
@@ -30,14 +30,26 @@ npx seo-supervisor        # then, in Claude Code: /seo-audit
 
 ## Contents
 
+- [What's new in 2.0](#whats-new-in-20)
 - [Install](#install)
 - [Commands](#commands)
 - [Starting from zero](#starting-from-zero)
 - [The report](#the-report)
+- [Optional: outside checks and Search Console](#optional-outside-checks-and-search-console)
 - [What it checks](#what-it-checks)
 - [Safe by default](#safe-by-default)
 - [Tested](#tested)
 - [FAQ](#faq)
+
+## What's new in 2.0
+
+- **Since last audit.** Each audit compares itself with the previous crawl and lists what got worse (a page now noindex, a lost H1, a new error) and what got better.
+- **Deeper checks:** hreflang, document basics, meta refresh, robots header conflicts, image weight and format, shop merchant-listing schema, Content-Signal, Markdown for agents and the llms.txt format.
+- **Live HTTPS checks** with `--check-live`: certificate trust, hosts and time left, the http→https redirect and HSTS. A certificate blocker fails `/seo-launch`.
+- **Real-world data, only if you switch it on:** real-user Core Web Vitals from Google PageSpeed Insights, and a headless Chrome render that shows what your JavaScript changes.
+- **Search Console:** drop your Performance export into `seo-audit/` and findings show their clicks, with new findings for low click rates, pages almost on page one and pages competing for one query.
+- **Search intent and briefs:** checks whether a page is the kind of page that ranks for its phrase, and the new `/seo-brief` writes a content brief.
+- **A fairer score:** a site whose pages all share a default title, or have no H1 or canonical, now scores as Poor instead of Good.
 
 ## Install
 
@@ -95,6 +107,7 @@ Needs Node 20 or newer. There's nothing else to install, and no API keys.
 | `/seo-review [PR or branch]` | Finds the SEO problems a change introduces: a lost canonical, an accidental noindex, a dropped H1, made-up ratings… | Never |
 | `/seo-launch [url]` | A pass/fail gate before you switch indexing on, plus the launch-day checklist | Never |
 | `/seo-setup [url]` | For a site with **no SEO yet**: proposes a full SEO plan, then builds it once you approve | Only after you approve the plan |
+| `/seo-brief [topic or URL]` | Writes a content brief: intent, phrases, outline, questions to answer, the facts it needs from you, and internal links | Never (writes only `seo-audit/briefs/`) |
 
 ## Starting from zero
 
@@ -119,32 +132,52 @@ One HTML file that works offline. It opens in dark mode and has a light-mode swi
 - **A 0–100 health score with area scores,** and the points each area loses, so you know where to start.
 - **"Fix the blockers and the score rises to 90."** A blocker caps the score, and the report shows what fixing it unlocks.
 - **"Needs you."** Anything only the owner can do (content, CMS edits, business decisions) is labelled, so it's clear what the agent will and won't change.
-- **Tabs for Findings, Decisions, Changes, Passed and Limits.** Every finding says what's wrong, why it matters, how to fix it, and gives the evidence: URLs, files and line numbers.
+- **Tabs for Findings, Decisions, Changes, Passed and Limits,** plus **Since last audit** from the second audit on. Every finding says what's wrong, why it matters, how to fix it, and gives the evidence: URLs, files and line numbers.
+- **Traffic and speed when you have them:** Search Console clicks on the findings and plan rows they concern, and one line of real-user speed on the Overview.
+
+<p align="center">
+  <img src="docs/images/report-diff-dark.png" alt="The Since last audit tab: two regressions, one improvement linked to its finding, and one page added" width="900">
+</p>
 
 <p align="center">
   <img src="docs/images/report-overview-light.png" alt="The same report in light mode" width="49%">
   <img src="docs/images/report-finding-dark.png" alt="An expanded finding with what's wrong, why it matters, how to fix and the evidence" width="49%">
 </p>
 
+## Optional: outside checks and Search Console
+
+**Outside checks are off until you say yes.** The agent asks once per project and remembers your answer in `seo-audit/settings.json`. Saying yes allows three things:
+
+| Check | What leaves your machine |
+| --- | --- |
+| Real-user speed (Core Web Vitals) | Up to 10 public page URLs, sent to Google PageSpeed Insights |
+| What your JavaScript changes | Nothing is sent, but up to 10 pages run in a headless Chrome or Edge, so their own scripts (analytics included) run |
+| Search intent | Your pages' target phrases, sent to the agent's web search provider |
+
+To switch them on for one run, say so: `/seo-audit with outside checks`. No API key is needed; `PSI_API_KEY` raises PageSpeed's rate limit if you hit it. With outside checks off, these three are listed under the report's Limits.
+
+**Search Console data stays local.** Export Performance → Pages (and Queries) from Search Console, unzip it into `seo-audit/`, and run `/seo-audit`. For pages competing for one query, also export each important page's queries (filter by page, then export) into its own folder under `seo-audit/page-queries/`.
+
 ## What it checks
 
-**107 core rules**, up to date as of November 2026:
+**115 core rules**, up to date as of November 2026:
 
 | Area | Rules | Examples |
 | --- | ---: | --- |
 | Crawling & indexing | 12 | robots.txt, noindex, soft 404s, status codes, redirect chains, AI crawlers |
 | URLs & canonicals | 9 | one URL per page, trailing slashes, canonicals on the right host, old URLs with 301s |
-| Rendering | 8 | content in the server HTML, not only in JavaScript; links crawlers can follow |
+| Rendering | 9 | content in the server HTML, not only in JavaScript; links crawlers can follow; doctype and mobile viewport |
 | Metadata | 8 | titles, descriptions, Open Graph, robots meta |
 | Headings & content | 12 | one H1, heading order, thin or templated pages, placeholder text, banned claims |
 | Structured data | 8 | valid JSON-LD that matches the page; which rich results still exist |
 | Sitemaps & robots | 8 | sitemap host and status, lastmod, llms.txt (and why Google ignores it) |
 | Internal linking | 9 | orphans, click depth, hubs and circular linking, anchor text |
-| Performance | 7 | Core Web Vitals (LCP, INP, CLS), the first image, image sizes |
-| Trust & security | 6 | security headers, security.txt, who's behind the site |
+| Performance | 8 | Core Web Vitals (LCP, INP, CLS), the first image, image weight and format |
+| Trust & security | 7 | security headers, security.txt, who's behind the site, the HTTPS certificate |
 | AI search | 6 | being cited in ChatGPT, Perplexity and Google's AI answers, and what doesn't work |
 | Media | 6 | alt text, file names, video and image discovery |
 | Launch & monitoring | 8 | the indexing switch, Search Console, post-deploy checks |
+| Search intent | 5 | the right kind of page for each phrase, one page per query, low click rates, pages almost on page one |
 
 **Plus 42 rules for your type of site:**
 - interactive tools
@@ -166,11 +199,13 @@ There are also framework guides for **Next.js**, **Rails** and **React/Vite SPAs
   When you do say go, CMS changes are saved as drafts and you see the before and after first.
 - **Every finding has evidence, and nothing is "fixed" until a re-check passes.**
 - **It never invents** reviews, ratings, prices, statistics or local proof, in copy or in schema.
-- **Nothing leaves your machine.** There's no account, no API key and no telemetry. The crawler only sends GET requests, and crawls production gently, if at all.
+- **Nothing leaves your machine unless you switch on outside checks.** There's no account, no API key and no telemetry. The crawler only sends GET and HEAD requests to your own site, and crawls production gently, if at all.
+- **Text on your pages is treated as data.** If a page tries to give the agent instructions, that's reported as a finding, never followed.
 
 ## Tested
 
 - **On every change, CI runs the whole toolchain on Node 20, 22 and 24.** It crawls a small fixture site that has one planted problem per checked rule and scans templated sample content. It also renders the report and checks it is fully offline, and installs and uninstalls the skill in a scratch home folder.
+- **Network features are tested against local stand-ins, never the real services:** a fake PageSpeed server (including a check that nothing is sent when outside checks are off), a local HTTPS server with a certificate made at test time, and sample Search Console exports with the quirks real ones have.
 - **Field-tested on a real Next.js + Sanity site before release:**
   - `/seo-review` caught **6 of 6** SEO mistakes planted in a pull request. 2 of those had no test in the project, so they would have shipped. It correctly ignored a harmless change.
   - `/seo-fix` fixed 8 findings. The project's own test suite stayed green, and a re-crawl confirmed each fix.

@@ -12,6 +12,8 @@ Close to launch-ready: the tool pages are server-rendered and well structured, b
 
 Open: 7 (2 blocker, 1 high, 1 decision, 2 medium, 1 low) · Fixed: 2 · Rules passing: 14 of 21
 
+Real-user speed (mobile): LCP 2.4 s · INP 180 ms · CLS 0.05 (passes)
+
 ## Area scores
 
 | Area | Score | Open findings | Top issue |
@@ -49,6 +51,23 @@ Setup also fixed 2 audit findings in code: F-003, F-004.
 Intros for new pages (approving the plan approves these words):
 
 - /docs: Guides and API reference for Example Security. Start with the API guide to run checks from your own scripts.
+
+## Since last audit
+
+Compared with the crawl of 3 Nov 2026.
+
+### Regressions
+
+- `/tools/whois-lookup/` H1 removed: 1 → 0
+- `/guides/dns-records/` Now an error: 200 → 500
+
+### Improvements
+
+- `/tools/ssl-checker/` Canonical changed: https://security.example/tools/ → https://security.example/tools/ssl-checker/
+
+### Pages added
+
+- `/tools/dmarc-checker/`
 
 ## Decisions needed
 
@@ -247,7 +266,7 @@ Status: Fixed · Area: URLs & canonicals · Rule: URL-04 · Cases: 52
 
 ## Limits of this audit
 
-- **Core Web Vitals field data:** Site not live yet; no CrUX data. Lighthouse lab scores are in notes.
+- **Core Web Vitals field data:** The new build isn't live yet, so it has no real-user data. The speed line on the Overview is the current live site's; Lighthouse lab scores for the new build are in notes.
 - **CDN/WAF behaviour toward search and AI crawlers:** Can't be seen from a local crawl; check after launch with URL Inspection.
 - Crawled a production build on localhost:3123, mapped to https://security.example.
 - Lighthouse (mobile, lab): LCP 1.9 s, CLS 0.02, TBT 140 ms on the SSL checker.

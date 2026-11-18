@@ -9,7 +9,7 @@ import { CHECKS as TLS_CHECKS, checkLive } from "./checks/tls.mjs";
 import { CHECKS as SPEED_CHECKS, checkSpeed, sampleUrls, PSI_ENDPOINT } from "./checks/speed.mjs";
 import { CHECKS as RENDER_CHECKS, findBrowser, renderPage, compareRendered } from "./checks/render.mjs";
 
-const VERSION = "1.0.0";
+const VERSION = "2.0.0";
 const UA = "seo-supervisor-crawler/" + VERSION;
 
 // ---------- args ----------

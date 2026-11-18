@@ -293,7 +293,7 @@
   "notChecked": [
     {
       "area": "Core Web Vitals field data",
-      "reason": "Site not live yet; no CrUX data. Lighthouse lab scores are in notes."
+      "reason": "The new build isn't live yet, so it has no real-user data. The speed line on the Overview is the current live site's; Lighthouse lab scores for the new build are in notes."
     },
     {
       "area": "CDN/WAF behaviour toward search and AI crawlers",
@@ -436,5 +436,97 @@
       "F-003",
       "F-004"
     ]
-  }
+  },
+  "diff": {
+    "since": "2026-11-03T09:00:00.000Z",
+    "regressions": [
+      {
+        "path": "/tools/whois-lookup/",
+        "kind": "h1-removed",
+        "before": 1,
+        "after": 0
+      },
+      {
+        "path": "/guides/dns-records/",
+        "kind": "status-error",
+        "before": 200,
+        "after": 500
+      }
+    ],
+    "improvements": [
+      {
+        "path": "/tools/ssl-checker/",
+        "kind": "canonical-changed",
+        "before": "https://security.example/tools/",
+        "after": "https://security.example/tools/ssl-checker/"
+      }
+    ],
+    "changed": [],
+    "added": [
+      "/tools/dmarc-checker/"
+    ],
+    "removed": []
+  },
+  "speed": {
+    "strategy": "mobile",
+    "samples": [
+      {
+        "url": "https://security.example/",
+        "field": {
+          "lcp": 2300,
+          "inp": 170,
+          "cls": 0.04
+        },
+        "origin": {
+          "lcp": 2400,
+          "inp": 180,
+          "cls": 0.05
+        },
+        "lab": {
+          "lcp": 2100,
+          "cls": 0.02,
+          "tbt": 150
+        }
+      },
+      {
+        "url": "https://security.example/tools/ssl-checker/",
+        "field": {
+          "lcp": 2450,
+          "inp": 190,
+          "cls": 0.03
+        },
+        "origin": {
+          "lcp": 2400,
+          "inp": 180,
+          "cls": 0.05
+        },
+        "lab": {
+          "lcp": 1900,
+          "cls": 0.02,
+          "tbt": 140
+        }
+      }
+    ]
+  },
+  "traffic": {
+    "/": {
+      "clicks": 1840,
+      "impressions": 52300,
+      "ctr": 0.0352,
+      "position": 6.4
+    },
+    "/tools/ssl-checker/": {
+      "clicks": 960,
+      "impressions": 31200,
+      "ctr": 0.0308,
+      "position": 7.9
+    },
+    "/tools/mx-lookup/": {
+      "clicks": 120,
+      "impressions": 9800,
+      "ctr": 0.0122,
+      "position": 14.2
+    }
+  },
+  "trafficPeriod": "Last 3 months"
 }
