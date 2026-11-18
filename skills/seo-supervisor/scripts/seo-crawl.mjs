@@ -693,7 +693,7 @@ const report = {
   startUrl: START.href, siteOrigin: EXPECT_ORIGIN, options: { max: MAX, concurrency: CONC, ignoreNoindex: IGNORE_NOINDEX, banned: BANNED ? String(BANNED) : null, verify: VERIFY ? String(VERIFY) : null, redirectSources: redirectSources.length, trailingSlash: SLASH, detectedSlashStyle: style, includeQuery: INCLUDE_QUERY, brand: BRAND || null },
   stats: { fetched, htmlPages: htmlPages.length, sitemapUrls: sm.entries.length, sitemapFiles: sm.files, robotsTxt: robotsRes.status },
   notes, findings: out, passed, notChecked,
-  pages: htmlPages.map(p => ({ url: p.finalUrl, status: p.status, depth: p.depth ?? null, inSitemap: smSet.has(p.url), noindex: p.noindex, canonical: canonicalFor(p), title: p.title, words: p.words, h1: p.h1Count, schema: p.types, linksOut: p.links.length, linksIn: inbound.get(p.finalUrl) || 0 })),
+  pages: htmlPages.map(p => ({ url: p.finalUrl, status: p.status, depth: p.depth ?? null, inSitemap: smSet.has(p.url), noindex: p.noindex, canonical: canonicalFor(p), title: p.title, description: p.description, h1Text: p.headings.find(h => h.level === 1)?.text ?? null, words: p.words, h1: p.h1Count, schema: p.types, linksOut: p.links.length, linksIn: inbound.get(p.finalUrl) || 0 })),
 };
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, JSON.stringify(report, null, 2));
