@@ -14,6 +14,7 @@
 - **Check:** code: server/CDN config. Probe `http://` and the other `www` variant against production when you're allowed to.
 - **Pass:** `http` and the non-preferred host 301 to `https://` plus the preferred host in one hop. Retired staging hosts redirect or sit behind auth.
 - **Fix:** add the redirects at the edge (nginx, CDN or host settings).
+- **Live check:** `--check-live` follows `http://` on the production host and flags no redirect (high) or more than one hop to HTTPS (medium). Before launch it's listed under Limits.
 
 ### URL-04 · Every indexable page has a self-referencing, absolute canonical · high
 - **Check:** crawler `canonical-missing`, `canonical-multiple`, `canonical-not-self`, `canonical-query`, `canonical-origin`, `canonical-bad-target`. Code: the metadata helper.

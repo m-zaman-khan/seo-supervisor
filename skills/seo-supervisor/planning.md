@@ -59,11 +59,16 @@ Crawl and run a content scan exactly as an audit does (SKILL.md step 2, pre-laun
 - **Anything the owner must supply goes in `owner`:** `{ "needs": "copy" | "facts" | "decision" | "yes", "what", "draft", "done": false }`.
 - **A missing parent page also gets `intro`:** its 1–2 sentence intro, built only from facts already on the site. The Plan tab shows it, so approving the plan approves exactly these words.
 
-**Target phrases.**
-- Take them from what the site and the business actually offer, in the words a customer would search with. Use the owner's input too.
-- Use a Search Console export or keyword CSV only if the owner gives one.
-- Never state or invent search volumes, difficulty or rankings.
-- Each row also gets an `intent`: who searches this, and what they want.
+**Target phrases.** Never guessed. Each one comes from a recorded source:
+- **The site and the owner:** what the business actually offers, in the words a customer would search with, plus the owner's input.
+- **Search Console:** when `seo-audit/` holds the Performance export, run `gsc-import.mjs` (SKILL.md step 2). Site-level queries are *suggested* phrases and are labelled as suggestions. A per-page export's queries belong to that page.
+- **A keyword CSV,** only if the owner gives one.
+
+Never state or invent search volumes, difficulty or rankings. Each row also gets an `intent`: who searches this, and what they want. Once the plan is approved, copy the phrases into the profile's "Target phrases" table (page, phrase, source), so later audits know them.
+
+**Search intent.** With outside checks on and a web search tool available, check each planned page's phrase as `rules/search-intent.md` says (INTENT-01). If what ranks is a different kind of page, change the row's page type or its phrase. Without them, list intent under Limits.
+
+**Topic clusters** (`strategy.md`) group the phrases and pages into hubs and spokes. They shape `linksTo` and the order of pages that already qualify. A cluster gap never becomes a plan row. It becomes a content opportunity (INTENT-05): a needs-decision finding with `fixBy: "owner"` that states its evidence.
 
 **New pages, rarely, and only from evidence on the site:**
 - **A missing parent:** the site's own URLs nest under a path with no page, e.g. `/docs/install` exists but `/docs` doesn't.
@@ -121,7 +126,7 @@ Run fix mode (SKILL.md step 5) on every finding in `plan.alsoFixes`, most seriou
 
 ## 6. Draft the content the owner must approve
 
-- **One draft per page:** for each row that needs copy, write `seo-audit/drafts/<slug>.md`. It holds an intro, a section outline, and FAQs based on real customer questions.
+- **One draft per page:** for each row that needs copy, write `seo-audit/drafts/<slug>.md`. It starts with the brief from `strategy.md` (Intent · Target and related phrases · Outline · Questions to answer · Facts needed from the owner · Internal links in and out), followed by the copy: an intro, the sections and FAQs based on real customer questions. The owner approves both with one yes.
 - **Facts:** use only facts from the site or the owner. Write anything missing as a visible placeholder, such as `[owner: a real customer result to quote]`. Never invent it.
 - **Linking:** set the row's `owner.draft` to the file.
 - **Creating the page:** new pages other than missing parents are created only after the owner approves their draft. On a CMS site, create them as CMS drafts, with the go-ahead.

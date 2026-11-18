@@ -13,6 +13,7 @@
 ### MEDIA-03 · Each page signals its preferred thumbnail · medium
 - **Check:** `primaryImageOfPage`, `image` on the page's `mainEntity`, or `og:image`.
 - **Pass:** a relevant image, not a logo, text-heavy graphic or extreme aspect ratio. Publishers wanting Google Discover: images at least 1200 px wide (over 300,000 pixels, ideally 16:9) plus `max-image-preview:large`.
+- **Crawler:** flags indexable pages whose robots rules don't include `max-image-preview:large` (`no-large-preview`, low), counted once for the site.
 
 ### MEDIA-04 · Image sitemaps only where they help · low
 - Optional. Useful when images live on a CDN or are loaded in ways crawlers miss. Only `<image:loc>` is used; verify the CDN host in Search Console.

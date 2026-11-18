@@ -11,7 +11,8 @@
     "skills/",
     "commands/",
     ".claude-plugin/",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "NOTICE"
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs",

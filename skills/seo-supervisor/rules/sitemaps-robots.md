@@ -26,11 +26,13 @@
 - **Check:** crawler `ai-bots-blocked` (needs-decision).
 - **Default:** allow them; being cited in AI answers is distribution.
 - **Middle ground:** block the training crawlers (`GPTBot`, `ClaudeBot`, `Google-Extended`, `CCBot`, `Applebot-Extended`) and allow the search and user crawlers (`OAI-SearchBot`, `ChatGPT-User`, `Claude-SearchBot`, `Claude-User`, `PerplexityBot`). Record the choice in the profile. Details, Bing's new AI directives and the vendor IP lists are in `rules/ai-search.md` (AI-02, AI-03).
+- **Content-Signal:** a `Content-Signal:` line in robots.txt (e.g. `search=yes, ai-train=no`) is an emerging way to state the policy. The crawler flags only invalid values (keys other than `search`, `ai-input`, `ai-train`, or values other than `yes`/`no`), at low severity. Leaving it out is fine.
 
 ### MAP-07 · /llms.txt, optional · low
 - **Check:** crawler `llms-txt`.
 - **Fact:** Google Search ignores llms.txt and it doesn't affect ranking (clarified June 2026). No major AI crawler documents using it either. It's harmless; never present it as a ranking or AI-visibility fix.
 - **Pass (if kept):** Markdown with one line on what the site is, then each section with its key pages (name, URL, one sentence), generated so it can't drift from the real pages.
+- **Structure:** when llms.txt exists, the crawler checks it starts with a `# Site name` heading and contains Markdown links (`llms-structure`, low).
 
 ### MAP-08 · Sitemaps are submitted, and changes are pinged · low
 - **Check:** ask the owner, or look for automation.

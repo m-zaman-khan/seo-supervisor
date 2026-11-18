@@ -18,6 +18,7 @@
 ### META-04 · Open Graph and Twitter tags on every page; key pages get their own image · low
 - **Check:** crawler `og-missing`. Code: does a per-page `openGraph` object replace the inherited image? (A common Next.js trap.)
 - **Fix:** set a default image in the helper and generate images for key page types.
+- **Crawler:** flags an `og:url` that differs from the page's canonical (`og-url-mismatch`).
 
 ### META-05 · The page language is declared · low
 - **Check:** crawler `lang-missing`.
@@ -27,6 +28,7 @@
 - **Check:** code: robots values in the metadata helper.
 - **Pass:** indexable pages are `index, follow` with `max-image-preview:large` and `max-snippet:-1`. Search, filter and result pages are `noindex, follow`. Account, admin, sign-in and 404 pages are `noindex, nofollow`.
 - **Fix:** derive it from the page type. A plain string robots value can silently override the layout's richer object.
+- **Crawler:** flags a page whose robots meta and `X-Robots-Tag` header disagree on indexing (`robots-conflict`, high). Search engines follow the stricter of the two.
 
 ### META-07 · Google Search Console and Bing Webmaster Tools are verified · medium
 - **Check:** code: verification meta or DNS TXT (ask the owner if you can't tell).
@@ -37,3 +39,4 @@
 - **Pass:** each version lists all the others and itself, plus `x-default` (for language selectors and auto-redirecting home pages), with fully qualified URLs. Codes are ISO 639-1 language codes with an optional ISO 3166-1 region (`en-GB`); `UK`, `EU` and `es-419` are silently ignored. Each version canonicalizes to itself in the same language. Use one method only (HTML, header or sitemap).
 - **Never:** auto-redirect by IP or `Accept-Language` (Googlebot usually crawls from the US with no `Accept-Language`). Use a banner suggesting the other version instead.
 - **Fix:** remove one-sided or self-only hreflang that serves no purpose, unless the site deliberately targets one region.
+- **Crawler:** checks return links, a self entry, `x-default`, valid ISO 639-1 language and ISO 3166-1 region codes (`en-uk` is invalid; it's `en-gb`), and targets that are 200, indexable and canonical. URLs are compared by path, so relative links and slash variants match.

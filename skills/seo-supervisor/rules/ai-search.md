@@ -28,6 +28,7 @@
 
 ### AI-05 · Pages work for AI agents that browse · low
 - **Check:** code: native `<button>` and `<a href>`, labelled form inputs, no transparent overlays catching clicks, a stable layout. Chrome Lighthouse has an informational "Agentic browsing" audit.
+- **Markdown negotiation:** if the site answers `Accept: text/markdown` with Markdown, it must send `Vary: Accept` so caches keep the two apart (`markdown-no-vary`, low). Not offering Markdown is fine.
 
 ### AI-06 · AI visibility is measured · low
 - Google Search Console's Generative AI performance report (impressions by page, since June 2026). AI Overview and AI Mode clicks are counted inside web search totals. Bing Webmaster Tools' AI Performance report shows Copilot citations and grounding queries. Note these as monitoring steps; the audit can't read them without access.

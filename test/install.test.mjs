@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { ROOT, node, tmp } from "./helpers.mjs";
 
 const BIN = join(ROOT, "bin", "seo-supervisor.mjs");
-const COMMANDS = ["seo-audit", "seo-fix", "seo-review", "seo-launch", "seo-setup"];
+const COMMANDS = ["seo-audit", "seo-fix", "seo-review", "seo-launch", "seo-setup", "seo-brief"];
 const withHome = home => {
   const env = { ...process.env, HOME: home, USERPROFILE: home };
   for (const k of ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME", "APPDATA", "GROK_HOME"]) delete env[k];

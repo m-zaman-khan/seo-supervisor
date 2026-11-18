@@ -3,6 +3,7 @@
 ### TRUST-01 · HTTPS with security headers · low (high for security, finance and health sites)
 - **Check:** crawler `sec-headers`, `mixed-content`. Check production too: CDNs often add or strip headers.
 - **Pass:** HTTPS only. `Strict-Transport-Security`, `Content-Security-Policy` (with `frame-ancestors`), `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`. No HTTP resources on HTTPS pages.
+- **Live check:** `--check-live` reads HSTS from the production origin itself (`no-hsts`), since a CDN often adds or strips it.
 
 ### TRUST-02 · /.well-known/security.txt is published · low (high for security companies)
 - **Check:** crawler `security-txt`.
@@ -23,3 +24,9 @@
 
 ### TRUST-06 · The site passes its own claims · medium
 - **Check:** whatever the site sells or tests, it does well itself. A security company scores well on security headers (with HSTS on the preload list once stable) and DNS: SPF, DKIM, DMARC at `p=reject`, CAA, and DNSSEC where the DNS host supports it. A speed agency passes CWV. An accessibility firm passes WCAG basics.
+
+### TRUST-07 · The HTTPS certificate is trusted, covers every host and renews in time · blocker
+- **Check:** `--check-live` on the production origin: trust, both the apex and www host (when the other host answers), and time left.
+- **Pass:** trusted; covers every host that answers; more than a third of its lifetime left, and at least 30 days.
+- **Severity:** blocker when untrusted, missing a host, expired or under 2 days left; high when under a third of its lifetime (or 30 days) is left. The threshold scales because certificates are getting shorter: CA/Browser Forum limits fall to 200 days from March 2026 and 47 days by 2029, and some CAs issue 6-day certificates. A healthy short certificate isn't flagged.
+- **Fix:** automatic renewal at the host or CDN, issued for both hosts.

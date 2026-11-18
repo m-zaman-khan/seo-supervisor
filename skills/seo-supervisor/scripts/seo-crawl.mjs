@@ -90,7 +90,7 @@ const RULES = {
   "LINK-02": ["No orphan pages", "Internal linking"],
   "LINK-05": ["Descriptive anchor text", "Internal linking"],
   "LINK-06": ["Link counts per page stay reasonable", "Internal linking"],
-  "PERF-01": ["Core Web Vitals pass for real visitors", "Performance"],
+  "PERF-01": ["Core Web Vitals pass on mobile", "Performance"],
   "PERF-03": ["The first image is not lazy-loaded", "Performance"],
   "PERF-04": ["Images reserve their space (width and height)", "Performance"],
   "PERF-06": ["HTML documents stay lightweight", "Performance"],
@@ -104,7 +104,7 @@ const RULES = {
   "REND-08": ["HTML stays under Googlebot's 2 MB limit", "Rendering"],
   "META-08": ["hreflang only when there are real language or region versions", "Metadata"],
   "REND-09": ["Pages declare a doctype, a charset and a mobile viewport", "Rendering"],
-  "META-06": ["Robots meta and the X-Robots-Tag header agree", "Metadata"],
+  "META-06": ["Robots meta depends on page type, using the object form", "Metadata"],
   "MEDIA-03": ["Each page signals its preferred thumbnail", "Media"],
   "PERF-08": ["Images are a sensible weight and in a modern format", "Performance"],
 };
@@ -944,6 +944,8 @@ function analyze(url, html, headers) {
     shingles = new Set();
     for (let i = 0; i + 5 <= mw.length; i++) shingles.add(mw.slice(i, i + 5).join(" "));
   }
+  // Merchant listing fields (SHOP-05).
+  // https://developers.google.com/search/docs/appearance/structured-data/merchant-listing
   const products = nodes
     .filter(n => typesOf(n).includes("Product"))
     .map(n => {

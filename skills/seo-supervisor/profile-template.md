@@ -53,3 +53,14 @@ Last reviewed: {YYYY-MM-DD} · Owner: {role}
 ## Accepted exceptions
 | Rule | Where | Why accepted | Until |
 | --- | --- | --- | --- |
+
+## Outside checks
+**Outside checks:** {on / off} · asked {date}
+On means the audit may send up to 10 public URLs to Google PageSpeed Insights, render up to 10 pages in headless Chrome (the site's own scripts run), and look up target phrases with the agent's web search.
+
+## Target phrases
+Only phrases with a recorded source. Never guessed; no invented volumes.
+
+| Page | Phrase | Source |
+| --- | --- | --- |
+| {/pricing/} | {phrase} | {owner · Search Console page export, {date} · approved plan, {date}} |

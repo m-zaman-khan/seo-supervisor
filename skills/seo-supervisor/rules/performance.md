@@ -11,6 +11,7 @@
 ### PERF-01 · Core Web Vitals pass on mobile · high
 - **Check:** field data (Search Console CWV report, PageSpeed Insights or CrUX) when the site is live; lab data (Lighthouse) before launch. The crawler can't measure CWV, so list it under `notChecked` unless you ran one of these.
 - **Fix:** send real-user metrics to analytics with the `web-vitals` library, and fix the worst template first.
+- **Data source:** with outside checks on, the crawler (`--outside`) fetches field data from PageSpeed Insights for the home page and one URL per section, up to 10, and flags a section whose 75th-percentile LCP, INP or CLS fails (`cwv-fail`). Without it, or before launch, PERF-01 stays under Limits.
 
 ### PERF-02 · Each page loads only its own code · medium
 - **Check:** code: shared bundles importing every widget or heavy library; client components wrapping whole pages.
@@ -31,3 +32,8 @@
 ### PERF-06 · Documents and third parties stay light · low
 - **Check:** crawler `html-size` (over 500 KB). Code: third-party scripts and iframes (maps, chat, video).
 - **Pass:** third-party domains kept to a minimum. Iframes load on interaction or below the fold and carry a descriptive `title`. Images are no more than about 2× their display size and use modern formats.
+
+### PERF-08 · Images are a sensible weight and in a modern format · low
+- **Check:** the crawler sends a HEAD request for up to 50 same-origin images on indexable pages, with a browser's `Accept` header.
+- **Pass:** no image over 200 KB, and no JPEG or PNG over 100 KB where WebP or AVIF would serve. These are this skill's working thresholds, not Google's; Lighthouse's image audits measure the same thing as savings.
+- **Fix:** resize to the displayed size, compress, and serve WebP or AVIF through the framework's image component or the CDN.

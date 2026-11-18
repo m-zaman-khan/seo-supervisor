@@ -28,6 +28,7 @@ Google renders JavaScript, but later and not always. Most AI crawlers (GPTBot, C
   - **Canonical:** set it in the server HTML; JavaScript must not change it.
   - **Status:** only 200 pages are reliably rendered. SPA "not found" views redirect to a URL the server answers with 404, or inject noindex.
   - **Routing:** use the History API, not `#` routes.
+- **Crawler:** with outside checks on and Chrome or Edge installed, up to 10 sample pages are rendered headless and compared with the raw HTML: title, canonical, robots, H1, JSON-LD count and link count (`render-changes-head`, and `render-adds-content` under REND-01). Pages with a meta refresh are skipped.
 
 ### REND-07 · Mobile shows the same content as desktop · blocker
 - **Check:** compare a mobile and a desktop render of key templates (Google indexes mobile-first, fully since 2024).
@@ -40,3 +41,8 @@ Google renders JavaScript, but later and not always. Most AI crawlers (GPTBot, C
 ### REND-05 · One title, canonical, robots tag and schema graph per page · high
 - **Check:** crawler `title-multiple`, `canonical-multiple`. Code: layouts that hard-code a title, or two SEO plugins or helpers both writing tags.
 - **Fix:** emit head tags from one place.
+
+### REND-09 · Pages declare a doctype, a charset and a mobile viewport · medium
+- **Check:** the crawler: `<!doctype html>` first, a charset (meta tag or Content-Type header) and `<meta name="viewport" content="width=device-width, …">`.
+- **Pass:** every page has all three, from the shared layout.
+- **Fix:** add them to the root layout. Without a doctype browsers use quirks mode; without a viewport phones show a zoomed-out desktop page, and Google indexes the mobile version.
