@@ -93,6 +93,14 @@ test("the panel shows the summary, the structure, the table, owner labels and th
   assert.match(planHtml({ status: "proposed", pages: [] }, ctx), /No pages in this plan yet/);
 });
 
+test("a row without a target phrase shows a dash instead of an empty cell", () => {
+  const html = planHtml(
+    { status: "proposed", pages: [{ url: "/dashboard", type: "App screen", status: "to-build" }] },
+    ctx,
+  );
+  assert.match(html, /<span class="pt"><span class="quiet">—<\/span><\/span>/);
+});
+
 test("the Markdown section starts with its heading and has one table row per plan row", () => {
   const md = planMarkdown({ status: "approved", pages: rows });
   assert.equal(md[0], "## SEO plan");
