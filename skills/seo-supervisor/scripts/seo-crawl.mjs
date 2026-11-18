@@ -1857,8 +1857,10 @@ if (CHECK_LIVE && EXPECT_ORIGIN.startsWith("https:") && !isLocal(EXPECT_ORIGIN))
 
 // ---------- outside checks: real-user speed ----------
 let speed;
+let speedReason = OUTSIDE
+  ? "Speed data needs the public, live site; pass --site-origin."
+  : "Outside checks are off. With the owner's go-ahead, --outside fetches real-user speed data from Google PageSpeed Insights.";
 if (OUTSIDE && !isLocal(EXPECT_ORIGIN)) {
-  evalRules("PERF-01");
   const urls = sampleUrls(
     htmlPages
       .filter(p => indexable(p) && !p.clientOnly)
@@ -1872,21 +1874,23 @@ if (OUTSIDE && !isLocal(EXPECT_ORIGIN)) {
     endpoint: typeof args["psi-endpoint"] === "string" ? args["psi-endpoint"] : PSI_ENDPOINT,
     key: process.env.PSI_API_KEY,
   });
-  speed = { strategy: "mobile", samples: r.samples };
+  if (r.samples.length) speed = { strategy: "mobile", samples: r.samples };
   notes.push(...r.notes);
-} else
-  notChecked.push({
-    rule: "PERF-01",
-    area: `PERF-01 ${RULES["PERF-01"][0]}`,
-    reason: OUTSIDE
-      ? "Speed data needs the public, live site; pass --site-origin."
-      : "Outside checks are off. With the owner's go-ahead, --outside fetches real-user speed data from Google PageSpeed Insights.",
-  });
+  // PERF-01 counts as checked only when real-user data came back for at least one page.
+  if (r.samples.some(s => s.field)) {
+    evalRules("PERF-01");
+    speedReason = null;
+  } else
+    speedReason = r.limited
+      ? "PageSpeed refused the requests. Set PSI_API_KEY (a free Google Cloud API key for the PageSpeed Insights API) and re-run."
+      : "No real-user data came back for the sampled pages (too few Chrome visits, or PageSpeed failed); see the notes.";
+}
+if (speedReason) notChecked.push({ rule: "PERF-01", area: `PERF-01 ${RULES["PERF-01"][0]}`, reason: speedReason });
 
 // ---------- outside checks: what JavaScript changes ----------
 const browser = OUTSIDE ? findBrowser() : null;
+let renderFailure = null;
 if (browser) {
-  evalRules("REND-06");
   const urls = sampleUrls(htmlPages.filter(p => indexable(p) && !p.refreshTo).map(p => p.finalUrl)); // a meta refresh would render its target
   let rendered = 0;
   for (const u of urls) {
@@ -1900,12 +1904,20 @@ if (browser) {
       if (head.length) add("render-changes-head", u, head.map(say).join("; "));
       if (body.length) add("render-adds-content", u, body.map(say).join("; "));
     } catch (e) {
-      notes.push(`Render: ${u} failed (${String(e.message).split("\n")[0].slice(0, 120)}).`);
+      renderFailure ||= String(e.message).split("\n")[0].slice(0, 120);
     }
   }
-  notes.push(
-    `Rendered ${rendered} of ${urls.length} sample page(s) in headless ${/edge/i.test(browser) ? "Edge" : "Chrome"} and compared them with the raw HTML.`,
-  );
+  if (rendered) {
+    evalRules("REND-06");
+    notes.push(
+      `Rendered ${rendered} of ${urls.length} sample page(s) in headless ${/edge/i.test(browser) ? "Edge" : "Chrome"} and compared them with the raw HTML.${renderFailure ? ` Some failed: ${renderFailure}` : ""}`,
+    );
+  } else
+    notChecked.push({
+      rule: "REND-06",
+      area: `REND-06 ${RULES["REND-06"][0]}`,
+      reason: `The browser at ${browser} couldn't render the sample pages (${renderFailure || "no pages to render"}).`,
+    });
 } else
   notChecked.push({
     rule: "REND-06",

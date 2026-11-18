@@ -10,11 +10,18 @@ import { ROOT, SKILL, SCRIPTS, node, tmp } from "./helpers.mjs";
 const fixture = name => readFileSync(join(ROOT, "test", "fixtures", name), "utf8");
 
 // A stand-in for the PageSpeed Insights API: /pricing/ is slow, everything else passes.
-async function fakePsi() {
+// With quotaGone it answers like Google does when the keyless daily quota is used up.
+async function fakePsi({ quotaGone = false } = {}) {
   const hits = [];
   const server = createServer((req, res) => {
     const target = new URL(req.url, "http://x").searchParams.get("url") || "";
     hits.push(target);
+    if (quotaGone) {
+      res
+        .writeHead(429, { "Content-Type": "application/json" })
+        .end('{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}');
+      return;
+    }
     res
       .writeHead(200, { "Content-Type": "application/json" })
       .end(fixture(target.includes("/pricing/") ? "psi-fail.json" : "psi-pass.json"));
@@ -108,4 +115,18 @@ test("the overview shows one line of real-user speed", async () => {
     readFileSync(join(dir, "r.html"), "utf8"),
     /Real-user speed \(mobile\): LCP 2\.1 s · INP 180 ms · CLS 0\.05 \(passes\)/,
   );
+});
+
+test("when PageSpeed refuses (no key, quota used up), it stops asking and PERF-01 is not counted as passed", async () => {
+  const psi = await fakePsi({ quotaGone: true });
+  try {
+    const r = await crawl(["--outside", "--psi-endpoint", psi.url]);
+    assert.equal(psi.hits.length, 2, "the first URL and one retry, then no more requests");
+    assert.ok(!r.passed.some(p => p.rule === "PERF-01"), "nothing was measured, so nothing passed");
+    assert.match(r.notChecked.find(n => n.rule === "PERF-01")?.reason || "", /PSI_API_KEY/);
+    assert.equal(r.notes.filter(n => n.startsWith("PageSpeed")).length, 1, "one note, not one per URL");
+    assert.equal(r.speed, undefined);
+  } finally {
+    await psi.close();
+  }
 });

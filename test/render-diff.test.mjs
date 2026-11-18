@@ -127,3 +127,31 @@ test(
     assert.ok(!rendered.includes("/legacy/"), "/legacy/ refreshes to /about/");
   },
 );
+
+test("when every render fails, REND-06 is listed as not checked instead of passing", async () => {
+  const site = await serve(join(ROOT, "test", "fixture-zero"));
+  const out = join(tmp(), "crawl.json");
+  try {
+    // CHROME_PATH points at something that isn't a browser, so every render fails.
+    await node(
+      [
+        join(SCRIPTS, "seo-crawl.mjs"),
+        "--url",
+        site.url,
+        "--site-origin",
+        "https://zero.example",
+        "--outside",
+        "--psi-endpoint",
+        "http://127.0.0.1:9/runPagespeed",
+        "--out",
+        out,
+      ],
+      { env: { ...process.env, CHROME_PATH: process.execPath } },
+    );
+  } finally {
+    await site.close();
+  }
+  const r = JSON.parse(readFileSync(out, "utf8"));
+  assert.ok(!r.passed.some(p => p.rule === "REND-06"));
+  assert.match(r.notChecked.find(n => n.rule === "REND-06")?.reason || "", /couldn't render/);
+});

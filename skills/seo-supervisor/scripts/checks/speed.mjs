@@ -50,7 +50,9 @@ export function sampleUrls(urls, max = 10) {
 export async function checkSpeed(urls, { add, endpoint = PSI_ENDPOINT, key, fetchFn = fetch, strategy = "mobile" }) {
   const samples = [],
     notes = [];
+  let limited = false;
   for (const url of urls) {
+    if (limited) break;
     const q = new URL(endpoint);
     q.searchParams.set("url", url);
     q.searchParams.set("strategy", strategy);
@@ -64,10 +66,15 @@ export async function checkSpeed(urls, { add, endpoint = PSI_ENDPOINT, key, fetc
           await new Promise(ok => setTimeout(ok, 5000));
           continue;
         }
-        if (!r.ok) {
+        if (r.status === 429) {
+          limited = true;
           notes.push(
-            `PageSpeed: ${url} answered ${r.status}${r.status === 429 ? " (rate limit; set PSI_API_KEY to raise it)" : ""}.`,
+            `PageSpeed refused the request (rate limit${key ? "" : ": requests without an API key share a daily quota that is usually used up"}). Speed wasn't checked.`,
           );
+          break;
+        }
+        if (!r.ok) {
+          notes.push(`PageSpeed: ${url} answered ${r.status}.`);
           break;
         }
         data = await r.json();
@@ -93,5 +100,5 @@ export async function checkSpeed(urls, { add, endpoint = PSI_ENDPOINT, key, fetc
         `PageSpeed: no real-user data for ${url} yet; lab run: LCP ${(lab.lcp / 1000).toFixed(1)} s, CLS ${Math.round((lab.cls || 0) * 100) / 100}, TBT ${Math.round(lab.tbt || 0)} ms.`,
       );
   }
-  return { samples, notes };
+  return { samples, notes, limited };
 }

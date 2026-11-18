@@ -11,7 +11,7 @@
 ### PERF-01 · Core Web Vitals pass on mobile · high
 - **Check:** field data (Search Console CWV report, PageSpeed Insights or CrUX) when the site is live; lab data (Lighthouse) before launch. The crawler can't measure CWV, so list it under `notChecked` unless you ran one of these.
 - **Fix:** send real-user metrics to analytics with the `web-vitals` library, and fix the worst template first.
-- **Data source:** with outside checks on, the crawler (`--outside`) fetches field data from PageSpeed Insights for the home page and one URL per section, up to 10, and flags a section whose 75th-percentile LCP, INP or CLS fails (`cwv-fail`). Without it, or before launch, PERF-01 stays under Limits.
+- **Data source:** with outside checks on, the crawler (`--outside`) fetches field data from PageSpeed Insights for the home page and one URL per section, up to 10, and flags a section whose 75th-percentile LCP, INP or CLS fails (`cwv-fail`). It needs a free PageSpeed Insights API key in `PSI_API_KEY`: Google refuses almost all keyless requests. Without the key, without outside checks, or before launch, PERF-01 stays under Limits.
 
 ### PERF-02 · Each page loads only its own code · medium
 - **Check:** code: shared bundles importing every widget or heavy library; client components wrapping whole pages.
