@@ -1,0 +1,21 @@
+{
+  "tool": "seo-supervisor-crawler",
+  "crawledAt": "2026-11-18T09:00:00.000Z",
+  "siteOrigin": "https://example.com",
+  "pages": [
+    { "url": "https://example.com/", "status": 200, "noindex": false, "canonical": "https://example.com/", "title": "Home", "h1": 1, "schema": ["Organization", "WebSite"] },
+    { "url": "https://example.com/a/", "status": 200, "noindex": true, "canonical": "https://example.com/a/", "title": "A", "h1": 1, "schema": [] },
+    { "url": "https://example.com/b/", "status": 200, "noindex": false, "canonical": "https://example.com/b/", "title": "B", "h1": 1, "schema": [] },
+    { "url": "https://example.com/c/", "status": 200, "noindex": false, "canonical": "https://example.com/a/", "title": "C", "h1": 1, "schema": [] },
+    { "url": "https://example.com/d/", "status": 200, "noindex": false, "canonical": "https://example.com/d/", "title": "D", "h1": 0, "schema": [] },
+    { "url": "https://example.com/e/", "status": 200, "noindex": false, "canonical": "https://example.com/e/", "title": "E", "h1": 1, "schema": [] },
+    { "url": "https://example.com/f/", "status": 200, "noindex": false, "canonical": "https://example.com/f/", "title": "F", "h1": 1, "schema": [] },
+    { "url": "https://example.com/g/", "status": 200, "noindex": false, "canonical": "https://example.com/g/", "title": "G", "h1": 1, "schema": ["FAQPage"] },
+    { "url": "https://example.com/h/", "status": 500, "noindex": false, "canonical": null, "title": "Error", "h1": 1, "schema": [] },
+    { "url": "https://example.com/i/", "status": 200, "noindex": false, "canonical": "https://example.com/i/", "title": "I", "h1": 1, "schema": [] },
+    { "url": "https://example.com/j/", "status": 200, "noindex": false, "canonical": "https://example.com/j/", "title": "", "h1": 1, "schema": [] },
+    { "url": "https://example.com/k/", "status": 200, "noindex": false, "canonical": "https://example.com/k/", "title": "K, renamed", "h1": 1, "schema": [] },
+    { "url": "https://example.com/about/", "status": 200, "noindex": false, "canonical": "https://example.com/about/", "title": "About", "h1": 1, "schema": [] },
+    { "url": "https://example.com/new/", "status": 200, "noindex": false, "canonical": "https://example.com/new/", "title": "New", "h1": 1, "schema": [] }
+  ]
+}

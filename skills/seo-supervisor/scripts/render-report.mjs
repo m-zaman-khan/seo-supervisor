@@ -495,7 +495,67 @@ const limitsHtml = () =>
   ${notChecked.length ? `<section class="panel"><h2>Not checked</h2><p class="quiet">These couldn't be verified in this run, so they count neither for nor against the score.</p><ul class="lim">${notChecked.map(n => `<li><b>${inl(n.area || n.rule || "")}</b><span>${inl(n.reason || "")}</span></li>`).join("")}</ul></section>` : ""}
   ${notes.length ? `<section class="panel"><h2>Notes from the audit</h2><ul class="lim">${notes.map(n => `<li><span>${inl(n)}</span></li>`).join("")}</ul></section>` : ""}
 </div>`
-    : `<section class="panel empty-state"><h2>No limits recorded</h2><p>Every planned check ran.</p></section>`; // adds the result files beside the audit
+    : `<section class="panel empty-state"><h2>No limits recorded</h2><p>Every planned check ran.</p></section>`;
+
+// ---------- since last audit ----------
+const diff = raw.diff && typeof raw.diff === "object" ? raw.diff : null;
+const DIFF_KIND = {
+  "canonical-changed": ["Canonical changed", "URL-04"],
+  "noindex-added": ["Now noindex", "CRAWL-02"],
+  "noindex-removed": ["No longer noindex", "CRAWL-02"],
+  "title-changed": ["Title changed", "META-01"],
+  "h1-removed": ["H1 removed", "CONTENT-01"],
+  "h1-added": ["H1 added", "CONTENT-01"],
+  "schema-removed": ["Schema removed", "SCHEMA-03"],
+  "schema-added": ["Schema added", "SCHEMA-03"],
+  "status-error": ["Now an error", "CRAWL-05"],
+  "status-fixed": ["Error fixed", "CRAWL-05"],
+};
+const diffSections = d =>
+  [
+    ["Regressions", d.regressions],
+    ["Improvements", d.improvements],
+    ["Other changes", d.changed],
+  ].filter(([, list]) => (list || []).length);
+const diffText = c => `${DIFF_KIND[c.kind]?.[0] || c.kind}: ${c.before ?? "none"} → ${c.after ?? "none"}`;
+// The open finding on the same page and rule, if any.
+const diffFinding = c =>
+  findings.find(
+    f =>
+      f.rule === DIFF_KIND[c.kind]?.[1] &&
+      (f.evidence || []).some(e => {
+        try {
+          return new URL(e.url).pathname === c.path;
+        } catch {
+          return false;
+        }
+      }),
+  );
+const diffHtml = () => `<div class="limits">
+  <p class="quiet">Compared with the crawl of ${esc(fmtDate(diff.since))}. Pages are matched by path.</p>
+  ${diffSections(diff)
+    .map(
+      ([h, list]) =>
+        `<section class="panel"><h2>${h}<span class="mono quiet"> ${list.length}</span></h2><ul class="lim">${list
+          .map(c => {
+            const f = diffFinding(c);
+            return `<li><b><code>${esc(c.path)}</code></b><span>${esc(diffText(c))}${f ? ` · <a href="#${esc(f.id)}">${esc(f.id)}</a>` : ""}</span></li>`;
+          })
+          .join("")}</ul></section>`,
+    )
+    .join("")}
+  ${[
+    ["Pages added", diff.added],
+    ["Pages gone", diff.removed],
+  ]
+    .filter(([, l]) => (l || []).length)
+    .map(
+      ([h, l]) =>
+        `<section class="panel"><h2>${h}<span class="mono quiet"> ${l.length}</span></h2><ul class="lim">${l.map(p => `<li><span><code>${esc(p)}</code></span></li>`).join("")}</ul></section>`,
+    )
+    .join("")}
+  ${!diffSections(diff).length && !(diff.added || []).length && !(diff.removed || []).length ? `<section class="panel empty-state"><h2>Nothing changed</h2><p>Every page has the same status, indexing, canonical, title, H1 and schema as last time.</p></section>` : ""}
+</div>`; // adds the result files beside the audit
 const plan = raw.plan && typeof raw.plan === "object" ? raw.plan : null;
 const tabs = [
   ["overview", "Overview", null],
@@ -505,10 +565,12 @@ const tabs = [
   ["passed", "Passed", passed.length + fixed.length],
   ["limits", "Limits", notChecked.length],
 ];
+if (diff) tabs.splice(1, 0, ["diff", "Since last audit", (diff.regressions || []).length]);
 if (plan) tabs.splice(plan.status === "proposed" ? 0 : 1, 0, ["plan", "Plan", planStats(plan).rows]);
 const DEFAULT_TAB = tabs[0][0];
 const PANELS = {
   overview: overviewHtml,
+  diff: diffHtml,
   plan: () => planHtml(plan, { esc, inl, num }),
   findings: findingsHtml,
   decisions: decisionsHtml,
@@ -852,6 +914,16 @@ function markdown() {
     L.push("");
   }
   if (plan) L.push(...planMarkdown(plan));
+  if (diff) {
+    L.push("## Since last audit", "", `Compared with the crawl of ${fmtDate(diff.since)}.`, "");
+    for (const [h, list] of diffSections(diff))
+      L.push(`### ${h}`, "", ...list.map(c => `- \`${c.path}\` ${diffText(c)}`), "");
+    for (const [h, l] of [
+      ["Pages added", diff.added],
+      ["Pages gone", diff.removed],
+    ])
+      if ((l || []).length) L.push(`### ${h}`, "", ...l.map(p => `- \`${p}\``), "");
+  }
   if (decisions.length) {
     L.push("## Decisions needed", "");
     for (const d of decisions) {
