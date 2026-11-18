@@ -5,10 +5,10 @@
   "description": "SEO audit, safe fixes, PR review and a launch gate. Crawls any site, scores it 0-100 and writes a polished offline report.",
   "author": {
     "name": "Zaman Khan",
-    "url": "https://github.com/YOUR-USERNAME"
+    "url": "https://github.com/m-zaman-khan"
   },
-  "homepage": "https://github.com/YOUR-USERNAME/seo-supervisor#readme",
-  "repository": "https://github.com/YOUR-USERNAME/seo-supervisor",
+  "homepage": "https://github.com/m-zaman-khan/seo-supervisor#readme",
+  "repository": "https://github.com/m-zaman-khan/seo-supervisor",
   "license": "MIT",
   "keywords": ["seo", "technical-seo", "seo-audit", "crawler", "structured-data", "core-web-vitals", "ai-search", "nextjs"]
 }

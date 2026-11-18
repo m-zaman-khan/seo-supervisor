@@ -5,7 +5,7 @@ Thanks for helping. The most valuable contributions are rule updates when search
 ## Setup
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/seo-supervisor
+git clone https://github.com/m-zaman-khan/seo-supervisor
 cd seo-supervisor
 npm test            # Node 20+, no dependencies to install
 ```
