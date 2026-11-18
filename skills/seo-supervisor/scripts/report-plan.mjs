@@ -67,7 +67,7 @@ export function planHtml(plan, { esc, inl, num }) {
   const row = r => {
     const o = r.owner;
     return `<details class="prow" data-status="${esc(r.status)}">
-      <summary><span class="pu"><code>${esc(key(r))}</code>${r.pattern ? ` <span class="pcount">×${num(r.count || 0)}</span>` : ""}</span><span class="pt">${esc(r.target || "")}</span><span class="ptype">${esc(r.type || "")}</span><span class="pst">${chip(r.status)}${ownerOpen(r) ? `<span class="own">Needs you</span>` : ""}</span></summary>
+      <summary><span class="pu"><code>${esc(key(r))}</code>${r.pattern ? ` <span class="pcount">×${num(r.count || 0)}</span>` : ""}</span><span class="pt">${r.target ? esc(r.target) : `<span class="quiet">—</span>`}</span><span class="ptype">${esc(r.type || "")}</span><span class="pst">${chip(r.status)}${ownerOpen(r) ? `<span class="own">Needs you</span>` : ""}</span></summary>
       <dl class="pd">${field("Intent", r.intent)}${field("Other targets", r.secondary)}${field(r.pattern ? "Title template" : "Title", r.title)}${field(r.pattern ? "Description template" : "Description", r.description)}${field(r.pattern ? "H1 template" : "H1", r.h1)}${field("Schema", r.schema)}${field("Parent", r.parent)}${field("Links to", r.linksTo)}${r.from ? field("Moves from", `${r.from} → ${key(r)}`) : ""}${r.pattern && r.count ? field("Built", `${num(r.status === "built" || r.status === "exists" ? r.count : Number(r.built) || 0)} of ${num(r.count)}`) : ""}${(r.samples || []).length ? `<dt>Examples</dt><dd><ul class="psamples">${r.samples.map(x => `<li><code>${esc(x.url)}</code>${x.title ? ` ${esc(x.title)}` : ""}</li>`).join("")}</ul></dd>` : ""}${o ? `<dt>${o.done === true ? "Done by you" : "Needs you"}</dt><dd>${esc(NEEDS[o.needs] || o.needs || "")}: ${inl(o.what || "")}${o.draft ? ` · <a href="${esc(o.draft)}">Read the draft</a>` : ""}</dd>` : ""}${r.finding ? `<dt>Finding</dt><dd><a href="#${esc(r.finding)}">${esc(r.finding)}</a></dd>` : ""}</dl>
     </details>`;
   };
@@ -101,6 +101,7 @@ export const PLAN_CSS = `
 .pcount{font:500 12px var(--mono);color:var(--mute)}
 .plan-pages .ph{flex-wrap:wrap;gap:10px}
 .prow-h,.prow>summary{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,2fr) minmax(0,1.3fr) minmax(150px,auto);gap:12px;align-items:center}
+.prow-h span:last-child{text-align:right}
 .prow-h{margin-top:12px;padding:8px 12px;font-size:12px;font-weight:600;color:var(--mute);border-bottom:1px solid var(--line)}
 .prow{border-bottom:1px solid var(--line)}.prow[hidden]{display:none}
 .prow>summary{padding:12px;cursor:pointer;list-style:none;border-radius:6px}
