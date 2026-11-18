@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { ROOT, node, tmp } from "./helpers.mjs";
 
 const BIN = join(ROOT, "bin", "seo-supervisor.mjs");
-const COMMANDS = ["seo-audit", "seo-fix", "seo-review", "seo-launch"];
+const COMMANDS = ["seo-audit", "seo-fix", "seo-review", "seo-launch", "seo-setup"];
 const withHome = home => ({ env: { ...process.env, HOME: home, USERPROFILE: home } });
 
 test("npx seo-supervisor installs, updates and uninstalls cleanly", async () => {

@@ -101,6 +101,41 @@ Consequences for the JSON:
 | `fixed` | Fix mode only: `{ "summary": "what changed", "files": ["src/lib/seo.ts"], "verified": "re-crawl 17 Nov: 0 titles over 60" }`. |
 | `passed[].detail` | Optional evidence for a pass, e.g. the `file:line` that implements it. |
 
+## The plan (setup mode only)
+
+`/seo-setup` adds a top-level `plan`. Without it, the report is unchanged. How to fill it is in `planning.md`.
+
+```json
+"plan": {
+  "status": "proposed",
+  "approvedOn": "2026-11-18",
+  "summary": "A marketing site with docs. Setup adds one metadata helper, a sitemap, schema and the missing /docs page.",
+  "yes": [{ "id": "Y1", "what": "Redirect www to the apex domain", "why": "One host for every URL", "approved": false }],
+  "pages": [
+    { "url": "/pricing", "type": "Pricing page", "status": "to-build", "target": "acme pricing",
+      "intent": "Someone comparing plans before signing up", "title": "Pricing | Acme", "description": "…", "h1": "Simple pricing",
+      "schema": ["WebPage", "BreadcrumbList"], "parent": "/", "linksTo": ["/features"],
+      "owner": { "needs": "facts", "what": "Confirm the current plan prices", "done": false }, "finding": "F-004" },
+    { "pattern": "/docs/{slug}", "count": 24, "built": 0, "type": "Docs article", "status": "to-build",
+      "title": "{Article title} | Acme docs", "samples": [{ "url": "/docs/install", "title": "Install Acme | Acme docs" }] }
+  ]
+}
+```
+
+| Field | Rule |
+| --- | --- |
+| `plan.status` | `proposed`: waiting for the owner. `approved`: being built. `built`: all of the agent's work is done (owner items can still be open). |
+| `pages[].status` | `exists` (already right), `to-build`, `built` (done and re-checked) or `to-create` (a proposed new page). |
+| `pages[].owner` | The owner's part: `needs` (`copy`, `facts`, `decision` or `yes`), `what`, `draft` (path relative to the report, e.g. `drafts/privacy.md`) and `done`. Shown as **Needs you** until `done` is true. |
+| `pages[].from` | The old URL when a page moves. The redirect is part of building the row, and it always needs its own yes on a live site. |
+| Pattern rows | Used for sets of more than 20 pages. `pattern` + `count` (and `built`, the pages done so far). `title`, `description` and `h1` hold templates, plus up to 3 `samples` with resolved values. |
+| `yes[]` | Site-level items that need their own yes; `approved` is true once the owner gives it. |
+| `finding` | The related finding's ID, linked from the row. |
+
+**Progress** (computed by the renderer): each row counts once. A row that `exists` or is `built` counts 1. A pattern row in any other status counts `built ÷ count`. Anything else counts 0. Progress is the average, as a percentage.
+
+**Default tab:** while `plan.status` is `proposed`, the report opens on the Plan tab.
+
 ## Writing well
 
 - Plain words. "Google can't see this page's text" beats "CSR hydration issue".
