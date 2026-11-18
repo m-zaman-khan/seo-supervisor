@@ -50,13 +50,14 @@ Crawl and run a content scan exactly as an audit does (SKILL.md step 2, pre-laun
 
 **Site level.**
 - Write the draft profile from `profile-template.md` to `seo-audit/seo-profile.draft.md`. It covers the brand and title template, origin, trailing slash, decisions, URL map, noindex-by-design, internal-linking rules and claims.
-- If `docs/seo-profile.md` already exists, update that instead.
+- If `docs/seo-profile.md` already exists, copy it to `seo-audit/seo-profile.draft.md` and edit the copy. Never touch `docs/` before approval.
 
 **Page level.** Write `plan.pages[]` (the shape is in `report-format.md`):
 - **One row per key page:** the home page, any section parents, and the main product, service, tool or feature pages.
 - **One pattern row for any set of more than 20 pages of one type** (posts, products, docs, cities). It holds `pattern`, `count`, title, description and H1 **templates**, and up to 3 `samples` with their resolved values. The owner approves the template, not thousands of titles.
 - **Each row says what the agent will do.** Use `status`: `exists` if it's already right, `to-build`, or `to-create`. Give the planned `title`, `description`, `h1`, `schema`, `parent` and `linksTo`.
 - **Anything the owner must supply goes in `owner`:** `{ "needs": "copy" | "facts" | "decision" | "yes", "what", "draft", "done": false }`.
+- **A missing parent page also gets `intro`:** its 1–2 sentence intro, built only from facts already on the site. The Plan tab shows it, so approving the plan approves exactly these words.
 
 **Target phrases.**
 - Take them from what the site and the business actually offer, in the words a customer would search with. Use the owner's input too.
@@ -78,6 +79,10 @@ At most **10 new pages per run**, ranked by how much each intent matters to the 
 - any URL change on a live page (the row's `from`, with a redirect)
 - any write to a CMS, including titles and descriptions stored there
 
+On a live site, any robots.txt change beyond adding the `Sitemap:` line is a yes item.
+
+**Record each answer.** A yes is `approved: true`. A no is `declined: true` (on the `yes[]` item, or on the row's `owner`). A declined item stays in the plan as a record and is never carried out.
+
 **Render, summarise, stop.**
 - Set `plan.status: "proposed"` and render the report. It opens on the Plan tab.
 - In chat, give a short summary: the site's shape, how many pages are planned and to be created, the "Needs your yes" items as a numbered list, and anything the owner must supply.
@@ -86,16 +91,16 @@ At most **10 new pages per run**, ranked by how much each intent matters to the 
 
 ## 4. Build, after approval
 
-Set `plan.status: "approved"` and `approvedOn`.
+Set `plan.status: "approved"` and `approvedOn`. On approval, move the draft profile to `docs/seo-profile.md`.
 
 **Plan approval covers** the code-level foundation shown in the plan. Fix each thing once, in the shared place, using `frameworks/*.md` and `examples/snippets.md`:
 - **Metadata:** one metadata helper with the title template. The planned titles, descriptions, H1s and canonicals go in code.
-- **Sitemap and robots:** generated, and they respect the launch state. A live site keeps its current indexing state; a site that isn't live stays off behind its switch. Setup never switches indexing on.
+- **Sitemap and robots:** generated, and they respect the launch state. On a live site, robots.txt changes other than adding the `Sitemap:` line need their own yes. A live site keeps its current indexing state; a site that isn't live stays off behind its switch. Setup never switches indexing on.
 - **Schema:** Organization and WebSite once, then the planned types per page. Only facts already on the site go into schema.
 - **Headings and breadcrumbs:** one H1 per page and a clean heading order. Breadcrumbs with BreadcrumbList where the site has levels.
 - **Internal links:** following the profile's linking rules.
 - **Basics:** a real 404 for unknown URLs, a default share image and security headers. Add `security.txt` only once the owner has given a contact.
-- **Missing parent pages:** create them now. Use the title, H1 and 1–2 sentence intro shown in the plan, built only from facts already on the site, plus a list of the pages under them.
+- **Missing parent pages:** create them now, with exactly the title, H1 and `intro` shown in the plan, plus a list of the pages under them. Never add copy the plan didn't show.
 
 **Items that got their own yes:** do them as well. On a CMS, write drafts and publish only when the owner says so.
 

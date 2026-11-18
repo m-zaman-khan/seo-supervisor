@@ -83,3 +83,8 @@ test("the live demo and the bundled sample are up to date (run `npm run demo` af
     assert.equal(readFileSync(committed, "utf8"), readFileSync(fresh, "utf8"), `${committed} matches a fresh render`);
   }
 });
+
+test("printing opens every plan row so the planned titles and drafts are on paper", async () => {
+  const { html } = await renderWithPlan({ status: "proposed", pages: twoRows });
+  assert.match(html, /addEventListener\('beforeprint',function\(\)\{[^}]*\.prow[^}]*open=true/);
+});

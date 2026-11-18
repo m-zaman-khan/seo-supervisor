@@ -127,9 +127,10 @@ Consequences for the JSON:
 | `plan.status` | `proposed`: waiting for the owner. `approved`: being built. `built`: all of the agent's work is done (owner items can still be open). |
 | `pages[].status` | `exists` (already right), `to-build`, `built` (done and re-checked) or `to-create` (a proposed new page). |
 | `pages[].owner` | The owner's part: `needs` (`copy`, `facts`, `decision` or `yes`), `what`, `draft` (path relative to the report, e.g. `drafts/privacy.md`) and `done`. Shown as **Needs you** until `done` is true. |
+| `pages[].intro` | For a new missing-parent page: its 1–2 sentence intro, built only from facts already on the site. Shown on the Plan tab; approving the plan approves these exact words. |
 | `pages[].from` | The old URL when a page moves. The redirect is part of building the row, and it always needs its own yes on a live site. |
 | Pattern rows | Used for sets of more than 20 pages. `pattern` + `count` (and `built`, the pages done so far). `title`, `description` and `h1` hold templates, plus up to 3 `samples` with resolved values. |
-| `yes[]` | Site-level items that need their own yes; `approved` is true once the owner gives it. |
+| `yes[]` | Site-level items that need their own yes. `approved: true` records a yes, and `declined: true` records a no. A declined item stays as a record and is never carried out. A row's `owner` can be `declined` the same way. |
 | `finding` | The related finding's ID, linked from the row. |
 
 **Progress** (computed by the renderer): each row counts once. A row that `exists` or is `built` counts 1. A pattern row in any other status counts `built ÷ count`. Anything else counts 0. Progress is the average, as a percentage.
