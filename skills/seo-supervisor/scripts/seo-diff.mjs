@@ -3,6 +3,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
+import { LIMITS, fmtCwv } from "./checks/speed.mjs";
 
 const pathOf = u => {
   try {
@@ -13,6 +14,39 @@ const pathOf = u => {
   }
 };
 const ok = s => s === 200;
+
+// Speed compares like with like, by path. Field data is slower when any Core Web Vital crosses its limit, or moves 20%
+// and at least 300 ms (LCP), 50 ms (INP) or 0.05 (CLS). Lab runs swing more, so lab LCP must move 40% and 1 s, and a
+// Lighthouse score 15 points. Each SPEED row: name, value by URL (null when none), verdict (-1 slower, 1 faster,
+// 0 no real change).
+const lcpMove = (o, n, share, ms) => {
+  const d = n.lcp - o.lcp;
+  return Math.abs(d) >= Math.max(ms, o.lcp * share) ? -Math.sign(d) : 0;
+};
+const crossed = (o, n, worse) =>
+  Object.entries(LIMITS).some(
+    ([k, lim]) => o[k] != null && n[k] != null && (worse ? o[k] <= lim && n[k] > lim : o[k] > lim && n[k] <= lim),
+  );
+const SPEED = [
+  [
+    "real visitors",
+    r => r.speed?.samples?.map(s => [s.url, s.field?.lcp != null ? s.field : null]),
+    (o, n) => (crossed(o, n, true) ? -1 : lcpMove(o, n, 0.2, 300) || (crossed(o, n, false) ? 1 : 0)),
+    fmtCwv,
+  ],
+  [
+    "lab test",
+    r => r.labSpeed?.map(l => [l.url, l.lcp != null ? l : null]),
+    (o, n) => lcpMove(o, n, 0.4, 1000),
+    fmtCwv,
+  ],
+  [
+    "Lighthouse",
+    r => r.lighthouse?.map(l => [l.url, l.scores?.performance ?? null]),
+    (o, n) => (Math.abs(n - o) >= 15 ? Math.sign(n - o) : 0),
+    v => `performance score ${v}`,
+  ],
+];
 
 export function diffCrawls(oldReport, newReport) {
   // Working pages plus the crawl's error records, so a page that now fails is a status change, not "gone".
@@ -73,6 +107,50 @@ export function diffCrawls(oldReport, newReport) {
       change(regressions, "content-shrunk", o.words, n.words);
     if (both("words") && n.words - o.words >= 100 && n.words > o.words * 2)
       change(changed, "content-grew", o.words, n.words);
+    // Field names only, per type both crawls have: prices and dates change every crawl.
+    if (both("schemaProps")) {
+      compared.add("schemaProps");
+      for (const [type, was] of Object.entries(o.schemaProps)) {
+        const now = n.schemaProps[type];
+        if (!now) continue;
+        const lost = was.filter(k => !now.includes(k)),
+          got = now.filter(k => !was.includes(k));
+        if (lost.length)
+          regressions.push({
+            path,
+            kind: "schema-fields-removed",
+            detail: `${type} lost ${lost.join(", ")}`,
+            before: was.join(", "),
+            after: now.join(", "),
+          });
+        if (got.length)
+          improvements.push({
+            path,
+            kind: "schema-fields-added",
+            detail: `${type} gained ${got.join(", ")}`,
+            before: was.join(", "),
+            after: now.join(", "),
+          });
+      }
+    }
+  }
+  for (const [source, read, judge, fmt] of SPEED) {
+    const was = new Map((read(oldReport) || []).filter(([, v]) => v != null).map(([u, v]) => [pathOf(u), v]));
+    for (const [u, now] of read(newReport) || []) {
+      const path = pathOf(u),
+        old = was.get(path);
+      if (now == null || old == null) continue;
+      compared.add("speed");
+      const v = judge(old, now);
+      if (v)
+        (v < 0 ? regressions : improvements).push({
+          path,
+          kind: v < 0 ? "speed-slower" : "speed-faster",
+          source,
+          before: fmt(old),
+          after: fmt(now),
+        });
+    }
   }
   return {
     regressions,

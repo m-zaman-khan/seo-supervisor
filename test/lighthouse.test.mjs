@@ -61,6 +61,24 @@ const LHR = {
     "button-name": { title: "Buttons do not have an accessible name", score: 0 },
     "errors-in-console": { title: "Browser errors were logged to the console", score: 0 },
     "is-on-https": { title: "Uses HTTPS", score: 1 },
+    "lcp-breakdown-insight": {
+      title: "LCP breakdown",
+      score: 0,
+      details: {
+        type: "list",
+        items: [
+          {
+            type: "table",
+            items: [
+              { subpart: "timeToFirstByte", duration: 700 },
+              { subpart: "resourceLoadDelay", duration: 2100 },
+              { subpart: "resourceLoadDuration", duration: 900 },
+              { subpart: "elementRenderDelay", duration: 400 },
+            ],
+          },
+        ],
+      },
+    },
   },
 };
 
@@ -96,6 +114,7 @@ test("a Lighthouse run gives category scores, the five metrics and the top faile
   const r = await runLighthouse(lh.bin, "http://127.0.0.1:1/", { chromePath: "/opt/chrome" });
   assert.deepEqual(r.scores, { performance: 72, seo: 92, accessibility: 88, bestPractices: 96 });
   assert.deepEqual(r.metrics, { lcp: 4100, cls: 0.02, tbt: 520, fcp: 2100, speedIndex: 4300 });
+  assert.deepEqual(r.lcpParts, { ttfb: 700, loadDelay: 2100, loadDuration: 900, renderDelay: 400 });
   // Ordered by the points each costs its category: weight × shortfall ÷ the category's total weight.
   assert.deepEqual(
     r.failed.map(f => f.id),

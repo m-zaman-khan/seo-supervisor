@@ -5,6 +5,7 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
+import { labLcpParts } from "./speed.mjs";
 
 const CATEGORIES = {
   performance: "performance",
@@ -59,6 +60,7 @@ function parse(lhr, url) {
     url,
     scores: map(CATEGORIES, id => (cats[id]?.score == null ? null : Math.round(cats[id].score * 100))),
     metrics: map(METRICS, id => audits[id]?.numericValue ?? null),
+    lcpParts: labLcpParts(audits),
     // By points lost in the category, so a heavy metric that nearly passes ranks below a light audit that fails.
     failed: failed
       .sort((a, b) => b.cost - a.cost)

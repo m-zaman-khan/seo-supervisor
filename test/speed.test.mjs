@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { serve } from "./serve.mjs";
 import { findBrowser } from "../skills/seo-supervisor/scripts/checks/render.mjs";
+import { labLcpBreakdown, labLcpParts } from "../skills/seo-supervisor/scripts/checks/speed.mjs";
 import { ROOT, SKILL, SCRIPTS, node, tmp } from "./helpers.mjs";
 
 const fixture = name => readFileSync(join(ROOT, "test", "fixtures", name), "utf8");
@@ -150,7 +151,21 @@ async function fakeCrux() {
               metrics: {
                 largest_contentful_paint: { percentilesTimeseries: { p75s: series(3100, 2400) } },
                 interaction_to_next_paint: { percentilesTimeseries: { p75s: series(240, 190) } },
-                cumulative_layout_shift: { percentilesTimeseries: { p75s: series(0.12, 0.05).map(x => x.toFixed(2)) } },
+                cumulative_layout_shift: {
+                  percentilesTimeseries: { p75s: series(0.12, 0.05).map((x, i) => (i ? x.toFixed(2) : null)) },
+                },
+                largest_contentful_paint_image_time_to_first_byte: {
+                  percentilesTimeseries: { p75s: series(900, 400) },
+                },
+                largest_contentful_paint_image_resource_load_delay: {
+                  percentilesTimeseries: { p75s: series(600, 1200) },
+                },
+                largest_contentful_paint_image_resource_load_duration: {
+                  percentilesTimeseries: { p75s: series(500, 300) },
+                },
+                largest_contentful_paint_image_element_render_delay: {
+                  percentilesTimeseries: { p75s: series(100, 150) },
+                },
               },
               collectionPeriods: Array.from({ length: 25 }, (_, i) => ({
                 firstDate: date(i * 7),
@@ -202,18 +217,134 @@ test("with a CrUX key, the 25-week speed trend is fetched for the public origin;
     const none = await crawlWith({});
     assert.equal(crux.hits.length, 0, "no key, no request");
     assert.equal(none.speed.trend, undefined);
+    assert.deepEqual(
+      none.speed.lcpBreakdown,
+      { source: "lab", url: "https://zero.example/", ttfb: 600, loadDelay: 200, loadDuration: 300, renderDelay: 1250 },
+      "without real-user parts, PageSpeed's lab run of the home page",
+    );
     const r = await crawlWith({ CRUX_API_KEY: "test-key" });
-    assert.equal(crux.hits.length, 1);
+    assert.equal(crux.hits.length, 1, "the LCP parts come in the same request as the trend");
     assert.match(crux.hits[0].url, /key=test-key/);
     assert.equal(crux.hits[0].body.origin, "https://zero.example");
+    assert.ok(crux.hits[0].body.metrics.includes("largest_contentful_paint_image_resource_load_delay"));
     assert.deepEqual(
       { weeks: r.speed.trend.weeks, lcp: r.speed.trend.lcp, cls: r.speed.trend.cls },
       { weeks: 25, lcp: [3100, 2400], cls: [0.12, 0.05] },
+      "a week with no value is skipped, not read as 0",
+    );
+    assert.deepEqual(
+      r.speed.lcpBreakdown,
+      {
+        source: "real visitors",
+        url: "https://zero.example",
+        ttfb: 400,
+        loadDelay: 1200,
+        loadDuration: 300,
+        renderDelay: 150,
+      },
+      "the latest week, from real visitors",
     );
   } finally {
     await psi.close();
     await crux.close();
   }
+});
+
+test("Lighthouse's LCP breakdown is read in ms; a text LCP has no image to wait for or download", () => {
+  const audits = rows => ({
+    "lcp-breakdown-insight": { details: { type: "list", items: [{ type: "table", items: rows }, { type: "node" }] } },
+  });
+  assert.deepEqual(
+    labLcpParts(
+      audits([
+        { subpart: "timeToFirstByte", duration: 812.6 },
+        { subpart: "elementRenderDelay", duration: 400 },
+      ]),
+    ),
+    { ttfb: 813, loadDelay: 0, loadDuration: 0, renderDelay: 400 },
+  );
+  assert.equal(labLcpParts({}), null, "no breakdown audit, no breakdown");
+  assert.equal(labLcpParts(audits([])), null);
+});
+
+test("the lab breakdown comes from the home page's run, else the first page that has one", () => {
+  const parts = ttfb => ({ ttfb, loadDelay: 0, loadDuration: 0, renderDelay: 100 });
+  const runs = [
+    { url: "https://e.com/a/", lcpParts: parts(1) },
+    { url: "https://e.com/b/" },
+    { url: "http://127.0.0.1:9/", lcpParts: parts(3) },
+  ];
+  assert.deepEqual(labLcpBreakdown(runs), { source: "lab", url: "http://127.0.0.1:9/", ...parts(3) });
+  assert.deepEqual(labLcpBreakdown(runs.slice(0, 2)), { source: "lab", url: "https://e.com/a/", ...parts(1) });
+  assert.equal(labLcpBreakdown([{ url: "https://e.com/" }]), null);
+});
+
+const overview = async lcpBreakdown => {
+  const dir = tmp(),
+    data = JSON.parse(readFileSync(join(SKILL, "examples", "sample-audit.json"), "utf8"));
+  data.speed = {
+    strategy: "mobile",
+    samples: [{ url: "https://example.com/", field: { lcp: 2600, inp: 180, cls: 0.05 }, origin: null, lab: {} }],
+    lcpBreakdown,
+  };
+  writeFileSync(join(dir, "a.json"), JSON.stringify(data));
+  await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "r.html")]);
+  return { html: readFileSync(join(dir, "r.html"), "utf8"), md: readFileSync(join(dir, "r.md"), "utf8") };
+};
+
+test("the overview names the biggest part of LCP, with what to do about it", async () => {
+  const { html, md } = await overview({
+    source: "real visitors",
+    url: "https://example.com",
+    ttfb: 400,
+    loadDelay: 1200,
+    loadDuration: 300,
+    renderDelay: 150,
+  });
+  for (const text of [html, md])
+    assert.match(
+      text,
+      /LCP breakdown \(real visitors\): most of the time goes on the wait before the main image starts loading \(1\.2 s\)\. Preload the hero image, give it fetchpriority=(&quot;|")high(&quot;|") and don(&#39;|')t lazy-load it\./,
+    );
+  const lab = await overview({
+    source: "lab",
+    url: "https://example.com/pricing/",
+    ttfb: 1500,
+    loadDelay: 0,
+    loadDuration: 0,
+    renderDelay: 300,
+  });
+  assert.match(
+    lab.md,
+    /LCP breakdown \(lab test, \/pricing\/\): most of the time goes on the server's response \(1\.5 s\)\. Cache pages, serve them from a CDN or use a faster server\./,
+  );
+  assert.match(
+    (
+      await overview({
+        source: "lab",
+        url: "https://example.com/",
+        ttfb: 100,
+        loadDelay: 0,
+        loadDuration: 2000,
+        renderDelay: 300,
+      })
+    ).md,
+    /lab test, home page\): most of the time goes on downloading the main image \(2\.0 s\)\. Make it smaller and serve it in a modern format \(WebP or AVIF\)\./,
+  );
+  assert.match(
+    (
+      await overview({
+        source: "lab",
+        url: "https://example.com/",
+        ttfb: 100,
+        loadDelay: 0,
+        loadDuration: 0,
+        renderDelay: 900,
+      })
+    ).md,
+    /drawing it on screen \(0\.9 s\)\. Cut render-blocking CSS and JavaScript, and build the page on the server rather than in the browser\./,
+  );
+  assert.doesNotMatch((await overview(undefined)).html, /LCP breakdown/);
 });
 
 test("the overview adds the trend to the speed line", async () => {

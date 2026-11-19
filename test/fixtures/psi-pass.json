@@ -22,7 +22,25 @@
     "audits": {
       "largest-contentful-paint": { "numericValue": 2350.4 },
       "cumulative-layout-shift": { "numericValue": 0.031 },
-      "total-blocking-time": { "numericValue": 120 }
+      "total-blocking-time": { "numericValue": 120 },
+      "lcp-breakdown-insight": {
+        "details": {
+          "type": "list",
+          "items": [
+            {
+              "type": "table",
+              "headings": [{ "key": "label", "valueType": "text", "label": "Subpart" }, { "key": "duration", "valueType": "ms", "label": "Duration" }],
+              "items": [
+                { "subpart": "timeToFirstByte", "label": "Time to first byte", "duration": 600.4 },
+                { "subpart": "resourceLoadDelay", "label": "Resource load delay", "duration": 199.6 },
+                { "subpart": "resourceLoadDuration", "label": "Resource load duration", "duration": 300 },
+                { "subpart": "elementRenderDelay", "label": "Element render delay", "duration": 1250.4 }
+              ]
+            },
+            { "type": "node", "nodeLabel": "Hero image" }
+          ]
+        }
+      }
     }
   }
 }

@@ -436,6 +436,26 @@ function labSpeedText() {
     ? `Lab speed, slow mobile (indicative): ${fmtCwv(x)} · TBT ${Math.round(x.tbt || 0)} ms on ${new URL(x.url).pathname === "/" ? "the home page" : new URL(x.url).pathname}`
     : "";
 }
+// LCP's four parts (speed.lcpBreakdown, in ms), each with its fix.
+const LCP_PART = {
+  ttfb: ["the server's response", "Cache pages, serve them from a CDN or use a faster server."],
+  loadDelay: [
+    "the wait before the main image starts loading",
+    'Preload the hero image, give it fetchpriority="high" and don\'t lazy-load it.',
+  ],
+  loadDuration: ["downloading the main image", "Make it smaller and serve it in a modern format (WebP or AVIF)."],
+  renderDelay: [
+    "drawing it on screen",
+    "Cut render-blocking CSS and JavaScript, and build the page on the server rather than in the browser.",
+  ],
+};
+function lcpText() {
+  const b = raw.speed?.lcpBreakdown;
+  if (!b) return "";
+  const [k] = Object.keys(LCP_PART).sort((x, y) => (b[y] || 0) - (b[x] || 0)),
+    path = b.source === "lab" && new URL(b.url).pathname;
+  return `LCP breakdown (${path ? `lab test, ${path === "/" ? "home page" : path}` : "real visitors"}): most of the time goes on ${LCP_PART[k][0]} (${(b[k] / 1000).toFixed(1)} s). ${LCP_PART[k][1]}`;
+}
 // More than the default 5 pages (--lighthouse all) adds the three lowest performance scores.
 function lighthouseText() {
   const l = raw.lighthouse || [],
@@ -544,7 +564,7 @@ function overviewHtml() {
         <p class="quiet"><span class="key k-fail" aria-hidden="true"></span>${num(overall.rules - overall.passing)} failing${notChecked.length ? ` · ${num(notChecked.length)} not checked` : ""}</p>
       </div>
     </section>
-    ${speedText() ? `<p class="quiet">${esc(speedText())}</p>` : ""}${labSpeedText() ? `\n    <p class="quiet">${esc(labSpeedText())}</p>` : ""}${lighthouseText() ? `\n    <p class="quiet">${esc(lighthouseText())}</p>` : ""}${authorityText() ? `\n    <p class="quiet">${esc(authorityText())}${ahrefsCredit() ? ` · <a href="${esc(ahrefsCredit().url)}" rel="noopener">${esc(ahrefsCredit().text)}</a>` : ""}</p>` : ""}
+    ${speedText() ? `<p class="quiet">${esc(speedText())}</p>` : ""}${labSpeedText() ? `\n    <p class="quiet">${esc(labSpeedText())}</p>` : ""}${lcpText() ? `\n    <p class="quiet">${esc(lcpText())}</p>` : ""}${lighthouseText() ? `\n    <p class="quiet">${esc(lighthouseText())}</p>` : ""}${authorityText() ? `\n    <p class="quiet">${esc(authorityText())}${ahrefsCredit() ? ` · <a href="${esc(ahrefsCredit().url)}" rel="noopener">${esc(ahrefsCredit().text)}</a>` : ""}</p>` : ""}
     ${googleUpdatesText() ? `<p class="quiet">${googleUpdatesText(true)}</p>\n    ` : ""}</div>
     <div class="ov-right">
     <section class="panel factors" aria-labelledby="h-factors">
@@ -739,6 +759,10 @@ const DIFF_KIND = {
   "og-added": ["Open Graph tags added", "META-04"],
   "content-shrunk": ["Word count fell", "CONTENT-05"],
   "content-grew": ["Word count grew", "CONTENT-05"],
+  "speed-slower": ["Now slower", "PERF-01"],
+  "speed-faster": ["Now faster", "PERF-01"],
+  "schema-fields-removed": ["Schema fields removed", "SCHEMA-03"],
+  "schema-fields-added": ["Schema fields added", "SCHEMA-03"],
 };
 const diffSections = d =>
   [
@@ -746,7 +770,8 @@ const diffSections = d =>
     ["Improvements", d.improvements],
     ["Other changes", d.changed],
   ].filter(([, list]) => (list || []).length);
-const diffText = c => `${DIFF_KIND[c.kind]?.[0] || c.kind}: ${c.before ?? "none"} → ${c.after ?? "none"}`;
+const diffText = c =>
+  `${DIFF_KIND[c.kind]?.[0] || c.kind}${c.source ? ` (${c.source})` : ""}: ${c.detail ?? `${c.before ?? "none"} → ${c.after ?? "none"}`}`;
 // The open finding on the same page and rule, if any.
 const diffFinding = c =>
   findings.find(
@@ -772,9 +797,10 @@ const sameFields = d => {
     c.has("og") && "share tags",
     "H1",
     "schema",
+    c.has("schemaProps") && "schema fields",
     c.has("words") && "length",
   ].filter(Boolean);
-  return `${f.slice(0, -1).join(", ")} and ${f.at(-1)}`;
+  return `${f.slice(0, -1).join(", ")} and ${f.at(-1)} as last time${c.has("speed") ? ", and no page got much faster or slower" : ""}`;
 };
 const diffHtml = () => `<div class="limits">
   <p class="quiet">Compared with the crawl of ${esc(fmtDate(diff.since))}. Pages are matched by path.</p>${googleUpdatesText() ? `\n  <p class="quiet">${googleUpdatesText(true)}</p>` : ""}
@@ -799,7 +825,7 @@ const diffHtml = () => `<div class="limits">
         `<section class="panel"><h2>${h}<span class="mono quiet"> ${l.length}</span></h2><ul class="lim">${l.map(p => `<li><span><code>${esc(p)}</code></span></li>`).join("")}</ul></section>`,
     )
     .join("")}
-  ${!diffSections(diff).length && !(diff.added || []).length && !(diff.removed || []).length ? `<section class="panel empty-state"><h2>Nothing changed</h2><p>Every page has the same ${sameFields(diff)} as last time.</p></section>` : ""}
+  ${!diffSections(diff).length && !(diff.added || []).length && !(diff.removed || []).length ? `<section class="panel empty-state"><h2>Nothing changed</h2><p>Every page has the same ${sameFields(diff)}.</p></section>` : ""}
 </div>`; // adds the result files beside the audit
 const plan = raw.plan && typeof raw.plan === "object" ? raw.plan : null;
 const tabs = [
@@ -1155,6 +1181,7 @@ function markdown() {
   if (areas.length) {
     if (speedText()) L.push(speedText(), "");
     if (labSpeedText()) L.push(labSpeedText(), "");
+    if (lcpText()) L.push(lcpText(), "");
     if (lighthouseText()) L.push(lighthouseText(), "");
     if (authorityText())
       L.push(`${authorityText()}${ahrefsCredit() ? ` · [${ahrefsCredit().text}](${ahrefsCredit().url})` : ""}`, "");

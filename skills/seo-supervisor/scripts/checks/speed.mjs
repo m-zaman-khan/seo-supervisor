@@ -14,7 +14,16 @@ export const CHECKS = {
 export const PSI_ENDPOINT = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
 export const CRUX_HISTORY_ENDPOINT = "https://chromeuxreport.googleapis.com/v1/records:queryHistoryRecord";
 
-// The origin's p75s over CrUX History's 25 weekly periods, as [first, last] per metric.
+// The four parts of an image LCP as CrUX names them, in the order they happen.
+const LCP_PARTS = {
+  ttfb: "largest_contentful_paint_image_time_to_first_byte",
+  loadDelay: "largest_contentful_paint_image_resource_load_delay",
+  loadDuration: "largest_contentful_paint_image_resource_load_duration",
+  renderDelay: "largest_contentful_paint_image_element_render_delay",
+};
+
+// The origin's p75s over CrUX History's 25 weekly periods, as [first, last] per metric, plus the latest LCP parts
+// in ms.
 // https://developer.chrome.com/docs/crux/history-api
 export async function speedTrend(origin, { key, endpoint = CRUX_HISTORY_ENDPOINT, fetchFn = fetch }) {
   const q = new URL(endpoint);
@@ -25,7 +34,12 @@ export async function speedTrend(origin, { key, endpoint = CRUX_HISTORY_ENDPOINT
     body: JSON.stringify({
       origin,
       formFactor: "PHONE",
-      metrics: ["largest_contentful_paint", "interaction_to_next_paint", "cumulative_layout_shift"],
+      metrics: [
+        "largest_contentful_paint",
+        "interaction_to_next_paint",
+        "cumulative_layout_shift",
+        ...Object.values(LCP_PARTS),
+      ],
     }),
     signal: AbortSignal.timeout(30000),
   });
@@ -35,9 +49,19 @@ export async function speedTrend(origin, { key, endpoint = CRUX_HISTORY_ENDPOINT
     };
   const rec = (await r.json()).record || {},
     m = rec.metrics || {};
+  // A period with too few visits is null: skipped, never read as 0.
   const ends = s => {
-    const xs = (s?.percentilesTimeseries?.p75s || []).map(Number).filter(x => !isNaN(x));
+    const xs = (s?.percentilesTimeseries?.p75s || [])
+      .filter(x => x != null)
+      .map(Number)
+      .filter(x => !isNaN(x));
     return xs.length ? [xs[0], xs[xs.length - 1]] : null;
+  };
+  const latest = Object.entries(LCP_PARTS).map(([k, name]) => [k, m[name]?.percentilesTimeseries?.p75s?.at(-1)]);
+  const lcpBreakdown = latest.every(([, v]) => v != null) && {
+    source: "real visitors",
+    url: origin,
+    ...Object.fromEntries(latest.map(([k, v]) => [k, Math.round(Number(v))])),
   };
   return {
     trend: {
@@ -46,9 +70,30 @@ export async function speedTrend(origin, { key, endpoint = CRUX_HISTORY_ENDPOINT
       inp: ends(m.interaction_to_next_paint),
       cls: ends(m.cumulative_layout_shift),
     },
+    ...(lcpBreakdown ? { lcpBreakdown } : {}),
   };
 }
-const LIMITS = { lcp: 2500, inp: 200, cls: 0.1 };
+
+// LCP subparts from a Lighthouse 13 report, in ms. A text LCP has no image to wait for or download.
+export function labLcpParts(audits) {
+  const rows = (audits?.["lcp-breakdown-insight"]?.details?.items || []).find(t => t.type === "table")?.items || [];
+  const ms = s => Math.round(rows.find(r => r.subpart === s)?.duration ?? 0);
+  return rows.some(r => r.subpart === "timeToFirstByte")
+    ? {
+        ttfb: ms("timeToFirstByte"),
+        loadDelay: ms("resourceLoadDelay"),
+        loadDuration: ms("resourceLoadDuration"),
+        renderDelay: ms("elementRenderDelay"),
+      }
+    : null;
+}
+// Lab runs ({ url, lcpParts }): the home page's breakdown, else the first one.
+export function labLcpBreakdown(runs) {
+  const l = runs.filter(x => x.lcpParts),
+    x = l.find(x => new URL(x.url).pathname === "/") || l[0];
+  return x ? { source: "lab", url: x.url, ...x.lcpParts } : null;
+}
+export const LIMITS = { lcp: 2500, inp: 200, cls: 0.1 };
 
 // PageSpeed reports CLS as its percentile × 100.
 const cwv = m =>
@@ -124,10 +169,12 @@ export async function checkSpeed(urls, { add, endpoint = PSI_ENDPOINT, key, fetc
     const field = le && !le.origin_fallback ? cwv(le.metrics) : null,
       origin = cwv(data.originLoadingExperience?.metrics);
     const a = data.lighthouseResult?.audits || {};
+    const lcpParts = labLcpParts(a);
     const lab = {
       lcp: a["largest-contentful-paint"]?.numericValue ?? null,
       cls: a["cumulative-layout-shift"]?.numericValue ?? null,
       tbt: a["total-blocking-time"]?.numericValue ?? null,
+      ...(lcpParts ? { lcpParts } : {}),
     };
     samples.push({ url, field, origin, lab });
     if (field && !passes(field)) add("cwv-fail", url, `${fmtCwv(field)} (75th percentile of real ${strategy} visits)`);

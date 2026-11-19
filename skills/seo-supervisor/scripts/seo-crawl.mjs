@@ -13,6 +13,7 @@ import {
   PSI_ENDPOINT,
   speedTrend,
   CRUX_HISTORY_ENDPOINT,
+  labLcpBreakdown,
 } from "./checks/speed.mjs";
 import { CHECKS as RENDER_CHECKS, findBrowser, renderPage, compareRendered } from "./checks/render.mjs";
 import { CHECKS as VISUAL_CHECKS, checkVisual } from "./checks/visual.mjs";
@@ -996,6 +997,13 @@ function analyze(url, html, headers) {
   const imgs = tagsOf(body, "img");
   const { nodes, errors } = jsonLdNodes(html);
   const types = [...new Set(nodes.flatMap(typesOf))];
+  // Top-level field names per type, merged across blocks, so a later crawl can tell which fields went missing.
+  const schemaProps = {};
+  for (const n of nodes)
+    for (const t of typesOf(n))
+      schemaProps[t] = [
+        ...new Set([...(schemaProps[t] || []), ...Object.keys(n).filter(k => !k.startsWith("@"))]),
+      ].sort();
   const faqQs = nodes
     .filter(n => typesOf(n).includes("FAQPage"))
     .flatMap(n => [].concat(n.mainEntity || []))
@@ -1115,6 +1123,7 @@ function analyze(url, html, headers) {
     anchors,
     imgs,
     types,
+    schemaProps,
     jsonldErrors: errors,
     faqQs,
     crumbs,
@@ -2104,7 +2113,12 @@ if (OUTSIDE && isPublic(EXPECT_ORIGIN) && CRUX_KEY) {
     key: CRUX_KEY,
     endpoint: typeof args["crux-endpoint"] === "string" ? args["crux-endpoint"] : CRUX_HISTORY_ENDPOINT,
   }).catch(e => ({ note: `CrUX history failed (${e.message}).` }));
-  if (t.trend) speed = { ...(speed || { strategy: "mobile", samples: [] }), trend: t.trend };
+  if (t.trend)
+    speed = {
+      ...(speed || { strategy: "mobile", samples: [] }),
+      trend: t.trend,
+      ...(t.lcpBreakdown ? { lcpBreakdown: t.lcpBreakdown } : {}),
+    };
   if (t.note) notes.push(t.note);
 }
 
@@ -2200,6 +2214,11 @@ else if (lighthouseBin) {
   if (r.results.length) lighthouse = r.results;
   notes.push(...r.notes);
 }
+// Which part of LCP takes longest: real visitors' (from the trend above), else a PageSpeed or Lighthouse lab run's.
+const labLcp = speed?.lcpBreakdown
+  ? null
+  : labLcpBreakdown([...(speed?.samples || []).map(s => ({ url: s.url, ...s.lab })), ...(lighthouse || [])]);
+if (labLcp) speed = { ...(speed || { strategy: "mobile", samples: [] }), lcpBreakdown: labLcp };
 
 // ---------- what the crawler cannot check ----------
 const NOT_CRAWLABLE = [
@@ -2329,6 +2348,7 @@ const report = {
     words: p.words,
     h1: p.h1Count,
     schema: p.types,
+    schemaProps: p.schemaProps,
     linksOut: p.links.length,
     linksIn: inbound.get(p.finalUrl) || 0,
   })),
