@@ -322,6 +322,50 @@ const goneLinks = Array.isArray(linkCheck?.gone) ? linkCheck.gone.filter(obj) : 
 const linkCheckLine = checkedLinks
   ? `${num(Number(linkCheck.live) || 0)} of ${num(checkedLinks)} known ${checkedLinks === 1 ? "link is" : "links are"} still there; ${num(goneLinks.length)} gone; ${num(Array.isArray(linkCheck.unreachable) ? linkCheck.unreachable.filter(obj).length : 0)} couldn't be checked`
   : "";
+const GTYPE = {
+  discover: "Discover",
+  image: "Google Images",
+  video: "Video search",
+  news: "the News tab",
+  googleNews: "Google News",
+};
+function googleLines() {
+  const n = (x, k) => Number(x?.[k]) || 0,
+    isDay = s => /^\d{4}-\d{2}-\d{2}$/.test(s),
+    per = raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : "";
+  const ch = obj(raw.trafficChange),
+    was = obj(ch?.previous),
+    now = obj(ch?.current),
+    days = was && isDay(was.from) && isDay(was.to) ? (Date.parse(was.to) - Date.parse(was.from)) / 864e5 + 1 : 0;
+  const move = k =>
+    `${num(n(was, k))} → ${num(n(now, k))}${n(was, k) ? ` (${n(now, k) >= n(was, k) ? "+" : "−"}${Math.abs(Math.round((100 * (n(now, k) - n(was, k))) / n(was, k)))}%)` : ""}`;
+  const drops = (Array.isArray(ch?.drops) ? ch.drops.filter(d => obj(d) && d.path) : []).slice(0, 5);
+  const byClicks = (m, k = "clicks") =>
+    Object.entries(obj(m) || {})
+      .filter(([, v]) => n(v, k) > 0)
+      .sort((a, b) => n(b[1], "clicks") - n(a[1], "clicks"));
+  const types = byClicks(raw.searchTypes).filter(([k]) => GTYPE[k]),
+    devices = byClicks(raw.byDevice, "impressions"),
+    countries = byClicks(raw.byCountry).slice(0, 10);
+  const anomalies = (Array.isArray(raw.anomalies) ? raw.anomalies : []).filter(
+    a => obj(a) && isDay(a.from) && isDay(a.to) && a.what && a.url,
+  );
+  return [
+    now &&
+      days > 0 &&
+      `Search clicks: ${move("clicks")} · impressions: ${move("impressions")} vs the previous ${days} days`,
+    drops.length &&
+      `Biggest drops in search clicks: ${drops.map(d => `${d.path} ${num(n(d, "before"))} → ${num(n(d, "after"))}`).join(" · ")}`,
+    types.length &&
+      `Clicks from other Google results: ${types.map(([k, v]) => `${GTYPE[k]} ${num(n(v, "clicks"))}`).join(" · ")}${per}`,
+    devices.length &&
+      `Search by device: ${devices.map(([k, v]) => `${k.toLowerCase()} ${num(n(v, "clicks"))} clicks · ${num(n(v, "impressions"))} impressions`).join("; ")}${per}`,
+    countries.length &&
+      `Search clicks by country: ${countries.map(([k, v]) => `${k.toUpperCase()} ${num(n(v, "clicks"))}`).join(" · ")}${per}`,
+    anomalies.length &&
+      `Google's data anomalies page (${anomalies[0].url}) lists problems in this period: ${anomalies.map(a => `${a.from === a.to ? a.from : `${a.from} to ${a.to}`}: ${a.what}`).join("; ")}. A change in these numbers may not be real.`,
+  ];
+}
 function searchLines() {
   const pages = Object.keys(obj(bing?.traffic) || {}).length,
     ga = Object.keys(analytics || {}).length;
@@ -330,6 +374,7 @@ function searchLines() {
     linked.length && `${plural(linked.length, "page")} ${linked.length === 1 ? "has" : "have"} links from other sites`,
   ].filter(Boolean);
   return [
+    ...googleLines(),
     bits.length && `Bing${bingDates ? ` (${bingDates})` : ""}: ${bits.join(" · ")}`,
     ga &&
       `Google Analytics: ${plural(sum(analytics, "sessions"), "organic visit")} to ${plural(ga, "landing page")}${raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : ""}`,
@@ -1211,7 +1256,7 @@ function markdown() {
     if (authorityText())
       L.push(`${authorityText()}${ahrefsCredit() ? ` · [${ahrefsCredit().text}](${ahrefsCredit().url})` : ""}`, "");
     if (googleUpdatesText()) L.push(googleUpdatesText(), "");
-    for (const t of searchLines()) L.push(t, "");
+    for (const t of searchLines()) L.push(mdText(t), ""); // paths from Search Console, escaped
     L.push("## Area scores", "", "| Area | Score | Open findings | Top issue |", "| --- | ---: | ---: | --- |");
     for (const a of areas)
       L.push(`| ${mdEsc(a.name)} | ${a.value} | ${a.top.length} | ${mdEsc(a.top[0]?.title || "All checks pass")} |`);

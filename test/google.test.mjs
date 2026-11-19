@@ -6,8 +6,8 @@ import { createServer } from "node:http";
 import { connect } from "node:net";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { SCRIPTS, node, tmp } from "./helpers.mjs";
-import { challengeFor, pkce, fetchGoogle } from "../skills/seo-supervisor/scripts/google.mjs";
+import { SCRIPTS, SKILL, node, tmp } from "./helpers.mjs";
+import { challengeFor, pkce, fetchGoogle, anomaliesIn } from "../skills/seo-supervisor/scripts/google.mjs";
 
 const CLI = join(SCRIPTS, "google.mjs");
 const SC = "https://www.googleapis.com/auth/webmasters.readonly",
@@ -510,6 +510,80 @@ const pqRows = [
   { keys: ["https://www.example.com/b/", "widgets"], clicks: 4, impressions: 200, ctr: 0.02, position: 8 },
   { keys: ["https://www.example.com/pricing/", "widget price"], clicks: 9, impressions: 900, ctr: 0.01, position: 2 },
 ];
+// The period before: /pricing/ (45 → 12), /gone/ (31 → 0) and /b/ (70 → 40) dropped; /a/ lost 20 but only 29%,
+// /guide/ 83% but only 19.
+const prevRows = [
+  PAGE("https://www.example.com/", 60, 1200, 1.4),
+  PAGE("https://www.example.com/a/", 70, 1500, 2),
+  PAGE("https://www.example.com/b/", 70, 1400, 2.5),
+  PAGE("https://www.example.com/pricing/", 40, 2000, 2),
+  PAGE("http://example.com/pricing/", 5, 300, 3),
+  PAGE("https://www.example.com/guide/", 22, 450, 9),
+  PAGE("https://www.example.com/gone/", 31, 600, 4),
+  PAGE("https://blog.example.com/elsewhere/", 500, 9999, 1),
+];
+const daysAgo = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+const isBefore = body => body.endDate < daysAgo(10); // the current period ends 3 days ago, the one before at least 31
+const TOTAL = (clicks, impressions) => [{ clicks, impressions, ctr: clicks / impressions, position: 5 }];
+// Other search types: totals (no dimension) and pages. Video and Google News have nothing, news only impressions.
+const typeRows = {
+  image: {
+    "": TOTAL(12, 900),
+    page: [PAGE("https://www.example.com/a/", 8, 500, 4), PAGE("https://blog.example.com/x/", 3, 100, 2)],
+  },
+  discover: { "": TOTAL(300, 9000), page: [PAGE("https://www.example.com/b/", 250, 7000, 0)] },
+  news: { "": TOTAL(0, 40), page: [] },
+};
+const deviceRows = [
+  ["MOBILE", 100, 4000],
+  ["DESKTOP", 50, 2000],
+  ["TABLET", 5, 200],
+].map(([k, c, i]) => ({ keys: [k], clicks: c, impressions: i, ctr: c / i, position: 3 }));
+const countryRows = [
+  ["aus", 3],
+  ["bra", 1],
+  ["can", 9],
+  ["deu", 12],
+  ["esp", 2],
+  ["fra", 8],
+  ["gbr", 30],
+  ["ind", 15],
+  ["ita", 0],
+  ["jpn", 4],
+  ["nld", 6],
+  ["usa", 40],
+].map(([k, c]) => ({ keys: [k], clicks: c, impressions: c * 50 + 10, ctr: c / (c * 50 + 10), position: 4 }));
+const RICH = {
+  "/a/": {
+    verdict: "FAIL",
+    detectedItems: [
+      {
+        richResultType: "Product snippets",
+        items: [
+          {
+            name: "Widget",
+            issues: [
+              { issueMessage: 'Missing field "offers"', severity: "ERROR" },
+              { issueMessage: 'Missing field "review"', severity: "WARNING" },
+            ],
+          },
+          { name: "Gadget", issues: [{ issueMessage: 'Missing field "offers"', severity: "ERROR" }] },
+        ],
+      },
+      { richResultType: "Breadcrumbs", items: [{ name: "Unnamed item", issues: [] }] },
+    ],
+  },
+  "/": { verdict: "PASS", detectedItems: [{ richResultType: "Breadcrumbs", items: [{ name: "Unnamed item" }] }] },
+  "/guide/": {
+    verdict: "PASS",
+    detectedItems: [
+      {
+        richResultType: "Review snippets",
+        items: [{ name: "Guide", issues: [{ issueMessage: 'Missing field "author"', severity: "WARNING" }] }],
+      },
+    ],
+  },
+};
 function apiRoutes(over = {}) {
   const SITE = "/webmasters/v3/sites/sc-domain:example.com";
   return {
@@ -525,9 +599,13 @@ function apiRoutes(over = {}) {
     ],
     [`POST ${SITE}/searchAnalytics/query`]: ({ body }) => {
       const d = body.dimensions.join(",");
+      if (body.type !== "web") return [200, { rows: typeRows[body.type]?.[d] || [] }];
+      if (d === "device" || d === "country") return [200, { rows: d === "device" ? deviceRows : countryRows }];
       const all =
         d === "page"
-          ? pageRows
+          ? isBefore(body)
+            ? prevRows
+            : pageRows
           : d === "query"
             ? [{ keys: ["widgets"], clicks: 9, impressions: 500, ctr: 0.018, position: 6.6 }]
             : pqRows;
@@ -568,7 +646,16 @@ function apiRoutes(over = {}) {
           googleCanonical: undefined,
         });
       if (p === "/pricing/") r.googleCanonical = "https://www.example.com/plans/";
-      return [200, { inspectionResult: { inspectionResultLink: "https://search.google.com/x", indexStatusResult: r } }];
+      return [
+        200,
+        {
+          inspectionResult: {
+            inspectionResultLink: "https://search.google.com/x",
+            indexStatusResult: r,
+            ...(RICH[p] && { richResultsResult: RICH[p] }),
+          },
+        },
+      ];
     },
     "GET /admin/v1beta/accountSummaries": () => [
       200,
@@ -973,9 +1060,14 @@ test("fetch from the CLI writes seo-audit/google.json", async () => {
       "traffic",
       "queries",
       "pageQueries",
+      "trafficChange",
+      "searchTypes",
+      "byDevice",
+      "byCountry",
       "inspection",
       "sitemaps",
       "analytics",
+      "anomalies",
       "findings",
       "notes",
     ]);
@@ -984,6 +1076,355 @@ test("fetch from the CLI writes seo-audit/google.json", async () => {
   } finally {
     await g.close();
   }
+});
+
+test("fetch: image, video, news, Google News and Discover totals and top pages, only for the types with data", async () => {
+  const g = await fakeGoogle(apiRoutes()),
+    home = tmp();
+  store(home);
+  try {
+    const r = await fetchWith(g, home, { ga4Property: "222" });
+    assert.deepEqual(
+      r.searchTypes,
+      {
+        image: { clicks: 12, impressions: 900, pages: { "/a/": { clicks: 8, impressions: 500 } } },
+        news: { clicks: 0, impressions: 40, pages: {} },
+        discover: { clicks: 300, impressions: 9000, pages: { "/b/": { clicks: 250, impressions: 7000 } } },
+      },
+      "other subdomains are left out of the pages, as in traffic",
+    );
+    const typed = g.hits.filter(h => h.body.type && h.body.type !== "web");
+    assert.deepEqual([...new Set(typed.map(h => h.body.type))].sort(), [
+      "discover",
+      "googleNews",
+      "image",
+      "news",
+      "video",
+    ]);
+    assert.ok(
+      typed.every(h => ["", "page"].includes(h.body.dimensions.join())),
+      "only totals and pages, which every type allows (no query for Discover or News)",
+    );
+    assert.equal(
+      typed.filter(h => ["video", "googleNews"].includes(h.body.type) && h.body.dimensions.length).length,
+      0,
+      "no pages asked for a type with no data",
+    );
+    assert.ok(
+      typed.every(
+        h => h.body.startDate && h.body.endDate === g.hits.find(x => x.body.dimensions?.join() === "page").body.endDate,
+      ),
+      "the same period",
+    );
+  } finally {
+    await g.close();
+  }
+});
+
+test("fetch: site-wide clicks and impressions by device, and the top 10 countries by clicks", async () => {
+  const g = await fakeGoogle(apiRoutes()),
+    home = tmp();
+  store(home);
+  try {
+    const r = await fetchWith(g, home, { ga4Property: "222" });
+    assert.deepEqual(r.byDevice, {
+      MOBILE: { clicks: 100, impressions: 4000 },
+      DESKTOP: { clicks: 50, impressions: 2000 },
+      TABLET: { clicks: 5, impressions: 200 },
+    });
+    assert.deepEqual(
+      Object.keys(r.byCountry),
+      ["usa", "gbr", "ind", "deu", "can", "fra", "nld", "jpn", "aus", "esp"],
+      "sorted by clicks, top 10",
+    );
+    assert.deepEqual(r.byCountry.usa, { clicks: 40, impressions: 2010 });
+    assert.equal(
+      g.hits.filter(h => ["device", "country"].includes(h.body.dimensions?.join())).length,
+      2,
+      "one query each",
+    );
+  } finally {
+    await g.close();
+  }
+});
+
+test("fetch: rich-result status per inspected page, and Google's rich-result errors become a SCHEMA-08 finding", async () => {
+  const g = await fakeGoogle(apiRoutes()),
+    home = tmp();
+  store(home);
+  try {
+    const r = await fetchWith(g, home, { ga4Property: "222" });
+    const at = p => r.inspection.find(i => i.url === "https://www.example.com" + p);
+    assert.deepEqual(at("/a/").richResults, {
+      verdict: "FAIL",
+      types: [
+        {
+          type: "Product snippets",
+          items: 2,
+          errors: ['Missing field "offers"'],
+          warnings: ['Missing field "review"'],
+        },
+        { type: "Breadcrumbs", items: 1, errors: [], warnings: [] },
+      ],
+    });
+    assert.deepEqual(at("/").richResults, {
+      verdict: "PASS",
+      types: [{ type: "Breadcrumbs", items: 1, errors: [], warnings: [] }],
+    });
+    assert.equal(at("/pricing/").richResults, null, "no rich results found");
+    const f = r.findings.find(x => x.check === "gsc-rich-result-errors");
+    assert.equal(f.rule, "SCHEMA-08");
+    assert.equal(f.severity, "medium");
+    assert.equal(f.category, "Structured data");
+    assert.deepEqual(
+      f.evidence,
+      [{ url: "https://www.example.com/a/", detail: 'Product snippets: Missing field "offers"' }],
+      "warnings alone aren't a finding",
+    );
+  } finally {
+    await g.close();
+  }
+});
+
+test("fetch: pages the owner chooses replace the default sample; off-site ones are skipped and the run is capped at 200", async () => {
+  const g = await fakeGoogle(apiRoutes()),
+    home = tmp();
+  store(home);
+  const inspected = () => g.hits.filter(h => h.path.endsWith(":inspect")).map(h => h.body.inspectionUrl);
+  try {
+    const r = await fetchWith(g, home, {
+      ga4Property: "222",
+      inspect: [
+        "/x/",
+        "https://example.com/y/",
+        "https://www.example.com/x/",
+        "https://other.com/z",
+        "mailto:a@b.example",
+      ],
+    });
+    assert.deepEqual(
+      inspected(),
+      ["https://www.example.com/x/", "https://example.com/y/"],
+      "only the owner's pages, once each",
+    );
+    assert.ok(
+      r.notes.some(
+        n =>
+          /2 of the pages to inspect aren't in the Search Console property sc-domain:example\.com/.test(n) &&
+          n.includes("https://other.com/z"),
+      ),
+      r.notes.join("\n"),
+    );
+    g.hits.length = 0;
+    const many = await fetchWith(g, home, {
+      ga4Property: "222",
+      inspect: Array.from({ length: 205 }, (_, i) => `/p${i}/`),
+    });
+    assert.equal(inspected().length, 200);
+    assert.ok(
+      many.notes.some(n => /first 200 of 205/.test(n) && /2,000 a day/.test(n)),
+      many.notes.join("\n"),
+    );
+  } finally {
+    await g.close();
+  }
+});
+
+test("fetch --inspect <file> and --inspect-urls from the CLI; a missing file stops with what's wrong", async () => {
+  const g = await fakeGoogle(apiRoutes()),
+    home = tmp(),
+    dir = tmp();
+  store(home);
+  writeFileSync(join(dir, "pages.txt"), "/x/\r\n\n# a comment\nhttps://www.example.com/y/\n");
+  try {
+    await node(
+      [
+        CLI,
+        "fetch",
+        "--site",
+        "https://www.example.com",
+        "--ga4-property",
+        "222",
+        "--inspect",
+        "pages.txt",
+        "--inspect-urls",
+        "/z/, /x/",
+        "--out",
+        join(dir, "google.json"),
+      ],
+      { env: { ...homeEnv(home), ...g.env }, cwd: dir },
+    );
+    assert.deepEqual(
+      g.hits.filter(h => h.path.endsWith(":inspect")).map(h => new URL(h.body.inspectionUrl).pathname),
+      ["/x/", "/y/", "/z/"],
+    );
+    await assert.rejects(
+      node([CLI, "fetch", "--site", "https://www.example.com", "--inspect", "nope.txt"], {
+        env: { ...homeEnv(home), ...g.env },
+        cwd: dir,
+      }),
+      e => e.code === 2 && /can't read nope\.txt/.test(e.stderr),
+    );
+  } finally {
+    await g.close();
+  }
+});
+
+test("fetch: compares with the period before, same length, and lists pages that lost at least 20 clicks and 30%", async () => {
+  const g = await fakeGoogle(apiRoutes()),
+    home = tmp();
+  store(home);
+  try {
+    const r = await fetchWith(g, home, { ga4Property: "222" });
+    const { previous, current, drops } = r.trafficChange;
+    const d = s => Date.parse(s) / 864e5;
+    assert.equal(d(current.from) - d(previous.to), 1, "the period before ends the day before this one starts");
+    assert.equal(d(previous.to) - d(previous.from), d(current.to) - d(current.from), "same length");
+    assert.match(r.period, new RegExp(`${current.from} to ${current.to}`));
+    assert.deepEqual(
+      [previous.clicks, previous.impressions],
+      [298, 7450],
+      "this site's host only, www and http variants counted once",
+    );
+    assert.deepEqual([current.clicks, current.impressions], [155, 6200]);
+    assert.deepEqual(
+      drops,
+      [
+        { path: "/pricing/", before: 45, after: 12 },
+        { path: "/gone/", before: 31, after: 0 },
+        { path: "/b/", before: 70, after: 40 },
+      ],
+      "biggest loss first",
+    );
+    const long = await fetchWith(g, home, { ga4Property: "222", days: 300 });
+    assert.equal(long.trafficChange, null);
+    assert.ok(
+      long.notes.some(n => /16 months/.test(n) && /240 days/.test(n)),
+      long.notes.join("\n"),
+    );
+  } finally {
+    await g.close();
+  }
+});
+
+test("Google's documented Search Console data anomalies are found by date, with Google's page", () => {
+  const PAGE_URL = "https://support.google.com/webmasters/answer/6211453";
+  const main = anomaliesIn("2026-03-01", "2026-05-30");
+  assert.deepEqual(
+    main.map(a => [a.from, a.to]),
+    [["2025-05-13", "2026-04-27"]],
+  );
+  assert.match(main[0].what, /impressions/);
+  assert.match(main[0].what, /clicks weren't affected/);
+  assert.ok(main.every(a => a.url === PAGE_URL));
+  assert.deepEqual(
+    anomaliesIn("2026-03-01", "2026-05-30", "discover").map(a => a.from),
+    ["2026-05-07", "2026-05-21"],
+    "Discover's own, only for Discover",
+  );
+  assert.deepEqual(anomaliesIn("2026-04-28", "2026-11-16"), [], "nothing for web search after 27 April 2026");
+  assert.deepEqual(anomaliesIn("2025-05-14", "2025-05-14").length, 1, "one day inside counts");
+});
+
+test("fetch: the anomalies the period (and the one before) overlaps are listed with a note naming Google's page", async () => {
+  const g = await fakeGoogle(apiRoutes()),
+    home = tmp();
+  store(home);
+  try {
+    const r = await fetchWith(g, home, { ga4Property: "222", days: 240 });
+    const from = r.trafficChange.previous.from,
+      to = r.trafficChange.current.to;
+    assert.deepEqual(r.anomalies, [
+      ...anomaliesIn(from, to),
+      ...anomaliesIn(r.trafficChange.current.from, to, "discover"),
+    ]);
+    for (const a of r.anomalies)
+      assert.ok(
+        r.notes.some(n => n.includes(a.url) && n.includes(a.from)),
+        r.notes.join("\n"),
+      );
+  } finally {
+    await g.close();
+  }
+});
+
+// ---------- the report ----------
+const renderWith = async extra => {
+  const dir = tmp(),
+    data = JSON.parse(readFileSync(join(SKILL, "examples", "sample-audit.json"), "utf8"));
+  writeFileSync(join(dir, "a.json"), JSON.stringify({ ...data, ...extra }));
+  await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "r.html")]);
+  return { html: readFileSync(join(dir, "r.html"), "utf8"), md: readFileSync(join(dir, "r.md"), "utf8") };
+};
+
+test("the Overview shows the change from the period before, the biggest drops, other Google results, devices, countries and Google's data anomalies", async () => {
+  const { html, md } = await renderWith({
+    trafficChange: {
+      previous: { from: "2026-05-21", to: "2026-08-18", clicks: 1240, impressions: 30100 },
+      current: { from: "2026-08-19", to: "2026-11-16", clicks: 980, impressions: 31000 },
+      drops: [
+        { path: "/pricing/", before: 300, after: 120 },
+        { path: "/a_b/*x*<b>", before: 90, after: 0 },
+      ],
+    },
+    searchTypes: {
+      image: { clicks: 120, impressions: 9000, pages: {} },
+      news: { clicks: 0, impressions: 40, pages: {} },
+      discover: { clicks: 300, impressions: 12000, pages: {} },
+    },
+    byDevice: {
+      MOBILE: { clicks: 620, impressions: 30100 },
+      DESKTOP: { clicks: 350, impressions: 9000 },
+      TABLET: { clicks: 0, impressions: 0 },
+    },
+    byCountry: {
+      usa: { clicks: 540, impressions: 12000 },
+      gbr: { clicks: 210, impressions: 5000 },
+      ita: { clicks: 0, impressions: 30 },
+    },
+    anomalies: anomaliesIn("2026-03-01", "2026-05-30", "discover").concat(anomaliesIn("2026-03-01", "2026-05-30")),
+  });
+  const lines = [
+    "Search clicks: 1,240 → 980 (−21%) · impressions: 30,100 → 31,000 (+3%) vs the previous 90 days",
+    "Clicks from other Google results: Discover 300 · Google Images 120 (last 3 months)",
+    "Search by device: mobile 620 clicks · 30,100 impressions; desktop 350 clicks · 9,000 impressions (last 3 months)",
+    "Search clicks by country: USA 540 · GBR 210 (last 3 months)",
+    "Google's data anomalies page (https://support.google.com/webmasters/answer/6211453) lists problems in this period: 2026-05-07 to 2026-05-08:",
+    "2026-05-21: Discover",
+    "2025-05-13 to 2026-04-27: impressions",
+    "A change in these numbers may not be real.",
+  ];
+  for (const l of lines) {
+    assert.ok(html.includes(l.replace(/'/g, "&#39;")), l);
+    assert.ok(md.includes(l), l);
+  }
+  assert.ok(
+    html.includes("Biggest drops in search clicks: /pricing/ 300 → 120 · /a_b/*x*&lt;b&gt; 90 → 0"),
+    "escaped in the HTML",
+  );
+  assert.ok(
+    md.includes("Biggest drops in search clicks: /pricing/ 300 → 120 · /a\\_b/\\*x\\*\\<b\\> 90 → 0"),
+    "escaped in the Markdown",
+  );
+  assert.doesNotMatch(
+    html + md,
+    /News tab \d|tablet \d|ITA \d/,
+    "types, devices and countries without clicks are left out",
+  );
+});
+
+test("the Overview has no Search Console change, device, country or anomaly lines when that data is empty", async () => {
+  const { html, md } = await renderWith({
+    trafficChange: null,
+    searchTypes: {},
+    byDevice: {},
+    byCountry: {},
+    anomalies: [],
+  });
+  assert.doesNotMatch(
+    html + md,
+    /Search clicks|Biggest drops|other Google results|by device:|by country:|data anomalies/,
+  );
 });
 
 // ---------- submit-sitemap ----------

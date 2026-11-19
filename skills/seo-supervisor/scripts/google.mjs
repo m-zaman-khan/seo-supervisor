@@ -41,6 +41,21 @@ const ADMIN_API = {
   where: "Google Analytics → Admin → Property access management",
 };
 const DATA_API = { name: "Google Analytics Data API", where: ADMIN_API.where };
+// Logging problems Google lists, so a change they caused isn't read as real. type limits one to that search type.
+// Add new ones from the same page.
+const DISCOVER_LOSS = "Discover clicks and impressions were under-counted";
+const ANOMALIES = [
+  {
+    from: "2025-05-13",
+    to: "2026-04-27",
+    what: "impressions weren't counted accurately, so CTR and average position were off too (clicks weren't affected)",
+  },
+  { from: "2026-05-07", to: "2026-05-08", type: "discover", what: DISCOVER_LOSS },
+  { from: "2026-05-21", to: "2026-05-21", type: "discover", what: DISCOVER_LOSS },
+  { from: "2026-06-24", to: "2026-06-24", type: "discover", what: DISCOVER_LOSS },
+  { from: "2026-08-13", to: "2026-08-13", type: "discover", what: DISCOVER_LOSS },
+].map(a => ({ ...a, url: "https://support.google.com/webmasters/answer/6211453" }));
+export const anomaliesIn = (from, to, type) => ANOMALIES.filter(a => a.type === type && a.from <= to && a.to >= from);
 
 class Fail extends Error {}
 const fail = msg => {
@@ -235,10 +250,25 @@ async function pickProperty(g, origin, who) {
     );
   return prop;
 }
+// A domain property covers its subdomains; a URL-prefix property only addresses that start with it.
+const inProperty = (prop, u) => {
+  const d = prop.startsWith("sc-domain:") && prop.slice(10);
+  return d ? u.hostname === d || u.hostname.endsWith("." + d) : u.href.startsWith(prop);
+};
 
 // ---------- fetch ----------
-// crawl, a parsed seo-crawl.json, lets URL Inspection sample key pages with no search traffic yet.
-export async function fetchGoogle({ site, days = 90, ga4Property, crawl, pageSize = 25000, home, endpoints } = {}) {
+// crawl, a parsed seo-crawl.json, lets URL Inspection sample key pages with no search traffic yet. inspect (paths or
+// URLs) replaces the default sample.
+export async function fetchGoogle({
+  site,
+  days = 90,
+  ga4Property,
+  crawl,
+  inspect,
+  pageSize = 25000,
+  home,
+  endpoints,
+} = {}) {
   const origin = httpUrl(site, "--site must be the site's address", "https://www.example.com");
   days = Math.round(Number(days));
   if (!(days >= 1 && days <= 480)) fail("google: --days must be between 1 and 480 (Search Console keeps 16 months).");
@@ -289,27 +319,20 @@ export async function fetchGoogle({ site, days = 90, ga4Property, crawl, pageSiz
     ctr: Math.round(r.ctr * 10000) / 10000,
     position: Math.round(r.position * 10) / 10,
   });
-  const rowsFor = async dimensions => {
+  const ci = r => ({ clicks: r.clicks, impressions: r.impressions });
+  const sa = body =>
+    g.call(`${scBase}/searchAnalytics/query`, { startDate, endDate, type: "web", dimensions: [], ...body });
+  const rowsFor = async (dimensions, dates = {}) => {
     const rows = [];
     while (rows.length < 25000) {
       const rowLimit = Math.min(pageSize, 25000 - rows.length),
-        got =
-          (
-            await g.call(`${scBase}/searchAnalytics/query`, {
-              startDate,
-              endDate,
-              dimensions,
-              type: "web",
-              rowLimit,
-              startRow: rows.length,
-            })
-          ).rows || [];
+        got = (await sa({ ...dates, dimensions, rowLimit, startRow: rows.length })).rows || [];
       rows.push(...got);
       if (got.length < rowLimit) break;
     }
     if (rows.length >= 25000)
       notes.push(
-        `Search Console has 25,000 or more ${{ page: "pages", query: "queries" }[dimensions.join()] || "page and query pairs"} for this period; only the top 25,000 were read, so the least-searched ones are left out.`,
+        `Search Console has 25,000 or more ${{ page: "pages", query: "queries" }[dimensions.join()] || "page and query pairs"} for ${dates.startDate ? "the period before" : "this period"}; only the top 25,000 were read, so the least-searched ones are left out.`,
       );
     return rows;
   };
@@ -343,8 +366,81 @@ export async function fetchGoogle({ site, days = 90, ga4Property, crawl, pageSiz
     true,
   );
 
-  // URL Inspection samples the home page, up to 10 crawled pages (shallowest, most linked), then top pages by
-  // clicks, 20 in all; Google allows 2,000 a day. The crawl may be of a local build, so only its paths are used.
+  // The period before has the same length. A drop is at least 20 clicks and 30% lost: below 20 a small page's
+  // weekly swing looks like a drop, and a big page loses 20 to noise.
+  let trafficChange = null;
+  const total = (m, k) => Object.values(m).reduce((s, x) => s + x[k], 0),
+    prevStart = day(2 * days + 2),
+    prevEnd = day(days + 3);
+  if (2 * days + 2 > 482)
+    notes.push(
+      "Search Console keeps 16 months of data, so a period longer than 240 days has no full period before it to compare with; the change in search clicks was left out.",
+    );
+  else
+    await attempt(`${prop} in Search Console for the period before`, SC_API, async () => {
+      const before = {};
+      for (const r of await rowsFor(["page"], { startDate: prevStart, endDate: prevEnd })) {
+        const p = pathOf(r.keys[0]);
+        if (p) addTraffic(before, p, metrics(r));
+      }
+      const drops = Object.entries(before)
+        .map(([path, b]) => ({ path, before: b.clicks, after: traffic[path]?.clicks || 0 }))
+        .filter(d => d.before - d.after >= 20 && d.after <= d.before * 0.7)
+        .sort((a, b) => b.before - b.after - (a.before - a.after))
+        .slice(0, 10);
+      trafficChange = {
+        previous: {
+          from: prevStart,
+          to: prevEnd,
+          clicks: total(before, "clicks"),
+          impressions: total(before, "impressions"),
+        },
+        current: {
+          from: startDate,
+          to: endDate,
+          clicks: total(traffic, "clicks"),
+          impressions: total(traffic, "impressions"),
+        },
+        drops,
+      };
+    });
+
+  // Only the page dimension, which every type allows: Discover and Google News have no queries. Totals are the
+  // property's, other subdomains included.
+  const searchTypes = {};
+  await attempt("the image, video, news and Discover results in Search Console", SC_API, async () => {
+    for (const type of ["image", "video", "news", "googleNews", "discover"]) {
+      const t = (await sa({ type })).rows?.[0];
+      if (!t?.impressions) continue;
+      const pages = {};
+      for (const r of (await sa({ type, dimensions: ["page"], rowLimit: 10 })).rows || []) {
+        const p = pathOf(r.keys[0]);
+        if (p)
+          pages[p] = {
+            clicks: (pages[p]?.clicks || 0) + r.clicks,
+            impressions: (pages[p]?.impressions || 0) + r.impressions,
+          };
+      }
+      searchTypes[type] = { ...ci(t), pages };
+    }
+  });
+
+  // Country keys are ISO 3166 alpha-3, lower case.
+  const byDevice = {},
+    byCountry = {};
+  await attempt("search by device and country in Search Console", SC_API, async () => {
+    for (const r of (await sa({ dimensions: ["device"] })).rows || []) byDevice[r.keys[0]] = ci(r);
+    for (const r of ((await sa({ dimensions: ["country"] })).rows || [])
+      .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions)
+      .slice(0, 10))
+      byCountry[r.keys[0]] = ci(r);
+  });
+
+  // inspect replaces the default sample: the home page, up to 10 crawled pages (shallowest, most linked), then top
+  // pages by clicks, 20 in all. The crawl may be of a local build, so only its paths are used.
+  // Google allows 2,000 inspections a day per property and 600 a minute; 200 stays under the minute's limit and
+  // leaves most of the day's.
+  const INSPECT_MAX = 200;
   const pathOnly = u => {
     try {
       const x = new URL(u);
@@ -361,14 +457,45 @@ export async function fetchGoogle({ site, days = 90, ga4Property, crawl, pageSiz
   const top = Object.entries(traffic)
     .sort((a, b) => b[1].clicks - a[1].clicks || b[1].impressions - a[1].impressions)
     .map(([p]) => p);
+  let picked = [...new Set(["/", ...crawled.slice(0, 10), ...top])]
+    .slice(0, 20)
+    .map(p => urls[p] || new URL(p, origin).href);
+  if (inspect?.length) {
+    const on = [],
+      off = [];
+    for (const u of inspect) {
+      let x;
+      try {
+        x = new URL(u, origin);
+      } catch {}
+      (x && /^https?:$/.test(x.protocol) && inProperty(prop, x) ? on : off).push(x?.href || u);
+    }
+    picked = [...new Set(on)];
+    if (off.length)
+      notes.push(
+        `${off.length} of the pages to inspect aren't in the Search Console property ${prop}, so they were skipped: ${off.slice(0, 10).join(", ")}.`,
+      );
+    if (picked.length > INSPECT_MAX)
+      notes.push(
+        `URL Inspection checked the first ${INSPECT_MAX} of ${picked.length} pages you listed. Google allows 2,000 a day per property (600 a minute), so run fetch again later with the rest.`,
+      );
+  }
   const inspection = [];
+  const issues = (d, severity) => [
+    ...new Set(
+      (d.items || [])
+        .flatMap(i => i.issues || [])
+        .filter(i => i.severity === severity)
+        .map(i => i.issueMessage),
+    ),
+  ];
   await attempt("URL Inspection in Search Console", SC_API, async () => {
-    for (const p of [...new Set(["/", ...crawled.slice(0, 10), ...top])].slice(0, 20)) {
-      const url = urls[p] || new URL(p, origin).href;
+    for (const url of picked.slice(0, INSPECT_MAX)) {
       const r =
           (await g.call(`${E.inspection}/urlInspection/index:inspect`, { inspectionUrl: url, siteUrl: prop }))
             .inspectionResult || {},
-        x = r.indexStatusResult || {};
+        x = r.indexStatusResult || {},
+        rr = r.richResultsResult;
       inspection.push({
         url,
         verdict: x.verdict ?? null,
@@ -380,6 +507,17 @@ export async function fetchGoogle({ site, days = 90, ga4Property, crawl, pageSiz
         userCanonical: x.userCanonical ?? null,
         lastCrawlTime: x.lastCrawlTime ?? null,
         link: r.inspectionResultLink ?? null,
+        richResults: rr
+          ? {
+              verdict: rr.verdict ?? null,
+              types: (rr.detectedItems || []).map(d => ({
+                type: d.richResultType,
+                items: (d.items || []).length,
+                errors: issues(d, "ERROR"),
+                warnings: issues(d, "WARNING"),
+              })),
+            }
+          : null,
       });
     }
   });
@@ -552,10 +690,36 @@ export async function fetchGoogle({ site, days = 90, ga4Property, crawl, pageSiz
     "Open Search Console → Indexing → Sitemaps and click each sitemap to see the error. Fix the file (valid XML, full URLs on this site, at most 50,000 URLs and 50 MB), then resubmit it.",
     broken,
   );
+  // Warnings only make a rich result plainer; Google shows nothing for an item with an error.
+  const rich = inspection.flatMap(i =>
+    (i.richResults?.types || [])
+      .filter(t => t.errors.length)
+      .map(t => ({ url: i.url, detail: `${t.type}: ${t.errors.join("; ")}` })),
+  );
+  finding(
+    "gsc-rich-result-errors",
+    "SCHEMA-08",
+    "medium",
+    "Structured data",
+    `${rich.length} rich result(s) on key pages have errors in Google's URL Inspection`,
+    "Google doesn't show a rich result (stars, prices, breadcrumbs and the like) for an item with an error, so these pages show as plain results.",
+    "Open each page in Search Console's URL Inspection, or Google's Rich Results Test, to see where the error is. Fix the markup in the template, then click Request indexing.",
+    rich,
+  );
   const findings = [...gscFindings(traffic, pageQueries, urls), ...own].map((f, i) => ({
     ...f,
     id: "G-" + String(i + 1).padStart(3, "0"),
   }));
+
+  // Google's documented logging problems in this period or the one it's compared with (Discover's only for Discover).
+  const anomalies = [
+    ...anomaliesIn(trafficChange ? prevStart : startDate, endDate),
+    ...(searchTypes.discover ? anomaliesIn(startDate, endDate, "discover") : []),
+  ];
+  for (const a of anomalies)
+    notes.push(
+      `Google's "Data anomalies in Search Console" page says that ${a.from === a.to ? `on ${a.from}` : `from ${a.from} to ${a.to}`} ${a.what}. This overlaps the period read${trafficChange && !a.type ? " or the one it's compared with" : ""}, so a change in those numbers may not be real: ${a.url}`,
+    );
 
   return {
     source: "google",
@@ -565,9 +729,14 @@ export async function fetchGoogle({ site, days = 90, ga4Property, crawl, pageSiz
     traffic,
     queries,
     pageQueries,
+    trafficChange,
+    searchTypes,
+    byDevice,
+    byCountry,
     inspection,
     sitemaps,
     analytics,
+    anomalies,
     findings,
     notes,
   };
@@ -886,9 +1055,8 @@ async function submitSitemap(args) {
   const s = g.store(),
     who = whoOf(s),
     prop = await pickProperty(g, origin, who);
-  // A domain property covers its subdomains; a URL-prefix property only addresses that start with it.
   const d = prop.startsWith("sc-domain:") && prop.slice(10);
-  if (!(d ? map.hostname === d || map.hostname.endsWith("." + d) : map.href.startsWith(prop)))
+  if (!inProperty(prop, map))
     fail(
       `google: ${map.href} isn't on ${prop}, so Search Console would refuse it. Submit a sitemap ${d ? `on ${d} or one of its subdomains` : `whose address starts with ${prop}`}, or pass the --site it belongs to.`,
     );
@@ -993,12 +1161,22 @@ async function fetchCli(args) {
     try {
       crawl = JSON.parse(readFileSync(crawlPath, "utf8"));
     } catch {}
+  // --inspect: a file with one URL or path per line (# starts a comment); --inspect-urls: a comma-separated list.
+  const inspect = [];
+  if (str(args.inspect))
+    try {
+      inspect.push(...readFileSync(args.inspect, "utf8").split(/\r?\n/));
+    } catch (e) {
+      fail(`google: can't read ${args.inspect} (${e.code || e.message}).`);
+    }
+  if (str(args["inspect-urls"])) inspect.push(...args["inspect-urls"].split(","));
   const out = resolve(str(args.out) || "seo-audit/google.json");
   const r = await fetchGoogle({
     site: args.site,
     days: str(args.days) || 90,
     ga4Property: str(args["ga4-property"]),
     crawl,
+    inspect: inspect.map(s => s.trim()).filter(s => s && !s.startsWith("#")),
   });
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(r, null, 2));
@@ -1012,7 +1190,7 @@ async function fetchCli(args) {
 const str = v => (typeof v === "string" ? v : null);
 const USAGE = `usage: node google.mjs connect [--client-file client_secret.json | --service-account key.json] [--no-browser] [--print-url]
        node google.mjs guide | status | disconnect
-       node google.mjs fetch --site https://www.example.com [--days 90] [--ga4-property <id>] [--crawl seo-audit/seo-crawl.json] [--out seo-audit/google.json]
+       node google.mjs fetch --site https://www.example.com [--days 90] [--ga4-property <id>] [--crawl seo-audit/seo-crawl.json] [--inspect pages.txt] [--inspect-urls /a/,/b/] [--out seo-audit/google.json]
        node google.mjs submit-sitemap --site https://www.example.com --sitemap https://www.example.com/sitemap.xml [--yes] [--no-browser] [--print-url]`;
 // Exit codes as in connect-keys.mjs: 1 when Google refuses or can't be reached, or status finds nothing connected;
 // 2 on bad input or no usable sign-in.
