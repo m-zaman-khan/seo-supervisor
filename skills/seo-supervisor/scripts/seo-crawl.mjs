@@ -5,6 +5,8 @@
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createGunzip } from "node:zlib";
+import { get as httpGet } from "node:http";
+import { get as httpsGet } from "node:https";
 import { CHECKS as HREFLANG_CHECKS, checkHreflang } from "./checks/hreflang.mjs";
 import { CHECKS as TLS_CHECKS, checkLive } from "./checks/tls.mjs";
 import {
@@ -231,6 +233,13 @@ const CHECKS = {
     n => `${n} page(s) show Googlebot something different from what visitors get`,
     "Asked with Googlebot's user agent, these pages redirected elsewhere or gave a different canonical, title or much less text than a visitor gets. A prerender service serving stale or broken pages, or code that switches content for bots, does this; showing search engines something other than what visitors see is cloaking under Google's spam policies. A real Googlebot comes from Google's IP addresses, so a firewall that checks IPs can treat it differently than this test shows.",
     "Serve Googlebot the same HTML as visitors: fix or remove the prerender service or bot-specific code, and render pages on the server for everyone. Confirm with the live test in Search Console's URL Inspection.",
+  ],
+  "googlebot-firewall": [
+    "CRAWL-09",
+    "needs-decision",
+    n => `${n} page(s) turn away requests that claim to be Googlebot`,
+    "Asked with Googlebot's user agent, these pages answered 403, 429 or 503 or showed a bot challenge, while the same request as a visitor got the page. A firewall that verifies Google by IP does exactly this, and it's right to: a request that claims to be Googlebot from an address that isn't Google's is a fake, and Cloudflare's fake-Googlebot rule, Wordfence and Sucuri block them. A firewall that goes by the user agent alone blocks the real Googlebot too, and pages then drop out of search. This test runs from this machine, not Google's addresses, so it can't tell the two apart.",
+    "Run the live test in Search Console's URL Inspection on one of these pages; it uses the real Googlebot. If it gets the page, the firewall is verifying Google by IP and nothing needs to change. If it doesn't, let verified Googlebot through in the CDN, firewall or bot-protection settings (by Google's IP ranges or the CDN's verified-bots list, not by user agent).",
   ],
   "link-http": [
     "CRAWL-08",
@@ -1172,19 +1181,20 @@ function deepHas(obj, pred, depth = 0) {
 const ORG_RE =
   /(Organization|Corporation|Business|Store|Service|Contractor|Agency|Electrician|Plumber|Locksmith|Dentist|Physician|Attorney|Restaurant|Hotel|AutoRepair|School|NGO)$/;
 
-// Google's rules from one robots meta content or the X-Robots-Tag header, lowercased. A "<crawler>:" prefix holds for
-// the rules after it, and only unprefixed and googlebot rules count; VALUED names take a value after the colon, so
-// they aren't prefixes. "none" is noindex plus nofollow.
+// Google's rules from one robots meta content or X-Robots-Tag line. A "<crawler>:" prefix holds for the rules after it,
+// and only unprefixed and googlebot rules count. "none" is noindex plus nofollow.
 // https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag
-// fetch joins repeated X-Robots-Tag headers with commas, so a plain header after a prefixed one reads as that bot's.
-// Reading the raw header lines would fix it.
 const VALUED = /^(max-snippet|max-image-preview|max-video-preview|unavailable_after|ai-grounding|ai-training)$/;
+const agentRule = t => {
+  const m = /^\s*([a-z][\w-]*)\s*:\s*(.*)$/.exec(t);
+  return m && !VALUED.test(m[1]) ? m : null;
+};
 function googleRobots(s) {
   let agent = null;
   const out = [];
   for (let t of (s || "").toLowerCase().split(",")) {
-    const m = /^\s*([a-z][\w-]*)\s*:\s*(.*)$/.exec(t);
-    if (m && !VALUED.test(m[1])) [, agent, t] = m;
+    const m = agentRule(t);
+    if (m) [, agent, t] = m;
     t = t.trim().replace(/\s*:\s*/, ":");
     if (t && (!agent || agent === "googlebot")) out.push(...(t === "none" ? ["noindex", "nofollow"] : [t]));
   }
@@ -1197,7 +1207,11 @@ function ctx(text, re) {
     e = Math.min(text.length, m.index + m[0].length + 60);
   return { match: m[0], snippet: (s ? "…" : "") + text.slice(s, e) + (e < text.length ? "…" : "") };
 }
-function analyze(url, html, headers) {
+// Consent managers have to run before anything else, so a blocking script from one is fine.
+const CONSENT_HOST =
+  /(^|\.)(cookiebot\.(com|eu)|cookielaw\.org|onetrust\.com|usercentrics\.eu|privacy-center\.org|iubenda\.com|cookieyes\.com|termly\.io|osano\.com)$/i;
+// xRobotsLines: the X-Robots-Tag lines kept apart, when crawlOne read them raw.
+function analyze(url, html, headers, xRobotsLines) {
   const headEnd = html.search(/<\/head>/i);
   const head = headEnd > 0 ? html.slice(0, headEnd) : html;
   const bodyStart = html.search(/<body\b/i);
@@ -1219,15 +1233,16 @@ function analyze(url, html, headers) {
     .toLowerCase();
   const xRobots = (headers.get("x-robots-tag") || "").toLowerCase();
   const metaRules = robotsTags.flatMap(m => googleRobots(m.content)),
-    headerRules = googleRobots(xRobots),
+    headerRules = (xRobotsLines?.length ? xRobotsLines : [xRobots]).flatMap(googleRobots),
     directives = [...metaRules, ...headerRules];
   const hreflang = tagsOf(head, "link")
     .filter(l => (l.rel || "").toLowerCase().split(/\s+/).includes("alternate") && l.hreflang && l.href)
     .map(l => ({ lang: l.hreflang, href: l.href }));
   // Render-blocking: head scripts without async, defer or type="module" (other types don't run, and browsers skip
-  // nomodule), and stylesheets for every screen. Comments are stripped, since they hide old IE shims.
+  // nomodule), except consent managers', and stylesheets for every screen. Comments hide old IE shims, and <noscript>
+  // holds the fallbacks of stylesheets loaded later, so both are stripped.
   const headOnly = (headEnd > 0 ? html.slice(0, headEnd) : bodyStart > 0 ? html.slice(0, bodyStart) : "").replace(
-    /<!--[\s\S]*?-->/g,
+    /<!--[\s\S]*?-->|<noscript\b[\s\S]*?<\/noscript>/gi,
     " ",
   );
   const blockingJs = tagsOf(headOnly, "script")
@@ -1235,7 +1250,8 @@ function analyze(url, html, headers) {
       s =>
         s.src &&
         !["async", "defer", "nomodule"].some(k => k in s) &&
-        /^((text|application)\/(x-)?(java|ecma)script)?$/i.test((s.type || "").trim()),
+        /^((text|application)\/(x-)?(java|ecma)script)?$/i.test((s.type || "").trim()) &&
+        !CONSENT_HOST.test(urlOr(s.src, url)?.hostname || ""),
     )
     .map(s => s.src);
   const blockingCss = tagsOf(headOnly, "link").filter(l => {
@@ -1247,18 +1263,20 @@ function analyze(url, html, headers) {
       /^(all|screen)?$/i.test((l.media || "").trim())
     );
   }).length;
-  // The favicon links Google reads.
+  // The favicon links Google reads, with the body as the fallback.
   // https://developers.google.com/search/docs/appearance/favicon-in-search
-  const icons = tagsOf(head, "link")
-    .filter(
-      l =>
-        l.href &&
-        (l.rel || "")
-          .toLowerCase()
-          .split(/\s+/)
-          .some(r => ["icon", "apple-touch-icon", "apple-touch-icon-precomposed"].includes(r)),
-    )
-    .map(l => l.href);
+  const iconsIn = h =>
+    tagsOf(h, "link")
+      .filter(
+        l =>
+          l.href &&
+          (l.rel || "")
+            .toLowerCase()
+            .split(/\s+/)
+            .some(r => ["icon", "apple-touch-icon", "apple-touch-icon-precomposed"].includes(r)),
+      )
+      .map(l => l.href);
+  const icons = iconsIn(head).length ? iconsIn(head) : iconsIn(body);
   const canonIn = h =>
     tagsOf(h, "link")
       .filter(l => (l.rel || "").toLowerCase().split(/\s+/).includes("canonical"))
@@ -1323,11 +1341,18 @@ function analyze(url, html, headers) {
     shingles = new Set();
     for (let i = 0; i + 5 <= mw.length; i++) shingles.add(mw.slice(i, i + 5).join(" "));
   }
-  // Phone and street address from local business schema (LOCAL-05). Organization and Corporation aren't local.
+  // Phone and street address from local business schema (LOCAL-05). Organization, Corporation, online-only businesses
+  // and Service aren't local.
   const nap = [
     ...new Map(
       nodes
-        .filter(n => typesOf(n).some(t => ORG_RE.test(t) && !/(Organization|Corporation|NGO|School)$/.test(t)))
+        .filter(n =>
+          typesOf(n).some(
+            t =>
+              ORG_RE.test(t) &&
+              !/(Organization|Corporation|NGO|School)$|^(OnlineStore|OnlineBusiness|Service)$/.test(t),
+          ),
+        )
         .flatMap(n => [
           ...[]
             .concat(n.telephone || [])
@@ -1861,6 +1886,23 @@ function enqueue(u, from) {
   seen.add(c);
   queue.push(c);
 }
+// A page's raw X-Robots-Tag lines, or null. fetch joins repeated headers with commas, so "bingbot: noarchive" then
+// "noindex" would read as one value whose noindex is Bing's.
+const xRobotsLines = url =>
+  new Promise(ok => {
+    const req = (url.startsWith("https:") ? httpsGet : httpGet)(
+      url,
+      { headers: { "user-agent": UA, accept: "text/html" }, timeout: 15000 },
+      res => {
+        const lines = [];
+        for (let i = 0; i < res.rawHeaders.length; i += 2)
+          if (res.rawHeaders[i].toLowerCase() === "x-robots-tag") lines.push(res.rawHeaders[i + 1]);
+        res.destroy();
+        ok(res.statusCode === 200 ? lines : null);
+      },
+    );
+    req.on("timeout", () => req.destroy(new Error("timeout"))).on("error", () => ok(null));
+  });
 // Product schema images, for the pixel size Google recommends (SHOP-05).
 const productImages = html =>
   jsonLdNodes(html)
@@ -1880,7 +1922,14 @@ async function crawlOne(u) {
   };
   pages.set(u, rec);
   if (r.status === 200 && /html/.test(r.ct) && r.body) {
-    const a = analyze(r.finalUrl, r.body, r.headers);
+    // Only a crawler prefix makes the joined header ambiguous, so the lines are read apart only then.
+    const xrt = r.headers.get("x-robots-tag");
+    const a = analyze(
+      r.finalUrl,
+      r.body,
+      r.headers,
+      xrt && xrt.toLowerCase().split(",").some(agentRule) ? await xRobotsLines(r.finalUrl) : null,
+    );
     Object.assign(rec, a, { html: true, productImages: productImages(r.body) });
     rec.links = [];
     rec.mainLinks = new Set(a.mainHrefs.map(h => clean(h, a.base)).filter(Boolean));
@@ -2223,7 +2272,10 @@ if (BANNED || VERIFY) evalRules("CONTENT-10");
 const all = [...pages.values()];
 const byFinal = new Map();
 for (const p of all) if (p.finalUrl) byFinal.set(p.finalUrl, p);
-const htmlPages = all.filter(p => p.html);
+// One record per page: a link or canonical to a URL that redirects fetches its page again, so the direct fetch is kept.
+const byPage = new Map();
+for (const p of all) if (p.html && (!byPage.has(p.finalUrl) || p.url === p.finalUrl)) byPage.set(p.finalUrl, p);
+const htmlPages = [...byPage.values()];
 const finalOf = u => pages.get(u)?.finalUrl || u;
 const isHome = p => new URL(p.finalUrl).pathname === "/";
 
@@ -2343,12 +2395,33 @@ const acronyms = t => {
       );
   return out;
 };
-// A schema phone shows on a page when its last 7 digits are there in any grouping ("+44 113 496 0000" is shown by
-// "(0113) 496-0000"), a street address when it's there word for word.
-const shows = (p, f) =>
-  f.kind === "phone"
-    ? new RegExp(f.value.replace(/\D/g, "").slice(-7).split("").join(" ?") + "(?!\\d)").test(p.normText)
-    : ` ${p.normText} `.includes(` ${norm(f.value)} `);
+// "12 High Street" and "12 High St." both become "12 high st", and "Hauptstraße 5" becomes "hauptstr 5".
+const STREET_WORDS = {
+  street: "st",
+  road: "rd",
+  avenue: "ave",
+  suite: "ste",
+  apartment: "apt",
+  boulevard: "blvd",
+  drive: "dr",
+  lane: "ln",
+};
+const streetForm = s =>
+  norm(s)
+    .replace(/stra(?:ß|ss)e\b/g, "str")
+    .replace(/\b(?:street|road|avenue|suite|apartment|boulevard|drive|lane)\b/g, w => STREET_WORDS[w]);
+// A phone matches on its last 7 digits in any grouping ("+44 113 496 0000" is shown by "(0113) 496-0000"). An address
+// matches part by part, units included, so "12 High Road Suite 4" is shown by "Ste. 4, 12 High Rd".
+const shows = (p, f) => {
+  if (f.kind === "phone")
+    return new RegExp(f.value.replace(/\D/g, "").slice(-7).split("").join(" ?") + "(?!\\d)").test(p.normText);
+  const text = ` ${streetForm(p.normText)} `;
+  return f.value
+    .split(",")
+    .flatMap(s => streetForm(s).split(/ (?=(?:ste|apt|unit|flat) )/))
+    .filter(Boolean)
+    .every(part => text.includes(` ${part} `));
+};
 for (const p of htmlPages) {
   const u = p.finalUrl;
   if (!IGNORE_NOINDEX) {
@@ -2366,8 +2439,12 @@ for (const p of htmlPages) {
   if (says(p.metaRules) && says(p.headerRules) && says(p.metaRules) !== says(p.headerRules))
     add("robots-conflict", u, `meta: “${p.robotsMeta}” · header: “${p.xRobots}”`);
   if (p.noindex && !IGNORE_NOINDEX) {
-    const c = canonicalFor(p);
-    if (c && !samePath(toCrawl(c), u)) add("noindex-canonical", u, `→ ${c}`);
+    // Another page is another host or path; a trailing slash alone doesn't make one.
+    const c = canonicalFor(p),
+      to = c && urlOr(toCrawl(c)),
+      at = new URL(u),
+      bare = x => x.pathname.replace(/\/$/, "");
+    if (to && (to.origin !== at.origin || bare(to) !== bare(at))) add("noindex-canonical", u, `→ ${c}`);
     continue;
   }
 
@@ -2728,14 +2805,17 @@ if (home && home.html) {
     const s = size(t);
     return `${t.path}: ${s ? `${s.width}×${s.height} px${s.type === "webp" ? ", WebP" : ""}` : svg(t) ? "SVG" : t.r.type || "unknown type"}`;
   };
-  const status = t =>
-    !t.r ? "redirects off the site" : t.r.status === 200 ? "an HTML page" : t.r.status || `no response (${t.r.error})`;
+  const status = t => (t.r.status === 200 ? "an HTML page" : t.r.status || `no response (${t.r.error})`);
+  // An icon that redirects off the site (to a CDN or the public origin) isn't followed, so it can't be judged.
+  const movedAway = tried.find(t => !t.r);
   if (loaded.some(good)) evalRules("META-10");
-  else if (away)
+  else if (away || movedAway)
     notChecked.push({
       rule: "META-10",
       area: `META-10 ${RULES["META-10"][0]}`,
-      reason: "The home page's icon is on another host (often a CDN), and only the crawled site is fetched.",
+      reason: away
+        ? "The home page's icon is on another host (often a CDN), and only the crawled site is fetched."
+        : `${movedAway.path} redirects away from the crawled site (often to a CDN), and only the crawled site is fetched.`,
     });
   else {
     evalRules("META-10");
@@ -2850,46 +2930,6 @@ if (slashTemp.length && isLocal(START_ORIGIN))
     `The local server adds or drops the trailing slash with a temporary redirect (${slashTemp[0][0]}: ${slashTemp[0][1]}). Development servers often do; check that production uses a 301 or 308.`,
   );
 else for (const [u, detail] of slashTemp) add("slash-redirect-temporary", u, detail);
-
-// ---------- what Googlebot gets ----------
-// The home page and up to 9 sample pages, asked again as Googlebot. Only the crawled site is asked. A local build shows
-// the app's own bot switches (prerender middleware, bot detection); a CDN or firewall shows up only when the live site
-// is crawled. Each page is asked at the same time by the same phone without the Googlebot token, so a site that serves
-// phones differently, a rate limit or an outage hits both alike.
-// Google's smartphone Googlebot, with a current Chrome version.
-// https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers
-const GOOGLEBOT_UA =
-  "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.8103.79 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
-const PHONE_UA = GOOGLEBOT_UA.replace(/ \(compatible; Googlebot.*$/, "");
-const pageOf = r => (r.status === 200 && /html/.test(r.ct) && r.body ? analyze(r.finalUrl, r.body, r.headers) : null);
-const canonOf = (p, base) => (p.canonicals[0] ? (urlOr(p.canonicals[0], base)?.href ?? p.canonicals[0]) : "none");
-const botSample = sampleUrls(htmlPages.map(p => p.url));
-let botCompared = 0;
-for (let i = 0; i < botSample.length; i += CONC)
-  await Promise.all(
-    botSample.slice(i, i + CONC).map(async u => {
-      const [vr, gr] = await Promise.all([follow(u, PHONE_UA), follow(u, GOOGLEBOT_UA)]),
-        v = pageOf(vr),
-        g = pageOf(gr),
-        at = vr.finalUrl;
-      if (!v) return; // a visitor doesn't get the page now either: nothing to compare
-      botCompared++;
-      if (gr.status >= 400 || gr.status === 0)
-        return add("googlebot-blocked", at, `Googlebot got ${gr.status || `no answer (${gr.error})`}, a visitor 200`);
-      if (g?.noindex && !v.noindex)
-        return add("googlebot-blocked", at, "Googlebot gets a noindex that a visitor doesn't");
-      const diffs = !g
-        ? [`Googlebot got ${gr.status} ${gr.ct || "with no content type"} instead of the page`]
-        : [
-            gr.finalUrl !== at && `Googlebot is sent to ${gr.finalUrl}`,
-            v.noindex && !g.noindex && "only a visitor gets noindex",
-            canonOf(g, gr.finalUrl) !== canonOf(v, at) && `canonical: ${canonOf(v, at)} → ${canonOf(g, gr.finalUrl)}`,
-            (g.title ?? "") !== (v.title ?? "") && `title: “${v.title ?? "none"}” → “${g.title ?? "none"}”`,
-            v.words >= 50 && g.words < v.words / 2 && `${g.words} words for Googlebot, ${v.words} for a visitor`,
-          ].filter(Boolean);
-      if (diffs.length) add("googlebot-differs", at, diffs.join("; "));
-    }),
-  );
 
 // ---------- old URLs / redirect sources ----------
 const redirectSources = [];
@@ -3142,10 +3182,71 @@ const labLcp = speed?.lcpBreakdown
   : labLcpBreakdown([...(speed?.samples || []).map(s => ({ url: s.url, ...s.lab })), ...(lighthouse || [])]);
 if (labLcp) speed = { ...(speed || { strategy: "mobile", samples: [] }), lcpBreakdown: labLcp };
 
+// ---------- what Googlebot gets ----------
+// The last requests to the site, since a firewall may ban the address that sent a fake Googlebot. Only the crawled
+// site is asked: the home page and up to 9 sample pages. A local build shows the app's own bot switches (prerender
+// middleware, bot detection); a CDN or firewall shows up only when a staging or live server is crawled. Each page is
+// asked at the same time by the same phone without the Googlebot token, so a site that serves phones differently
+// serves both alike. A 429 or 5xx is asked once more a second later, so a rate limit or flaky backend hitting one side
+// isn't judged.
+// Google's smartphone Googlebot, with a current Chrome version.
+// https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers
+const GOOGLEBOT_UA =
+  "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.8103.79 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
+const PHONE_UA = GOOGLEBOT_UA.replace(/ \(compatible; Googlebot.*$/, "");
+const pageOf = r => (r.status === 200 && /html/.test(r.ct) && r.body ? analyze(r.finalUrl, r.body, r.headers) : null);
+const canonOf = (p, base) => (p.canonicals[0] ? (urlOr(p.canonicals[0], base)?.href ?? p.canonicals[0]) : "none");
+// A bot challenge: Cloudflare sets cf-mitigated and loads its challenge platform, AWS WAF sets x-amzn-waf-action.
+// https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/
+// https://docs.aws.amazon.com/waf/latest/developerguide/waf-captcha-and-challenge-actions.html
+const challenged = r =>
+  /^challenge$/i.test(r.headers.get("cf-mitigated") || "") ||
+  /^(challenge|captcha)$/i.test(r.headers.get("x-amzn-waf-action") || "") ||
+  /\/cdn-cgi\/challenge-platform\//.test(r.body || "");
+// A local build (localhost or a private address) has no CDN or firewall in front, so a refusal there is the app's own.
+const NO_FIREWALL = isLocal(START_ORIGIN) || /^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(START.hostname);
+const busy = r => r.status === 429 || r.status >= 500;
+const askAgain = async (u, ua) => {
+  await sleep(1000);
+  return follow(u, ua);
+};
+const botSample = sampleUrls(htmlPages.map(p => p.url));
+let botCompared = 0;
+for (let i = 0; i < botSample.length; i += CONC)
+  await Promise.all(
+    botSample.slice(i, i + CONC).map(async u => {
+      let [vr, gr] = await Promise.all([follow(u, PHONE_UA), follow(u, GOOGLEBOT_UA)]);
+      if (busy(vr)) vr = await askAgain(u, PHONE_UA);
+      const v = pageOf(vr),
+        at = vr.finalUrl;
+      if (!v) return; // a visitor doesn't get the page now either: nothing to compare
+      if (busy(gr)) gr = await askAgain(u, GOOGLEBOT_UA);
+      const g = pageOf(gr),
+        challenge = challenged(gr) && !challenged(vr);
+      botCompared++;
+      const got = `Googlebot got ${challenge ? `a bot challenge (${gr.status})` : gr.status || `no answer (${gr.error})`}, a visitor 200`;
+      // A firewall that verifies Googlebot by IP is right to refuse this request.
+      if ((challenge || [403, 429, 503].includes(gr.status)) && !NO_FIREWALL) return add("googlebot-firewall", at, got);
+      if (gr.status >= 400 || gr.status === 0 || challenge) return add("googlebot-blocked", at, got);
+      if (g?.noindex && !v.noindex)
+        return add("googlebot-blocked", at, "Googlebot gets a noindex that a visitor doesn't");
+      const diffs = !g
+        ? [`Googlebot got ${gr.status} ${gr.ct || "with no content type"} instead of the page`]
+        : [
+            gr.finalUrl !== at && `Googlebot is sent to ${gr.finalUrl}`,
+            v.noindex && !g.noindex && "only a visitor gets noindex",
+            canonOf(g, gr.finalUrl) !== canonOf(v, at) && `canonical: ${canonOf(v, at)} → ${canonOf(g, gr.finalUrl)}`,
+            (g.title ?? "") !== (v.title ?? "") && `title: “${v.title ?? "none"}” → “${g.title ?? "none"}”`,
+            v.words >= 50 && g.words < v.words / 2 && `${g.words} words for Googlebot, ${v.words} for a visitor`,
+          ].filter(Boolean);
+      if (diffs.length) add("googlebot-differs", at, diffs.join("; "));
+    }),
+  );
+
 // ---------- what the crawler cannot check ----------
 // CRAWL-09 never passes here: a real Googlebot comes from Google's IP addresses, which no request from here can.
 const NOT_CRAWLABLE = [
-  ...(findings.has("googlebot-blocked") || findings.has("googlebot-differs")
+  ...(["googlebot-blocked", "googlebot-differs", "googlebot-firewall"].some(k => findings.has(k))
     ? []
     : [
         [

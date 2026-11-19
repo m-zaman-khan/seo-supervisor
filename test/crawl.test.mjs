@@ -1007,6 +1007,38 @@ test("robots rules: none means noindex and nofollow, other crawlers' rules don't
   );
 });
 
+test("repeated X-Robots-Tag headers are read line by line, so a plain noindex after another crawler's rule still counts", async () => {
+  // fetch joins the two lines into "bingbot: noarchive, noindex", which reads as Bing's noindex.
+  const r = await crawlSite(two(), { headers: { "/": { "X-Robots-Tag": ["bingbot: noarchive", "noindex"] } } });
+  assert.deepEqual(pathsOf(r, "home-noindex"), ["/"]);
+});
+
+test("a noindex page whose canonical differs only by a trailing slash names itself; a page reached through a redirect is counted once", async () => {
+  const r = await crawlSite(
+    site({
+      "/": [
+        "Boiler Repairs and Servicing in Leeds",
+        "",
+        '<a href="/moved">The moved page</a> <a href="/about">About us</a>',
+      ],
+      "/thanks/": [
+        "Thanks for Your Booking in Leeds",
+        '<meta name="robots" content="noindex"><link rel="canonical" href="https://site.example/thanks">',
+      ],
+      "/moved/": [
+        "Moved Page Now on the Home Page",
+        '<meta name="robots" content="noindex"><link rel="canonical" href="https://site.example/">',
+      ],
+      "/about/": ["About Our Leeds Engineers"],
+    }),
+  );
+  assert.deepEqual(pathsOf(r, "noindex-canonical"), ["/moved/"]);
+  // /moved and /about redirect to /moved/ and /about/, the same pages, not second ones.
+  assert.equal(findingOf(r, "noindex-canonical").count, 1);
+  assert.equal(findingOf(r, "noindex-review").count, 2);
+  assert.ok(!findingOf(r, "title-dup"), JSON.stringify(findingOf(r, "title-dup")?.evidence));
+});
+
 test("Markdown answers need Vary: Accept itself (or *); Accept-Encoding isn't it", async () => {
   const runs = await Promise.all(
     ["Accept-Encoding", "Accept-Encoding, Accept", "*"].map(v =>
@@ -1217,6 +1249,28 @@ test("favicon: missing or broken is medium, small, oblong or SVG-only is low, a 
   assert.match(cdn.notChecked.find(n => n.rule === "META-10")?.reason || "", /another host/);
 });
 
+test("favicon: an icon link streamed into the body counts, and a /favicon.ico that redirects to another host isn't checked", async () => {
+  const [body, moved] = await Promise.all([
+    // Next.js 15.2+ streams metadata into the body for visitors that aren't bots.
+    crawlSite(two("", '<link rel="icon" href="/icon.png" sizes="192x192">'), {
+      files: { "/icon.png": { type: "image/png", body: png(192, 192) } },
+    }),
+    crawlSite(two(), {
+      before: (req, res) =>
+        req.url === "/favicon.ico" &&
+        (res.writeHead(301, { Location: "https://cdn.example.net/favicon.ico" }).end(), true),
+    }),
+  ]);
+  for (const r of [body, moved])
+    assert.ok(
+      !r.findings.some(f => /^favicon-/.test(f.check)),
+      JSON.stringify(r.findings.filter(f => /^favicon-/.test(f.check)).map(f => f.evidence)),
+    );
+  assert.ok(body.passed.some(p => p.rule === "META-10"));
+  assert.ok(!moved.passed.some(p => p.rule === "META-10"));
+  assert.match(moved.notChecked.find(n => n.rule === "META-10")?.reason || "", /\/favicon\.ico redirects/);
+});
+
 test("render-blocking scripts in the head, and many stylesheets, are flagged; deferred, async, module and body scripts aren't", async () => {
   const css = n => Array.from({ length: n }, (_, i) => `<link rel="stylesheet" href="/s${i}.css">`).join("");
   const r = await crawlSite(
@@ -1228,6 +1282,20 @@ test("render-blocking scripts in the head, and many stylesheets, are flagged; de
         '<script src="/late.js"></script>',
       ],
       "/css/": ["Six Stylesheets in the Head", css(6)],
+      // The fix the check recommends: stylesheets loaded later, with <noscript> fallbacks.
+      "/later/": [
+        "Six Stylesheets Loaded Later",
+        Array.from(
+          { length: 6 },
+          (_, i) =>
+            `<link rel="stylesheet" href="/s${i}.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="/s${i}.css"></noscript>`,
+        ).join(""),
+      ],
+      // Consent managers have to run before anything else.
+      "/consent/": [
+        "Cookie Consent Before Anything Else",
+        '<script src="https://consent.cookiebot.com/uc.js" data-cbid="0"></script><script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js"></script><script src="//web.cmp.usercentrics.eu/ui/loader.js"></script><script src="https://sdk.privacy-center.org/0/loader.js"></script>',
+      ],
     }),
   );
   assert.deepEqual(pathsOf(r, "render-blocking"), ["/", "/css/"]);
@@ -1255,6 +1323,49 @@ test("a local business's schema phone and street address must show on the page o
   assert.deepEqual([f.rule, f.severity], ["LOCAL-05", "medium"]);
   assert.equal(d["/services/"], "street address “12 Park Row” isn't shown on this page or the home page");
   assert.equal(d["/wrong/"], "phone “+44 113 496 9999” isn't shown on this page or the home page");
+});
+
+test("a street address matches with St for Street, Str. for Straße and the suite in another order; online shops and services aren't local businesses", async () => {
+  const biz = (type, streetAddress, telephone = "+44 113 496 0000") =>
+    `<script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", "@type": type, name: "Northwind", telephone, address: { "@type": "PostalAddress", streetAddress } })}</script>`;
+  const r = await crawlSite(
+    site({
+      "/": ["Boiler Repairs and Servicing in Leeds", "", "<footer>Call us on (0113) 496-0000, any day.</footer>"],
+      "/street/": [
+        "Contact Northwind Plumbing",
+        biz("Plumber", "12 High Street"),
+        "<p>Visit us at 12 High St., Leeds.</p>",
+      ],
+      "/strasse/": ["Kontakt Northwind in Berlin", biz("Plumber", "Hauptstraße 5"), "<p>Hauptstr. 5, 10115 Berlin</p>"],
+      "/suite/": [
+        "Our Leeds Office and Workshop",
+        biz("Plumber", "12 High Road Suite 4"),
+        "<p>Ste. 4, 12 High Rd, Leeds</p>",
+      ],
+      "/elsewhere/": [
+        "Plumbing Prices in Leeds",
+        biz("Plumber", "14 High Street"),
+        "<p>Visit us at 12 High St., Leeds.</p>",
+      ],
+      // Shown: an email address only.
+      "/shop/": [
+        "Northwind Online Boiler Shop",
+        biz("OnlineStore", "1 Warehouse Road", "+44 20 7946 0999"),
+        "<p>Write to shop@northwind.example</p>",
+      ],
+      "/online/": [
+        "Northwind Online Bookings",
+        biz("OnlineBusiness", "1 Warehouse Road", "+44 20 7946 0999"),
+        "<p>Write to shop@northwind.example</p>",
+      ],
+      "/service/": [
+        "Boiler Cover Plans in Leeds",
+        biz("Service", "1 Warehouse Road", "+44 20 7946 0999"),
+        "<p>Write to shop@northwind.example</p>",
+      ],
+    }),
+  );
+  assert.deepEqual(pathsOf(r, "nap-not-shown"), ["/elsewhere/"]);
 });
 
 test("old URLs that redirect temporarily are flagged; permanent ones and a dev server's temporary slash redirect aren't", async () => {
@@ -1294,11 +1405,12 @@ test("old URLs that redirect temporarily are flagged; permanent ones and a dev s
 
 // The two-page site on 127.0.0.2, which the crawler doesn't take for a local dev server; a folder without its slash
 // redirects with `slashStatus`, and before(req, res) returns true when it has answered the request itself.
-async function crawlNotLocal(t, slashStatus) {
+async function crawlNotLocal(t, slashStatus, before) {
   const { createServer } = await import("node:http"),
     pages = two(),
     out = join(tmp(), "crawl.json");
   const server = createServer((req, res) => {
+    if (before?.(req, res)) return;
     const path = new URL(req.url, "http://x").pathname;
     if (pages[path]) res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(pages[path]);
     else if (pages[path + "/"]) res.writeHead(slashStatus, { Location: path + "/" }).end();
@@ -1429,6 +1541,75 @@ test("pages that give Googlebot an error, a noindex or a different page are flag
     clean.notChecked.find(n => n.rule === "CRAWL-09")?.reason || "",
     /Googlebot user agent got the same .* on 2 page\(s\).*IP addresses/,
   );
+});
+
+test("on a staging or live server, a 403 or a bot challenge only Googlebot gets is a decision: the firewall may be verifying Google by IP", async t => {
+  const r = await crawlNotLocal(t, 301, (req, res) => {
+    if (!/Googlebot/.test(req.headers["user-agent"] || "")) return false;
+    if (req.url === "/") res.writeHead(403, { "Content-Type": "text/html" }).end("<h1>Access denied</h1>");
+    else
+      res
+        .writeHead(200, { "Content-Type": "text/html; charset=utf-8", "cf-mitigated": "challenge" })
+        .end(
+          "<!doctype html><html><head><title>Just a moment...</title></head><body><p>Checking your browser</p></body></html>",
+        );
+    return true;
+  });
+  if (!r) return;
+  const f = findingOf(r, "googlebot-firewall");
+  assert.deepEqual([f?.rule, f?.severity], ["CRAWL-09", "needs-decision"]);
+  assert.deepEqual(pathsOf(r, "googlebot-firewall"), ["/", "/about/"]);
+  assert.deepEqual(f.evidence.map(e => e.detail).sort(), [
+    "Googlebot got 403, a visitor 200",
+    "Googlebot got a bot challenge (200), a visitor 200",
+  ]);
+  assert.match(f.fix, /URL Inspection/);
+  assert.ok(
+    !findingOf(r, "googlebot-blocked") && !findingOf(r, "googlebot-differs"),
+    JSON.stringify(r.findings.filter(f => f.rule === "CRAWL-09").map(f => f.evidence)),
+  );
+});
+
+test("a 429 or 5xx in the Googlebot comparison is asked again once, so a flaky server isn't taken for a block", async () => {
+  let phones = 0;
+  const r = await crawlSite(two(), {
+    before(req, res) {
+      // Every other phone request to the home page fails, whatever the bot token says.
+      if (req.url !== "/" || !/Android/.test(req.headers["user-agent"] || "") || ++phones % 2) return false;
+      res.writeHead(503).end();
+      return true;
+    },
+  });
+  assert.ok(
+    !r.findings.some(f => f.rule === "CRAWL-09"),
+    JSON.stringify(r.findings.filter(f => f.rule === "CRAWL-09").map(f => f.evidence)),
+  );
+  assert.match(r.notChecked.find(n => n.rule === "CRAWL-09")?.reason || "", /on 2 page\(s\)/);
+});
+
+test("the Googlebot comparison runs after the old-URL tests, so a firewall that bans the address after it doesn't break them", async () => {
+  const list = join(tmp(), "old-urls.txt");
+  writeFileSync(list, "/old-page/\n");
+  let banned = false;
+  const r = await crawlSite(
+    two(),
+    {
+      before(req, res) {
+        if (/Googlebot/.test(req.headers["user-agent"] || "")) banned = true;
+        if (banned) {
+          res.writeHead(403).end();
+          return true;
+        }
+        if (!/^\/old-page\/?$/.test(new URL(req.url, "http://x").pathname)) return false;
+        res.writeHead(301, { Location: "/about/" }).end();
+        return true;
+      },
+    },
+    undefined,
+    { args: ["--urls", list] },
+  );
+  assert.ok(!findingOf(r, "redirect-broken"), JSON.stringify(findingOf(r, "redirect-broken")?.evidence));
+  assert.ok(r.passed.some(p => p.rule === "URL-07"));
 });
 
 test("Product schema images under Google's 50,000-pixel minimum are flagged once measured; larger and unreadable ones aren't", async () => {

@@ -10,7 +10,7 @@ Can search engines reach the pages, and are they allowed to index the right ones
 ### CRAWL-02 · Pages meant to rank are not set to noindex · blocker
 - **Check:** crawler `home-noindex`, `noindex-in-sitemap`, `noindex-review`. Code: metadata robots values, `X-Robots-Tag` headers, middleware.
 - **How robots rules are read:** as Google reads them. `none` is `noindex, nofollow`. Only `<meta name="robots">` and `<meta name="googlebot">` count, not tags for other crawlers. In `X-Robots-Tag`, a crawler prefix holds for the rules after it (`otherbot: noindex, nofollow` is all for otherbot), and only unprefixed and `googlebot:` rules count.
-- **noindex with a canonical elsewhere:** `noindex-canonical` (medium) flags a noindex page whose canonical names a different page. The two signals contradict: keep the canonical for a duplicate, or the noindex with a self-canonical (or none) for a page that should stay hidden.
+- **noindex with a canonical elsewhere:** `noindex-canonical` (medium) flags a noindex page whose canonical names a different page (another host or path; a trailing slash alone doesn't count). The two signals contradict: keep the canonical for a duplicate, or the noindex with a self-canonical (or none) for a page that should stay hidden.
 - **Pass:** only page types the profile lists as hidden (search, filters, account, results, thin browse pages) are noindex.
 - **Pre-launch:** when the profile says the whole site is noindex until sign-off, that's expected, not a blocker. Crawl with `--ignore-noindex` so the other checks still run, and confirm CRAWL-03 will lift the noindex at launch.
 - **Fix:** drive every noindex rule from the page type, with one environment variable for "whole site hidden".
@@ -53,8 +53,9 @@ Can search engines reach the pages, and are they allowed to index the right ones
 
 ### CRAWL-09 · Bot protection doesn't block real search crawlers · high
 - **Check:** code and CDN config: WAF, bot-fight modes, captchas, rate limits.
-- **Crawler:** the home page and up to 9 sample pages are asked again as Google's smartphone Googlebot and compared with the same phone without the Googlebot token.
+- **Crawler:** after every other request to the site, the home page and up to 9 sample pages are asked again as Google's smartphone Googlebot and compared with the same phone without the Googlebot token. A 429 or 5xx is asked again once before it counts.
   - `googlebot-blocked` (high): an error or noindex that only Googlebot gets.
+  - `googlebot-firewall` (needs-decision): on a staging or live server, a 403, 429 or 503 or a bot challenge that only Googlebot gets. A firewall that verifies Google by IP does this to a fake Googlebot, which is right; on a local build it's `googlebot-blocked`.
   - `googlebot-differs` (medium): a different redirect, canonical or title, or under half the text (possible cloaking or a broken prerender).
   
   A real Googlebot comes from Google's IP addresses, so CRAWL-09 never passes on this test alone; confirm with URL Inspection's live test.

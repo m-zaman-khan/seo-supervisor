@@ -53,6 +53,6 @@
 
 ### META-10 · The site has a favicon search results can show · medium
 > Checked **19 Nov 2026** against Google's favicon documentation (formats listed since 28 Aug 2026).
-- **Check:** crawler, on the home page: its icon links (`icon`, `shortcut icon`, `apple-touch-icon`, `apple-touch-icon-precomposed`), then `/favicon.ico`, read only on the crawled site. `favicon-missing` (medium) when none loads; `favicon-unsuitable` (low) when the ones that load are all under 48 px, not square, or SVG or WebP only. An icon on another host (a CDN) isn't fetched, so META-10 is then listed under Limits.
+- **Check:** crawler, on the home page: its icon links (`icon`, `shortcut icon`, `apple-touch-icon`, `apple-touch-icon-precomposed`), then `/favicon.ico`, read only on the crawled site. The icon links are read from the `<head>`, or from the `<body>` when the head has none (Next.js can stream metadata there). `favicon-missing` (medium) when none loads; `favicon-unsuitable` (low) when the ones that load are all under 48 px, not square, or SVG or WebP only. An icon on another host (a CDN), or a `/favicon.ico` that redirects to one, isn't fetched, so META-10 is then listed under Limits.
 - **Pass:** Google requires a square icon of at least 8×8 px and recommends one larger than 48×48 px, in BMP, GIF, ICO, PNG, JPEG, PPM or TIFF, at a stable URL that Googlebot-Image may crawl. Only one favicon per hostname.
 - **Fix:** `<link rel="icon" href="/icon-192.png" sizes="192x192">` in the root layout, next to any SVG icon, plus a `/favicon.ico` for older tools.
