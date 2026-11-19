@@ -4,7 +4,7 @@
 Clusters map to the site's services or product areas. The pillar page comes first, and every post links to its pillar, at least one money page (in a sentence, not a CTA box), and about 3 related posts from the same cluster. Pillars link to every post in their cluster.
 
 ### BLOG-02 · The shape of a post · medium
-A question-led or problem-led title. An answer of 50 words or less right under the H1. Question-form H2s, each opening with a self-contained 40–60 word answer. Tables for comparisons and costs, numbered steps for processes, 3–5 unique FAQs, and cited sources for factual and regulatory claims. Main pieces usually run 1,500–2,500 words, but length follows the topic, never a quota.
+A question-led or problem-led title. An answer of 50 words or less right under the H1. Question-form H2s, each opening with a self-contained 40–60 word answer. Tables for comparisons and costs, numbered steps for processes, 3–5 unique FAQs, and cited sources for factual and regulatory claims. Length follows the topic, never a word count: stop when the question is fully answered.
 
 ### BLOG-03 · Research before writing · medium
 Read the top 2–3 ranking pages and cover the sections they all share, then add what they miss. Take questions from "People also ask" and support tickets. Use the buyer's vocabulary. Record the primary keyword, its sources and the FAQ sources per post. One primary keyword per post, and no two posts share one.

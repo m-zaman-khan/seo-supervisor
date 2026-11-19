@@ -21,7 +21,7 @@
 - **Fix:** add per-item content fields and a build check (shingle similarity over 0.5 on intros fails; any repeated FAQ question fails). Don't publish a page until its unique fields are filled.
 
 ### CONTENT-05 · Indexable pages have substance · medium
-- **Check:** crawler `thin-page` (under 150 words).
+- **Check:** crawler `thin-page`, which flags pages under 150 words as a page to look at, not a word target. A short page that fully does its job (a contact page, a calculator, a product with a clear spec) is fine; say so and close the finding rather than adding filler.
 - **Fix:** add useful, specific content; merge the page into a stronger one; or noindex it until it grows (browse pages: under 3 items).
 
 ### CONTENT-06 · Answer first, in the searcher's words · medium

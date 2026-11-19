@@ -36,9 +36,7 @@
 - Manual actions and security issues.
 
 ### LAUNCH-08 · Traffic drops are checked against Google updates first · medium
-- Before diagnosing a drop as technical, compare its dates with the Google Search Status Dashboard (status.search.google.com). With outside checks on, `scripts/google-updates.mjs` reads it live for the period (`googleUpdates`, one line in the report). The windows below are only a fallback and stop at this release:
-  - **Core updates:** Mar, Jun and Dec 2025; Mar, May and Nov 2026.
-  - **Spam updates:** Aug 2025; Mar, Jun, Aug and Sep 2026.
+- Before diagnosing a drop as technical, compare its dates with the Google Search Status Dashboard (status.search.google.com). With outside checks on, `scripts/google-updates.mjs` reads it live for the period (`googleUpdates`, one line in the report). With them off, send the owner to the dashboard to check the dates themselves. Don't list update dates from memory: they go out of date.
 - Wait at least a week after an update finishes, compare by search type, and expect recovery to take months, through better content rather than technical tweaks.
 - **Search Console reports worth using:** Insights, query groups, the branded-queries filter, annotations, and Generative AI performance.
 
