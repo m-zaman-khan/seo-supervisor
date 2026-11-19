@@ -16,6 +16,7 @@ import {
 } from "./checks/speed.mjs";
 import { CHECKS as RENDER_CHECKS, findBrowser, renderPage, compareRendered } from "./checks/render.mjs";
 import { CHECKS as VISUAL_CHECKS, checkVisual } from "./checks/visual.mjs";
+import { checkLighthouse, findLighthouse } from "./checks/lighthouse.mjs";
 import { imageSize } from "./lib/image-size.mjs";
 
 const VERSION = "2.0.0";
@@ -49,7 +50,8 @@ const SLASH = ["always", "never"].includes(args["trailing-slash"]) ? args["trail
 const BRAND = typeof args.brand === "string" ? args.brand : "";
 const INCLUDE_QUERY = !!args["include-query"];
 const CHECK_LIVE = !!args["check-live"];
-const OUTSIDE = !!args.outside; // a separate opt-in: it sends the sample URLs to Google a second time
+const OUTSIDE = !!args.outside; // --lighthouse all, or --lighthouse=all
+const LIGHTHOUSE = !!args.lighthouse;
 const OUT = resolve(typeof args.out === "string" ? args.out : "seo-audit/seo-crawl.json");
 let SITE_ORIGIN = typeof args["site-origin"] === "string" ? new URL(args["site-origin"]).origin : "";
 const notes = [];
@@ -2175,6 +2177,23 @@ if (visualReason)
   for (const rule of ["REND-07", "PERF-07"])
     notChecked.push({ rule, area: `${rule} ${RULES[rule][0]}`, reason: visualReason });
 
+// ---------- outside checks: Lighthouse, an optional add-on (scores only, no findings) ----------
+let lighthouse;
+const lighthouseBin = LIGHTHOUSE && OUTSIDE ? findLighthouse() : null;
+if (LIGHTHOUSE && !OUTSIDE)
+  notes.push(
+    "--lighthouse runs only with outside checks on (--outside): Lighthouse loads each page and runs its scripts, analytics included. It didn't run.",
+  );
+else if (LIGHTHOUSE && !lighthouseBin)
+  notes.push(
+    "Lighthouse isn't installed, so it didn't run. Add it with `npx seo-supervisor --with-lighthouse` (about 170 MB, outside the project), or `npm i -g lighthouse`.",
+  );
+else if (lighthouseBin) {
+  const r = await checkLighthouse(lighthouseBin, renderSample, { chromePath: browser });
+  if (r.results.length) lighthouse = r.results;
+  notes.push(...r.notes);
+}
+
 // ---------- what the crawler cannot check ----------
 const NOT_CRAWLABLE = [
   [
@@ -2286,6 +2305,7 @@ const report = {
   notChecked,
   ...(speed ? { speed } : {}),
   ...(labSpeed ? { labSpeed } : {}),
+  ...(lighthouse ? { lighthouse } : {}),
   errors: all.filter(p => !p.html && (p.status >= 400 || p.status === 0)).map(p => ({ url: p.url, status: p.status })),
   pages: htmlPages.map(p => ({
     url: p.finalUrl,

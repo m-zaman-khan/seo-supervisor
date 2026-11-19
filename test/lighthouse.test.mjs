@@ -1,0 +1,249 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { serve } from "./serve.mjs";
+import { checkLighthouse, findLighthouse, runLighthouse } from "../skills/seo-supervisor/scripts/checks/lighthouse.mjs";
+import { ROOT, SKILL, SCRIPTS, node, tmp } from "./helpers.mjs";
+
+// Four category scores, the five metrics, and audits that pass, fail, weigh nothing or aren't scored.
+const ref = (id, weight) => ({ id, weight });
+const LHR = {
+  categories: {
+    performance: {
+      title: "Performance",
+      score: 0.72,
+      auditRefs: [
+        ref("largest-contentful-paint", 25),
+        ref("total-blocking-time", 30),
+        ref("cumulative-layout-shift", 25),
+        ref("first-contentful-paint", 10),
+        ref("speed-index", 10),
+        ref("render-blocking-resources", 0),
+      ],
+    },
+    seo: {
+      title: "SEO",
+      score: 0.92,
+      auditRefs: [
+        ref("meta-description", 1),
+        ref("document-title", 1),
+        ref("http-status-code", 1),
+        ref("structured-data", 0),
+        ref("link-text", 1),
+      ],
+    },
+    accessibility: {
+      title: "Accessibility",
+      score: 0.88,
+      auditRefs: [ref("color-contrast", 3), ref("image-alt", 10), ref("button-name", 10)],
+    },
+    "best-practices": {
+      title: "Best Practices",
+      score: 0.96,
+      auditRefs: [ref("errors-in-console", 1), ref("is-on-https", 5)],
+    },
+  },
+  audits: {
+    "largest-contentful-paint": { title: "Largest Contentful Paint", score: 0.45, numericValue: 4100 },
+    "total-blocking-time": { title: "Total Blocking Time", score: 0.6, numericValue: 520 },
+    "cumulative-layout-shift": { title: "Cumulative Layout Shift", score: 1, numericValue: 0.02 },
+    "first-contentful-paint": { title: "First Contentful Paint", score: 0.8, numericValue: 2100 },
+    "speed-index": { title: "Speed Index", score: 0.7, numericValue: 4300 },
+    "render-blocking-resources": { title: "Eliminate render-blocking resources", score: 0 },
+    "meta-description": { title: "Document does not have a meta description", score: 0 },
+    "document-title": { title: "Document has a `<title>` element", score: 1 },
+    "http-status-code": { title: "Page has successful HTTP status code", score: 1 },
+    "structured-data": { title: "Structured data is valid", score: null, scoreDisplayMode: "manual" },
+    "link-text": { title: "Links have descriptive text", score: 1 },
+    "color-contrast": { title: "Background and foreground colors do not have a sufficient contrast ratio.", score: 0 },
+    "image-alt": { title: "Image elements have `[alt]` attributes", score: 1 },
+    "button-name": { title: "Buttons do not have an accessible name", score: 0 },
+    "errors-in-console": { title: "Browser errors were logged to the console", score: 0 },
+    "is-on-https": { title: "Uses HTTPS", score: 1 },
+  },
+};
+
+// Stand-in lighthouse CLI: logs how it was called, fails for /broken/ URLs, otherwise writes the report above.
+function fakeLighthouse(dir = tmp()) {
+  const bin = join(dir, "fake-lighthouse.mjs"),
+    log = join(dir, "calls.jsonl");
+  writeFileSync(
+    bin,
+    `import { appendFileSync, existsSync, writeFileSync } from "node:fs";
+const args = process.argv.slice(2), url = args.find(a => !a.startsWith("--"));
+const dir = args.find(a => a.startsWith("--chrome-flags="))?.match(/--user-data-dir="([^"]+)"/)?.[1];
+appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args, chrome: process.env.CHROME_PATH || null, profileExisted: !!dir }) + "\\n");
+if (url.includes("/broken")) { console.error("Runtime error encountered: the page didn't load"); process.exit(1); }
+writeFileSync(args.find(a => a.startsWith("--output-path=")).slice(14), JSON.stringify({ requestedUrl: url, ...${JSON.stringify(LHR)} }));
+`,
+  );
+  return {
+    bin,
+    log,
+    calls: () =>
+      existsSync(log)
+        ? readFileSync(log, "utf8")
+            .trim()
+            .split("\n")
+            .map(l => JSON.parse(l))
+        : [],
+  };
+}
+
+test("a Lighthouse run gives category scores, the five metrics and the top failed audits by weight", async () => {
+  const lh = fakeLighthouse();
+  const r = await runLighthouse(lh.bin, "http://127.0.0.1:1/", { chromePath: "/opt/chrome" });
+  assert.deepEqual(r.scores, { performance: 72, seo: 92, accessibility: 88, bestPractices: 96 });
+  assert.deepEqual(r.metrics, { lcp: 4100, cls: 0.02, tbt: 520, fcp: 2100, speedIndex: 4300 });
+  // Ordered by the points each costs its category: weight × shortfall ÷ the category's total weight.
+  assert.deepEqual(
+    r.failed.map(f => f.id),
+    ["button-name", "meta-description", "errors-in-console", "largest-contentful-paint", "color-contrast"],
+  );
+  assert.deepEqual(r.failed[0], {
+    id: "button-name",
+    title: "Buttons do not have an accessible name",
+    category: "Accessibility",
+  });
+  assert.equal(r.url, "http://127.0.0.1:1/");
+
+  const [call] = lh.calls();
+  for (const flag of ["--output=json", "--quiet", "--only-categories=performance,seo,accessibility,best-practices"])
+    assert.ok(call.args.includes(flag), flag);
+  assert.equal(call.args[0], "http://127.0.0.1:1/");
+  const flags = call.args.find(a => a.startsWith("--chrome-flags="));
+  assert.match(flags, /^--chrome-flags=--headless=new --user-data-dir="[^"]+"$/);
+  assert.equal(call.chrome, "/opt/chrome", "the browser goes to Lighthouse as CHROME_PATH");
+  assert.ok(!existsSync(flags.match(/--user-data-dir="([^"]+)"/)[1]), "the temporary profile is removed afterwards");
+  assert.ok(!existsSync(call.args.find(a => a.startsWith("--output-path=")).slice(14)), "so is the report file");
+});
+
+test("a failed run rejects with the CLI's message", async () => {
+  const lh = fakeLighthouse();
+  await assert.rejects(runLighthouse(lh.bin, "http://127.0.0.1:1/broken/"), /didn't load/);
+});
+
+test("an npm .cmd shim is followed to the script it starts (Windows can't run one without a shell)", async () => {
+  const dir = tmp();
+  for (const d of ["pkg", ".bin"]) mkdirSync(join(dir, d));
+  const lh = fakeLighthouse(join(dir, "pkg"));
+  const shim = join(dir, ".bin", "lighthouse.cmd");
+  writeFileSync(
+    shim,
+    '@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\r\nIF EXIST "%dp0%\\node.exe" (\r\n  SET "_prog=%dp0%\\node.exe"\r\n) ELSE (\r\n  SET "_prog=node"\r\n  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n)\r\n\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\..\\pkg\\fake-lighthouse.mjs" %*\r\n',
+  );
+  const r = await runLighthouse(shim, "http://127.0.0.1:1/");
+  assert.equal(r.scores.performance, 72);
+  assert.equal(lh.calls().length, 1);
+});
+
+test("findLighthouse: LIGHTHOUSE_PATH, then ~/.seo-supervisor/tools, then PATH, else null", () => {
+  const home = tmp(),
+    onPath = tmp(),
+    own = join(tmp(), "lh.mjs");
+  const exe = process.platform === "win32" ? "lighthouse.cmd" : "lighthouse";
+  writeFileSync(own, "");
+  assert.equal(findLighthouse({ PATH: onPath }, home), null, "nothing installed");
+  writeFileSync(join(onPath, exe), "");
+  assert.equal(findLighthouse({ PATH: onPath }, home), join(onPath, exe), "on PATH");
+  const bin = join(home, ".seo-supervisor", "tools", "node_modules", ".bin");
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, exe), "");
+  assert.equal(findLighthouse({ PATH: onPath }, home), join(bin, exe), "the installer's copy beats PATH");
+  assert.equal(findLighthouse({ PATH: onPath, LIGHTHOUSE_PATH: own }, home), own, "LIGHTHOUSE_PATH beats both");
+});
+
+test("checkLighthouse runs up to five pages, home first, and notes the ones that fail", async () => {
+  const lh = fakeLighthouse(),
+    o = "http://127.0.0.1:1";
+  const urls = [`${o}/a/`, `${o}/broken/`, `${o}/c/`, `${o}/d/`, `${o}/e/`, `${o}/f/`, `${o}/`];
+  const r = await checkLighthouse(lh.bin, urls, { chromePath: "/opt/chrome" });
+  assert.deepEqual(
+    lh.calls().map(c => new URL(c.args[0]).pathname),
+    ["/", "/a/", "/broken/", "/c/", "/d/"],
+  );
+  assert.deepEqual(
+    r.results.map(x => new URL(x.url).pathname),
+    ["/", "/a/", "/c/", "/d/"],
+  );
+  assert.ok(
+    r.notes.some(n => /Lighthouse ran on 4 of 5 sample page/.test(n) && /\/broken\//.test(n)),
+    r.notes.join("\n"),
+  );
+});
+
+// The crawler, with the fake for Lighthouse and node standing in for the browser (so no real Chrome starts), and a
+// closed local port standing in for PageSpeed (fixture-site's public origin would otherwise send it to Google).
+async function crawl(extra, env) {
+  const site = await serve(join(ROOT, "test", "fixture-zero"));
+  const out = join(tmp(), "crawl.json");
+  try {
+    await node([join(SCRIPTS, "seo-crawl.mjs"), "--url", site.url, "--out", out, ...extra], {
+      env: { ...process.env, CHROME_PATH: process.execPath, PSI_API_KEY: "", CRUX_API_KEY: "", ...env },
+    });
+  } finally {
+    await site.close();
+  }
+  return JSON.parse(readFileSync(out, "utf8"));
+}
+
+test("the crawler with --outside --lighthouse runs it on the render sample and records the results", async () => {
+  const lh = fakeLighthouse();
+  const r = await crawl(["--outside", "--lighthouse"], { LIGHTHOUSE_PATH: lh.bin });
+  const calls = lh.calls();
+  assert.ok(calls.length >= 1 && calls.length <= 5, `${calls.length} runs`);
+  assert.equal(new URL(calls[0].args[0]).pathname, "/", "home page first");
+  assert.ok(
+    calls.every(c => c.chrome === process.execPath),
+    "the browser findBrowser() picked goes in as CHROME_PATH",
+  );
+  assert.equal(r.lighthouse.length, calls.length);
+  assert.deepEqual(r.lighthouse[0].scores, { performance: 72, seo: 92, accessibility: 88, bestPractices: 96 });
+  assert.equal(r.lighthouse[0].metrics.lcp, 4100);
+  assert.equal(r.lighthouse[0].failed.length, 5);
+  assert.ok(!r.findings.some(f => /lighthouse/.test(f.check)), "scores are information, not findings");
+});
+
+test("without --outside, --lighthouse doesn't run it and says why", async () => {
+  const lh = fakeLighthouse();
+  const r = await crawl(["--lighthouse"], { LIGHTHOUSE_PATH: lh.bin });
+  assert.equal(lh.calls().length, 0, "the fake wasn't invoked");
+  assert.ok(!r.lighthouse);
+  assert.ok(
+    r.notes.some(n => /Lighthouse/.test(n) && /--outside/.test(n)),
+    r.notes.join("\n"),
+  );
+});
+
+test("when Lighthouse isn't installed, a note says how to add it", async () => {
+  const home = tmp();
+  const r = await crawl(["--outside", "--lighthouse"], {
+    LIGHTHOUSE_PATH: "",
+    HOME: home,
+    USERPROFILE: home,
+    PATH: tmp(),
+  });
+  assert.ok(!r.lighthouse);
+  assert.ok(
+    r.notes.some(n => /npx seo-supervisor --with-lighthouse/.test(n) && /npm i -g lighthouse/.test(n)),
+    r.notes.join("\n"),
+  );
+});
+
+test("the overview shows one Lighthouse line for the home page", async () => {
+  const dir = tmp(),
+    data = JSON.parse(readFileSync(join(SKILL, "examples", "sample-audit.json"), "utf8"));
+  const run = (url, p) => ({
+    url,
+    scores: { performance: p, seo: 92, accessibility: 88, bestPractices: 96 },
+    metrics: {},
+    failed: [],
+  });
+  data.lighthouse = [run("https://example.com/about/", 50), run("https://example.com/", 72)];
+  writeFileSync(join(dir, "a.json"), JSON.stringify(data));
+  await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "r.html")]);
+  const line = /Lighthouse \(mobile, home page\): Performance 72 · SEO 92 · Accessibility 88 · Best practices 96/;
+  assert.ok(line.test(readFileSync(join(dir, "r.html"), "utf8")), "HTML overview");
+  assert.ok(line.test(readFileSync(join(dir, "r.md"), "utf8")), "Markdown overview");
+});

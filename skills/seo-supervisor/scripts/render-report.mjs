@@ -394,6 +394,21 @@ function labSpeedText() {
     ? `Lab speed, slow mobile (indicative): ${fmtCwv(x)} · TBT ${Math.round(x.tbt || 0)} ms on ${new URL(x.url).pathname === "/" ? "the home page" : new URL(x.url).pathname}`
     : "";
 }
+// Lighthouse is an optional add-on, not a check.
+function lighthouseText() {
+  const l = raw.lighthouse || [],
+    x = l.find(x => new URL(x.url).pathname === "/") || l[0],
+    s = x?.scores || {};
+  const parts = [
+    ["Performance", s.performance],
+    ["SEO", s.seo],
+    ["Accessibility", s.accessibility],
+    ["Best practices", s.bestPractices],
+  ].filter(([, v]) => v != null);
+  return parts.length
+    ? `Lighthouse (mobile, ${new URL(x.url).pathname === "/" ? "home page" : new URL(x.url).pathname}): ${parts.map(([k, v]) => `${k} ${v}`).join(" · ")}`
+    : "";
+}
 function overviewHtml() {
   if (!overall)
     return `<section class="panel empty-state"><h2>Nothing to score</h2><p>This file has no findings or passed rules. Run the audit to fill it.</p></section>`;
@@ -446,6 +461,7 @@ function overviewHtml() {
       </div>
     </section>
     ${speedText() ? `<p class="quiet">${esc(speedText())}</p>` : ""}${labSpeedText() ? `\n    <p class="quiet">${esc(labSpeedText())}</p>` : ""}${authorityText() ? `\n    <p class="quiet">${esc(authorityText())}${ahrefsCredit() ? ` · <a href="${esc(ahrefsCredit().url)}" rel="noopener">${esc(ahrefsCredit().text)}</a>` : ""}</p>` : ""}
+    ${lighthouseText() ? `<p class="quiet">${esc(lighthouseText())}</p>` : ""}
     </div>
     <div class="ov-right">
     <section class="panel factors" aria-labelledby="h-factors">
@@ -1045,6 +1061,7 @@ function markdown() {
   if (areas.length) {
     if (speedText()) L.push(speedText(), "");
     if (labSpeedText()) L.push(labSpeedText(), "");
+    if (lighthouseText()) L.push(lighthouseText(), "");
     if (authorityText())
       L.push(`${authorityText()}${ahrefsCredit() ? ` · [${ahrefsCredit().text}](${ahrefsCredit().url})` : ""}`, "");
     for (const t of searchLines()) L.push(t, "");
