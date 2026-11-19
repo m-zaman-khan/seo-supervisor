@@ -26,3 +26,12 @@ Only genuine buyer reviews, with whole stars per review and decimals only in ave
 
 ### SHOP-07 · International · medium
 `hreflang` for every language or region version (self plus `x-default`), currency per region, and `<html lang>` set.
+
+### SHOP-08 · Products are listed free through Google Merchant Center · medium
+Merchant Center is Google's free tool for putting a shop's products on Google. With free listings, products can show at no cost on Search, the Shopping tab, Images, Maps, YouTube and Gemini. A shop that sells online should claim it: verify the site in Merchant Center, then send the products with a product feed, or let Google read the Product structured data the pages already have (SHOP-05). Google checks the site for new products at least once a day.
+
+The feed data must match the page. When the price differs, Google can disapprove the product, and a price that JavaScript adds after the page loads triggers an error. Too many products with the wrong availability can get the account suspended.
+
+**Check:** the feed, the schema and the page take price and availability from the same live data, and the price is in the HTML the server sends.
+
+Setting up the account is an owner action: report it as a decision or a note.

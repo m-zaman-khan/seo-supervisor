@@ -628,6 +628,10 @@ function overviewHtml() {
 }
 
 // ---------- findings ----------
+// A finding's optional effort; an unknown value shows nothing.
+const EFFORT = { quick: "under 30 minutes", hours: "an hour or two", "half-day": "half a day or more" };
+const effortOf = f =>
+  typeof f.effort === "string" && Object.hasOwn(EFFORT, f.effort) ? `Effort: ${EFFORT[f.effort]}` : "";
 function evidenceHtml(f) {
   const ev = f.evidence || [];
   if (!ev.length) return "";
@@ -648,7 +652,7 @@ function findingHtml(f) {
     <h3><button class="f-head" aria-expanded="false" aria-controls="${esc(f.id)}-b">
       ${dot(f.severity)}
       <span class="f-title">${inl(f.title)}</span>
-      <span class="f-meta"><span class="sev-t">${SEV_LABEL[f.severity]}</span>${needsYou(f) ? `<span class="own">Needs you</span>` : ""}<span>${esc(f.category)}</span>${f.rule ? `<span class="mono">${esc(f.rule)}</span>` : ""}${f.count > 1 ? `<span class="mono">${num(f.count)}×</span>` : ""}</span>
+      <span class="f-meta"><span class="sev-t">${SEV_LABEL[f.severity]}</span>${needsYou(f) ? `<span class="own">Needs you</span>` : ""}<span>${esc(f.category)}</span>${f.rule ? `<span class="mono">${esc(f.rule)}</span>` : ""}${f.count > 1 ? `<span class="mono">${num(f.count)}×</span>` : ""}${effortOf(f) ? `<span>${esc(effortOf(f))}</span>` : ""}</span>
       ${isFixed ? `<span class="stamp">${ICON.check}Fixed</span>` : `<span class="st st-${esc(f.status)}">${esc(STATUS_LABEL[f.status] || f.status)}</span>`}
       ${ICON.chevron}
     </button></h3>
@@ -1269,7 +1273,7 @@ function markdown() {
   for (const f of findings) {
     L.push(`### ${f.id} · ${SEV_LABEL[f.severity]}${needsYou(f) ? " · Needs you" : ""} · ${f.title}`, "");
     L.push(
-      `Status: ${STATUS_LABEL[f.status] || f.status} · Area: ${f.category}${f.rule ? ` · Rule: ${f.rule}` : ""}${f.count ? ` · Cases: ${f.count}` : ""}`,
+      `Status: ${STATUS_LABEL[f.status] || f.status} · Area: ${f.category}${f.rule ? ` · Rule: ${f.rule}` : ""}${f.count ? ` · Cases: ${f.count}` : ""}${effortOf(f) ? ` · ${effortOf(f)}` : ""}`,
       "",
     );
     if (f.what) L.push(`**What's wrong.** ${f.what}`, "");

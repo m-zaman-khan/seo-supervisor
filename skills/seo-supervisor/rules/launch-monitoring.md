@@ -34,6 +34,7 @@
 - Known backlinks still link (`backlinks-gone`, `scripts/backlinks.mjs`, after a redesign or move). For each gone one, ask the site to restore or update the link. If it pointed at a page that moved, 301 the old address to the closest live page.
 - Core Web Vitals and enhancement reports.
 - Manual actions and security issues.
+- **Security warnings:** if traffic drops suddenly or visitors say the browser warned them off the site, check Search Console → Security issues (hacked content, malware, harmful downloads, deceptive pages). Also enter the site at Google's Transparency Report site status (transparencyreport.google.com/safe-browsing/search), which works without Search Console access. Updates can take a few days to reach Search Console. Fix every affected page, then select Request Review in the Security issues report. These are owner checks: report them as notes.
 
 ### LAUNCH-08 · Traffic drops are checked against Google updates first · medium
 - Before diagnosing a drop as technical, compare its dates with the Google Search Status Dashboard (status.search.google.com). With outside checks on, `scripts/google-updates.mjs` reads it live for the period (`googleUpdates`, one line in the report). With them off, send the owner to the dashboard to check the dates themselves. Don't list update dates from memory: they go out of date.

@@ -59,3 +59,18 @@ Inside each group, items chain into a loop. Across content types, each type poin
 ### LINK-07 · Browse pages and their items link both ways · medium
 - **Check:** code: category, topic and tag pages.
 - **Pass:** items link to their browse page (breadcrumb plus a "More in …" block). Browse pages link to every item, paginated. Tag pages exist only once there's enough volume.
+
+### LINK-10 · Links from other sites are earned, never bought · medium
+> Checked 19 Nov 2026 against developers.google.com/search/docs/essentials/spam-policies#link-spam.
+
+Google uses links from other well-known sites as one sign of quality, and for local businesses, as part of how well known the business is. Links worth having come from giving people a reason to link.
+- **Check:** ask the owner how the site gets links. Search Console's Links report shows who links now.
+- **Pass:** links come from:
+  - **Something worth citing:** original data, a free tool, or a guide that answers a question better than anything else (AI-04).
+  - **Digital PR with real news:** a study, a launch or a local first, sent to the journalists who cover it.
+  - **Partners and suppliers:** the companies the business works with list it on their sites.
+  - **Local press and associations:** local news, chambers of commerce and trade bodies (LOCAL-14).
+  - **Unlinked mentions:** a site names the business without linking; ask it to add the link.
+  - **Dead pages that have links:** redirect them to the closest live page, and ask the linking site to update the link (LAUNCH-05).
+- **Never:** buying or selling links, sending free products in return for a link, large-scale link swaps or partner pages made only to cross-link, automated link building, or links hidden in widgets and footers on other sites. All are link spam under Google's spam policies. A paid link is fine only when it's marked `rel="sponsored"` or `rel="nofollow"`.
+- These are owner actions: report them as notes.

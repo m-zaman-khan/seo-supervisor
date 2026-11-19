@@ -97,6 +97,7 @@ Consequences for the JSON:
 | `evidence` | Up to 100 items. Each has a `url`, or a `file` plus `line`, and a short `detail`. Group repeated issues into one finding and set `count` to the full total. Use public URLs (the crawler's local URLs mapped to the production origin) unless production is still a different, old site; then keep the local URLs and say so in `notes`. |
 | `fix` | The concrete change and *where* to make it: the shared helper or file, not "every page". |
 | `fixBy` | Optional. Set it to `"owner"` when only the owner can resolve the finding: content or facts, CMS edits, business decisions, removing pages. The report labels it **Needs you**, and fix mode leaves it alone without the owner's go-ahead. Leave it out when the agent can fix the finding. |
+| `effort` | Optional. Roughly how long the fix takes: `"quick"` (under 30 minutes), `"hours"` (an hour or two) or `"half-day"` (half a day or more). Set it when you write the finding. The report shows it on the finding card ("Effort: an hour or two"); any other value shows nothing. |
 | `decision` | Optional, for findings that need an owner's call: `{ "question", "options": [], "recommendation" }`. |
 | `fixed` | Fix mode only: `{ "summary": "what changed", "files": ["src/lib/seo.ts"], "verified": "re-crawl 17 Nov: 0 titles over 60" }`. |
 | `passed[].detail` | Optional evidence for a pass, e.g. the `file:line` that implements it. |
