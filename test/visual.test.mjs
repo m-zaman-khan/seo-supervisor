@@ -211,6 +211,11 @@ test(
     );
     assert.ok(!r.notes.some(t => /labbusy.*phone checks/.test(t)), r.notes.join(" "));
     assert.deepEqual(r.lab, []);
+    assert.equal(
+      r.bfTested,
+      0,
+      "the back/forward test ran out of time too, so the crawler can't count PERF-10 as passed",
+    );
   },
 );
 
@@ -258,6 +263,7 @@ test(
       r.notes.some(t => /back\/forward cache test on 2 of them/.test(t)),
       r.notes.join(" "),
     );
+    assert.equal(r.bfTested, 2, "the crawler counts PERF-10 as checked only when this ran");
   },
 );
 

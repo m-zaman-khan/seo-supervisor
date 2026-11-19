@@ -981,9 +981,18 @@ const norm = s =>
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
-// Frameworks whose router loads the next page itself, without a new document, so speculation rules add little.
+// Words written in capitals (FAQ, SEO, HVAC; a plural's s dropped), lowercased: the acronyms a text shows.
+const capsOf = s =>
+  new Set(
+    s
+      .split(/[^\p{L}\p{N}]+/u)
+      .map(w => /^(\p{Lu}{2,})s?$/u.exec(w)?.[1].toLowerCase())
+      .filter(Boolean),
+  );
+// Frameworks whose router loads the next page itself, without a new document, so speculation rules add little:
+// Next.js, Nuxt, Gatsby, SvelteKit, Remix, Astro prefetch, Turbo (Rails), React Router 7, Angular, Docusaurus, Inertia.
 const CLIENT_ROUTER =
-  /\/_next\/static\/|\/_nuxt\/|id=["']?___gatsby\b|data-sveltekit-|__remixContext|data-astro-prefetch/;
+  /\/_next\/static\/|\/_nuxt\/|id=["']?___gatsby\b|data-sveltekit-|__remixContext|data-astro-prefetch|data-turbo-track|@hotwired\/turbo|__reactRouterContext|\sng-version=|id=["']?__docusaurus\b|\sdata-page=["'](?:\{|app["'])/;
 const FILE_EXT =
   /\.(pdf|png|jpe?g|gif|webp|avif|svg|ico|css|js|mjs|json|xml|txt|zip|gz|mp4|webm|mp3|woff2?|ttf|otf|csv|xlsx?|docx?|pptx?)$/i;
 
@@ -1173,7 +1182,7 @@ function analyze(url, html, headers) {
       ? "an onunload attribute"
       : null;
   // Links with no accessible name: no text (an SVG's <title> counts), aria-label, aria-labelledby, title, or alt or
-  // label inside.
+  // label inside. aria-hidden links (a card's image link beside its text link) are skipped, as axe and Lighthouse do.
   const emptyLinks = [
     ...bodyRaw
       .replace(/<(script|style|template|noscript)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi, " ")
@@ -1183,6 +1192,7 @@ function analyze(url, html, headers) {
     .filter(
       ([a, inner]) =>
         "href" in a &&
+        a["aria-hidden"]?.trim().toLowerCase() !== "true" &&
         ![a["aria-label"], a["aria-labelledby"], a.title].some(v => v?.trim()) &&
         !textOf(inner) &&
         !/\s(alt|aria-label|aria-labelledby|title)\s*=\s*["']?\s*[^\s"'>]/i.test(inner),
@@ -1247,6 +1257,7 @@ function analyze(url, html, headers) {
     h1Count: headings.filter(h => h.level === 1).length,
     words,
     normText: norm(text),
+    caps: capsOf(text),
     anchors,
     imgs,
     types,
@@ -1830,11 +1841,30 @@ const titleWords = t => [
   ),
 ];
 const brandWords = (() => {
-  const sets = htmlPages.filter(p => p.title && indexable(p)).map(p => titleWords(p.title)),
+  // every word, so a short one ("UK" in "Acme UK") is brand too
+  const sets = htmlPages.filter(p => p.title && indexable(p)).map(p => new Set(norm(p.title).split(" "))),
     n = new Map();
   for (const s of sets) for (const w of s) n.set(w, (n.get(w) || 0) + 1);
-  return new Set([...[...n].filter(([, c]) => c > sets.length / 2).map(([w]) => w), ...titleWords(BRAND)]);
+  return new Set([...[...n].filter(([, c]) => c > sets.length / 2).map(([w]) => w), ...norm(BRAND).split(" ")]);
 })();
+// A title's capitalised words ("LPG") and the initials of 3+ words in a row, skipping and/of/the ("Heating,
+// Ventilation and Air Conditioning" is hvac). Two letters ("IP") would match too much by chance.
+const LINKING = new Set("a an and for in of on the to".split(" "));
+const acronyms = t => {
+  const w = norm(t)
+      .split(" ")
+      .filter(x => x && !LINKING.has(x) && !brandWords.has(x)),
+    out = new Set([...capsOf(t)].filter(x => !brandWords.has(x)));
+  for (let i = 0; i < w.length; i++)
+    for (let j = i + 3; j <= w.length; j++)
+      out.add(
+        w
+          .slice(i, j)
+          .map(x => x[0])
+          .join(""),
+      );
+  return out;
+};
 for (const p of htmlPages) {
   const u = p.finalUrl;
   if (!IGNORE_NOINDEX) {
@@ -1887,13 +1917,16 @@ for (const p of htmlPages) {
     (titleMap.get(p.title) || titleMap.set(p.title, []).get(p.title)).push(u);
     if (BRAND && p.title.split(BRAND).length > 2) add("title-brand-twice", u, p.title);
   }
-  // Errs towards not flagging: it needs two title words and a page with real text, and a word counts when its stem is
-  // on the page ("pricing" finds "prices").
+  // Errs towards not flagging: a word counts when its stem is on the page ("pricing" finds "prices"), an acronym when
+  // the page shows it in capitals, and the H1 counts as page text.
   const tw = p.title ? titleWords(p.title).filter(w => !brandWords.has(w)) : [];
   if (tw.length >= 2 && p.words >= 50) {
     evalRules("META-09");
     const onPage = " " + p.normText;
-    if (!tw.some(w => onPage.includes(" " + w.slice(0, Math.max(4, w.length - 3)))))
+    if (
+      !tw.some(w => onPage.includes(" " + w.slice(0, Math.max(4, w.length - 3)))) &&
+      ![...acronyms(p.title)].some(a => p.caps.has(a))
+    )
       add("title-mismatch", u, `“${p.title}”: ${tw.join(", ")} aren't on the page`);
   }
   if (!p.description) add("desc-missing", u);
@@ -1937,7 +1970,7 @@ for (const p of htmlPages) {
   if (basics.length) add("doc-basics", u, basics.join(", "));
   if (p.charsetMismatch) add("charset-mismatch", u, p.charsetMismatch);
   if (p.refreshTo) add("meta-refresh", u, `→ ${p.refreshTo}`);
-  evalRules("PERF-10", "REND-10"); // only once a page was checked
+  evalRules("REND-10"); // only once a page was checked; PERF-10 waits for Chrome's own test
   if (p.obsolete.length) add("obsolete-tags", u, p.obsolete.map(t => `<${t}>`).join(", "));
   if (p.noStore) add("bfcache-no-store", u, `Cache-Control: ${p.headers.get("cache-control")}`);
   if (p.unload) add("bfcache-unload", u, p.unload);
@@ -2121,11 +2154,21 @@ if (home && home.html) {
   if (!home.types.some(t => ORG_RE.test(t))) add("org-missing", home.finalUrl);
   if (!home.types.includes("WebSite")) add("website-missing", home.finalUrl);
 }
-// Next-page preloading: one site-wide suggestion, only when there's a next page to load.
+// Next-page preloading: one site-wide suggestion, only when there's a next page to load. A single-page app's server
+// HTML shows neither its links nor the router that loads them, so it can't be judged.
 if (htmlPages.length > 1) {
-  evalRules("PERF-09");
-  if (!htmlPages.some(p => p.preloads))
+  if (htmlPages.some(p => p.preloads)) evalRules("PERF-09");
+  else if (htmlPages.filter(p => p.clientOnly).length > htmlPages.length / 2)
+    notChecked.push({
+      rule: "PERF-09",
+      area: `PERF-09 ${RULES["PERF-09"][0]}`,
+      reason:
+        "Most pages are built in the browser (a single-page app), so the server HTML shows neither their links nor the router that loads them. A single-page app's router usually loads the next page itself.",
+    });
+  else {
+    evalRules("PERF-09");
     add("no-speculation-rules", (home?.html ? home : htmlPages[0]).finalUrl, `none of ${htmlPages.length} pages`);
+  }
 }
 // Links: broken, through redirects, inbound counts and depth.
 const inbound = new Map(),
@@ -2373,6 +2416,10 @@ let labSpeed,
   visualReason = OUTSIDE
     ? "Chrome or Edge isn't installed (or set CHROME_PATH), so pages couldn't be loaded at phone size."
     : "Outside checks are off. With the owner's go-ahead, --outside loads sample pages in headless Chrome at desktop and phone size (running the site's own scripts) and saves screenshots.";
+let bfTested = 0,
+  bfReason = OUTSIDE
+    ? "Chrome or Edge isn't installed (or set CHROME_PATH)"
+    : "outside checks are off (with the owner's go-ahead, --outside runs it in headless Chrome)";
 if (browser) {
   const v = await checkVisual(browser, renderSample, {
     add,
@@ -2389,10 +2436,26 @@ if (browser) {
     notes.push(...v.notes);
   } else
     visualReason = `The browser at ${browser} couldn't load the sample pages (${v.notes[0] || "no pages to load"}).`;
+  bfTested = v.bfTested || 0;
+  bfReason = !renderSample.length
+    ? "no page meant to rank could be tested"
+    : renderSample.length < 2
+      ? "only one page could be tested, and Back needs a second page to come back from"
+      : !v.checked
+        ? "the browser couldn't load the sample pages"
+        : "it timed out on every page (see the notes)";
 }
 if (visualReason)
   for (const rule of ["REND-07", "PERF-07"])
     notChecked.push({ rule, area: `${rule} ${RULES[rule][0]}`, reason: visualReason });
+// PERF-10 passes only when Chrome's own test ran; without it the HTML hints can still raise a finding, but not pass it.
+if (bfTested) evalRules("PERF-10");
+else if (!findings.has("bfcache-no-store") && !findings.has("bfcache-unload"))
+  notChecked.push({
+    rule: "PERF-10",
+    area: `PERF-10 ${RULES["PERF-10"][0]}`,
+    reason: `Chrome's back/forward cache test didn't run: ${bfReason}.${checkedPages ? " The HTML hints (Cache-Control: no-store, inline unload handlers) found nothing." : ""}`,
+  });
 
 // ---------- outside checks: Lighthouse, an optional add-on (scores only, no findings) ----------
 let lighthouse;

@@ -303,7 +303,7 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
             bfTested++;
             const blockers = blockersOf(reasons);
             if (blockers.length) add("bfcache-blocked", url, `Chrome names: ${blockers.join("; ")}`);
-          }
+          } else notes.push(`Chrome didn't report the back/forward cache test on ${url} within 10 s.`);
         } catch (e) {
           notes.push(`Couldn't run the back/forward cache test on ${url} (${why(e)}).`);
         }
@@ -315,5 +315,5 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
     notes.push(
       `Loaded ${checked} sample page(s) at desktop (1366×768) and phone (390×844) size${screenshotDir ? ", with screenshots" : ""}${bfTested ? `, and ran Chrome's back/forward cache test on ${bfTested} of them` : ""}. Lab speed comes from one phone load with 4× CPU slowdown on slow 4G: indicative only, it won't match Lighthouse.`,
     );
-  return { checked, lab, notes };
+  return { checked, lab, notes, bfTested }; // bfTested: the pages Chrome's back/forward test actually ran on
 }

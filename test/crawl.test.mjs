@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { serve } from "./serve.mjs";
 import { ROOT, SCRIPTS, node, tmp } from "./helpers.mjs";
 import { imageSize } from "../skills/seo-supervisor/scripts/lib/image-size.mjs";
+import { findBrowser } from "../skills/seo-supervisor/scripts/checks/render.mjs";
 
 // Just enough of each format's header to carry the pixel size.
 const png = (w, h) => {
@@ -287,7 +288,7 @@ test("an og:image the local server redirects to the public origin is unreadable 
 });
 
 // Pages ({ "/path/": html }) in a temp folder, crawled as the site at `origin`; `args` and `env` go to the crawler.
-async function crawlSite(pages, serveOpts, origin = "https://site.example") {
+async function crawlSite(pages, serveOpts, origin = "https://site.example", { args = [], env } = {}) {
   const dir = tmp(),
     out = join(tmp(), "crawl.json");
   for (const [p, html] of Object.entries(pages)) {
@@ -297,12 +298,17 @@ async function crawlSite(pages, serveOpts, origin = "https://site.example") {
   writeFileSync(join(dir, "robots.txt"), "User-agent: *\nAllow: /\n");
   const site = await serve(dir, serveOpts);
   try {
-    await node([join(SCRIPTS, "seo-crawl.mjs"), "--url", site.url, "--site-origin", origin, "--out", out]);
+    await node(
+      [join(SCRIPTS, "seo-crawl.mjs"), "--url", site.url, "--site-origin", origin, "--out", out, ...args],
+      env ? { env } : {},
+    );
   } finally {
     await site.close();
   }
   return JSON.parse(readFileSync(out, "utf8"));
 }
+// Outside checks with a closed local port standing in for PageSpeed, so nothing leaves the machine.
+const OUTSIDE = ["--outside", "--psi-endpoint", "http://127.0.0.1:9/runPagespeed"];
 const findingOf = (r, check) => r.findings.find(f => f.check === check);
 const pathsOf = (r, check) => (findingOf(r, check)?.evidence || []).map(e => new URL(e.url).pathname).sort();
 
@@ -312,7 +318,7 @@ const COPY =
     2,
   );
 const PRIVACY =
-  "We collect your name, email address and phone number when you contact us. We keep these details for two years and never sell them to anyone. You can ask us to delete your data at any time by writing to our office or emailing the team. ".repeat(
+  "We collect your name, email address and phone number when you contact us. We keep these details for two years and never sell them to anyone. You can ask us to delete your data at any time by writing to our office or emailing the team. Under the UK GDPR our web server also logs your IP address. ".repeat(
     2,
   );
 const plumber = (title, h1, body, { head = '<meta charset="utf-8">', bodyAttrs = "" } = {}) =>
@@ -323,7 +329,7 @@ const PLUMBER = {
     "Welcome to Northwind Plumbing",
     "Welcome",
     `<script>addEventListener("beforeunload", () => {}); addEventListener("pagehide", () => {});</script>
-    ${["boilers", "privacy-notice", "nostore", "unload", "parts", "links", "latin", "alias", "old"].map(p => `<a href="/${p}/">Go to ${p}</a>`).join(" ")}`,
+    ${["boilers", "privacy-notice", "nostore", "unload", "parts", "links", "latin", "alias", "old", "faq", "hvac", "lpg"].map(p => `<a href="/${p}/">Go to ${p}</a>`).join(" ")}`,
   ),
   "/boilers/": plumber("Emergency Boiler Repairs | Northwind Plumbing", "Emergency boiler repairs", ""),
   // A privacy notice under a sales title. "IP" isn't read as "Installation Prices": two-letter initials are too common.
@@ -332,6 +338,14 @@ const PLUMBER = {
     "How we handle your personal data",
     `<p>${PRIVACY}</p>`,
   ),
+  // Titles whose words the page shows only as an acronym, or that share one with the H1.
+  "/faq/": plumber(
+    "Frequently Asked Questions | Northwind Plumbing",
+    "FAQ",
+    "<h2>How quickly can you come out?</h2><p>Within two hours anywhere in the city.</p>",
+  ),
+  "/hvac/": plumber("Heating, Ventilation and Air Conditioning | Northwind", "HVAC servicing", ""),
+  "/lpg/": plumber("LPG Boiler Conversions | Northwind Plumbing", "LPG for rural homes", ""),
   "/nostore/": plumber("Yearly Boiler Servicing | Northwind Plumbing", "Yearly boiler servicing", ""),
   "/unload/": plumber(
     "Leak Detection Services | Northwind Plumbing",
@@ -350,6 +364,7 @@ const PLUMBER = {
     <a href="/boilers/"></a> <a href="/boilers/"><img src="data:," alt=""></a>
     <a href="/boilers/" aria-label="Boiler repairs"><svg viewBox="0 0 1 1"><path d="M0 0"/></svg></a> <a href="/boilers/"><svg><title>Boiler repairs</title></svg></a>
     <a href="/boilers/"><img src="data:," alt="Boiler repairs"></a> <a href="/boilers/" title="Boiler repairs"><i class="icon"></i></a> <a href="/boilers/"><span class="visually-hidden">Boiler repairs</span></a> <a name="top"></a>
+    <a href="/boilers/" aria-hidden="true" tabindex="-1"><img src="data:," alt=""></a> <a href="/boilers/">Boiler repairs</a>
     <a href="http://site.example/boilers/">Boilers over http</a> <a href="HTTP://www.site.example/">Home over http</a> <a href="https://site.example/boilers/">Boilers</a> <a href="http://elsewhere.example/">Another site</a>
     <iframe src="about:blank" title="Map"></iframe> <font-awesome-icon icon="phone"></font-awesome-icon> <center-box>Call us</center-box>`,
   ),
@@ -382,6 +397,20 @@ test("back/forward cache hints: pages sent with no-store, and inline unload hand
   for (const key of ["bfcache-no-store", "bfcache-unload"])
     assert.deepEqual([findingOf(r, key).rule, findingOf(r, key).severity], ["PERF-10", "low"], key);
   assert.match(findingOf(r, "bfcache-no-store").why, /Chrome/, "says what Chrome does with no-store pages now");
+  assert.ok(!r.notChecked.some(n => n.rule === "PERF-10"), "a hint is a finding even without Chrome's own test");
+});
+
+// A clean two-page site; `head` goes into both pages' <head>, `body` into the home page's.
+const two = (head = "", body = "") => ({
+  "/": plumber(
+    "Boiler Repairs and Servicing in Leeds",
+    "Boiler repairs and servicing in Leeds",
+    `<a href="/about/">About the team</a>${body}`,
+    { head: `<meta charset="utf-8">${head}` },
+  ),
+  "/about/": plumber("About Our Leeds Engineers", "About our Leeds engineers", "", {
+    head: `<meta charset="utf-8">${head}`,
+  }),
 });
 
 test("speculation rules: one suggestion for a multi-page site with none; a rules script, the header or a client-side router counts", async () => {
@@ -395,15 +424,6 @@ test("speculation rules: one suggestion for a multi-page site with none; a rules
     ],
     ["PERF-09", "low", 1],
   );
-  const two = (head = "") => ({
-    "/": plumber(
-      "Boiler Repairs and Servicing in Leeds",
-      "Boiler repairs and servicing in Leeds",
-      '<a href="/about/">About the team</a>',
-      { head: `<meta charset="utf-8">${head}` },
-    ),
-    "/about/": plumber("About Our Leeds Engineers", "About our Leeds engineers", ""),
-  });
   const runs = [
     await crawlSite(
       two(
@@ -420,7 +440,7 @@ test("speculation rules: one suggestion for a multi-page site with none; a rules
     );
     assert.ok(run.passed.some(p => p.rule === "PERF-09"));
   }
-  for (const rule of ["PERF-10", "REND-10", "META-09"])
+  for (const rule of ["REND-10", "META-09"])
     assert.ok(
       runs[0].passed.some(p => p.rule === rule),
       `${rule} passes on a clean site`,
@@ -432,6 +452,78 @@ test("speculation rules: one suggestion for a multi-page site with none; a rules
   );
 });
 
+// Rails 8's default layout: the stylesheet and import map carry data-turbo-track, and the import map loads Turbo.
+const RAILS = `<link rel="stylesheet" href="/assets/application-8b441ae0.css" data-turbo-track="reload"><script type="importmap" data-turbo-track="reload">{"imports":{"application":"/assets/application-bfcdf840.js","@hotwired/turbo-rails":"/assets/turbo.min-3e48f180.js","@hotwired/stimulus":"/assets/stimulus.min-4b1e420e.js"}}</script><script type="module">import "application"</script>`;
+const VITE_SHELL = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Northwind Plumbing</title><script type="module" crossorigin src="/assets/index-DiwrgTda.js"></script></head><body><div id="root"></div></body></html>`;
+
+test("speculation rules: Turbo, React Router, Angular, Docusaurus and Inertia sites aren't flagged; a single-page app is listed as not checked", async () => {
+  const routers = {
+    rails: two(RAILS),
+    "react-router": two("", `<script>window.__reactRouterContext = {"basename":"/","future":{}};</script>`),
+    angular: two("", `<app-root ng-version="19.2.0" ng-server-context="ssr"></app-root>`),
+    docusaurus: two("", `<div id="__docusaurus"></div>`),
+    inertia: two(
+      "",
+      `<div id="app" data-page="{&quot;component&quot;:&quot;Home&quot;,&quot;props&quot;:{},&quot;url&quot;:&quot;/&quot;}"></div>`,
+    ),
+  };
+  const sitemap = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${["/", "/about/", "/pricing/"].map(p => `<url><loc>https://site.example${p}</loc></url>`).join("")}</urlset>`;
+  const [spa, ...runs] = await Promise.all([
+    crawlSite(
+      { "/": VITE_SHELL, "/about/": VITE_SHELL, "/pricing/": VITE_SHELL },
+      { files: { "/sitemap.xml": { type: "application/xml", body: Buffer.from(sitemap) } } },
+    ),
+    ...Object.values(routers).map(pages => crawlSite(pages)),
+  ]);
+  for (const [i, name] of Object.keys(routers).entries()) {
+    assert.ok(!findingOf(runs[i], "no-speculation-rules"), `${name}: its router loads the next page itself`);
+    assert.ok(
+      runs[i].passed.some(p => p.rule === "PERF-09"),
+      name,
+    );
+  }
+  assert.equal(spa.stats.htmlPages, 3);
+  assert.ok(
+    !findingOf(spa, "no-speculation-rules") && !spa.passed.some(p => p.rule === "PERF-09"),
+    JSON.stringify(findingOf(spa, "no-speculation-rules")?.evidence),
+  );
+  assert.match(spa.notChecked.find(n => n.rule === "PERF-09")?.reason || "", /built in the browser/);
+});
+
+test("PERF-10 passes only on Chrome's own test: without it, it's listed as not checked with the reason", async () => {
+  const [offline, noBrowser] = await Promise.all([
+    crawlSite(two()),
+    // CHROME_PATH points at something that isn't a browser, so it can't load a page.
+    crawlSite(two(), {}, undefined, { args: OUTSIDE, env: { ...process.env, CHROME_PATH: process.execPath } }),
+  ]);
+  for (const r of [offline, noBrowser])
+    assert.ok(
+      !r.passed.some(p => p.rule === "PERF-10") && !r.findings.some(f => f.rule === "PERF-10"),
+      JSON.stringify(r.passed),
+    );
+  assert.match(
+    offline.notChecked.find(n => n.rule === "PERF-10")?.reason || "",
+    /^Chrome's back\/forward cache test didn't run: outside checks are off/,
+  );
+  assert.match(
+    noBrowser.notChecked.find(n => n.rule === "PERF-10")?.reason || "",
+    /^Chrome's back\/forward cache test didn't run: the browser couldn't load the sample pages/,
+  );
+});
+
+test(
+  "PERF-10 on a one-page site: Back needs a second page, so Chrome's test can't run",
+  { skip: !findBrowser() && "Chrome not installed", timeout: 120000 },
+  async () => {
+    const r = await crawlSite({ "/": two()["/"].replace('<a href="/about/">About the team</a>', "") }, {}, undefined, {
+      args: OUTSIDE,
+    });
+    assert.equal(r.stats.htmlPages, 1);
+    assert.ok(!r.passed.some(p => p.rule === "PERF-10"));
+    assert.match(r.notChecked.find(n => n.rule === "PERF-10")?.reason || "", /only one page could be tested/);
+  },
+);
+
 test("pages over Lighthouse's 1,400-element level are flagged", async () => {
   const r = await plumberSite(),
     f = findingOf(r, "dom-size");
@@ -440,7 +532,7 @@ test("pages over Lighthouse's 1,400-element level are flagged", async () => {
   assert.match(f.evidence[0].detail, /^1,45\d elements/);
 });
 
-test("links with no text, label, title or image alt are flagged; labelled icon links aren't", async () => {
+test("links with no text, label, title or image alt are flagged; labelled icon links and aria-hidden card links aren't", async () => {
   const r = await plumberSite(),
     f = findingOf(r, "link-no-text");
   assert.deepEqual(pathsOf(r, "link-no-text"), ["/links/"]);
@@ -448,7 +540,7 @@ test("links with no text, label, title or image alt are flagged; labelled icon l
   assert.match(
     f.evidence[0].detail,
     /^2 link\(s\), e\.g\. \/boilers\/$/,
-    "an empty link and one around an image with empty alt",
+    "an empty link and one around an image with empty alt; screen readers skip an aria-hidden one",
   );
 });
 
@@ -470,7 +562,7 @@ test("links to the site's own pages over http:// on an HTTPS site are flagged, o
   assert.ok(!findingOf(plain, "link-http"), "a site that isn't on HTTPS yet has nothing to redirect to");
 });
 
-test("a title none of whose main words are on the page is flagged; normal and brand-only titles aren't", async () => {
+test("a title none of whose main words are on the page is flagged; normal, brand-only and acronym titles aren't", async () => {
   const r = await plumberSite(),
     f = findingOf(r, "title-mismatch");
   // "Welcome to Northwind Plumbing" on / is all brand (in most titles) and a stopword, so there's nothing to compare.
