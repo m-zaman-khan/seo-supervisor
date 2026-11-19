@@ -26,6 +26,8 @@ If the request doesn't name a mode, run **audit**. Finish an audit by offering t
 
 ## Workflow
 
+**Before any mode, check for updates:** run `node <skill-dir>/scripts/update-check.mjs`. It asks npm at most once a week and prints one line only when a newer SEO Supervisor exists. If it does, pass that line on once, in your first reply, and carry on. Never update anything yourself. The owner can turn the check off with `update-check.mjs off`.
+
 ### 1. Understand the project
 
 - **Framework:** read the matching file in `frameworks/` (`nextjs.md`, `rails.md`, `spa.md`). Other stacks: apply the rules directly.

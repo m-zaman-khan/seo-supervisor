@@ -196,9 +196,11 @@ try {
 // ---- install ----
 let problems = 0;
 const names = [];
+let installedAt = null; // the first skill folder written, for the update-notice line
 if (interactive) console.log("");
 for (const t of targetsFor(keys, scope, c)) {
   const dir = join(t.skills, NAME);
+  installedAt ||= dir;
   if (existsSync(dir) && !ownsSkill(dir) && !opts.force) {
     console.error(`skipped  ${show(dir)}: it exists and isn't SEO Supervisor (use --force to replace it)`);
     problems++;
@@ -255,6 +257,10 @@ if (opts.lighthouse) {
 
 const usesClaude = keys.includes("claude-code");
 console.log(`\nSEO Supervisor ${version} installed for ${names.join(", ") || "nothing"}.`);
+if (names.length && installedAt)
+  console.log(
+    `Update notices are on: at most once a week the skill asks npm whether a newer version exists (only the package name is sent). Turn them off with: node "${join(installedAt, "scripts", "update-check.mjs")}" off`,
+  );
 console.log(
   usesClaude
     ? `In Claude Code run /seo-audit (or /seo-setup for a site with no SEO yet).${names.length > 1 ? ' In the other agents, ask: "audit the SEO of this site".' : ""}`

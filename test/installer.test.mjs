@@ -207,3 +207,10 @@ test("an unknown agent key fails with the list of valid keys", async () => {
     err => /Unknown agent: notepad/.test(err.stderr) && /claude-code/.test(err.stderr),
   );
 });
+
+test("the install says update notices are on, and how to turn them off", async () => {
+  const home = tmp();
+  const { stdout } = await node([BIN, "--agent", "cursor", "--yes"], { env: env(home), cwd: home });
+  assert.match(stdout, /Update notices are on/);
+  assert.match(stdout, /update-check\.mjs"? off/);
+});

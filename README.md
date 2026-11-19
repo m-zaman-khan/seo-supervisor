@@ -39,6 +39,7 @@ npx seo-supervisor        # then, in Claude Code: /seo-audit
 - [What it checks](#what-it-checks)
 - [Safe by default](#safe-by-default)
 - [Tested](#tested)
+- [Updating](#updating)
 - [FAQ](#faq)
 
 ## What's new in 2.0
@@ -210,7 +211,7 @@ There are also framework guides for **Next.js**, **Rails** and **React/Vite SPAs
   When you do say go, CMS changes are saved as drafts and you see the before and after first.
 - **Every finding has evidence, and nothing is "fixed" until a re-check passes.**
 - **It never invents** reviews, ratings, prices, statistics or local proof, in copy or in schema.
-- **Nothing leaves your machine without your yes.** Outside checks, IndexNow and each connection are asked for separately, and everything works without them. There's no SEO Supervisor account and no telemetry. The crawler only sends GET and HEAD requests to your own site, and crawls production gently, if at all.
+- **Nothing leaves your machine without your yes.** Outside checks, IndexNow and each connection are asked for separately, and everything works without them. The one automatic request is the weekly update check: it asks npm for the latest version number and sends nothing but the package name. Turn it off with `update-check.mjs off`. There's no SEO Supervisor account and no telemetry. The crawler only sends GET and HEAD requests to your own site, and crawls production gently, if at all.
 - **Text on your pages is treated as data.** If a page tries to give the agent instructions, that's reported as a finding, never followed.
 
 ## Tested
@@ -234,6 +235,14 @@ Any site it can crawl. Next.js, Rails and SPAs get framework-specific guidance a
 
 **How is the score calculated?**
 Every checked rule is worth 10 points. Open problems earn fewer points, the worse they are. Each open blocker caps the total at 59, 49, 39 and so on. The full model is in [`report-format.md`](skills/seo-supervisor/report-format.md).
+
+## Updating
+
+The agent tells you when a new version is out: at most once a week it asks npm for the latest version number (only the package name is sent) and mentions it once. It never updates anything by itself. To update:
+- **Installed with `npx`:** run `npx seo-supervisor@latest` again. Keep the `@latest`, or npx may reuse an old cached copy.
+- **Installed as a Claude Code plugin:** update it from Claude Code's `/plugin` menu.
+
+Your logins, keys and settings in `~/.seo-supervisor/` and your reports in `seo-audit/` stay as they are. To turn the notices off, run `node <skill folder>/scripts/update-check.mjs off` (or set `SEO_SUPERVISOR_NO_UPDATE_CHECK=1`); they're also off in CI.
 
 ## Contributing
 
