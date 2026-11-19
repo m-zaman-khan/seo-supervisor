@@ -3,11 +3,14 @@
 // are saved in ~/.seo-supervisor/keys.json, never in the project; a service's environment variable wins over its
 // saved key. fetch sends the site's address and domain names to these services, so without --yes it's a dry run
 // that prints what it would send. *_ENDPOINT variables point the services at the tests' fakes.
-import { readFileSync, writeFileSync, mkdirSync, chmodSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, chmodSync, existsSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 
+const setLine = id => `node connect-keys.mjs set ${id}`;
+const PASTE =
+  "   Paste the key when it asks and press Enter. It isn't shown, so it stays out of chats and your command history.";
 export const SERVICES = {
   bing: {
     name: "Bing Webmaster Tools",
@@ -21,7 +24,8 @@ export const SERVICES = {
       "1. Sign in at https://www.bing.com/webmasters with a Microsoft, Google or Facebook account.",
       '2. Add your site and verify it. If the site is already in Google Search Console, choose "Import from Google Search Console": it\'s the quickest way.',
       "3. Open Settings → API Access (Settings is at the top right). Read and accept the terms, then click Generate API Key.",
-      "4. Copy the key and run: node connect-keys.mjs set bing <key>",
+      `4. Copy the key, then in your own terminal run: ${setLine("bing")}`,
+      PASTE,
       "One key covers every site verified in your account. Keep it private: anyone who has it can read and change your Bing Webmaster Tools settings.",
     ],
   },
@@ -36,7 +40,8 @@ export const SERVICES = {
       "Open PageRank (free, now run by Keywords Everywhere) adds a 0–10 authority score for your site and the competitors you name, based on links between sites.",
       "1. Sign up at https://keywordseverywhere.com/openpagerank and open your Open PageRank dashboard.",
       "2. Create an API key and register the IP address of the computer that will use it.",
-      "3. Copy the key and run: node connect-keys.mjs set openpagerank <key>",
+      `3. Copy the key, then in your own terminal run: ${setLine("openpagerank")}`,
+      PASTE,
       "Since 1 November 2026, free keys only work from that one registered IP address. A 403 error usually means your IP address changed (a new network, a VPN, or your provider changed it): update it in the dashboard. You can change it once a week.",
       "Free keys cover 30,000 domains a month.",
     ],
@@ -52,13 +57,14 @@ export const SERVICES = {
       "Ahrefs' free Domain Rating adds Ahrefs' 0–100 Domain Rating for your site and the competitors you name. It's free, with a free Ahrefs account.",
       "1. Create a free account at https://ahrefs.com, or sign in.",
       "2. Go to Account settings → API keys and create a key.",
-      "3. Copy the key and run: node connect-keys.mjs set ahrefs <key>",
+      `3. Copy the key, then in your own terminal run: ${setLine("ahrefs")}`,
+      PASTE,
       'Ahrefs\' licence requires every place that shows these numbers to say "Domain Rating by Ahrefs" with a link to https://ahrefs.com/. The report does this for you.',
     ],
   },
 };
 const USAGE =
-  "usage: node connect-keys.mjs set bing|openpagerank|ahrefs <key>\n       node connect-keys.mjs status | remove <service> | guide <service>\n       node connect-keys.mjs fetch --site https://www.example.com [--competitors a.com,b.com] [--out seo-audit/keys.json] [--yes]";
+  "usage: node connect-keys.mjs set bing|openpagerank|ahrefs [<key>]   (no key: it asks, hidden)\n       node connect-keys.mjs status | remove <service> | guide <service>\n       node connect-keys.mjs fetch --site https://www.example.com [--competitors a.com,b.com] [--out seo-audit/keys.json] [--yes]";
 const UA = "seo-supervisor-connect-keys";
 const ATTRIBUTION = { text: "Domain Rating by Ahrefs", url: "https://ahrefs.com/" };
 const MAX_LINK_PAGES = 10;
@@ -67,8 +73,8 @@ class Refused extends Error {} // a service said no: noted, the rest still runs,
 const fail = msg => {
   throw new Fail("connect-keys: " + msg);
 };
-const serviceOf = id => (SERVICES[id] ? id : fail(`there's no "${id}" connection. Use bing, openpagerank or ahrefs.`));
-const setLine = id => `node connect-keys.mjs set ${id} <key>`;
+const serviceOf = id =>
+  Object.hasOwn(SERVICES, id) ? id : fail(`there's no "${id}" connection. Use bing, openpagerank or ahrefs.`);
 
 // ---------- keys ----------
 export const keyFile = () => join(homedir(), ".seo-supervisor", "keys.json");
@@ -84,10 +90,64 @@ export function savedKeys() {
 function save(keys) {
   const f = keyFile();
   mkdirSync(dirname(f), { recursive: true, mode: 0o700 });
-  writeFileSync(f, JSON.stringify(keys, null, 2) + "\n", { mode: 0o600 });
   // On Windows chmod only sets the read-only flag, so there the file is as private as the user's profile folder.
   chmodSync(dirname(f), 0o700);
-  chmodSync(f, 0o600);
+  // Written to a temporary file and renamed over the old one, so a crash never leaves half a keys file.
+  const t = `${f}.${process.pid}.tmp`;
+  writeFileSync(t, JSON.stringify(keys, null, 2) + "\n", { mode: 0o600 });
+  chmodSync(t, 0o600);
+  renameSync(t, f);
+}
+
+// The key from the terminal, without showing it, or the first line of piped stdin.
+async function readKey(id) {
+  const { stdin, stderr } = process;
+  if (!stdin.isTTY) {
+    let text = "";
+    for await (const c of stdin) {
+      text += c;
+      if (text.includes("\n")) break;
+    }
+    return (
+      text.split(/\r?\n/)[0].trim() ||
+      fail(`no key was given. In your own terminal, run ${setLine(id)} and paste the key when it asks.`)
+    );
+  }
+  stderr.write(`Paste the ${SERVICES[id].name} key and press Enter (it isn't shown): `);
+  stdin.setRawMode(true);
+  stdin.setEncoding("utf8");
+  return new Promise((ok, no) => {
+    let key = "";
+    const done = () => {
+      stdin.setRawMode(false);
+      stdin.off("data", onData);
+      stdin.pause();
+      stderr.write("\n");
+    };
+    const onData = s => {
+      for (const ch of s) {
+        if (ch === "\r" || ch === "\n") {
+          done();
+          return ok(key);
+        }
+        if (ch === "\u0003") {
+          done();
+          return no(new Fail("connect-keys: cancelled, nothing was saved."));
+        }
+        if (ch === "\u007f" || ch === "\b") {
+          if (key) {
+            key = key.slice(0, -1);
+            stderr.write("\b \b");
+          }
+        } else {
+          key += ch;
+          stderr.write("*");
+        }
+      }
+    };
+    stdin.on("data", onData);
+    stdin.resume();
+  });
 }
 export function setKey(id, key) {
   serviceOf(id);
@@ -167,6 +227,9 @@ export const domainOf = s => {
     return null;
   }
 };
+// The site's domain and the competitors', each once; a site with no domain name (localhost) is left out.
+const domainsFor = (siteUrl, competitors) =>
+  [domainOf(siteUrl), ...competitors.map(domainOf)].filter((d, i, all) => d && all.indexOf(d) === i);
 
 // ---------- Bing Webmaster Tools ----------
 // CrawlIssues is a flags enum; JSON sends the number, XML the names, so both are read.
@@ -314,7 +377,7 @@ export async function fetchKeys({ site, competitors = [], keys = activeKeys(), e
     notes = [],
     problems = [],
     notChecked = [];
-  const domains = [domainOf(siteUrl), ...competitors.map(domainOf)].filter((d, i, all) => d && all.indexOf(d) === i);
+  const domains = domainsFor(siteUrl, competitors);
   const end = id => endpoints[id] || SERVICES[id].endpoint;
   const authority =
     keys.openpagerank || keys.ahrefs ? domains.map(domain => ({ domain, openPageRank: null, ahrefsDR: null })) : [];
@@ -402,8 +465,8 @@ async function main(argv) {
   const str = k => (typeof args[k] === "string" ? args[k] : null);
 
   if (cmd === "set") {
-    if (!rest[0] || !rest[1]) throw new Fail(USAGE);
-    setKey(rest[0], rest[1]);
+    if (!rest[0]) throw new Fail(USAGE);
+    setKey(rest[0], rest[1] ?? (await readKey(serviceOf(rest[0]))));
     console.log(
       `connect-keys: saved the ${SERVICES[rest[0]].name} key in ${keyFile()} (only your user account can read it). ${process.env[SERVICES[rest[0]].env] ? `Note: ${SERVICES[rest[0]].env} is also set and wins over the saved key.` : ""}`.trim(),
     );
@@ -447,7 +510,7 @@ async function main(argv) {
     const endpoints = Object.fromEntries(
       Object.entries(SERVICES).map(([id, s]) => [id, process.env[s.endpointEnv] || s.endpoint]),
     );
-    const domains = [domainOf(siteUrl), ...competitors.map(domainOf)].filter((d, i, all) => all.indexOf(d) === i);
+    const domains = domainsFor(siteUrl, competitors);
     const skipNote = skipped.map(c => `Skipped competitor "${c}": it's not a domain name like rival.com.`);
 
     if (args.yes !== true) {

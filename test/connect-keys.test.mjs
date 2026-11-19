@@ -26,6 +26,11 @@ const envFor = (home, srv, extra = {}) => ({
   ...extra,
 });
 const cli = (args, env, cwd) => node([CLI, ...args], { env, cwd });
+const cliIn = (args, env, input) => {
+  const p = cli(args, env);
+  p.child.stdin.end(input);
+  return p;
+};
 
 const BING = {
   GetUserSites: {
@@ -153,7 +158,43 @@ test("set, status and remove keep keys in the home folder, private, and never in
     cli(["set", "moz", "x"], env),
     e => e.code === 2 && /bing, openpagerank or ahrefs/.test(e.stderr),
   );
-  await assert.rejects(cli(["set", "bing"], env), e => e.code === 2 && /usage/i.test(e.stderr));
+  await assert.rejects(cli(["set"], env), e => e.code === 2 && /usage/i.test(e.stderr));
+});
+
+test("set with no key reads the first line of stdin, so the key never sits in the command line", async () => {
+  const home = tmp(),
+    env = envFor(home);
+  await cliIn(["set", "bing"], env, "piped-key-5555\r\nsecond line\n");
+  assert.deepEqual(JSON.parse(readFileSync(join(home, ".seo-supervisor", "keys.json"), "utf8")), {
+    bing: "piped-key-5555",
+  });
+  await assert.rejects(
+    cliIn(["set", "ahrefs"], env, ""),
+    e => e.code === 2 && /your own terminal, run node connect-keys\.mjs set ahrefs/.test(e.stderr),
+  );
+});
+
+test("names that only exist on every object, like toString, aren't services", async () => {
+  const env = envFor(tmp());
+  await assert.rejects(
+    cli(["set", "toString", "k-123456"], env),
+    e => e.code === 2 && /bing, openpagerank or ahrefs/.test(e.stderr),
+  );
+  await assert.rejects(
+    cli(["guide", "constructor"], env),
+    e => e.code === 2 && /bing, openpagerank or ahrefs/.test(e.stderr),
+  );
+});
+
+test("the keys file is replaced in one step (a new file renamed over the old one), never half-written", async () => {
+  const home = tmp(),
+    env = envFor(home),
+    file = join(home, ".seo-supervisor", "keys.json");
+  await cli(["set", "bing", "first-key-1111"], env);
+  const before = statSync(file, { bigint: true }).ino;
+  await cli(["set", "bing", "second-key-2222"], env);
+  assert.notEqual(statSync(file, { bigint: true }).ino, before);
+  assert.deepEqual(readdirSync(join(home, ".seo-supervisor")), ["keys.json"], "no temp file left behind");
 });
 
 test("an environment variable wins over the saved key", async () => {
@@ -185,6 +226,28 @@ test("guide says where to get each key, in plain steps", async () => {
   const ahrefs = (await cli(["guide", "ahrefs"], env)).stdout;
   assert.match(ahrefs, /Account settings → API keys/);
   assert.match(ahrefs, /Domain Rating by Ahrefs/);
+  for (const [id, text] of [
+    ["bing", bing],
+    ["openpagerank", opr],
+    ["ahrefs", ahrefs],
+  ]) {
+    assert.match(text, new RegExp(`node connect-keys\\.mjs set ${id}(?! <key>)`), `${id}: the no-argument form`);
+    assert.match(text, /your own terminal/, id);
+  }
+});
+
+test("the dry run lists the same domains the real run sends (a site with no domain name, like localhost, is left out)", async () => {
+  const home = tmp(),
+    srv = await fake();
+  try {
+    const r = await cli(
+      ["fetch", "--site", "http://localhost:3000", "--competitors", "a.com", "--out", join(home, "keys-out.json")],
+      envFor(home, srv, { OPENPAGERANK_KEY: "o-key-0002" }),
+    );
+    assert.match(r.stdout, /1 domain name\(s\) \(a\.com\)/);
+  } finally {
+    await srv.close();
+  }
 });
 
 test("fetch without --yes is a dry run: it says what would be sent and sends nothing", async () => {
