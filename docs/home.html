@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEO Supervisor: SEO for your site, inside your coding agent</title>
+<meta name="description" content="SEO Supervisor is a free, open-source SEO skill for coding agents. It audits your site, fixes what's safe in code, reviews changes and gates launches. Google sign-in is optional and read-only.">
+<link rel="canonical" href="https://m-zaman-khan.github.io/seo-supervisor/home.html">
+<link rel="stylesheet" href="style.css">
+<script>try{if(localStorage.getItem("seo-report-theme")==="light")document.documentElement.dataset.theme="light"}catch(e){}</script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="home.html">SEO Supervisor</a>
+    <button class="theme-btn" type="button" id="theme">Light</button>
+  </header>
+
+  <main>
+    <h1>SEO for your website, inside your coding agent</h1>
+    <p class="lede">SEO Supervisor is a free, open-source skill for coding agents such as Claude Code, Codex and Cursor. It checks your website's SEO, fixes what can safely be fixed in code, reviews changes before they ship, and tells you when the site is ready to launch.</p>
+    <p class="meta">MIT licensed · runs on your own computer · no account needed</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/m-zaman-khan/seo-supervisor">Get it on GitHub</a>
+      <a class="btn" href="index.html">See a sample report</a>
+    </div>
+
+    <h2>What it does</h2>
+    <ul>
+      <li><strong>Audit:</strong> crawls your site the way search engines do and writes one clear report with a 0–100 score, every problem with its evidence, and what to fix first.</li>
+      <li><strong>Fix:</strong> fixes problems at the root in your code, re-checks each fix, and never touches your content, your CMS or your live indexing settings without your yes.</li>
+      <li><strong>Review and launch:</strong> catches SEO mistakes in a pull request, and gives a clear pass or fail before you switch indexing on.</li>
+      <li><strong>Setup:</strong> plans SEO for a site that has none, and builds it once you approve the plan.</li>
+    </ul>
+
+    <section class="panel" aria-labelledby="google">
+      <h2 id="google">Sign in with Google (optional)</h2>
+      <p>If you choose to, you can connect your own Google Search Console and Google Analytics to SEO Supervisor. It then adds your real search data to your report:</p>
+      <ul class="checks">
+        <li><span class="check" aria-hidden="true">✓</span>the clicks, impressions and search queries for each of your pages</li>
+        <li><span class="check" aria-hidden="true">✓</span>whether Google has indexed your key pages, and which address Google chose for them</li>
+        <li><span class="check" aria-hidden="true">✓</span>errors in the sitemaps you submitted</li>
+        <li><span class="check" aria-hidden="true">✓</span>organic visits to each landing page</li>
+      </ul>
+      <p>Access is <strong>read-only</strong>: SEO Supervisor can look at this data but can't change anything in your Google accounts. The data goes straight from Google to your own computer and stays there. There's no SEO Supervisor server, and the maintainers never see it. You can remove access at any time at <a href="https://myaccount.google.com/connections">myaccount.google.com/connections</a>.</p>
+      <p>Everything else works without signing in. Read the <a href="privacy.html">privacy policy</a> for the details.</p>
+    </section>
+  </main>
+
+  <footer>
+    <span>SEO Supervisor · open source, MIT</span>
+    <a href="privacy.html">Privacy policy</a>
+    <a href="https://github.com/m-zaman-khan/seo-supervisor">GitHub</a>
+    <a href="https://github.com/m-zaman-khan/seo-supervisor/issues">Contact</a>
+  </footer>
+</div>
+<script>
+(function(){var h=document.documentElement,b=document.getElementById("theme");
+function label(){b.textContent=h.dataset.theme==="light"?"Dark":"Light"}
+label();b.addEventListener("click",function(){if(h.dataset.theme==="light"){delete h.dataset.theme;try{localStorage.removeItem("seo-report-theme")}catch(e){}}else{h.dataset.theme="light";try{localStorage.setItem("seo-report-theme","light")}catch(e){}}label()});})();
+</script>
+</body>
+</html>
