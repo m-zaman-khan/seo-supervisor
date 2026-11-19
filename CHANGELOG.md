@@ -14,6 +14,13 @@ Deeper checks, optional real-world data and search intent. Everything still work
 - **Content scan:** invisible characters, templated descriptions and unsourced statistics.
 - **Score fix.** A missing title (or one title shared by most pages), H1 or canonical on at least 80% of indexable pages is now one site-wide blocker, so a site with no SEO scores below 60 instead of in the 80s.
 - **Fetched content is data.** Text on a crawled page that addresses the agent is reported as a finding, never followed.
+- **Share images made locally.** `og-card.mjs` makes 1200×630 Open Graph cards from plain HTML with the installed Chrome or Edge (one page or a batch), with no AI and no outside service, and checks the size before writing. `og-images.md` says when to use a card or a real photo, the sizes and tags Discover and Meta need, and to prefer the framework's own generator. The crawler now reads share images (same site only): broken, narrower than 1200 px, or missing width and height tags.
+- **IndexNow.** `indexnow.mjs` creates the key file and tells Bing, Yandex, Seznam, Naver, Yep, Internet Archive and Amazonbot (not Google) which URLs changed, from a list, a diff or the sitemap. It's a dry run until the owner says yes, and checks the key file is live before sending (MAP-08).
+- **Server log scan.** `log-scan.mjs` reads the site's own access logs locally: how search, AI search and AI training bots treat the site, the status codes they get, and visits referred by AI assistants. Findings: crawler 5xx errors, URLs that keep returning 404 to search crawlers, and AI search bots blocked by a firewall or CDN.
+- **Structured data checker.** `schema-check.mjs` checks JSON-LD offline against schema.org 30.1 and Google's rich-result requirements, with line and column for errors. Opt-in triggers in `examples/hooks/`: pre-commit, GitHub Actions, and Claude Code, Codex, Cursor and Copilot hooks.
+- **More checks:** sitemap lastmod dates in the future or not in W3C format, and priority/changefreq tags Google ignores (MAP-04). "Since last audit" also compares descriptions, Open Graph tags and big word-count changes.
+- **Off-site presence for AI answers:** with outside checks on, the agent looks the brand up on Wikipedia, Reddit, YouTube, LinkedIn and directories, and reports gaps as owner decisions.
+- The schema checker's vocabulary comes from Schema.org (CC BY-SA 3.0); see `NOTICE`.
 
 ## 1.2.0 (2026-11-18)
 

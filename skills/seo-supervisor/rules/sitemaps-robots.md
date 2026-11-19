@@ -14,7 +14,7 @@
 - **Fix:** generate the sitemap from the content source instead of a hand-kept list. A test comparing sitemap URLs with indexable routes keeps them in sync.
 
 ### MAP-04 · lastmod dates are real · low
-- **Check:** crawler `sitemap-lastmod-same`. Code: is `lastModified` set to `new Date()` or the build time?
+- **Check:** crawler `sitemap-lastmod-same`, `sitemap-lastmod-future` (a date after tomorrow), `sitemap-lastmod-invalid` (not a W3C date) and `sitemap-priority-changefreq` (tags Google ignores), each low and counted once per sitemap. Code: is `lastModified` set to `new Date()` or the build time?
 - **Pass:** each URL's lastmod is the record's real `updatedAt`, and a hub's is the newest among its items. Google uses lastmod only on sites where it proves accurate. Leave `priority` and `changefreq` out; Google and Bing ignore them.
 - **Fix:** use content dates, or drop lastmod rather than fake it.
 
@@ -27,6 +27,7 @@
 - **Default:** allow them; being cited in AI answers is distribution.
 - **Middle ground:** block the training crawlers (`GPTBot`, `ClaudeBot`, `Google-Extended`, `CCBot`, `Applebot-Extended`) and allow the search and user crawlers (`OAI-SearchBot`, `ChatGPT-User`, `Claude-SearchBot`, `Claude-User`, `PerplexityBot`). Record the choice in the profile. Details, Bing's new AI directives and the vendor IP lists are in `rules/ai-search.md` (AI-02, AI-03).
 - **Content-Signal:** a `Content-Signal:` line in robots.txt (e.g. `search=yes, ai-train=no`) is an emerging way to state the policy. The crawler flags only invalid values (keys other than `search`, `ai-input`, `ai-train`, or values other than `yes`/`no`), at low severity. Leaving it out is fine.
+- **Logs:** `log-scan.mjs` flags AI search bots mostly refused with 403/401 by a firewall or CDN (`ai-bots-blocked-in-practice`, needs-decision), which robots.txt doesn't show.
 
 ### MAP-07 · /llms.txt, optional · low
 - **Check:** crawler `llms-txt`.
@@ -35,5 +36,5 @@
 - **Structure:** when llms.txt exists, the crawler checks it starts with a `# Site name` heading and contains Markdown links (`llms-structure`, low).
 
 ### MAP-08 · Sitemaps are submitted, and changes are pinged · low
-- **Check:** ask the owner, or look for automation.
+- **Check:** ask the owner, or look for automation. `scripts/indexnow.mjs` sets up the key file (`key --public-dir public/`) and sends the ping (`submit … --from-diff seo-audit/seo-diff.json`, or `--urls`, `--from-sitemap`). It's a dry run until `--yes`, checks the key file is live first, and writes `seo-audit/indexnow.json`.
 - **Pass:** sitemaps are submitted in Search Console and Bing Webmaster Tools. IndexNow is pinged on publish, with the key file at the site root. IndexNow reaches Bing (and through it Copilot), Yandex, Seznam, Naver, Yep, Internet Archive and Amazonbot, but not Google. Bing wants the true content-change time as lastmod and ignores `changefreq` and `priority`.

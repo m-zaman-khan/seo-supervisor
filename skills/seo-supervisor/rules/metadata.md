@@ -10,6 +10,7 @@
 - **Check:** crawler `desc-missing`, `desc-length`, `desc-dup`.
 - **Pass:** says what the visitor gets and why this page; no template text with a name swapped.
 - **Fix:** add a description field to the content model, or generate one per page type from specific data, never from boilerplate.
+- **Content scan:** `templated-desc` (medium) flags descriptions that are only the title, or end in a stock call to action, on 3+ items.
 
 ### META-03 · All metadata comes from one helper · medium
 - **Check:** crawler `title-brand-twice` (with `--brand`). Code: how pages set titles, canonicals, Open Graph and robots.
@@ -18,8 +19,9 @@
 
 ### META-04 · Open Graph and Twitter tags on every page; key pages get their own image · low
 - **Check:** crawler `og-missing`. Code: does a per-page `openGraph` object replace the inherited image? (A common Next.js trap.)
-- **Fix:** set a default image in the helper and generate images for key page types.
+- **Fix:** set a default image in the shared helper and give key page types their own. Prefer the framework's own generator (Next.js `opengraph-image.tsx`); otherwise make 1200×630 cards with `scripts/og-card.mjs` (no AI, no outside service). Always set `og:image:width`, `og:image:height` and `og:image:alt`. Use a real photo, not a text card, where the page has one. See `og-images.md`.
 - **Crawler:** flags an `og:url` that differs from the page's canonical (`og-url-mismatch`).
+- **Share images:** the crawler reads the first 64 KB of up to 20 og:images on the site itself (never a third-party host): `og-image-broken` (medium) when the URL doesn't return the image, `og-image-no-size` (low) when `og:image:width`/`og:image:height` are missing.
 
 ### META-05 · The page language is declared · low
 - **Check:** crawler `lang-missing`.

@@ -71,5 +71,5 @@ CollectionPage, ItemList, DefinedTerm, CreativeWork and Service earn no Google r
 - **Check:** crawler `breadcrumb-missing`, and URL-05.
 
 ### SCHEMA-08 · Every template is validated · medium
-- **Check:** one URL per template through Google's Rich Results Test and validator.schema.org. After launch, watch the enhancement reports in Search Console.
+- **Check:** `scripts/schema-check.mjs` on the built pages or a local URL, offline (schema.org vocabulary, value shapes, Google's required and recommended properties; FAQPage structure only). Then one URL per template through Google's Rich Results Test. After launch, watch the enhancement reports in Search Console.
 - Facts that must match the visible page: phone, email, address, prices, hours.

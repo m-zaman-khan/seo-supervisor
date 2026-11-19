@@ -59,10 +59,11 @@ node <skill-dir>/scripts/seo-crawl.mjs --url http://localhost:3000 \
 - **Starting and stopping the server:** start it directly so it stops cleanly, e.g. `node node_modules/next/dist/bin/next start -p 3123` rather than `npx`. Always stop it when you're done.
 - Crawler findings are evidence, not verdicts. Check each against the profile (a noindex page may be intended), adjust severity, or drop it with a reason.
 - If the site can't run, audit statically and list the crawler checks under `notChecked`. Never present guesses as crawl results.
-- **History:** before re-crawling, move the previous `seo-audit/seo-crawl.json` to `seo-audit/history/<YYYY-MM-DD>-seo-crawl.json`. After the crawl, compare the two and put the output in `seo-audit.json` as `diff`; the report then gets a "Since last audit" tab:
+- **History:** before re-crawling, move the previous `seo-audit/seo-crawl.json` to `seo-audit/history/<YYYY-MM-DD>-seo-crawl.json`. After the crawl, compare the two (status, indexing, canonical, title, description, H1, schema, Open Graph tags and big word-count changes) and put the output in `seo-audit.json` as `diff`; the report then gets a "Since last audit" tab:
   ```bash
   node <skill-dir>/scripts/seo-diff.mjs seo-audit/history/<latest>-seo-crawl.json seo-audit/seo-crawl.json --out seo-audit/seo-diff.json
   ```
+- **Server logs (optional):** ask the owner for the site's access logs or a CDN log export (`access.log*`, Cloudflare Logpush, JSON lines; `.gz` is fine), ideally the last 30 days, and run `node <skill-dir>/scripts/log-scan.mjs --log <file-or-folder> --site-origin <origin> --out seo-audit/log-scan.json`. It reads the files locally and sends nothing. Merge its findings, and quote its bot counts as "requests claiming to be" (user agents can be spoofed). Prefer the CDN's logs when there is one: origin logs miss cached hits.
 - **Live site:** when the launch state is live, and always in launch mode, add `--check-live`. It checks the certificate, the http→https redirect and HSTS on `--site-origin`, which must be the owner's own production origin.
 
 **Outside checks: ask once per project.** Three checks reach outside the machine or run the site's own scripts:
@@ -139,6 +140,9 @@ In chat, give: the score and band, and while blockers are open, the score fixing
 5. **Before you recommend removing, holding, redirecting or noindexing pages,** say what it costs. Live pages may already be indexed and bringing visitors, and removing them loses that. When `traffic` exists, state each page's clicks and impressions. Offer improving them in place as the alternative.
 6. After each batch: build, re-crawl, run the project's tests and linters.
 7. Set a finding to `fixed` only when the re-check passes, and fill `fixed.summary`, `fixed.files` and `fixed.verified`. Keep the same finding IDs. Re-render the report.
+8. **Structured data:** after adding or changing JSON-LD, run `node <skill-dir>/scripts/schema-check.mjs <built page, folder or http://localhost URL>` and fix every error. It checks offline against schema.org and Google's required properties. Templates (`.tsx`, `.vue`, `.erb`) build JSON-LD at runtime, so check the built output or the running server.
+9. **Missing share images (META-04, MEDIA-03):** offer to make them as `og-images.md` says: the framework's own way first (Next.js `opengraph-image.tsx`), otherwise `node <skill-dir>/scripts/og-card.mjs`. Ask the owner where they're saved (usually `public/og/`) and get their yes before writing any. Use the page's real photo instead of a card where it has one.
+10. **IndexNow, after deploy and only with the owner's yes:** `node <skill-dir>/scripts/indexnow.mjs submit --site <origin> --key <key> --from-diff seo-audit/seo-diff.json` prints a dry run; add `--yes` to send. It tells Bing, Yandex and others (not Google) to recrawl the changed pages.
 
 ### 6. Review mode
 
@@ -148,13 +152,15 @@ List the changed routes, templates and content. Apply only the rules they touch.
 
 Run the audit, with `--check-live` once the production origin answers. Launch passes only with **zero open blockers** and **zero open high findings** in the CRAWL, URL, REND, MAP and TRUST-07 rules, plus the steps in `rules/launch-monitoring.md`. A certificate blocker fails the launch.
 
+After the site is live, and only with the owner's yes, set up IndexNow: `node <skill-dir>/scripts/indexnow.mjs key --public-dir <folder served at the site root> --site <origin>`, deploy, then `indexnow.mjs submit --site <origin> --key <key> --from-sitemap <origin>/sitemap.xml`. It's a dry run until `--yes`, and it refuses to send until `<origin>/<key>.txt` serves the key.
+
 ### 8. Setup mode
 
 For a site with no SEO yet. Follow `planning.md` exactly.
 
 1. Work out what the site is from the site itself, never from a template.
 2. Propose a plan (a `plan` in `seo-audit.json`, shown on the report's Plan tab) and stop for approval.
-3. Build the code-level foundation once it's approved, then fix the audit's other code findings listed in the plan (`plan.alsoFixes`).
+3. Build the code-level foundation once it's approved, then fix the audit's other code findings listed in the plan (`plan.alsoFixes`). Share images are part of the foundation: a default card plus one per key page type (`og-images.md`), in the folder the plan names. Offer the structured data checks in `examples/hooks/` as an opt-in (a pre-commit hook, a CI step, or an agent hook); install only the ones the owner picks.
 4. Draft the content the owner must approve.
 5. Verify with an audit.
 
@@ -205,6 +211,8 @@ On a **pre-launch** site, a blocker is anything that must be fixed before indexi
 | `rules/trust-security.md` | TRUST | security headers, privacy, about/author pages, honesty |
 | `rules/launch-monitoring.md` | LAUNCH | pre-launch, launch day, CI gates, monitoring |
 | `rules/search-intent.md` | INTENT | page type vs what ranks, one page per query, low CTR, almost page one, content opportunities |
+
+`og-images.md` covers share images: card or photo, sizes and tags, framework-native generation and `scripts/og-card.mjs`.
 
 `strategy.md` is the method behind the INTENT rules: reading search results, topic clusters and the content brief format.
 

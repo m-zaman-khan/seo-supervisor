@@ -16,6 +16,7 @@
   - **User-triggered** fetchers: `ChatGPT-User`, `Claude-User`, `Perplexity-User`. These may not follow robots.txt.
 - **Pass:** blocking training while allowing search is a valid policy. Blocking GPTBot does **not** remove a site from ChatGPT search. The WAF allows each vendor's published IP lists (`openai.com/searchbot.json`, `perplexity.ai/perplexitybot.json`) so verified bots aren't challenged. Rules are repeated on every subdomain.
 - **Emerging:** a shared training opt-out, `User-Agent: __usage_ai-training` / `Disallow: /` (IETF draft; Anthropic honours it, Google plans to in 2027). Optional, and a `*` group doesn't match it.
+- **Logs:** `log-scan.mjs` shows what AI crawlers actually got. Google-Extended and Applebot-Extended never appear in logs: they're robots.txt tokens, and the crawling is done by Googlebot and Applebot. Having no AI search visits is normal and isn't a finding.
 
 ### AI-03 · Bing/Copilot preferences use the new directives · high (sites restricting Copilot)
 - **Check:** grep for `noarchive` / `nocache` used to keep content out of Copilot.
@@ -32,6 +33,8 @@
 
 ### AI-06 · AI visibility is measured · low
 - Google Search Console's Generative AI performance report (impressions by page, since June 2026). AI Overview and AI Mode clicks are counted inside web search totals. Bing Webmaster Tools' AI Performance report shows Copilot citations and grounding queries. Note these as monitoring steps; the audit can't read them without access.
+- **Logs:** visits referred by ChatGPT, Perplexity, Claude, Gemini and Copilot (and `utm_source=chatgpt.com`) are counted by `log-scan.mjs` (`aiReferrals`). Some apps send no referrer, so this counts low.
+- **Off-site presence (outside checks on):** AI answers lean on what other sites say about a brand. With the agent's web search, look up the brand on Wikipedia/Wikidata, Reddit, YouTube, LinkedIn and the main review or industry directories, and report what exists, what's missing and what's wrong (old name, address or claims) as owner decisions with `fixBy: "owner"`. Never create accounts or post on the owner's behalf. Name the search tool and date.
 
 ## Myths to correct in reports
 - llms.txt, Markdown copies, "chunking" or AI-specific rewrites help in Google (Google ignores llms.txt; it's harmless and optional).

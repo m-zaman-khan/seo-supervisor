@@ -7,7 +7,7 @@
 ### LAUNCH-02 · Launch day · high
 1. Switch the indexing variable on and run the production noindex check (CRAWL-03).
 2. Confirm `http` → `https` and the host redirects (URL-03).
-3. Submit the sitemap in Search Console and Bing, and ping IndexNow.
+3. Submit the sitemap in Search Console and Bing, and ping IndexNow (`scripts/indexnow.mjs`, after deploy and with the owner's yes).
 4. Run URL Inspection on the home page, the main hubs and the 10 most important pages, and request indexing.
 5. Re-run the crawler against production with `--concurrency 2`.
 
