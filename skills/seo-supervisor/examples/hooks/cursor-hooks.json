@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "node .agents/skills/seo-supervisor/scripts/schema-check.mjs --hook"
+      }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+# SEO Supervisor (opt-in): checks the JSON-LD in the built site on every push and pull request.
+# Install: copy to .github/workflows/structured-data.yml, then set your build command and output folder
+# (out/ for a Next.js static export, dist/ for Vite and Astro, build/, _site/ ...). Silent on a pass; fails on errors.
+name: Structured data
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  schema-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci && npm run build
+      - name: Check structured data
+        run: node .agents/skills/seo-supervisor/scripts/schema-check.mjs dist --quiet

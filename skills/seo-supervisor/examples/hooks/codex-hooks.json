@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.agents/skills/seo-supervisor/scripts/schema-check.mjs\" --hook",
+            "statusMessage": "Checking structured data"
+          }
+        ]
+      }
+    ]
+  }
+}

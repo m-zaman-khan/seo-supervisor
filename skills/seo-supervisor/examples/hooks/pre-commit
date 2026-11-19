@@ -1,0 +1,16 @@
+#!/bin/sh
+# SEO Supervisor (opt-in): checks the JSON-LD in staged .html, .htm, .json and .jsonld files before each commit.
+# Silent when it passes; lists the errors and stops the commit when it doesn't (git commit --no-verify skips it once).
+# Install: cp pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+CHECK=.agents/skills/seo-supervisor/scripts/schema-check.mjs
+[ -f "$CHECK" ] || CHECK=.claude/skills/seo-supervisor/scripts/schema-check.mjs
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.html' '*.htm' '*.json' '*.jsonld')
+files=$(printf '%s\n' "$staged" | while IFS= read -r f; do
+  case "$f" in
+    *.jsonld) printf '%s\n' "$f" ;;
+    *) grep -qs -e 'application/ld+json' -e '"@context"' -- "$f" && printf '%s\n' "$f" ;;
+  esac
+done)
+[ -n "$files" ] || exit 0
+printf '%s\n' "$files" | tr '\n' '\0' | xargs -0 node "$CHECK" --quiet
