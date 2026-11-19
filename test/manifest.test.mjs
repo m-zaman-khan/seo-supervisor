@@ -83,6 +83,7 @@ test("every rule ID a check reports is defined in a rule file", () => {
     "google.mjs",
     "connect-keys.mjs",
     "log-scan.mjs",
+    "backlinks.mjs",
     ...readdirSync(join(S, "checks")).map(f => join("checks", f)),
   ];
   const used = new Set(
