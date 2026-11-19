@@ -1,0 +1,414 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync, readdirSync, existsSync, statSync, writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { SCRIPTS, node, tmp } from "./helpers.mjs";
+import { serve } from "./serve.mjs";
+
+const CLI = join(SCRIPTS, "connect-keys.mjs");
+const SITE = "https://www.example.com";
+
+// A temp home keeps the developer's real keys out; endpoints point at the fake server.
+const envFor = (home, srv, extra = {}) => ({
+  ...process.env,
+  HOME: home,
+  USERPROFILE: home,
+  BING_WEBMASTER_KEY: "",
+  OPENPAGERANK_KEY: "",
+  AHREFS_KEY: "",
+  ...(srv
+    ? {
+        BING_WEBMASTER_ENDPOINT: srv.url + "/bing",
+        OPENPAGERANK_ENDPOINT: srv.url + "/opr",
+        AHREFS_ENDPOINT: srv.url + "/ahrefs",
+      }
+    : {}),
+  ...extra,
+});
+const cli = (args, env, cwd) => node([CLI, ...args], { env, cwd });
+
+const BING = {
+  GetUserSites: {
+    d: [
+      { Url: "https://other.example.org/", IsVerified: true },
+      { Url: "https://www.example.com/", IsVerified: true },
+    ],
+  },
+  GetQueryStats: {
+    d: [
+      { Query: "blue widgets", Clicks: 5, Impressions: 100, Date: "/Date(1760000000000-0700)/" },
+      { Query: "blue widgets", Clicks: 3, Impressions: 50, Date: "/Date(1762000000000-0700)/" },
+      { Query: "widget repair", Clicks: 1, Impressions: 400, Date: "/Date(1761000000000-0700)/" },
+    ],
+  },
+  GetPageStats: {
+    d: [
+      { Query: "https://www.example.com/pricing", Clicks: 4, Impressions: 80 },
+      { Query: "http://example.com/pricing", Clicks: 1, Impressions: 20 },
+      { Query: "https://www.example.com/", Clicks: 9, Impressions: 300 },
+      { Query: "https://elsewhere.example.net/x", Clicks: 7, Impressions: 70 },
+    ],
+  },
+  GetLinkCounts: page => ({
+    d: {
+      Links:
+        page === "0"
+          ? [{ Url: "https://www.example.com/", Count: 14 }]
+          : [{ Url: "https://www.example.com/pricing", Count: 3 }],
+      TotalPages: 2,
+    },
+  }),
+  GetUrlLinks: { d: { Details: [{ AnchorText: "Example", Url: "https://blog.example.net/post" }], TotalPages: 1 } },
+  GetCrawlIssues: {
+    d: [
+      { Url: "https://www.example.com/broken", HttpCode: 500, Issues: 8, InLinks: 4 },
+      { Url: "https://www.example.com/old", HttpCode: 301, Issues: 1, InLinks: 2 },
+    ],
+  },
+};
+
+// One local server plays Bing Webmaster, Open PageRank, Ahrefs, Matomo (/matomo/) and PostHog (/posthog/).
+// `reply` overrides a route: (req, body) => [status, json or an HTML string, headers].
+async function fake({ bing = BING, reply = {} } = {}) {
+  const hits = [];
+  const srv = await serve(tmp(), {
+    before(req, res) {
+      let body = "";
+      req.on("data", c => {
+        body += c;
+      });
+      req.on("end", () => {
+        const u = new URL(req.url, "http://x"),
+          route = u.pathname.split("/")[1],
+          method = u.pathname.split("/")[2];
+        hits.push({ route, method, query: u.searchParams, headers: req.headers, body: body && JSON.parse(body) });
+        const send = (status, json) =>
+          res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(json));
+        if (reply[route]) return send(...reply[route](req, body));
+        if (route === "bing") {
+          const r = bing[method];
+          return r ? send(200, typeof r === "function" ? r(u.searchParams.get("page")) : r) : send(404, {});
+        }
+        if (route === "opr")
+          return send(200, {
+            status_code: 200,
+            response: u.searchParams
+              .getAll("domains[]")
+              .map((d, i) =>
+                d === "unknown.example"
+                  ? { status_code: 404, error: "Domain not found", domain: d, page_rank_decimal: 0 }
+                  : {
+                      status_code: 200,
+                      error: "",
+                      domain: d,
+                      page_rank_integer: 5 - i,
+                      page_rank_decimal: 5.5 - i,
+                      rank: String(1000 * (i + 1)),
+                    },
+              ),
+          });
+        if (route === "ahrefs")
+          return send(200, {
+            domain_rating: {
+              license: "http://ahrefs.com/legal/domain-rating-license",
+              targets: JSON.parse(body).targets.map((t, i) => ({ target: t, domain_rating: 60 - 10 * i })),
+            },
+          });
+        send(404, {});
+      });
+      return true;
+    },
+  });
+  return { ...srv, hits };
+}
+const fetchCli = (home, srv, keys, extra = []) =>
+  cli(["fetch", "--site", SITE, "--out", join(home, "keys-out.json"), ...extra], envFor(home, srv, keys));
+const output = home => JSON.parse(readFileSync(join(home, "keys-out.json"), "utf8"));
+
+test("set, status and remove keep keys in the home folder, private, and never in the project", async () => {
+  const home = tmp(),
+    project = tmp(),
+    env = envFor(home);
+  await cli(["set", "bing", "bingkey-abcdef-1234"], env, project);
+  await cli(["set", "ahrefs", "  ahrefs-key-9876  "], env, project);
+  const file = join(home, ".seo-supervisor", "keys.json");
+  assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { bing: "bingkey-abcdef-1234", ahrefs: "ahrefs-key-9876" });
+  assert.deepEqual(readdirSync(project), [], "nothing written to the project");
+  if (process.platform !== "win32") {
+    assert.equal(statSync(file).mode & 0o777, 0o600);
+    assert.equal(statSync(join(home, ".seo-supervisor")).mode & 0o777, 0o700);
+  }
+
+  const s = (await cli(["status"], env)).stdout;
+  assert.doesNotMatch(s, /bingkey-abcdef-1234|ahrefs-key-9876/, "keys are masked");
+  assert.match(s, /Bing Webmaster Tools: set \(…1234/);
+  assert.match(s, /Ahrefs[^\n]*: set \(…9876/);
+  assert.match(s, /Open PageRank: not set[^\n]*guide openpagerank/);
+
+  await cli(["remove", "bing"], env);
+  assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { ahrefs: "ahrefs-key-9876" });
+  assert.match((await cli(["status"], env)).stdout, /Bing Webmaster Tools: not set/);
+
+  await assert.rejects(
+    cli(["set", "moz", "x"], env),
+    e => e.code === 2 && /bing, openpagerank or ahrefs/.test(e.stderr),
+  );
+  await assert.rejects(cli(["set", "bing"], env), e => e.code === 2 && /usage/i.test(e.stderr));
+});
+
+test("an environment variable wins over the saved key", async () => {
+  const home = tmp(),
+    srv = await fake();
+  try {
+    await cli(["set", "bing", "saved-key-1111"], envFor(home));
+    const s = (await cli(["status"], envFor(home, null, { BING_WEBMASTER_KEY: "env-key-2222" }))).stdout;
+    assert.match(s, /Bing Webmaster Tools: set \(…2222, from BING_WEBMASTER_KEY/);
+    await fetchCli(home, srv, { BING_WEBMASTER_KEY: "env-key-2222" }, ["--yes"]);
+    assert.ok(srv.hits.length && srv.hits.every(h => h.query.get("apikey") === "env-key-2222"));
+  } finally {
+    await srv.close();
+  }
+});
+
+test("guide says where to get each key, in plain steps", async () => {
+  const env = envFor(tmp());
+  const bing = (await cli(["guide", "bing"], env)).stdout;
+  assert.match(bing, /bing\.com\/webmasters/);
+  assert.match(bing, /Search Console/);
+  assert.match(bing, /Settings → API Access/);
+  assert.match(bing, /Generate API Key/);
+  assert.match(bing, /every site/i);
+  const opr = (await cli(["guide", "openpagerank"], env)).stdout;
+  assert.match(opr, /keywordseverywhere\.com\/openpagerank/);
+  assert.match(opr, /1 November 2026/);
+  assert.match(opr, /403/);
+  const ahrefs = (await cli(["guide", "ahrefs"], env)).stdout;
+  assert.match(ahrefs, /Account settings → API keys/);
+  assert.match(ahrefs, /Domain Rating by Ahrefs/);
+});
+
+test("fetch without --yes is a dry run: it says what would be sent and sends nothing", async () => {
+  const home = tmp(),
+    srv = await fake();
+  try {
+    const r = await fetchCli(home, srv, { BING_WEBMASTER_KEY: "b-key-0001", OPENPAGERANK_KEY: "o-key-0002" }, [
+      "--competitors",
+      "a.com,b.com",
+    ]);
+    assert.equal(srv.hits.length, 0);
+    assert.match(r.stdout, /dry run/i);
+    assert.match(r.stdout, /--yes/);
+    assert.match(r.stdout, /https:\/\/www\.example\.com\//);
+    assert.match(r.stdout, /example\.com, a\.com, b\.com/);
+    assert.match(r.stdout, /Ahrefs[^\n]*not set/);
+    assert.equal(existsSync(join(home, "keys-out.json")), false);
+  } finally {
+    await srv.close();
+  }
+});
+
+test("Bing: matches the site, then reads traffic, queries, links and crawl issues", async () => {
+  const home = tmp(),
+    srv = await fake();
+  try {
+    await fetchCli(home, srv, { BING_WEBMASTER_KEY: "b-key-0001" }, ["--yes"]);
+    const calls = srv.hits.map(h => h.method);
+    assert.deepEqual(calls, [
+      "GetUserSites",
+      "GetQueryStats",
+      "GetPageStats",
+      "GetLinkCounts",
+      "GetLinkCounts",
+      "GetUrlLinks",
+      "GetCrawlIssues",
+    ]);
+    assert.ok(
+      srv.hits.slice(1).every(h => h.query.get("siteUrl") === "https://www.example.com/"),
+      "uses Bing's own URL for the site",
+    );
+    assert.equal(srv.hits.find(h => h.method === "GetUrlLinks").query.get("link"), "https://www.example.com/");
+
+    const o = output(home);
+    assert.equal(o.source, "keys");
+    assert.equal(o.site, "https://www.example.com/");
+    assert.deepEqual(o.bing.traffic, {
+      "/pricing": { clicks: 5, impressions: 100 },
+      "/": { clicks: 9, impressions: 300 },
+    });
+    assert.deepEqual(o.bing.queries, [
+      { query: "widget repair", clicks: 1, impressions: 400 },
+      { query: "blue widgets", clicks: 8, impressions: 150 },
+    ]);
+    assert.ok(o.bing.period.from < o.bing.period.to);
+    assert.deepEqual(o.bing.backlinks.pages, [
+      { url: "https://www.example.com/", count: 14 },
+      { url: "https://www.example.com/pricing", count: 3 },
+    ]);
+    assert.deepEqual(o.bing.backlinks.sample, [{ url: "https://blog.example.net/post", anchorText: "Example" }]);
+    assert.equal(o.bing.crawlIssues.length, 2);
+    assert.deepEqual(o.authority, []);
+    assert.equal(o.attribution, null);
+
+    assert.equal(o.findings.length, 1, "a redirect alone isn't a crawl problem");
+    const f = o.findings[0];
+    assert.deepEqual(
+      [f.id, f.check, f.rule, f.severity, f.status, f.source, f.count],
+      ["K-001", "bing-crawl-issues", "CRAWL-05", "medium", "open", "bing-webmaster", 1],
+    );
+    assert.match(f.what, /\/broken \(.*server error.*500/);
+    assert.ok(f.why && f.fix && f.category);
+    assert.ok(o.notChecked.some(n => /Open PageRank/.test(n.area)) && o.notChecked.some(n => /Ahrefs/.test(n.area)));
+  } finally {
+    await srv.close();
+  }
+});
+
+test("Bing: a site that isn't in the account says how to add it, and asks nothing else", async () => {
+  const home = tmp(),
+    srv = await fake({ bing: { GetUserSites: { d: [{ Url: "https://other.example.org/", IsVerified: true }] } } });
+  try {
+    await assert.rejects(
+      fetchCli(home, srv, { BING_WEBMASTER_KEY: "b-key-0001" }, ["--yes"]),
+      e =>
+        e.code === 1 &&
+        /isn't in your Bing Webmaster Tools account/.test(e.stdout) &&
+        /bing\.com\/webmasters/.test(e.stdout),
+    );
+    assert.deepEqual(
+      srv.hits.map(h => h.method),
+      ["GetUserSites"],
+    );
+    assert.equal(output(home).bing, null);
+  } finally {
+    await srv.close();
+  }
+});
+
+test("authority: the site and competitors go to Open PageRank and Ahrefs once each, with attribution", async () => {
+  const home = tmp(),
+    srv = await fake();
+  try {
+    await fetchCli(home, srv, { OPENPAGERANK_KEY: "o-key-0002", AHREFS_KEY: "a-key-0003" }, [
+      "--yes",
+      "--competitors",
+      " https://www.Rival.com/pricing , b.com,,example.com,unknown.example,b.com,not a domain",
+    ]);
+    const opr = srv.hits.filter(h => h.route === "opr"),
+      ahrefs = srv.hits.filter(h => h.route === "ahrefs");
+    assert.equal(opr.length, 1);
+    assert.deepEqual(opr[0].query.getAll("domains[]"), ["example.com", "rival.com", "b.com", "unknown.example"]);
+    assert.equal(opr[0].headers["api-opr"], "o-key-0002");
+    assert.equal(ahrefs.length, 1);
+    assert.equal(ahrefs[0].headers.authorization, "Bearer a-key-0003");
+    assert.deepEqual(ahrefs[0].body.targets, ["example.com", "rival.com", "b.com", "unknown.example"]);
+
+    const o = output(home);
+    assert.deepEqual(o.authority, [
+      { domain: "example.com", openPageRank: 5.5, ahrefsDR: 60 },
+      { domain: "rival.com", openPageRank: 4.5, ahrefsDR: 50 },
+      { domain: "b.com", openPageRank: 3.5, ahrefsDR: 40 },
+      { domain: "unknown.example", openPageRank: null, ahrefsDR: 30 },
+    ]);
+    assert.deepEqual(o.attribution, {
+      text: "Domain Rating by Ahrefs",
+      url: "https://ahrefs.com/",
+      license: "http://ahrefs.com/legal/domain-rating-license",
+    });
+    assert.ok(
+      o.notes.some(n => /not a domain/.test(n)),
+      "says which competitor it skipped",
+    );
+    assert.equal(o.bing, null);
+  } finally {
+    await srv.close();
+  }
+});
+
+test("more than 100 domains go to Open PageRank in batches of 100", async () => {
+  const home = tmp(),
+    srv = await fake();
+  try {
+    await fetchCli(home, srv, { OPENPAGERANK_KEY: "o-key-0002" }, [
+      "--yes",
+      "--competitors",
+      Array.from({ length: 150 }, (_, i) => `c${i}.com`).join(","),
+    ]);
+    assert.deepEqual(
+      srv.hits.map(h => h.query.getAll("domains[]").length),
+      [100, 51],
+    );
+    assert.equal(output(home).authority.length, 151);
+  } finally {
+    await srv.close();
+  }
+});
+
+test("refusals are explained in plain words, the rest still runs, and the exit code is 1", async () => {
+  const home = tmp(),
+    srv = await fake({
+      reply: {
+        bing: () => [400, { ErrorCode: 3, Message: "ERROR!!! InvalidApiKey" }],
+        opr: () => [403, { status_code: 403, error: "address_error" }],
+        ahrefs: () => [429, ["Error", "Too many requests"]],
+      },
+    });
+  try {
+    await assert.rejects(
+      fetchCli(home, srv, { BING_WEBMASTER_KEY: "b", OPENPAGERANK_KEY: "o", AHREFS_KEY: "a" }, ["--yes"]),
+      e => {
+        assert.equal(e.code, 1);
+        assert.match(e.stdout, /Bing Webmaster Tools didn't accept the key[^\n]*set bing/);
+        assert.match(e.stdout, /your IP address isn't the one registered for this key/);
+        assert.match(e.stdout, /Ahrefs[^\n]*too many requests/i);
+        return true;
+      },
+    );
+    const o = output(home);
+    assert.equal(o.notes.length >= 3, true);
+    assert.deepEqual(
+      o.authority.map(a => [a.openPageRank, a.ahrefsDR]),
+      [[null, null]],
+    );
+  } finally {
+    await srv.close();
+  }
+});
+
+test("a 401 says the key is wrong and where to get a new one", async () => {
+  const home = tmp(),
+    srv = await fake({ reply: { ahrefs: () => [401, ["Error", "Unauthorized"]] } });
+  try {
+    await assert.rejects(
+      fetchCli(home, srv, { AHREFS_KEY: "a" }, ["--yes"]),
+      e => /didn't accept the key \(401\)/.test(e.stdout) && /Account settings → API keys/.test(e.stdout),
+    );
+  } finally {
+    await srv.close();
+  }
+});
+
+test("fetch without any key set writes an empty result that lists all three under Limits", async () => {
+  const home = tmp(),
+    srv = await fake();
+  try {
+    await fetchCli(home, srv, {}, ["--yes"]);
+    assert.equal(srv.hits.length, 0);
+    const o = output(home);
+    assert.equal(o.bing, null);
+    assert.equal(o.notChecked.length, 3);
+    assert.ok(o.notChecked.every(n => /connect-keys\.mjs guide/.test(n.reason)));
+  } finally {
+    await srv.close();
+  }
+});
+
+test("a broken keys.json is reported, not overwritten", async () => {
+  const home = tmp();
+  mkdirSync(join(home, ".seo-supervisor"));
+  writeFileSync(join(home, ".seo-supervisor", "keys.json"), "{ not json");
+  await assert.rejects(
+    cli(["set", "bing", "k-123456"], envFor(home)),
+    e => e.code === 2 && /keys\.json/.test(e.stderr),
+  );
+  assert.equal(readFileSync(join(home, ".seo-supervisor", "keys.json"), "utf8"), "{ not json");
+});
