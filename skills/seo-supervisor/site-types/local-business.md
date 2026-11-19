@@ -4,7 +4,7 @@
 Generate only the service × city pairs listed in your data, never the full cross product. Pages are at city level; neighbourhoods go inside the city page. A service gets per-city pages only if people search "service + city"; otherwise it gets one metro page. Launch the highest-intent pairs first and the rest in batches over weeks (release flags; a held page returns 404).
 
 ### LOCAL-02 · Every city page is genuinely local · blocker
-Each page needs a unique intro of 40 words or more naming its own city, at least one local consideration (climate, permits, housing stock, regulations, with sources), at least 2–3 unique FAQs, and real proof from that city (jobs, photos, reviews) rendered on the server from your own data, not a widget. No city-swapped templates; the crawler's `near-duplicate` check must pass. A town with no proof of its own may show proof from the hub town that serves it, saying so plainly.
+Each page needs a unique intro that names its own city and says something specific about the work there, at least one local consideration (climate, permits, housing stock, regulations, with sources), at least 2–3 unique FAQs, and real proof from that city (jobs, photos, reviews) rendered on the server from your own data, not a widget. No city-swapped templates; the crawler's `near-duplicate` check must pass. A town with no proof of its own may show proof from the hub town that serves it, saying so plainly.
 
 ### LOCAL-03 · Each page names one city · high
 The city in the slug, title, H1 and `areaServed` must match. Other cities appear only in the nearby/sibling link blocks. Mention the city naturally (about 15–30 times per page; 40 or more reads as stuffing).
