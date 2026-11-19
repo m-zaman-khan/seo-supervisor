@@ -53,6 +53,11 @@ Can search engines reach the pages, and are they allowed to index the right ones
 
 ### CRAWL-09 · Bot protection doesn't block real search crawlers · high
 - **Check:** code and CDN config: WAF, bot-fight modes, captchas, rate limits.
+- **Crawler:** the home page and up to 9 sample pages are asked again as Google's smartphone Googlebot and compared with the same phone without the Googlebot token.
+  - `googlebot-blocked` (high): an error or noindex that only Googlebot gets.
+  - `googlebot-differs` (medium): a different redirect, canonical or title, or under half the text (possible cloaking or a broken prerender).
+  
+  A real Googlebot comes from Google's IP addresses, so CRAWL-09 never passes on this test alone; confirm with URL Inspection's live test.
 - **Pass:** HTML pages are never challenged. Captchas and rate limits sit on actions (form submits, APIs), not on page loads. Crawlers are verified by reverse DNS or the CDN's verified-bots list, not by user agent.
 - **Fix:** exempt HTML routes and verified bots. Under load, answer crawlers with 503 or 429 for hours (at most 1–2 days), never 403 or a challenge page. Verify Googlebot by IP using Google's published ranges (now under `developers.google.com/crawling/`). After launch, confirm a 200 with Search Console's URL Inspection live test.
 
