@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Search Console and GA4 data for the audit, read-only.
+// Search Console and GA4 data for the audit. Read-only, except submit-sitemap, which writes only with --yes.
 // The sign-in is saved in the home folder, never in the project.
 // Each Google address can be overridden with SEO_GOOGLE_<NAME>_URL, e.g. SEO_GOOGLE_SEARCH_CONSOLE_URL.
 // SEO_GOOGLE_SHARED_CLIENT_ID and SEO_GOOGLE_SHARED_CLIENT_SECRET override the shared client; empty means none.
@@ -16,6 +16,9 @@ import { addTraffic, gscFindings } from "./gsc-import.mjs";
 const SC = "https://www.googleapis.com/auth/webmasters.readonly",
   GA = "https://www.googleapis.com/auth/analytics.readonly";
 const SCOPES = [SC, GA];
+// Read/write Search Console, asked for only by submit-sitemap --yes, never at connect.
+const WM = "https://www.googleapis.com/auth/webmasters";
+const has = (scope, x) => (scope || "").split(" ").includes(x); // not includes() on the string: WM is a prefix of SC
 const DEFAULTS = {
   auth: "https://accounts.google.com/o/oauth2/v2/auth",
   token: "https://oauth2.googleapis.com/token",
@@ -114,12 +117,13 @@ async function tokenRequest(E, params) {
   );
 }
 
-// Service accounts trade a self-signed RS256 JWT for an access token. There's no refresh token: a new JWT renews it.
+// Service accounts sign their own RS256 JWT and trade it for an access token. There's no refresh token: a new JWT
+// renews it, for the scopes saved with it.
 // https://developers.google.com/identity/protocols/oauth2/service-account
 function serviceAccountJwt(key) {
   const iat = Math.floor(Date.now() / 1000),
     b64 = o => Buffer.from(JSON.stringify(o)).toString("base64url");
-  const unsigned = `${b64({ alg: "RS256", typ: "JWT", ...(key.private_key_id ? { kid: key.private_key_id } : {}) })}.${b64({ iss: key.client_email, scope: SCOPES.join(" "), aud: key.token_uri || DEFAULTS.token, iat, exp: iat + 3600 })}`;
+  const unsigned = `${b64({ alg: "RS256", typ: "JWT", ...(key.private_key_id ? { kid: key.private_key_id } : {}) })}.${b64({ iss: key.client_email, scope: key.scope || SCOPES.join(" "), aud: key.token_uri || DEFAULTS.token, iat, exp: iat + 3600 })}`;
   return `${unsigned}.${sign("sha256", Buffer.from(unsigned), key.private_key).toString("base64url")}`;
 }
 const serviceAccountToken = (E, key) =>
@@ -148,13 +152,13 @@ function session({ home, endpoints } = {}) {
     s = { ...s, ...(await renew(E, s)) };
     save(file, s);
   };
-  async function call(url, body) {
+  async function call(url, body, method = body ? "POST" : "GET") {
     let renewed = false,
       retried = false;
     for (;;) {
       if (!s.access_token || Date.now() > s.expires_at - 60000) await refresh();
       const r = await fetch(url, {
-        method: body ? "POST" : "GET",
+        method,
         headers: { authorization: `Bearer ${s.access_token}`, ...(body ? { "content-type": "application/json" } : {}) },
         body: body && JSON.stringify(body),
         signal: AbortSignal.timeout(60000),
@@ -184,9 +188,11 @@ function session({ home, endpoints } = {}) {
   return { E, call, store: () => s };
 }
 
+const API_OFF = /has not been used|is disabled|SERVICE_DISABLED|accessNotConfigured/i;
+const whoOf = s => (s.method === "service-account" ? `The service account ${s.client_email}` : undefined);
 function explain(e, what, api, who = "The connected Google account") {
   if (e instanceof Fail) return e.message.replace(/^google: /, "");
-  if (e.status === 403 && /has not been used|is disabled|SERVICE_DISABLED|accessNotConfigured/i.test(e.message))
+  if (e.status === 403 && API_OFF.test(e.message))
     return `The ${api.name} is turned off in the Google Cloud project your sign-in uses, so ${what} couldn't be read. Turn it on at https://console.cloud.google.com/apis/library (search "${api.name}", click Enable), wait a minute, then try again.`;
   if (e.status === 403)
     return `${who} doesn't have access to ${what}. Ask the owner to add it under ${api.where}, or connect with an account that has access (node google.mjs disconnect, then connect).`;
@@ -197,22 +203,50 @@ function explain(e, what, api, who = "The connected Google account") {
   return `Google answered ${e.status || "with an error"} for ${what}: ${e.message}`;
 }
 
+const httpUrl = (u, what, eg) => {
+  let x;
+  try {
+    x = new URL(u);
+  } catch {}
+  if (!x || !/^https?:$/.test(x.protocol)) fail(`google: ${what}, like ${eg} (got ${u}).`);
+  return x;
+};
+
+// The property: a domain property covering the host, else the longest URL-prefix property the site sits under.
+async function pickProperty(g, origin, who) {
+  let sites;
+  try {
+    sites = ((await g.call(`${g.E.searchConsole}/sites`)).siteEntry || []).filter(
+      x => x.permissionLevel !== "siteUnverifiedUser",
+    );
+  } catch (e) {
+    fail("google: " + explain(e, "the list of Search Console properties", SC_API, who));
+  }
+  const h = origin.hostname,
+    href = origin.origin + origin.pathname;
+  const prop = (
+    sites.find(
+      x => x.siteUrl.startsWith("sc-domain:") && (h === x.siteUrl.slice(10) || h.endsWith("." + x.siteUrl.slice(10))),
+    ) || sites.filter(x => href.startsWith(x.siteUrl)).sort((a, b) => b.siteUrl.length - a.siteUrl.length)[0]
+  )?.siteUrl;
+  if (!prop)
+    fail(
+      `google: ${origin.origin} isn't in the Search Console properties this account can see (${sites.map(x => x.siteUrl).join(", ") || "it can't see any"}). Add and verify the site in Search Console, or connect with the Google account that has it.`,
+    );
+  return prop;
+}
+
 // ---------- fetch ----------
 // crawl, a parsed seo-crawl.json, lets URL Inspection sample key pages with no search traffic yet.
 export async function fetchGoogle({ site, days = 90, ga4Property, crawl, pageSize = 25000, home, endpoints } = {}) {
-  let origin;
-  try {
-    origin = new URL(site);
-  } catch {}
-  if (!origin || !/^https?:$/.test(origin.protocol))
-    fail(`google: --site must be the site's address, like https://www.example.com (got ${site}).`);
+  const origin = httpUrl(site, "--site must be the site's address", "https://www.example.com");
   days = Math.round(Number(days));
   if (!(days >= 1 && days <= 480)) fail("google: --days must be between 1 and 480 (Search Console keeps 16 months).");
   const g = session({ home, endpoints }),
     { E } = g,
     notes = [],
     s0 = g.store();
-  const who = s0.method === "service-account" ? `The service account ${s0.client_email}` : undefined;
+  const who = whoOf(s0);
   const scope = s0.scope || SCOPES.join(" ");
   if (!scope.includes(SC))
     fail(
@@ -235,26 +269,8 @@ export async function fetchGoogle({ site, days = 90, ga4Property, crawl, pageSiz
     startDate = day(days + 2),
     period = `Last ${days} days, ${startDate} to ${endDate}`;
 
-  // The property: a domain property covering the host, else the longest URL-prefix property the site sits under.
-  let sites;
-  try {
-    sites = ((await g.call(`${E.searchConsole}/sites`)).siteEntry || []).filter(
-      x => x.permissionLevel !== "siteUnverifiedUser",
-    );
-  } catch (e) {
-    fail("google: " + explain(e, "the list of Search Console properties", SC_API, who));
-  }
-  const h = origin.hostname,
-    href = origin.origin + origin.pathname;
-  const prop = (
-    sites.find(
-      x => x.siteUrl.startsWith("sc-domain:") && (h === x.siteUrl.slice(10) || h.endsWith("." + x.siteUrl.slice(10))),
-    ) || sites.filter(x => href.startsWith(x.siteUrl)).sort((a, b) => b.siteUrl.length - a.siteUrl.length)[0]
-  )?.siteUrl;
-  if (!prop)
-    fail(
-      `google: ${origin.origin} isn't in the Search Console properties this account can see (${sites.map(x => x.siteUrl).join(", ") || "it can't see any"}). Add and verify the site in Search Console, or connect with the Google account that has it.`,
-    );
+  const prop = await pickProperty(g, origin, who),
+    h = origin.hostname;
   const scBase = `${E.searchConsole}/sites/${encodeURIComponent(prop)}`;
 
   // www and apex count as one host, as in gsc-import; other subdomains of a domain property are left out.
@@ -578,13 +594,13 @@ function openBrowser(url) {
 }
 
 // Answers Google's redirect to the loopback address; ignores requests whose state doesn't match.
-const waitForCode = (server, state) =>
+const waitForCode = (server, state, cmd) =>
   new Promise((ok, no) => {
     const timer = setTimeout(
       () =>
         no(
           new Fail(
-            "google: no sign-in within 5 minutes, so nothing was saved. Run node google.mjs connect again when you're ready.",
+            `google: no sign-in within 5 minutes, so nothing was saved. Run node google.mjs ${cmd} again when you're ready.`,
           ),
         ),
       5 * 60000,
@@ -606,14 +622,14 @@ const waitForCode = (server, state) =>
       if (q.get("state") !== state)
         return page(
           400,
-          "This sign-in doesn't match the one the terminal started. Go back to the terminal and run connect again.",
+          `This sign-in doesn't match the one the terminal started. Go back to the terminal and run ${cmd} again.`,
         );
       clearTimeout(timer);
       if (q.has("error")) {
         page(200, "Sign-in was cancelled. You can close this tab.");
         no(
           new Fail(
-            `google: sign-in didn't finish (${q.get("error")}), so nothing was saved. Run node google.mjs connect to try again.`,
+            `google: sign-in didn't finish (${q.get("error")}), so nothing was saved. Run node google.mjs ${cmd} to try again.`,
           ),
         );
         return;
@@ -646,6 +662,38 @@ async function revokeReplaced(E, old, clientId) {
   try {
     await revoke(E, old);
   } catch {}
+}
+// The browser sign-in: loopback redirect, PKCE and a state check, then the code is traded for tokens.
+// params: scope plus extra auth parameters; intro is printed before the link (after it with --print-url).
+async function signIn(E, client, args, params, { cmd = "connect", intro = "" } = {}) {
+  const { verifier, challenge } = pkce(),
+    state = randomBytes(16).toString("base64url");
+  const server = createServer();
+  await new Promise((ok, no) => server.once("error", no).listen(0, "127.0.0.1", ok));
+  const redirect_uri = `http://127.0.0.1:${server.address().port}`;
+  const url = `${E.auth}?${new URLSearchParams({ client_id: client.id, redirect_uri, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state, access_type: "offline", prompt: "consent", ...params })}`;
+  // The link also goes to a file, for a caller running this in the background that can't see its output yet.
+  const pending = pendingFile();
+  let code;
+  try {
+    save(pending, url + "\n");
+    const text = `${args["print-url"] === true ? url + "\n" : ""}${intro}google: opening Google's sign-in page in your browser. If it doesn't open, copy this link into your browser:\n\n  ${url}\n\nThe link is also in ${pending} until signing in is done.\nWaiting for you to finish signing in (up to 5 minutes)...\n`;
+    await new Promise(ok => process.stdout.write(text, ok)); // flushed before the wait, also into a pipe
+    if (args["no-browser"] !== true) openBrowser(url);
+    code = await waitForCode(server, state, cmd);
+  } finally {
+    rmSync(pending, { force: true });
+    server.close();
+    setTimeout(() => server.closeAllConnections(), 1000).unref();
+  }
+  return tokenRequest(E, {
+    code,
+    client_id: client.id,
+    client_secret: client.secret,
+    redirect_uri,
+    grant_type: "authorization_code",
+    code_verifier: verifier,
+  });
 }
 
 // A key or client file inside the project could end up committed, and connect has already copied what it needs.
@@ -717,35 +765,7 @@ async function connect(args) {
     method = "shared";
   }
 
-  const { verifier, challenge } = pkce(),
-    state = randomBytes(16).toString("base64url");
-  const server = createServer();
-  await new Promise((ok, no) => server.once("error", no).listen(0, "127.0.0.1", ok));
-  const redirect_uri = `http://127.0.0.1:${server.address().port}`;
-  const url = `${E.auth}?${new URLSearchParams({ client_id: client.id, redirect_uri, response_type: "code", scope: SCOPES.join(" "), code_challenge: challenge, code_challenge_method: "S256", state, access_type: "offline", prompt: "consent" })}`;
-  // The link also goes to a file, for a caller running this in the background that can't see its output yet.
-  const pending = pendingFile();
-  let code;
-  try {
-    save(pending, url + "\n");
-    const text = `${args["print-url"] === true ? url + "\n" : ""}google: opening Google's sign-in page in your browser. If it doesn't open, copy this link into your browser:\n\n  ${url}\n\nThe link is also in ${pending} until signing in is done.\nWaiting for you to finish signing in (up to 5 minutes)...\n`;
-    await new Promise(ok => process.stdout.write(text, ok)); // flushed before the wait, also into a pipe
-    if (args["no-browser"] !== true) openBrowser(url);
-    code = await waitForCode(server, state);
-  } finally {
-    rmSync(pending, { force: true });
-    server.close();
-    setTimeout(() => server.closeAllConnections(), 1000).unref();
-  }
-
-  const t = await tokenRequest(E, {
-    code,
-    client_id: client.id,
-    client_secret: client.secret,
-    redirect_uri,
-    grant_type: "authorization_code",
-    code_verifier: verifier,
-  });
+  const t = await signIn(E, client, args, { scope: SCOPES.join(" ") });
   const scope = t.scope || SCOPES.join(" ");
   save(file, { method, client, ...t, scope, connected_at: now });
   await revokeReplaced(E, old, client.id);
@@ -775,6 +795,7 @@ async function status() {
     `Connected with: ${how}`,
     `Connected on: ${(s.connected_at || "unknown").slice(0, 10)}`,
     `Access: ${[scope.includes(SC) && "Search Console (read-only)", scope.includes(GA) && "Google Analytics (read-only)"].filter(Boolean).join(", ") || "none"}`,
+    `Sitemap submitting: ${has(scope, WM) ? "allowed" : "not allowed (submit-sitemap --yes asks for it when you submit one)"}`,
     `Access token: ${s.expires_at > Date.now() ? `valid until ${new Date(s.expires_at).toISOString().slice(0, 16).replace("T", " ")} UTC` : "expired"}${s.refresh_token || s.private_key ? " (renews automatically)" : " (run connect again)"}`,
     `Saved in: ${file}`,
   ];
@@ -843,6 +864,103 @@ async function disconnect() {
   return 0;
 }
 
+// ---------- submit-sitemap ----------
+// The only write, and only with --yes. The read/write scope is asked for here by incremental sign-in, never at connect.
+function submitError(e, prop, who = "The connected Google account") {
+  if (e.status === 403 && !API_OFF.test(e.message))
+    return `${who} isn't an owner or full user of ${prop}, so Google refused the sitemap. Submitting a sitemap needs Owner or Full permission (Restricted users can only read): ask the owner to change it under ${SC_API.where}, or connect with an owner's account.`;
+  if (e.status === 404)
+    return `Google couldn't find ${prop} for the connected account (404), so nothing was submitted. Check that --site is a property in Search Console, or connect with the Google account that has it.`;
+  return explain(e, `${prop} in Search Console`, SC_API, who);
+}
+
+async function submitSitemap(args) {
+  if (!str(args.site) || !str(args.sitemap)) throw new Fail(USAGE);
+  const origin = httpUrl(args.site, "--site must be the site's address", "https://www.example.com");
+  const map = httpUrl(
+    args.sitemap,
+    "--sitemap must be the sitemap's full address",
+    "https://www.example.com/sitemap.xml",
+  );
+  let g = session();
+  const s = g.store(),
+    who = whoOf(s),
+    prop = await pickProperty(g, origin, who);
+  // A domain property covers its subdomains; a URL-prefix property only addresses that start with it.
+  const d = prop.startsWith("sc-domain:") && prop.slice(10);
+  if (!(d ? map.hostname === d || map.hostname.endsWith("." + d) : map.href.startsWith(prop)))
+    fail(
+      `google: ${map.href} isn't on ${prop}, so Search Console would refuse it. Submit a sitemap ${d ? `on ${d} or one of its subdomains` : `whose address starts with ${prop}`}, or pass the --site it belongs to.`,
+    );
+  const allowed = has(s.scope, WM);
+  if (args.yes !== true) {
+    console.log(
+      [
+        `google: dry run, nothing was sent.`,
+        `Would submit: ${map.href}`,
+        `To the Search Console property: ${prop}`,
+        !allowed &&
+          s.method !== "service-account" &&
+          "First, Google shows a second short screen asking to allow submitting sitemaps (one extra permission).",
+        "To submit it, run the same command with --yes.",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+    return 0;
+  }
+  if (!allowed) {
+    const scope = `${s.scope || SCOPES.join(" ")} ${WM}`;
+    let t;
+    if (s.method === "service-account") t = { ...(await serviceAccountToken(g.E, { ...s, scope })), scope };
+    else {
+      t = await signIn(
+        g.E,
+        s.client,
+        args,
+        { scope: WM, include_granted_scopes: "true" },
+        {
+          cmd: "submit-sitemap",
+          intro:
+            "google: submitting a sitemap needs one more permission. Google will ask you to allow SEO Supervisor to submit sitemaps; everything else stays read-only.\n",
+        },
+      );
+      t.scope ||= scope;
+    }
+    save(tokenFile(), { ...s, ...t });
+    if (!has(t.scope, WM))
+      fail(
+        "google: submitting sitemaps wasn't allowed on Google's screen, so nothing was sent. Run the command again and allow it.",
+      );
+    g = session();
+  }
+  const feed = `${g.E.searchConsole}/sites/${encodeURIComponent(prop)}/sitemaps/${encodeURIComponent(map.href)}`;
+  try {
+    await g.call(feed, null, "PUT");
+  } catch (e) {
+    fail("google: " + submitError(e, prop, who));
+  }
+  const lines = [`google: submitted ${map.href} to ${prop}.`];
+  try {
+    const x = await g.call(feed),
+      when = t => t && `${t.slice(0, 16).replace("T", " ")} UTC`;
+    const n = (k, word) => `${Number(x[k] || 0)} ${word}${Number(x[k] || 0) === 1 ? "" : "s"}`;
+    lines.push(
+      `Last submitted: ${when(x.lastSubmitted) || "not shown yet"}`,
+      `Status: ${x.isPending ? "waiting for Google to read it" : x.lastDownloaded ? `last read by Google ${when(x.lastDownloaded)}` : "not read by Google yet"}.`,
+      Number(x.errors || 0) || Number(x.warnings || 0)
+        ? `${n("errors", "error")}, ${n("warnings", "warning")}: open Search Console → Indexing → Sitemaps to see them.`
+        : "No errors or warnings so far.",
+    );
+  } catch (e) {
+    lines.push(
+      `Google didn't show the sitemap's status yet (${explain(e, "the sitemap", SC_API, who)}). Check Search Console → Indexing → Sitemaps in a few minutes.`,
+    );
+  }
+  console.log(lines.join("\n"));
+  return 0;
+}
+
 const GUIDE = `Set up Google access yourself (about 10 minutes). Pick one.
 
 A. Your own sign-in (best for most people)
@@ -859,11 +977,13 @@ A. Your own sign-in (best for most people)
 B. A service account (for servers and CI; no browser)
   1. In Google Cloud, open IAM & Admin → Service accounts and create one. Then open it → Keys → Add key → JSON. Keep the file private.
   2. Turn on the same three APIs as in A, step 3.
-  3. In Search Console, open Settings → Users and permissions → Add user, and add the service account's email (it ends in .iam.gserviceaccount.com) with Restricted permission.
+  3. In Search Console, open Settings → Users and permissions → Add user, and add the service account's email (it ends in .iam.gserviceaccount.com) with Restricted permission
+     (Full, if you want it to submit sitemaps with submit-sitemap).
   4. In Google Analytics, open Admin → Property access management → Add users, and add the same email as a Viewer.
   5. Run: node google.mjs connect --service-account <the key file>
 
-Either way, access is read-only. Undo it any time with: node google.mjs disconnect`;
+Either way, access is read-only. Submitting a sitemap (submit-sitemap --yes) asks for that one extra permission
+when you use it. Undo it all any time with: node google.mjs disconnect`;
 
 async function fetchCli(args) {
   if (!str(args.site)) throw new Fail(USAGE);
@@ -892,7 +1012,8 @@ async function fetchCli(args) {
 const str = v => (typeof v === "string" ? v : null);
 const USAGE = `usage: node google.mjs connect [--client-file client_secret.json | --service-account key.json] [--no-browser] [--print-url]
        node google.mjs guide | status | disconnect
-       node google.mjs fetch --site https://www.example.com [--days 90] [--ga4-property <id>] [--crawl seo-audit/seo-crawl.json] [--out seo-audit/google.json]`;
+       node google.mjs fetch --site https://www.example.com [--days 90] [--ga4-property <id>] [--crawl seo-audit/seo-crawl.json] [--out seo-audit/google.json]
+       node google.mjs submit-sitemap --site https://www.example.com --sitemap https://www.example.com/sitemap.xml [--yes] [--no-browser] [--print-url]`;
 // Exit codes as in connect-keys.mjs: 1 when Google refuses or can't be reached, or status finds nothing connected;
 // 2 on bad input or no usable sign-in.
 if (isMain(import.meta.url)) {
@@ -907,6 +1028,7 @@ if (isMain(import.meta.url)) {
     status,
     disconnect,
     fetch: fetchCli,
+    "submit-sitemap": submitSitemap,
     guide: async () => {
       console.log(GUIDE);
       return 0;

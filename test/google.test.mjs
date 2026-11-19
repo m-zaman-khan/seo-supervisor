@@ -11,7 +11,8 @@ import { challengeFor, pkce, fetchGoogle } from "../skills/seo-supervisor/script
 
 const CLI = join(SCRIPTS, "google.mjs");
 const SC = "https://www.googleapis.com/auth/webmasters.readonly",
-  GA = "https://www.googleapis.com/auth/analytics.readonly";
+  GA = "https://www.googleapis.com/auth/analytics.readonly",
+  WM = "https://www.googleapis.com/auth/webmasters";
 const b64json = s => JSON.parse(Buffer.from(s, "base64url").toString());
 
 // One local server plays every Google endpoint. routes: "METHOD /path" -> (req, body) => [status, json, headers?].
@@ -31,6 +32,7 @@ async function fakeGoogle(routes = {}) {
       const hit = {
         method: req.method,
         path,
+        raw: new URL(req.url, "http://x").pathname,
         query: Object.fromEntries(new URL(req.url, "http://x").searchParams),
         auth: req.headers.authorization,
         body,
@@ -115,7 +117,7 @@ const ownClientFile = (
 
 // Starts `google.mjs connect` (or opts.cmd) and resolves the sign-in link it prints (as a URL) once it appears.
 function startConnect(g, home, args, opts = {}) {
-  const child = spawn(process.execPath, [CLI, "connect", ...args, "--no-browser"], {
+  const child = spawn(process.execPath, [CLI, opts.cmd || "connect", ...args, "--no-browser"], {
     env: { ...homeEnv(home), ...noShared, ...g.env, ...opts.env },
     cwd: opts.cwd,
   });
@@ -454,10 +456,16 @@ test("status shows the method, client, scopes, expiry and the properties the acc
     assert.match(stdout, /own-id/);
     assert.match(stdout, /Search Console \(read-only\)/);
     assert.match(stdout, /Google Analytics \(read-only\)/);
+    assert.match(stdout, /Sitemap submitting: not allowed/);
     assert.match(stdout, /valid until/);
     assert.match(stdout, /sc-domain:example\.com/);
     assert.match(stdout, /Example site \(123\)/);
     assert.ok(stdout.includes(tokenPath(home)));
+    store(home, { scope: `${SC} ${GA} ${WM}` });
+    assert.match(
+      (await node([CLI, "status"], { env: { ...homeEnv(home), ...g.env } })).stdout,
+      /Sitemap submitting: allowed/,
+    );
   } finally {
     await g.close();
   }
@@ -973,6 +981,250 @@ test("fetch from the CLI writes seo-audit/google.json", async () => {
     ]);
     assert.match(r.period, /^Last 28 days/);
     assert.match(stdout, /wrote/);
+  } finally {
+    await g.close();
+  }
+});
+
+// ---------- submit-sitemap ----------
+const SITEMAP = "https://www.example.com/sitemap.xml";
+const DOMAIN_FEED = "/webmasters/v3/sites/sc-domain:example.com/sitemaps/" + SITEMAP;
+const submitArgs = (...more) => ["--site", "https://www.example.com", "--sitemap", SITEMAP, ...more];
+function submitRoutes(over = {}) {
+  return {
+    "GET /webmasters/v3/sites": () => [
+      200,
+      { siteEntry: [{ siteUrl: "sc-domain:example.com", permissionLevel: "siteOwner" }] },
+    ],
+    [`PUT ${DOMAIN_FEED}`]: () => [200, {}],
+    [`GET ${DOMAIN_FEED}`]: () => [
+      200,
+      { path: SITEMAP, lastSubmitted: "2026-11-19T10:00:00.000Z", isPending: true, errors: "0", warnings: "2" },
+    ],
+    ...over,
+  };
+}
+const runCli = (g, home, args) => node([CLI, ...args], { env: { ...homeEnv(home), ...noShared, ...g.env } });
+
+test("submit-sitemap without --yes is a dry run: names the property and sitemap and sends nothing", async () => {
+  const g = await fakeGoogle(submitRoutes()),
+    home = tmp();
+  store(home);
+  try {
+    const { stdout } = await runCli(g, home, ["submit-sitemap", ...submitArgs()]);
+    assert.match(stdout, /dry run/i);
+    assert.ok(stdout.includes("sc-domain:example.com") && stdout.includes(SITEMAP), stdout);
+    assert.match(stdout, /--yes/);
+    assert.match(
+      stdout,
+      /asking to allow submitting sitemaps/i,
+      "says a second Google screen will ask for the permission",
+    );
+    assert.deepEqual(
+      g.hits.map(h => `${h.method} ${h.path}`),
+      ["GET /webmasters/v3/sites"],
+      "only the property list is read",
+    );
+    assert.doesNotMatch(stdout, /\/auth\?/);
+    assert.equal(stored(home).scope, `${SC} ${GA}`, "the saved sign-in is unchanged");
+  } finally {
+    await g.close();
+  }
+});
+
+test("submit-sitemap --yes asks Google for the write scope incrementally, stores it, PUTs the encoded path and reports the result", async () => {
+  const g = await fakeGoogle(
+    submitRoutes({
+      "POST /token": () => [
+        200,
+        { access_token: "at-wm", refresh_token: "rt-wm", expires_in: 3599, scope: `${SC} ${GA} ${WM}` },
+      ],
+    }),
+  );
+  const home = tmp();
+  store(home);
+  const c = startConnect(g, home, submitArgs("--yes"), { cmd: "submit-sitemap" });
+  try {
+    await c.authUrl;
+    assert.ok(existsSync(pendingPath(home)), "the link is in pending-signin.txt while it waits");
+    const [code, q] = await c.finish();
+    assert.equal(code, 0, c.err + c.out);
+    assert.equal(q.scope, WM, "only the write scope is asked for");
+    assert.equal(q.include_granted_scopes, "true");
+    assert.equal(q.client_id, "own-id", "the same client as the saved sign-in");
+    assert.equal(q.code_challenge_method, "S256");
+    assert.equal(q.access_type, "offline");
+    assert.equal(existsSync(pendingPath(home)), false);
+    const ex = g.hits.find(h => h.path === "/token").body;
+    assert.equal(ex.grant_type, "authorization_code");
+    assert.equal(ex.client_secret, "own-secret");
+    assert.equal(challengeFor(ex.code_verifier), q.code_challenge);
+    const s = stored(home);
+    assert.ok(s.scope.split(" ").includes(WM), s.scope);
+    assert.equal(s.refresh_token, "rt-wm");
+    assert.equal(s.method, "own-client");
+    assert.deepEqual(
+      g.hits.map(h => `${h.method} ${h.path}`),
+      ["GET /webmasters/v3/sites", "POST /token", `PUT ${DOMAIN_FEED}`, `GET ${DOMAIN_FEED}`],
+    );
+    const put = g.hits.find(h => h.method === "PUT");
+    assert.equal(
+      put.raw,
+      "/webmasters/v3/sites/sc-domain%3Aexample.com/sitemaps/https%3A%2F%2Fwww.example.com%2Fsitemap.xml",
+      "site and feed path are URL-encoded",
+    );
+    assert.equal(put.auth, "Bearer at-wm");
+    assert.match(c.out, /submitted/i);
+    assert.match(c.out, /2026-11-19/);
+    assert.match(c.out, /waiting for Google to read it/i);
+    assert.match(c.out, /2 warnings/);
+  } finally {
+    c.child.kill();
+    await g.close();
+  }
+});
+
+test("submit-sitemap --yes with the write scope already granted skips the sign-in (URL-prefix property)", async () => {
+  const FEED = "/webmasters/v3/sites/https://www.example.com//sitemaps/" + SITEMAP;
+  const g = await fakeGoogle(
+    submitRoutes({
+      "GET /webmasters/v3/sites": () => [
+        200,
+        { siteEntry: [{ siteUrl: "https://www.example.com/", permissionLevel: "siteOwner" }] },
+      ],
+      [`PUT ${FEED}`]: () => [200, {}],
+      [`GET ${FEED}`]: () => [
+        200,
+        {
+          path: SITEMAP,
+          lastSubmitted: "2026-11-19T10:00:00.000Z",
+          lastDownloaded: "2026-11-19T10:05:00.000Z",
+          isPending: false,
+          errors: "0",
+          warnings: "0",
+        },
+      ],
+    }),
+  );
+  const home = tmp();
+  store(home, { scope: `${SC} ${GA} ${WM}` });
+  try {
+    const { stdout } = await runCli(g, home, ["submit-sitemap", ...submitArgs("--yes")]);
+    assert.deepEqual(
+      g.hits.map(h => `${h.method} ${h.path}`),
+      ["GET /webmasters/v3/sites", `PUT ${FEED}`, `GET ${FEED}`],
+      "no sign-in, no token call",
+    );
+    assert.equal(
+      g.hits[1].raw,
+      "/webmasters/v3/sites/https%3A%2F%2Fwww.example.com%2F/sitemaps/https%3A%2F%2Fwww.example.com%2Fsitemap.xml",
+    );
+    assert.doesNotMatch(stdout, /\/auth\?/);
+    assert.match(stdout, /no errors/i);
+  } finally {
+    await g.close();
+  }
+});
+
+test("submit-sitemap --yes with a service account signs a JWT that adds the write scope, and stores it", async () => {
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const g = await fakeGoogle(submitRoutes({ "POST /token": () => [200, { access_token: "sa-wm", expires_in: 3599 }] }));
+  const home = tmp();
+  store(home, {
+    method: "service-account",
+    client: undefined,
+    refresh_token: undefined,
+    client_email: "seo@proj.iam.gserviceaccount.com",
+    private_key_id: "kid1",
+    private_key: privateKey.export({ type: "pkcs8", format: "pem" }),
+    token_uri: "https://oauth2.googleapis.com/token",
+    access_token: "sa-old",
+  });
+  try {
+    const { stdout } = await runCli(g, home, ["submit-sitemap", ...submitArgs("--yes")]);
+    const { body } = g.hits.find(h => h.path === "/token");
+    assert.equal(body.grant_type, "urn:ietf:params:oauth:grant-type:jwt-bearer");
+    assert.deepEqual(b64json(body.assertion.split(".")[1]).scope.split(" ").sort(), [SC, GA, WM].sort());
+    assert.ok(stored(home).scope.split(" ").includes(WM));
+    assert.equal(stored(home).access_token, "sa-wm");
+    assert.equal(g.hits.find(h => h.method === "PUT").auth, "Bearer sa-wm");
+    assert.doesNotMatch(stdout, /\/auth\?/);
+    assert.match(stdout, /submitted/i);
+  } finally {
+    await g.close();
+  }
+});
+
+test("submit-sitemap refuses a sitemap that isn't on the property's host", async () => {
+  let siteEntry = [{ siteUrl: "sc-domain:example.com", permissionLevel: "siteOwner" }];
+  const g = await fakeGoogle(submitRoutes({ "GET /webmasters/v3/sites": () => [200, { siteEntry }] }));
+  const home = tmp();
+  store(home);
+  try {
+    await assert.rejects(
+      runCli(g, home, [
+        "submit-sitemap",
+        "--site",
+        "https://www.example.com",
+        "--sitemap",
+        "https://www.other.com/sitemap.xml",
+        "--yes",
+      ]),
+      e => {
+        assert.equal(e.code, 2);
+        assert.match(e.stderr, /https:\/\/www\.other\.com\/sitemap\.xml isn't on sc-domain:example\.com/);
+        return true;
+      },
+    );
+    siteEntry = [{ siteUrl: "https://www.example.com/", permissionLevel: "siteOwner" }];
+    await assert.rejects(
+      runCli(g, home, [
+        "submit-sitemap",
+        "--site",
+        "https://www.example.com",
+        "--sitemap",
+        "https://example.com/sitemap.xml",
+        "--yes",
+      ]),
+      e => /isn't on https:\/\/www\.example\.com\//.test(e.stderr),
+    );
+    assert.ok(
+      g.hits.every(h => h.method === "GET" && h.path === "/webmasters/v3/sites"),
+      "nothing is signed in for or sent",
+    );
+    assert.equal(stored(home).scope, `${SC} ${GA}`);
+  } finally {
+    await g.close();
+  }
+});
+
+test("submit-sitemap explains a 403 (needs Owner or Full permission) and a 404 in plain words", async () => {
+  let reply = [
+    403,
+    {
+      error: {
+        code: 403,
+        message: "User does not have sufficient permission for site 'sc-domain:example.com'.",
+        status: "PERMISSION_DENIED",
+      },
+    },
+  ];
+  const g = await fakeGoogle(submitRoutes({ [`PUT ${DOMAIN_FEED}`]: () => reply }));
+  const home = tmp();
+  store(home, { scope: `${SC} ${GA} ${WM}` });
+  try {
+    await assert.rejects(runCli(g, home, ["submit-sitemap", ...submitArgs("--yes")]), e => {
+      assert.equal(e.code, 2);
+      assert.match(e.stderr, /isn't an owner or full user of sc-domain:example\.com/);
+      assert.match(e.stderr, /Owner or Full permission/);
+      assert.match(e.stderr, /Users and permissions/);
+      return true;
+    });
+    reply = [404, { error: { code: 404, message: "Requested entity was not found." } }];
+    await assert.rejects(
+      runCli(g, home, ["submit-sitemap", ...submitArgs("--yes")]),
+      e => /couldn't find sc-domain:example\.com/.test(e.stderr) && /nothing was submitted/.test(e.stderr),
+    );
   } finally {
     await g.close();
   }
