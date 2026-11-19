@@ -33,7 +33,7 @@
 
 ### AI-06 · AI visibility is measured · low
 - Google Search Console's Generative AI performance report (impressions by page, since June 2026). AI Overview and AI Mode clicks are counted inside web search totals. Bing Webmaster Tools' AI Performance report shows Copilot citations and grounding queries. Note these as monitoring steps; the audit can't read them without access.
-- **Logs:** visits referred by ChatGPT, Perplexity, Claude, Gemini and Copilot (and `utm_source=chatgpt.com`) are counted by `log-scan.mjs` (`aiReferrals`). Some apps send no referrer, so this counts low.
+- **Logs:** visits referred by ChatGPT, Perplexity, Claude, Gemini and Copilot (and `utm_source=chatgpt.com`) are counted by `log-scan.mjs` (`aiReferrals`, successful page views only). Some apps send no referrer, so this counts low.
 - **Off-site presence (outside checks on):** AI answers lean on what other sites say about a brand. With the agent's web search, look up the brand on Wikipedia/Wikidata, Reddit, YouTube, LinkedIn and the main review or industry directories, and report what exists, what's missing and what's wrong (old name, address or claims) as owner decisions with `fixBy: "owner"`. Never create accounts or post on the owner's behalf. Name the search tool and date.
 
 ## Myths to correct in reports

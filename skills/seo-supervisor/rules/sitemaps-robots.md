@@ -14,7 +14,7 @@
 - **Fix:** generate the sitemap from the content source instead of a hand-kept list. A test comparing sitemap URLs with indexable routes keeps them in sync.
 
 ### MAP-04 · lastmod dates are real · low
-- **Check:** crawler `sitemap-lastmod-same`, `sitemap-lastmod-future` (a date after tomorrow), `sitemap-lastmod-invalid` (not a W3C date) and `sitemap-priority-changefreq` (tags Google ignores), each low and counted once per sitemap. Code: is `lastModified` set to `new Date()` or the build time?
+- **Check:** crawler `sitemap-lastmod-same`, `sitemap-lastmod-future` (a date after tomorrow), `sitemap-lastmod-invalid` (not a W3C date, or not a real calendar date such as 2026-02-30), each low and counted once per sitemap. `<priority>` and `<changefreq>` get a note only: Google ignores them. Code: is `lastModified` set to `new Date()` or the build time?
 - **Pass:** each URL's lastmod is the record's real `updatedAt`, and a hub's is the newest among its items. Google uses lastmod only on sites where it proves accurate. Leave `priority` and `changefreq` out; Google and Bing ignore them.
 - **Fix:** use content dates, or drop lastmod rather than fake it.
 
@@ -36,5 +36,5 @@
 - **Structure:** when llms.txt exists, the crawler checks it starts with a `# Site name` heading and contains Markdown links (`llms-structure`, low).
 
 ### MAP-08 · Sitemaps are submitted, and changes are pinged · low
-- **Check:** ask the owner, or look for automation. `scripts/indexnow.mjs` sets up the key file (`key --public-dir public/`) and sends the ping (`submit … --from-diff seo-audit/seo-diff.json`, or `--urls`, `--from-sitemap`). It's a dry run until `--yes`, checks the key file is live first, and writes `seo-audit/indexnow.json`.
+- **Check:** ask the owner, or look for automation. `scripts/indexnow.mjs` sets up the key file (`key --public-dir public/`) and sends the ping (`submit … --from-diff seo-audit/seo-diff.json`, or `--urls`, `--from-sitemap`). It's a dry run until `--yes` (writing `seo-audit/indexnow-dryrun.json`), checks the key file is live on that exact host first, and writes `seo-audit/indexnow.json`. The key file belongs in the committed folder served at the site root (e.g. `public/`), not the build output.
 - **Pass:** sitemaps are submitted in Search Console and Bing Webmaster Tools. IndexNow is pinged on publish, with the key file at the site root. IndexNow reaches Bing (and through it Copilot), Yandex, Seznam, Naver, Yep, Internet Archive and Amazonbot, but not Google. Bing wants the true content-change time as lastmod and ignores `changefreq` and `priority`.

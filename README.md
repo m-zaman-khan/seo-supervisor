@@ -162,7 +162,7 @@ To switch them on for one run, say so: `/seo-audit with outside checks`. Real-us
 
 **Connect your accounts (optional).** In `/seo-setup` and `/seo-fix` the agent offers each connection once, and you can say no:
 - **Google Search Console and Analytics:** "Sign in with Google" in your browser, or set up your own Google client in a few guided steps. Read-only. It adds your real queries and clicks, "is this page in Google" for key pages, sitemap errors and organic visits. Remove access any time at myaccount.google.com/connections, or with `google.mjs disconnect`.
-- **Bing Webmaster Tools, Open PageRank and Ahrefs' free Domain Rating:** paste a free API key. They add Bing data, the pages other sites link to, and authority scores next to your competitors'.
+- **Bing Webmaster Tools, Open PageRank and Ahrefs' free Domain Rating:** paste a free API key at a hidden prompt in your own terminal. They add Bing data, the pages other sites link to, and authority scores next to your competitors'.
 
 Logins and keys stay in `~/.seo-supervisor/` on your computer, never in your project. Anything you skip is listed under Limits and doesn't lower your score.
 

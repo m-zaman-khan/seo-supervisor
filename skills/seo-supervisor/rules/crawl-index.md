@@ -31,7 +31,7 @@ Can search engines reach the pages, and are they allowed to index the right ones
 - **Check:** crawler `soft-404`, `server-error`. Code: not-found handling, retired-content handling, maintenance mode.
 - **Pass:** 200 for live pages. 404 for unknown URLs. 410 for content removed for good. 301/308 for moved content. 503 with `Retry-After` during maintenance.
 - **Fix:** never return a 200 "not found" page, and never redirect unknown URLs to the home page.
-- **Check (logs):** `log-scan.mjs` `bot-errors`: a search or AI search crawler got 5xx on 1% or more of 5 or more requests.
+- **Check (logs):** `log-scan.mjs` `bot-errors`: a search crawler or AI answer bot got at least 5 server errors and at least 1% of its requests failed; high from 5% or 50 errors, otherwise medium. Planned-maintenance 503s with Retry-After are fine.
 
 ### CRAWL-06 · Sitemap URLs return 200 · high
 - **Check:** crawler `sitemap-bad-status`.
@@ -40,7 +40,7 @@ Can search engines reach the pages, and are they allowed to index the right ones
 ### CRAWL-07 · No internal links to broken pages · high
 - **Check:** crawler `broken-internal-link`. Code: generated link blocks (related, next, breadcrumbs, footer).
 - **Fix:** fix or remove the link, and filter generated links through the set of live pages (LINK-04).
-- **Check (logs):** `log-scan.mjs` `bot-404s`: URLs search crawlers requested 5 or more times and got a 404. Redirect moved pages; a 404 or 410 for pages gone for good is fine.
+- **Check (logs):** `log-scan.mjs --crawl seo-audit/seo-crawl.json` `bot-404s`: URLs the site itself links to (or lists in its sitemap) that search crawlers requested 5 or more times and got a 404. Other repeated 404s are only listed (`repeated404s`), and probe paths such as `/.env` or `/wp-*` are ignored. A 404 or 410 for pages gone for good is fine.
 
 ### CRAWL-08 · Redirects take one hop, and internal links skip them · medium
 - **Check:** crawler `redirect-chain`, `link-to-redirect`. Code: redirect config, middleware, nginx/CDN rules.
