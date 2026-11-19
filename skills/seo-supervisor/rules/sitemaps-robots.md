@@ -1,9 +1,10 @@
 # Sitemaps, robots.txt and llms.txt (MAP)
 
 ### MAP-01 · An XML sitemap exists and robots.txt references it · high
-- **Check:** crawler `sitemap-missing`, `sitemap-not-in-robots`.
+- **Check:** crawler `sitemap-missing`, `sitemap-not-in-robots`, `sitemap-invalid` (high: not well-formed XML, with the line and column where it breaks, such as a bare `&`, an unclosed tag, an entity like `&nbsp;`, text before `<?xml`, or an HTML page at a listed sitemap URL), `sitemap-too-big` (medium: over 50,000 URLs or 50 MB uncompressed in one file). Gzipped sitemaps (`.xml.gz`, or a gzip body whatever the content type) and text sitemaps (one URL per line) are read too; each file is read no further than 50 MB uncompressed. An HTML page at the guessed `/sitemap.xml` counts as no sitemap.
+- **News sitemaps** (`<news:news>` entries), only when one exists: `news-sitemap-tags` (medium: an entry without `<news:publication>` holding `<news:name>` and `<news:language>`, `<news:publication_date>` as a full W3C date, or `<news:title>`), `news-sitemap-too-many` (medium: over 1,000 articles in one file), `news-sitemap-old` (low: articles first published over two days ago, with a day of slack).
 - **Pass:** `/sitemap.xml` (or a sitemap index) is valid XML with absolute `<loc>` URLs, linked from robots.txt with `Sitemap: https://…/sitemap.xml`. Not an RSS feed; no dead sitemaps listed.
-- **Fix:** split into a sitemap index with one file per section past a few thousand URLs, or when you want Search Console to report indexing per section.
+- **Fix:** split into a sitemap index with one file per section past a few thousand URLs, or when you want Search Console to report indexing per section. Over 50,000 URLs or 50 MB, splitting is required.
 
 ### MAP-02 · The sitemap lists only canonical, indexable URLs on the production host · high
 - **Check:** crawler `sitemap-origin`, `sitemap-noncanonical`, `noindex-in-sitemap`, `sitemap-bad-status`.
@@ -19,7 +20,7 @@
 - **Fix:** use content dates, or drop lastmod rather than fake it.
 
 ### MAP-05 · robots.txt blocks only junk, and never CSS or JS · medium
-- **Check:** crawler `robots-missing`, `robots-blocks-assets`.
+- **Check:** crawler `robots-missing` (a 4xx other than 429: Google reads it as no rules), `robots-blocks-assets`. A robots.txt answering 5xx, 429 or nothing is `robots-server-error` under CRAWL-01 (high), and MAP-05 and MAP-06 are then listed as not checked.
 - **Pass:** allows `/`. Disallows only API routes, framework internals that aren't render assets (e.g. Next.js `_rsc` requests), internal search and admin. Never blocks pages that carry noindex.
 
 ### MAP-06 · The AI crawler policy is a deliberate, written decision · low

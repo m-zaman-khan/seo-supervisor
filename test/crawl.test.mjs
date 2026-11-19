@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { serve } from "./serve.mjs";
 import { ROOT, SCRIPTS, node, tmp } from "./helpers.mjs";
 import { imageSize } from "../skills/seo-supervisor/scripts/lib/image-size.mjs";
@@ -227,19 +228,28 @@ test("the crawler finds every planted problem on the fixture site", async () => 
 
 // A one-page site with its public origin at https://example.com; each test passes its own sitemap, or its own sitemap
 // files ({ path: { type, body } }, each listed in robots.txt), headers by path, and robots.txt (null for none).
-async function crawlOnePage({ lastmod = "2026-11-17", extra = "", before } = {}) {
+async function crawlOnePage({
+  lastmod = "2026-11-17",
+  extra = "",
+  before,
+  files,
+  headers,
+  robots = `User-agent: *\nAllow: /\n${Object.keys(files || { "/sitemap.xml": 1 })
+    .map(p => `Sitemap: https://example.com${p}\n`)
+    .join("")}`,
+} = {}) {
   const dir = tmp(),
     out = join(tmp(), "crawl.json");
   writeFileSync(
     join(dir, "index.html"),
     `<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width"><title>Home</title><link rel="canonical" href="https://example.com/"><meta property="og:image" content="https://example.com/og-loop.png"></head><body><h1>Home</h1></body></html>`,
   );
-  writeFileSync(join(dir, "robots.txt"), "User-agent: *\nAllow: /\nSitemap: https://example.com/sitemap.xml\n");
+  if (robots != null) writeFileSync(join(dir, "robots.txt"), robots);
   writeFileSync(
     join(dir, "sitemap.xml"),
     `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://example.com/</loc><lastmod>${lastmod}</lastmod>${extra}</url></urlset>`,
   );
-  const site = await serve(dir, { before });
+  const site = await serve(dir, { before, files, headers });
   try {
     await node([
       join(SCRIPTS, "seo-crawl.mjs"),
@@ -285,6 +295,207 @@ test("an og:image the local server redirects to the public origin is unreadable 
     JSON.stringify(r.findings.find(f => f.check === "og-image-broken")?.evidence),
   );
   assert.ok(r.notes.some(n => /share image/.test(n) && /redirect/.test(n)));
+});
+
+const xml = body => Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>${body}`);
+const urlset = (paths, ns = "") =>
+  xml(
+    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"${ns}>${paths.map(p => (p.startsWith("<") ? p : `<url><loc>https://example.com${p}</loc></url>`)).join("")}</urlset>`,
+  );
+const evidenceOf = (r, check) =>
+  Object.fromEntries(
+    (r.findings.find(f => f.check === check)?.evidence || []).map(e => [new URL(e.url).pathname, e.detail]),
+  );
+
+test("gzipped sitemaps and sitemap indexes are read, whatever the URL or content type says", async () => {
+  const r = await crawlOnePage({
+    files: {
+      "/sitemap_index.xml.gz": {
+        type: "application/gzip",
+        body: gzipSync(
+          xml(
+            `<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://example.com/pages.xml.gz</loc></sitemap><sitemap><loc>https://example.com/posts.xml</loc></sitemap></sitemapindex>`,
+          ),
+        ),
+      },
+      "/pages.xml.gz": { type: "application/octet-stream", body: gzipSync(urlset(["/"])) },
+      // A .gz file the server compresses again: fetch undoes the Content-Encoding, the crawler the gzip inside.
+      "/posts.xml": { type: "application/xml", body: gzipSync(gzipSync(urlset(["/about/"]))) },
+    },
+    headers: { "/posts.xml": { "Content-Encoding": "gzip" } },
+  });
+  assert.ok(
+    !r.findings.some(f =>
+      ["sitemap-missing", "missing-from-sitemap", "sitemap-invalid", "sitemap-too-big"].includes(f.check),
+    ),
+    JSON.stringify(r.findings.map(f => f.check)),
+  );
+  assert.equal(r.stats.sitemapUrls, 2);
+  assert.ok(r.passed.some(p => p.rule === "MAP-01") && r.pages[0].inSitemap);
+});
+
+test("a sitemap that isn't well-formed XML is flagged with its line and column; valid XML, a text sitemap and an HTML page at a guessed URL aren't", async () => {
+  const unclosed = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://example.com/</loc></urlset>`;
+  const HTML = Buffer.from(
+    `<!doctype html><html lang="en"><head><title>Not found</title></head><body><h1>Page not found</h1></body></html>`,
+  );
+  const [r, guessed] = await Promise.all([
+    crawlOnePage({
+      files: {
+        "/amp.xml": {
+          type: "application/xml",
+          body: xml(
+            `\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>https://example.com/?a=1&b=2</loc></url>\n</urlset>\n`,
+          ),
+        },
+        "/space.xml": { type: "application/xml", body: Buffer.concat([Buffer.from("\n"), urlset(["/"])]) },
+        "/page.xml": { type: "text/html; charset=utf-8", body: HTML },
+        "/unclosed.xml": { type: "application/xml", body: Buffer.from(unclosed) },
+        "/entity.xml": { type: "text/xml", body: urlset(["/caf&eacute;/"]) },
+        "/good.xml": {
+          type: "application/xml",
+          body: Buffer.from([
+            0xef,
+            0xbb,
+            0xbf,
+            ...Buffer.from(
+              `<?xml version="1.0" encoding="UTF-8"?>\n<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n<!-- generated -->\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image='http://www.google.com/schemas/sitemap-image/1.1' xmlns:xhtml="http://www.w3.org/1999/xhtml">\n<url><loc>https://example.com/?a=1&amp;b=2</loc><xhtml:link rel="alternate" hreflang="en" href="https://example.com/"/><image:image><image:loc>https://example.com/a.png</image:loc><image:caption><![CDATA[Tom & Jerry <3]]></image:caption></image:image></url>\n<url><loc>https://example.com/caf&#xE9;/</loc></url>\n</urlset>\n`,
+            ),
+          ]),
+        }, // with a byte-order mark
+        "/sitemap.txt": { type: "text/plain", body: Buffer.from("https://example.com/\nhttps://example.com/about/\n") },
+      },
+    }),
+    crawlOnePage({ robots: "User-agent: *\nAllow: /\n", files: { "/sitemap.xml": { type: "text/html", body: HTML } } }),
+  ]);
+  const f = r.findings.find(f => f.check === "sitemap-invalid"),
+    bad = evidenceOf(r, "sitemap-invalid");
+  assert.deepEqual([f?.rule, f?.severity], ["MAP-01", "high"]);
+  assert.match(f.title, /Google can't read/);
+  assert.deepEqual(Object.keys(bad).sort(), ["/amp.xml", "/entity.xml", "/page.xml", "/space.xml", "/unclosed.xml"]);
+  assert.match(bad["/amp.xml"], /^line 3, column 37: .*&amp;/);
+  assert.match(bad["/space.xml"], /^line 2, column 1: .*<\?xml/);
+  assert.match(bad["/page.xml"], /HTML page/);
+  assert.match(bad["/unclosed.xml"], new RegExp(`^line 1, column ${unclosed.indexOf("</urlset>") + 1}: .*</url>`));
+  assert.match(bad["/entity.xml"], /&eacute;/);
+  assert.ok(!r.findings.some(f => f.check === "sitemap-missing"));
+  assert.ok(evidenceOf(r, "sitemap-bad-status")["/about/"], "the text sitemap's URLs are read");
+  // No sitemap listed anywhere, and the guessed /sitemap.xml is the site's HTML page: that's a missing sitemap.
+  assert.ok(!guessed.findings.some(f => f.check === "sitemap-invalid"));
+  assert.match(evidenceOf(guessed, "sitemap-missing")["/sitemap.xml"] || "", /HTML page/);
+});
+
+test("a sitemap file over 50,000 URLs or 50 MB uncompressed is flagged, and read no further than 50 MB", async () => {
+  const huge = gzipSync(
+    Buffer.concat([
+      xml(
+        `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://example.com/</loc></url><!-- `,
+      ),
+      Buffer.alloc(51 * 1024 * 1024, "x"),
+      Buffer.from(" --></urlset>"),
+    ]),
+  );
+  const r = await crawlOnePage({
+    files: {
+      "/many.xml": { type: "application/xml", body: urlset(Array(50001).fill("/")) }, // one URL repeated, so the crawl stays one page
+      "/huge.xml.gz": { type: "application/gzip", body: huge },
+      "/fine.xml": { type: "application/xml", body: urlset(Array(50000).fill("/")) },
+    },
+  });
+  const f = r.findings.find(f => f.check === "sitemap-too-big"),
+    big = evidenceOf(r, "sitemap-too-big");
+  assert.deepEqual([f?.rule, f?.severity], ["MAP-01", "medium"]);
+  assert.deepEqual(Object.keys(big).sort(), ["/huge.xml.gz", "/many.xml"]);
+  assert.match(big["/many.xml"], /50,001 URLs/);
+  assert.match(big["/huge.xml.gz"], /over 50 MB/);
+  assert.ok(!r.findings.some(f => f.check === "sitemap-invalid"), "a file cut at 50 MB isn't called broken XML");
+});
+
+test("news sitemaps: required tags, articles from the last two days and at most 1,000 per file; a correct one and a normal sitemap pass", async () => {
+  const NS = ` xmlns:news="http://www.google.com/schemas/sitemap-news/0.9"`,
+    old = new Date(Date.now() - 10 * 864e5).toISOString().slice(0, 10);
+  const article = ({
+    date = new Date().toISOString(),
+    lang = "<news:language>en</news:language>",
+    title = "<news:title>Council approves new park</news:title>",
+  } = {}) =>
+    `<url><loc>https://example.com/</loc><news:news><news:publication><news:name>The Daily Example</news:name>${lang}</news:publication><news:publication_date>${date}</news:publication_date>${title}</news:news></url>`;
+  const r = await crawlOnePage({
+    files: {
+      "/sitemap.xml": { type: "application/xml", body: urlset(["/"]) },
+      "/news.xml": {
+        type: "application/xml",
+        body: urlset([article(), article({ date: new Date().toISOString().slice(0, 10) })], NS),
+      },
+      "/news-bad.xml": {
+        type: "application/xml",
+        body: urlset(
+          [article({ lang: "", title: "" }), article({ date: "November 17, 2026" }), article({ date: old })],
+          NS,
+        ),
+      },
+      "/news-big.xml": { type: "application/xml", body: urlset(Array(1001).fill(article()), NS) },
+    },
+  });
+  const sev = check => {
+    const f = r.findings.find(f => f.check === check);
+    return [f?.rule, f?.severity];
+  };
+  assert.deepEqual(sev("news-sitemap-tags"), ["MAP-01", "medium"]);
+  assert.deepEqual(sev("news-sitemap-too-many"), ["MAP-01", "medium"]);
+  assert.deepEqual(sev("news-sitemap-old"), ["MAP-01", "low"]);
+  assert.deepEqual(Object.keys(evidenceOf(r, "news-sitemap-tags")), ["/news-bad.xml"]);
+  assert.match(
+    evidenceOf(r, "news-sitemap-tags")["/news-bad.xml"],
+    /^2 of 3 articles, e\.g\. https:\/\/example\.com\/: no <news:language>, <news:title>/,
+  );
+  assert.deepEqual(Object.keys(evidenceOf(r, "news-sitemap-old")), ["/news-bad.xml"]);
+  assert.match(
+    evidenceOf(r, "news-sitemap-old")["/news-bad.xml"],
+    new RegExp(`^1 of 3 articles, e\\.g\\. https://example\\.com/: ${old}`),
+  );
+  assert.deepEqual(evidenceOf(r, "news-sitemap-too-many"), { "/news-big.xml": "1,001 articles" });
+  assert.ok(!r.findings.some(f => f.check === "sitemap-invalid"));
+});
+
+test("robots.txt answering 5xx or 429 is a high crawl finding, and its rules count as unread; a 404 is still a missing file", async () => {
+  const answer = status => (req, res) => req.url === "/robots.txt" && (res.writeHead(status).end("busy"), true);
+  const [down, busy, silent, missing, fine] = await Promise.all([
+    crawlOnePage({ before: answer(503) }),
+    crawlOnePage({ before: answer(429) }),
+    crawlOnePage({ before: req => req.url === "/robots.txt" && (req.socket.destroy(), true) }),
+    crawlOnePage({ robots: null }),
+    crawlOnePage(),
+  ]);
+  assert.match(
+    evidenceOf(silent, "robots-server-error")["/robots.txt"] || "",
+    /^no answer/,
+    "Google treats a network error as a server error",
+  );
+  for (const r of [down, busy, silent]) {
+    const f = r.findings.find(f => f.check === "robots-server-error");
+    assert.deepEqual([f?.rule, f?.severity], ["CRAWL-01", "high"]);
+    assert.ok(!r.findings.some(f => f.check === "robots-missing"));
+    for (const rule of ["MAP-05", "MAP-06"])
+      assert.ok(
+        !r.passed.some(p => p.rule === rule) &&
+          r.notChecked.some(n => n.rule === rule && /couldn't be read/.test(n.reason)),
+        rule,
+      );
+  }
+  assert.equal(evidenceOf(down, "robots-server-error")["/robots.txt"], "status 503");
+  assert.equal(evidenceOf(busy, "robots-server-error")["/robots.txt"], "status 429");
+  const m = missing.findings.find(f => f.check === "robots-missing");
+  assert.deepEqual([m?.rule, m?.severity], ["MAP-05", "medium"]);
+  assert.ok(
+    !missing.findings.some(f => f.check === "robots-server-error") && missing.passed.some(p => p.rule === "CRAWL-01"),
+  );
+  assert.ok(!fine.findings.some(f => /^robots-/.test(f.check)));
+  for (const rule of ["CRAWL-01", "MAP-05", "MAP-06"])
+    assert.ok(
+      fine.passed.some(p => p.rule === rule),
+      rule,
+    );
 });
 
 // Pages ({ "/path/": html }) in a temp folder, crawled as the site at `origin`; `args` and `env` go to the crawler.

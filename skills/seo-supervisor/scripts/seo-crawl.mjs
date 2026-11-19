@@ -4,6 +4,7 @@
 
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { createGunzip } from "node:zlib";
 import { CHECKS as HREFLANG_CHECKS, checkHreflang } from "./checks/hreflang.mjs";
 import { CHECKS as TLS_CHECKS, checkLive } from "./checks/tls.mjs";
 import {
@@ -136,6 +137,13 @@ const CHECKS = {
     () => "robots.txt blocks the whole site",
     "With `Disallow: /` for every crawler, search engines can't crawl any page, so nothing new gets indexed and existing pages decay.",
     "Allow crawling in production (`Allow: /`). Keep staging out of Google with a noindex header and a password instead.",
+  ],
+  "robots-server-error": [
+    "CRAWL-01",
+    "high",
+    () => "robots.txt answers with a server error, so Google stops crawling",
+    "When robots.txt fails with a 5xx or 429 status, or doesn't answer, Google stops crawling the whole site for the first 12 hours while it retries. After that it uses the last copy it read, for up to 30 days, so rule changes go unseen; if the rest of the site is unreachable too, crawling stops altogether. Only a 404 means “no rules”.",
+    "Make `/robots.txt` return 200 with its rules, or 404 if there are none. Check that the server, CDN or framework route that builds it isn't failing, timing out or rate-limiting crawlers.",
   ],
   "sitemap-url-disallowed": [
     "CRAWL-01",
@@ -633,6 +641,41 @@ const CHECKS = {
     () => "robots.txt doesn't reference the sitemap",
     "The `Sitemap:` line lets every crawler find it without manual submission.",
     "Add `Sitemap: https://…/sitemap.xml` (absolute URL) to robots.txt.",
+  ],
+  "sitemap-invalid": [
+    "MAP-01",
+    "high",
+    n => `Google can't read ${n} sitemap(s): not valid XML`,
+    "A sitemap is read as XML, and XML with one mistake in it (a bare `&` in a URL, a tag that isn't closed, text before `<?xml`, or an HTML page in its place) can't be read. Search Console reports it as a sitemap error, and the URLs in it may never be found from it.",
+    "Build the sitemap with the framework's sitemap helper or an XML library instead of joining strings: it writes `&` as `&amp;` and closes every tag. Make sure nothing (a blank line, a PHP notice) is printed before `<?xml`, and that the sitemap URL serves the XML file, not a page.",
+  ],
+  "sitemap-too-big": [
+    "MAP-01",
+    "medium",
+    n => `${n} sitemap file(s) are over the 50,000-URL or 50 MB limit`,
+    "One sitemap file may list at most 50,000 URLs and be at most 50 MB uncompressed. Search Console reports a bigger file as an error, and the URLs past the limit may be ignored.",
+    "Split it into sitemaps of up to 50,000 URLs each (one per section works well), list them in a sitemap index (`<sitemapindex>`), and reference the index in robots.txt.",
+  ],
+  "news-sitemap-tags": [
+    "MAP-01",
+    "medium",
+    n => `${n} news sitemap(s) have articles without Google News's required tags`,
+    "Every `<news:news>` entry needs `<news:publication>` with `<news:name>` and `<news:language>`, a `<news:publication_date>` in W3C format, and `<news:title>`. Google reports entries without them as errors and can't use them for news.",
+    "Generate each entry from the article record: the publication's name as Google News shows it, an ISO 639 language code (`en`), the time it was first published (`2026-11-17T10:30:00+00:00`) and the headline as it appears on the page.",
+  ],
+  "news-sitemap-too-many": [
+    "MAP-01",
+    "medium",
+    n => `${n} news sitemap(s) list more than 1,000 articles`,
+    "A news sitemap may hold at most 1,000 `<news:news>` entries. Google may skip the rest.",
+    "Keep only the last two days of articles in it, and split it into more news sitemaps if that's still over 1,000.",
+  ],
+  "news-sitemap-old": [
+    "MAP-01",
+    "low",
+    n => `${n} news sitemap(s) list articles older than two days`,
+    "Google wants only articles first published in the last two days in a news sitemap. Older ones add noise and push the file toward its 1,000-article limit.",
+    "Drop articles older than two days from the news sitemap, or remove their `<news:news>` block; the regular sitemap keeps listing them.",
   ],
   "sitemap-origin": [
     "MAP-02",
@@ -1348,36 +1391,183 @@ function allowedBy(group, path) {
 const groupFor = (robots, agent) => robots.groups.find(g => g.agents.includes(agent.toLowerCase())) || null;
 
 // ---------- sitemap ----------
-async function readSitemaps(urls) {
+const SITEMAP_MAX = 50 * 1024 * 1024; // the protocol's limit per file, uncompressed
+// Reads one chunk past max when there's more, so callers can tell the body was cut.
+async function upTo(stream, max) {
+  const chunks = [];
+  let n = 0;
+  for await (const c of stream) {
+    chunks.push(c);
+    if ((n += c.length) > max) break;
+  }
+  return Buffer.concat(chunks);
+}
+// Gunzips by the magic bytes, whatever the content type says: fetch undoes only Content-Encoding, and a .gz file may
+// be compressed twice. Reads 50 MB unpacked at most.
+async function fetchSitemap(url, retry = true) {
+  try {
+    const res = await fetch(url, {
+      headers: { "user-agent": UA, accept: "application/xml,text/xml;q=0.9,*/*;q=0.8" },
+      signal: AbortSignal.timeout(60000),
+    });
+    if (res.status !== 200 || !res.body) {
+      await res.body?.cancel();
+      return { status: res.status };
+    }
+    let buf = await upTo(res.body, SITEMAP_MAX);
+    if (buf[0] === 0x1f && buf[1] === 0x8b) {
+      const gz = createGunzip();
+      gz.end(buf);
+      buf = await upTo(gz, SITEMAP_MAX).catch(() => null);
+      if (!buf) return { status: 200, body: "", broken: "it's a gzip file that doesn't unzip" };
+    }
+    const bom = buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf ? 3 : 0;
+    return { status: 200, body: buf.toString("utf8", bom, SITEMAP_MAX), tooBig: buf.length > SITEMAP_MAX };
+  } catch (e) {
+    if (retry) {
+      await sleep(500);
+      return fetchSitemap(url, false);
+    }
+    return { status: 0, error: String(e.message || e) };
+  }
+}
+const XML_TAG =
+  /<([A-Za-z_][\w.:-]*)((?:\s+[A-Za-z_:][\w.:-]*\s*=\s*(?:"[^"<]*"|'[^'<]*'))*)\s*(\/?)>|<\/([A-Za-z_][\w.:-]*)\s*>/y;
+const BAD_ENTITY = /&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[\da-fA-F]+);)/;
+function xmlError(s) {
+  const at = (i, why) =>
+    `line ${(s.slice(0, i).match(/\n/g) || []).length + 1}, column ${i - s.lastIndexOf("\n", i - 1)}: ${why}`;
+  const entity = (t, i) => {
+    const k = t.search(BAD_ENTITY);
+    if (k < 0) return null;
+    const name = /^&[^\s&;<]{1,20};/.exec(t.slice(k))?.[0];
+    return at(
+      i + k,
+      name ? `${name} isn't defined in XML (only &amp; &lt; &gt; &quot; &apos; are)` : "a bare & (write it as &amp;)",
+    );
+  };
+  const HTML = "it's an HTML page, not a sitemap";
+  const decl = s.search(/<\?xml[\s?]/);
+  if (decl > 0) return at(decl, "there's text or a blank line before <?xml …?>, which has to come first");
+  const stack = [];
+  let i = 0,
+    roots = 0;
+  while (i < s.length) {
+    const lt = s.indexOf("<", i),
+      text = s.slice(i, lt < 0 ? s.length : lt);
+    if (/\S/.test(text)) {
+      if (!stack.length)
+        return at(
+          i + text.search(/\S/),
+          roots ? "there's text after the last closing tag" : "there's text before the first tag",
+        );
+      const e = entity(text, i);
+      if (e) return e;
+    }
+    if (lt < 0) break;
+    const skip = [
+      ["<!--", "-->", "a comment isn't closed with -->"],
+      ["<![CDATA[", "]]>", "a CDATA section isn't closed with ]]>"],
+      ["<?", "?>", "a <?…?> instruction isn't closed"],
+    ].find(([open]) => s.startsWith(open, lt));
+    if (skip) {
+      const e = s.indexOf(skip[1], lt + skip[0].length);
+      if (e < 0) return at(lt, skip[2]);
+      i = e + skip[1].length;
+      continue;
+    }
+    if (s.startsWith("<!", lt)) {
+      if (/^<!doctype\s+html\b/i.test(s.slice(lt, lt + 20))) return at(lt, HTML);
+      const e = s.indexOf(">", lt);
+      if (e < 0) return at(lt, "a <!DOCTYPE> isn't closed");
+      i = e + 1;
+      continue;
+    }
+    XML_TAG.lastIndex = lt;
+    const m = XML_TAG.exec(s);
+    if (!m) return at(lt, `a broken tag: ${s.slice(lt, lt + 30).split("\n")[0]}…`);
+    i = XML_TAG.lastIndex;
+    if (m[4]) {
+      const open = stack.pop();
+      if (open !== m[4])
+        return at(lt, open ? `</${m[4]}> where </${open}> was expected` : `</${m[4]}> has no opening tag`);
+      continue;
+    }
+    const e = entity(m[2], lt + 1 + m[1].length);
+    if (e) return e;
+    if (!stack.length) {
+      if (roots++) return at(lt, "a second root element after the first one closed");
+      if (/^html$/i.test(m[1])) return at(lt, HTML);
+    }
+    if (!m[3]) stack.push(m[1]);
+  }
+  if (stack.length) return at(s.length, `the file ends before </${stack.at(-1)}>`);
+  return roots ? null : at(0, "there are no XML tags in it");
+}
+// A tag's text (CDATA unwrapped), or undefined when it's missing or empty.
+const tagText = (h, t) =>
+  (h?.match(new RegExp(`<${t}\\b[^>]*>([\\s\\S]*?)</${t}>`)) || [])[1]?.replace(/<!\[CDATA\[|\]\]>/g, "").trim() ||
+  undefined;
+// listed is false for the guessed /sitemap.xml, where an HTML page means no sitemap.
+async function readSitemaps(urls, listed = true) {
   const entries = [],
     seen = new Set(),
     files = [];
-  const queue = [...urls];
+  const queue = urls.map(u => [u, listed]);
   while (queue.length && files.length < 60) {
-    const u = queue.shift();
+    const [u, named] = queue.shift();
     if (seen.has(u)) continue;
     seen.add(u);
-    const r = await get(toCrawl(u), { manual: false });
-    if (r.status !== 200 || !r.body) {
+    const r = await fetchSitemap(toCrawl(u)),
+      body = r.body || "";
+    if (r.status !== 200 || !(body.trim() || r.broken)) {
       files.push({ url: u, status: r.status });
       continue;
     }
-    files.push({ url: u, status: 200 });
-    if (/<sitemapindex\b/i.test(r.body)) {
-      for (const m of r.body.matchAll(/<sitemap\b[\s\S]*?<loc>\s*([\s\S]*?)\s*<\/loc>/gi))
-        queue.push(decode(m[1].trim()));
+    const file = { url: u, status: 200 };
+    files.push(file);
+    if (!named && /^\s*<(!doctype\s+html|html)\b/i.test(body)) {
+      file.html = true;
       continue;
     }
-    for (const m of r.body.matchAll(/<url\b[^>]*>([\s\S]*?)<\/url>/gi)) {
+    const bad = r.broken || (body.includes("<") && !r.tooBig && xmlError(body));
+    if (bad) file.invalid = bad;
+    if (r.tooBig) file.tooBig = true;
+    // A text sitemap: one URL per line.
+    if (!body.includes("<")) {
+      for (const l of body.split(/\s*\n\s*/))
+        if (/^https?:\/\/\S+$/.test(l)) entries.push({ loc: l, lastmod: null, sitemap: u, hints: false });
+      continue;
+    }
+    if (/<sitemapindex\b/i.test(body)) {
+      for (const m of body.matchAll(/<sitemap\b[\s\S]*?<loc>\s*([\s\S]*?)\s*<\/loc>/gi))
+        queue.push([decode(m[1].trim()), true]);
+      continue;
+    }
+    file.urls = 0;
+    const hasNews = body.includes("<news:news");
+    for (const m of body.matchAll(/<url\b[^>]*>([\s\S]*?)<\/url>/gi)) {
+      file.urls++;
       const loc = (m[1].match(/<loc>\s*([\s\S]*?)\s*<\/loc>/i) || [])[1];
       const lastmod = (m[1].match(/<lastmod>\s*([\s\S]*?)\s*<\/lastmod>/i) || [])[1];
-      if (loc)
-        entries.push({
-          loc: decode(loc.trim()),
-          lastmod: lastmod ? lastmod.trim() : null,
-          sitemap: u,
-          hints: /<(priority|changefreq)>/i.test(m[1]),
-        });
+      if (!loc) continue;
+      const e = {
+        loc: decode(loc.trim()),
+        lastmod: lastmod ? lastmod.trim() : null,
+        sitemap: u,
+        hints: /<(priority|changefreq)>/i.test(m[1]),
+      };
+      // Google News entries: the tags Google requires, and the first-published date.
+      const news = hasNews ? tagText(m[1], "news:news") : undefined,
+        pub = tagText(news, "news:publication");
+      if (news)
+        e.news = {
+          date: tagText(news, "news:publication_date"),
+          missing: ["news:publication", "news:name", "news:language", "news:publication_date", "news:title"].filter(
+            t => !tagText(t === "news:name" || t === "news:language" ? pub : news, t),
+          ),
+        };
+      entries.push(e);
     }
   }
   return { entries, files };
@@ -1506,9 +1696,18 @@ const t0 = Date.now();
 const robotsRes = await get(START_ORIGIN + "/robots.txt", { manual: false });
 const robots =
   robotsRes.status === 200 && robotsRes.body && !/<html/i.test(robotsRes.body) ? parseRobots(robotsRes.body) : null;
-evalRules("CRAWL-01", "MAP-05", "MAP-06", "MAP-01");
+// Google treats a 4xx other than 429 as no rules, and a 5xx, 429 or no answer as a server error that halts crawling.
+// https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt
+const robotsDown = robotsRes.status >= 500 || robotsRes.status === 429 || robotsRes.status === 0;
+evalRules("CRAWL-01", "MAP-01", ...(robotsDown ? [] : ["MAP-05", "MAP-06"]));
 const star = robots ? groupFor(robots, "*") : null;
-if (!robots) add("robots-missing", START_ORIGIN + "/robots.txt", `status ${robotsRes.status}`);
+if (robotsDown)
+  add(
+    "robots-server-error",
+    START_ORIGIN + "/robots.txt",
+    robotsRes.status ? `status ${robotsRes.status}` : `no answer: ${robotsRes.error}`,
+  );
+else if (!robots) add("robots-missing", START_ORIGIN + "/robots.txt", `status ${robotsRes.status}`);
 else {
   if (star && !allowedBy(star, "/"))
     add("robots-blocks-all", START_ORIGIN + "/robots.txt", "User-agent: * is not allowed to crawl /");
@@ -1554,9 +1753,10 @@ if (!SITE_ORIGIN) {
     if (o !== START_ORIGIN) SITE_ORIGIN = o;
   } catch {}
 }
-let sm = await readSitemaps(smUrls);
-if (!sm.entries.length && !(robots && robots.sitemaps.length)) {
-  const alt = await readSitemaps([START_ORIGIN + "/sitemap_index.xml"]);
+const smListed = !!(robots && robots.sitemaps.length);
+let sm = await readSitemaps(smUrls, smListed);
+if (!sm.entries.length && !smListed) {
+  const alt = await readSitemaps([START_ORIGIN + "/sitemap_index.xml"], false);
   if (alt.entries.length) sm = alt;
 }
 if (!SITE_ORIGIN && sm.entries.length) {
@@ -1565,8 +1765,17 @@ if (!SITE_ORIGIN && sm.entries.length) {
     if (o !== START_ORIGIN && !isLocal(o)) SITE_ORIGIN = o;
   } catch {}
 }
-if (!sm.entries.length)
-  add("sitemap-missing", smUrls.join(", "), sm.files.map(f => `${f.url} → ${f.status}`).join("; ") || undefined);
+for (const f of sm.files) {
+  if (f.invalid) add("sitemap-invalid", f.url, f.invalid);
+  if (f.tooBig || f.urls > 50000)
+    add("sitemap-too-big", f.url, f.tooBig ? "over 50 MB uncompressed" : `${f.urls.toLocaleString("en-US")} URLs`);
+}
+if (!sm.entries.length && !findings.has("sitemap-invalid"))
+  add(
+    "sitemap-missing",
+    smUrls.join(", "),
+    sm.files.map(f => `${f.url} → ${f.status}${f.html ? ", an HTML page" : ""}`).join("; ") || undefined,
+  );
 // The home page goes first: its canonical may give the public origin.
 enqueue(START.href);
 await runQueue();
@@ -1625,6 +1834,31 @@ for (const [file, es] of bySitemap) {
     notes.push(
       `${file}: ${hinted} of ${es.length} entries use <priority> or <changefreq>. Google and Bing ignore both, so they can go when the sitemap code is next touched; an accurate lastmod is the signal that counts.`,
     );
+  // A news sitemap, per Google's rules: the required tags, a full W3C date, articles from the last two days (a day
+  // of slack for time zones and date-only values), and at most 1,000 of them.
+  const news = es.filter(e => e.news);
+  if (!news.length) continue;
+  const say = (list, what) => `${list.length} of ${news.length} articles, e.g. ${list[0].loc}: ${what(list[0].news)}`;
+  const newsDate = d => !!d && d.length >= 10 && validLastmod(d);
+  const untagged = news.filter(e => e.news.missing.length || !newsDate(e.news.date)),
+    old = news.filter(e => newsDate(e.news.date) && Date.parse(e.news.date) < Date.now() - 3 * 864e5);
+  if (untagged.length)
+    add(
+      "news-sitemap-tags",
+      file,
+      say(untagged, n =>
+        n.missing.length
+          ? `no ${n.missing.map(t => `<${t}>`).join(", ")}`
+          : `publication date “${n.date}” isn't a W3C date such as 2026-11-17 or 2026-11-17T10:30:00+00:00`,
+      ),
+    );
+  if (old.length)
+    add(
+      "news-sitemap-old",
+      file,
+      say(old, n => n.date),
+    );
+  if (news.length > 1000) add("news-sitemap-too-many", file, `${news.length.toLocaleString("en-US")} articles`);
 }
 await runQueue();
 
@@ -2513,6 +2747,13 @@ const NOT_CRAWLABLE = [
   ],
 ];
 for (const [rule, area, reason] of NOT_CRAWLABLE) notChecked.push({ rule, area: `${rule} ${area}`, reason });
+if (robotsDown)
+  for (const rule of ["MAP-05", "MAP-06"])
+    notChecked.push({
+      rule,
+      area: `${rule} ${RULES[rule][0]}`,
+      reason: `robots.txt answered ${robotsRes.status ? `status ${robotsRes.status}` : "nothing"}, so its rules couldn't be read. Re-run once it returns 200.`,
+    });
 if (!redirectSources.length)
   notChecked.push({
     rule: "URL-07",
