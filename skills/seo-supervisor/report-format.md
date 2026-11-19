@@ -109,7 +109,6 @@ Consequences for the JSON:
 | `traffic`, `trafficPeriod` | `traffic` and `period` from `gsc-import.mjs` or `google.mjs fetch` (same shape: by path, `clicks`, `impressions`, `ctr`, `position`) | "Search Console: 120 clicks · 4,300 impressions (last 3 months)" on findings and plan rows about that page. |
 | `speed` | The crawler with `--outside`: `{ strategy, samples[] }`, each `{ url, field, origin, lab }` | One Overview line: "Real-user speed (mobile): LCP 2.1 s · INP 180 ms · CLS 0.05 (passes)". |
 | `labSpeed` | The crawler with `--outside` and Chrome or Edge installed: `[{ url, lcp, cls, tbt }]` from one throttled phone load per sample page (lcp and tbt in ms) | One Overview line under the speed line: "Lab speed, slow mobile (indicative): LCP 3.2 s · CLS 0.04 · TBT 450 ms on the home page". |
-
 | `authority`, `attribution` | `connect-keys.mjs`: `[{ domain, openPageRank, ahrefsDR }]` (the site, then competitors) and `{ text, url }` when Ahrefs data is present | One Overview line: "Authority: Open PageRank 3.6 · Domain Rating 21 · rival.com: 5.1 / 40", with "Domain Rating by Ahrefs" linked beside it (licence requirement). |
 | `bing` | `connect-keys.mjs`: Bing traffic by path, queries, linked pages and crawl issues | Data for the agent; its `bing-crawl-issues` finding (CRAWL-05) is an ordinary finding. |
 

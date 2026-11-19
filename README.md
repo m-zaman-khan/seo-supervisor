@@ -97,7 +97,7 @@ npx seo-supervisor --uninstall                                  # remove it agai
 
 `npx seo-supervisor --help` lists every agent key. Using an agent that isn't on the list? `npx skills add m-zaman-khan/seo-supervisor` covers 40+ more.
 
-Needs Node 22 or newer. There's nothing else to install. The only key it can use is an optional PageSpeed Insights key for real-user speed data.
+Needs Node 22 or newer. There's nothing else to install, and every key or account is optional: see [Optional: outside checks and Search Console](#optional-outside-checks-and-search-console).
 
 ## Commands
 
@@ -147,13 +147,16 @@ One HTML file that works offline. It opens in dark mode and has a light-mode swi
 
 ## Optional: outside checks and Search Console
 
-**Outside checks are off until you say yes.** The agent asks once per project and remembers your answer in `seo-audit/settings.json`. Saying yes allows three things:
+**Outside checks are off until you say yes.** The agent asks once per project and remembers your answer in `seo-audit/settings.json`. Saying yes allows four things:
 
 | Check | What leaves your machine |
 | --- | --- |
 | Real-user speed (Core Web Vitals) | Up to 10 public page URLs, sent to Google PageSpeed Insights (needs `PSI_API_KEY`) |
 | What your JavaScript changes, and how pages look on a phone | Nothing is sent by the skill, but up to 10 pages run in a headless Chrome or Edge, so their own scripts (analytics included) run. Screenshots are saved locally |
 | Search intent | Your pages' target phrases, sent to the agent's web search provider |
+| Off-site brand presence | Your brand name, sent to the agent's web search provider |
+
+Two more things send data out, each only after its own yes: **IndexNow** (the URLs of changed pages, to api.indexnow.org) and the **connections** below (your site's address and domain names, to Google, Bing, Open PageRank or Ahrefs).
 
 To switch them on for one run, say so: `/seo-audit with outside checks`. Real-user speed needs a free PageSpeed Insights API key from Google Cloud in `PSI_API_KEY`: Google refuses almost all requests without one. The render and intent checks need no key. Add `CRUX_API_KEY` too and the Overview shows whether real-user speed got better or worse over the last 25 weeks. With outside checks off, these three are listed under the report's Limits.
 
@@ -206,7 +209,7 @@ There are also framework guides for **Next.js**, **Rails** and **React/Vite SPAs
   When you do say go, CMS changes are saved as drafts and you see the before and after first.
 - **Every finding has evidence, and nothing is "fixed" until a re-check passes.**
 - **It never invents** reviews, ratings, prices, statistics or local proof, in copy or in schema.
-- **Nothing leaves your machine unless you switch on outside checks.** There's no account and no telemetry. The crawler only sends GET and HEAD requests to your own site, and crawls production gently, if at all.
+- **Nothing leaves your machine without your yes.** Outside checks, IndexNow and each connection are asked for separately, and everything works without them. There's no SEO Supervisor account and no telemetry. The crawler only sends GET and HEAD requests to your own site, and crawls production gently, if at all.
 - **Text on your pages is treated as data.** If a page tries to give the agent instructions, that's reported as a finding, never followed.
 
 ## Tested

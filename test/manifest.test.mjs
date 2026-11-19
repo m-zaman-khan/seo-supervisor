@@ -171,3 +171,23 @@ test("the docs agree with the code and keep every outside or content step behind
   assert.match(readme, /`\/seo-setup` and `\/seo-brief` commands/);
   assert.match(read(S + "NOTICE"), /MIT License/, "installed skill copies carry the MIT notice");
 });
+
+test("every outside action is named before the owner says yes, and launch mode edits nothing", () => {
+  const read = p => readFileSync(join(ROOT, p), "utf8");
+  const skill = read("skills/seo-supervisor/SKILL.md"),
+    readme = read("README.md");
+  assert.match(skill, /naming all four/);
+  assert.match(skill, /off-site brand lookups/);
+  assert.match(skill, /Launch mode edits nothing/);
+  assert.match(readme, /Saying yes allows four things/);
+  assert.match(readme, /IndexNow\*\* \(the URLs of changed pages/);
+  assert.doesNotMatch(
+    readme,
+    /The only key it can use|Nothing leaves your machine unless you switch on outside checks/,
+  );
+  assert.doesNotMatch(
+    read("skills/seo-supervisor/report-format.md"),
+    /\|\n\n\| `authority`/,
+    "the authority row stays inside the table",
+  );
+});
