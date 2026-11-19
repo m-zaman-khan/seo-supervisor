@@ -164,6 +164,39 @@ const renderEdited = async edit => {
   await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "r.html")]);
   return { html: readFileSync(join(dir, "r.html"), "utf8"), md: readFileSync(join(dir, "r.md"), "utf8") };
 };
+
+test("a finding's title and what's-wrong text are escaped in the Markdown: Google's rich-result messages go there", async () => {
+  const XSS = "<img src=x onerror=alert(1)> [x](javascript:alert(1))";
+  const { md } = await renderEdited(d => {
+    const f = {
+      rule: "SCHEMA-08",
+      severity: "high",
+      category: "Structured data",
+      why: "Why.",
+      fix: "Fix.",
+      count: 1,
+      evidence: [],
+      source: "search-console",
+    };
+    d.findings.push(
+      {
+        ...f,
+        id: "G-001",
+        status: "open",
+        title: `1 rich result has errors ${XSS}`,
+        what: `Found on https://security.example/a/ (Product snippets: ${XSS}).`,
+      },
+      { ...f, id: "G-002", status: "needs-decision", title: `Decide ${XSS}`, what: `Context ${XSS}` },
+    );
+  });
+  assert.doesNotMatch(md, /(^|[^\\])<img src=x/m, "no raw HTML");
+  assert.doesNotMatch(md, /(^|[^\\])\[x\]\(javascript:/m, "no link");
+  assert.ok(
+    md.includes("Product snippets: \\<img src=x onerror=alert(1)\\> \\[x\\](javascript:alert(1))"),
+    "the text still reads the same",
+  );
+  assert.ok(md.includes("Found on `https://security.example/a/`"), "the URL becomes code");
+});
 const BING = () => ({
   siteUrl: "https://security.example/",
   period: { from: "2026-05-18", to: "2026-11-15" },

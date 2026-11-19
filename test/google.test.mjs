@@ -1307,6 +1307,85 @@ test("fetch: compares with the period before, same length, and lists pages that 
   }
 });
 
+test("fetch: no change from the period before when this period's pages couldn't be read (a 429), not a fake drop to 0", async () => {
+  const SITE = "/webmasters/v3/sites/sc-domain:example.com",
+    base = apiRoutes()[`POST ${SITE}/searchAnalytics/query`];
+  const g = await fakeGoogle(
+    apiRoutes({
+      [`POST ${SITE}/searchAnalytics/query`]: hit =>
+        hit.body.type === "web" && hit.body.dimensions.join() === "page" && !isBefore(hit.body)
+          ? [429, { error: { code: 429, message: "Quota exceeded" } }, { "retry-after": "0" }]
+          : base(hit),
+    }),
+  );
+  const home = tmp();
+  store(home);
+  try {
+    const r = await fetchWith(g, home, { ga4Property: "222" });
+    assert.equal(r.trafficChange, null);
+    assert.ok(
+      r.notes.some(n => /too many requests/i.test(n)),
+      r.notes.join("\n"),
+    );
+    assert.ok(
+      r.notes.some(n => /period before/.test(n) && /left out/.test(n)),
+      r.notes.join("\n"),
+    );
+    assert.ok(
+      !g.hits.some(h => h.body.dimensions?.join() === "page" && isBefore(h.body)),
+      "the period before isn't asked for",
+    );
+  } finally {
+    await g.close();
+  }
+});
+
+test("fetch: a URL Inspection error drops only that page, with a note; a 429 stops the run and keeps the pages before it", async () => {
+  const base = apiRoutes()["POST /v1/urlInspection/index:inspect"];
+  const failing = (path, status) => hit =>
+    new URL(hit.body.inspectionUrl).pathname === path
+      ? [
+          status,
+          { error: { code: status, message: status === 429 ? "Quota exceeded" : "Internal error encountered." } },
+          { "retry-after": "0" },
+        ]
+      : base(hit);
+  const inspect = ["/1/", "/2/", "/3/", "/4/", "/5/"];
+  const inspected = g =>
+    g.hits.filter(h => h.path.endsWith(":inspect")).map(h => new URL(h.body.inspectionUrl).pathname);
+  const home = tmp();
+  store(home);
+  const g = await fakeGoogle(apiRoutes({ "POST /v1/urlInspection/index:inspect": failing("/3/", 500) }));
+  try {
+    const r = await fetchWith(g, home, { ga4Property: "222", inspect });
+    assert.deepEqual(
+      r.inspection.map(i => new URL(i.url).pathname),
+      ["/1/", "/2/", "/4/", "/5/"],
+    );
+    assert.ok(
+      r.notes.some(n => /1 of 5/.test(n) && n.includes("https://www.example.com/3/") && /500/.test(n)),
+      r.notes.join("\n"),
+    );
+  } finally {
+    await g.close();
+  }
+  const busy = await fakeGoogle(apiRoutes({ "POST /v1/urlInspection/index:inspect": failing("/3/", 429) }));
+  try {
+    const r = await fetchWith(busy, home, { ga4Property: "222", inspect });
+    assert.deepEqual(
+      r.inspection.map(i => new URL(i.url).pathname),
+      ["/1/", "/2/"],
+    );
+    assert.deepEqual(inspected(busy), ["/1/", "/2/", "/3/", "/3/"], "retried once, then stopped");
+    assert.ok(
+      r.notes.some(n => /too many requests/i.test(n) && /2 of 5/.test(n)),
+      r.notes.join("\n"),
+    );
+  } finally {
+    await busy.close();
+  }
+});
+
 test("Google's documented Search Console data anomalies are found by date, with Google's page", () => {
   const PAGE_URL = "https://support.google.com/webmasters/answer/6211453";
   const main = anomaliesIn("2026-03-01", "2026-05-30");

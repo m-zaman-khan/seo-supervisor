@@ -1594,6 +1594,8 @@ const groupFor = (robots, agent) => robots.groups.find(g => g.agents.includes(ag
 
 // ---------- sitemap ----------
 const SITEMAP_MAX = 50 * 1024 * 1024; // the protocol's limit per file, uncompressed
+const SITEMAP_URLS = 50000; // the protocol's limit per file: Google reads no further
+const SITEMAP_KEEP = 200000; // URLs kept from all the sitemap files, far more than a crawl fetches
 // Reads one chunk past max when there's more, so callers can tell the body was cut.
 async function upTo(stream, max) {
   const chunks = [];
@@ -1710,13 +1712,15 @@ function xmlError(s) {
 const tagText = (h, t) =>
   (h?.match(new RegExp(`<${t}\\b[^>]*>([\\s\\S]*?)</${t}>`)) || [])[1]?.replace(/<!\[CDATA\[|\]\]>/g, "").trim() ||
   undefined;
-// listed is false for the guessed /sitemap.xml, where an HTML page means no sitemap.
+// listed is false for the guessed /sitemap.xml, where an HTML page means no sitemap. cut means SITEMAP_KEEP URLs were
+// kept and the rest, with any files after them, went unread.
 async function readSitemaps(urls, listed = true) {
   const entries = [],
     seen = new Set(),
     files = [];
+  let cut = false;
   const queue = urls.map(u => [u, listed]);
-  while (queue.length && files.length < 60) {
+  while (queue.length && files.length < 60 && !cut) {
     const [u, named] = queue.shift();
     if (seen.has(u)) continue;
     seen.add(u);
@@ -1737,8 +1741,15 @@ async function readSitemaps(urls, listed = true) {
     if (r.tooBig) file.tooBig = true;
     // A text sitemap: one URL per line.
     if (!body.includes("<")) {
-      for (const l of body.split(/\s*\n\s*/))
-        if (/^https?:\/\/\S+$/.test(l)) entries.push({ loc: l, lastmod: null, sitemap: u, hints: false });
+      const lines = body.split(/\s*\n\s*/).filter(l => /^https?:\/\/\S+$/.test(l));
+      file.urls = lines.length;
+      for (const l of lines.slice(0, SITEMAP_URLS)) {
+        if (entries.length === SITEMAP_KEEP) {
+          cut = true;
+          break;
+        }
+        entries.push({ loc: l, lastmod: null, sitemap: u, hints: false });
+      }
       continue;
     }
     if (/<sitemapindex\b/i.test(body)) {
@@ -1749,6 +1760,14 @@ async function readSitemaps(urls, listed = true) {
     file.urls = 0;
     const hasNews = body.includes("<news:news");
     for (const m of body.matchAll(/<url\b[^>]*>([\s\S]*?)<\/url>/gi)) {
+      // Past a file's 50,000 URLs, or the 200,000 kept in all, the rest is only counted, for sitemap-too-big.
+      if (entries.length === SITEMAP_KEEP) cut = true;
+      if (cut || file.urls === SITEMAP_URLS) {
+        const rest = /<url\b/gi;
+        rest.lastIndex = m.index;
+        while (rest.exec(body)) file.urls++;
+        break;
+      }
       file.urls++;
       const loc = (m[1].match(/<loc>\s*([\s\S]*?)\s*<\/loc>/i) || [])[1];
       const lastmod = (m[1].match(/<lastmod>\s*([\s\S]*?)\s*<\/lastmod>/i) || [])[1];
@@ -1772,7 +1791,7 @@ async function readSitemaps(urls, listed = true) {
       entries.push(e);
     }
   }
-  return { entries, files };
+  return { entries, files, cut };
 }
 
 // ---------- URL helpers ----------
@@ -1902,13 +1921,15 @@ async function runQueue() {
 
 // ---------- main ----------
 const t0 = Date.now();
-const robotsRes = await get(START_ORIGIN + "/robots.txt", { manual: false });
+const robotsRes = await follow(START_ORIGIN + "/robots.txt");
 const robots =
   robotsRes.status === 200 && robotsRes.body && !/<html/i.test(robotsRes.body) ? parseRobots(robotsRes.body) : null;
 // Google treats a 4xx other than 429 as no rules, and a 5xx, 429 or no answer as a server error that halts crawling.
+// After five redirects it treats the file as missing.
 // https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt
-const robotsDown = robotsRes.status >= 500 || robotsRes.status === 429 || robotsRes.status === 0;
-evalRules("CRAWL-01", "MAP-01", ...(robotsDown ? [] : ["MAP-05", "MAP-06"]));
+const robotsHops = robotsRes.error === "too many redirects" ? robotsRes.chain.map(c => c.url) : null;
+const robotsDown = !robotsHops && (robotsRes.status >= 500 || robotsRes.status === 429 || robotsRes.status === 0);
+evalRules("CRAWL-01", ...(robotsDown ? [] : ["MAP-01", "MAP-05", "MAP-06"]));
 const star = robots ? groupFor(robots, "*") : null;
 if (robotsDown)
   add(
@@ -1916,7 +1937,14 @@ if (robotsDown)
     START_ORIGIN + "/robots.txt",
     robotsRes.status ? `status ${robotsRes.status}` : `no answer: ${robotsRes.error}`,
   );
-else if (!robots) add("robots-missing", START_ORIGIN + "/robots.txt", `status ${robotsRes.status}`);
+else if (robotsHops) {
+  const again = robotsHops.findIndex((u, i) => robotsHops.indexOf(u) < i);
+  add(
+    "robots-missing",
+    START_ORIGIN + "/robots.txt",
+    `${again > 0 ? `a redirect loop: ${[...robotsHops.slice(0, again), robotsHops[again]].join(" → ")}` : `more than 5 redirects: ${robotsHops[0]} → … → ${robotsHops.at(-1)}`}. Google stops after 5 and reads that as no robots.txt`,
+  );
+} else if (!robots) add("robots-missing", START_ORIGIN + "/robots.txt", `status ${robotsRes.status}`);
 else {
   if (star && !allowedBy(star, "/"))
     add("robots-blocks-all", START_ORIGIN + "/robots.txt", "User-agent: * is not allowed to crawl /");
@@ -1969,6 +1997,10 @@ if (!sm.entries.length && !smListed) {
   const alt = await readSitemaps([START_ORIGIN + "/sitemap_index.xml"], false);
   if (alt.entries.length) sm = alt;
 }
+if (sm.cut)
+  notes.push(
+    `The sitemaps list more than ${SITEMAP_KEEP.toLocaleString("en-US")} URLs. Only the first ${SITEMAP_KEEP.toLocaleString("en-US")} were read, so the rest, and any sitemap files after them, weren't checked.`,
+  );
 if (!SITE_ORIGIN && sm.entries.length) {
   try {
     const o = new URL(sm.entries[0].loc).origin;
@@ -3139,13 +3171,22 @@ const NOT_CRAWLABLE = [
   ],
 ];
 for (const [rule, area, reason] of NOT_CRAWLABLE) notChecked.push({ rule, area: `${rule} ${area}`, reason });
+// MAP-01 is half the robots.txt Sitemap: line, so only a sitemap finding settles it while robots.txt is down.
 if (robotsDown)
-  for (const rule of ["MAP-05", "MAP-06"])
-    notChecked.push({
-      rule,
-      area: `${rule} ${RULES[rule][0]}`,
-      reason: `robots.txt answered ${robotsRes.status ? `status ${robotsRes.status}` : "nothing"}, so its rules couldn't be read. Re-run once it returns 200.`,
-    });
+  for (const rule of ["MAP-01", "MAP-05", "MAP-06"])
+    if (![...findings.keys()].some(k => CHECKS[k][0] === rule))
+      notChecked.push({
+        rule,
+        area: `${rule} ${RULES[rule][0]}`,
+        reason: `robots.txt answered ${robotsRes.status ? `status ${robotsRes.status}` : "nothing"}, so its ${rule === "MAP-01" ? "Sitemap: line" : "rules"} couldn't be read. Re-run once it returns 200.`,
+      });
+// A page missing from the sitemap URLs read may be in the part past SITEMAP_KEEP.
+if (sm.cut && findings.delete("missing-from-sitemap") && evaluated.delete("MAP-03"))
+  notChecked.push({
+    rule: "MAP-03",
+    area: `MAP-03 ${RULES["MAP-03"][0]}`,
+    reason: `Some crawled pages aren't among the first ${SITEMAP_KEEP.toLocaleString("en-US")} sitemap URLs, the most this audit reads, so they may still be in the rest of the sitemap.`,
+  });
 if (!redirectSources.length)
   notChecked.push({
     rule: "URL-07",

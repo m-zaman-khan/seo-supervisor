@@ -423,6 +423,48 @@ test("a sitemap file over 50,000 URLs or 50 MB uncompressed is flagged, and read
   assert.ok(!r.findings.some(f => f.check === "sitemap-invalid"), "a file cut at 50 MB isn't called broken XML");
 });
 
+test("sitemaps: 50,000 URLs a file are kept and the rest only counted, 200,000 in all, and past that MAP-03 isn't judged", async () => {
+  const page = body =>
+    `<!doctype html><html lang="en"><head><title>Example page</title></head><body><h1>Example</h1>${body}</body></html>`;
+  const index = xml(
+    `<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${"abcde"
+      .split("")
+      .map(x => `<sitemap><loc>https://example.com/${x}.xml</loc></sitemap>`)
+      .join("")}</sitemapindex>`,
+  );
+  const many = n => ({ type: "application/xml", body: urlset(Array(n).fill("/")) });
+  const r = await crawlSite(
+    { "/": page('<a href="/about/">About us</a>'), "/about/": page("") },
+    {
+      files: {
+        "/robots.txt": {
+          type: "text/plain",
+          body: Buffer.from("User-agent: *\nAllow: /\nSitemap: https://example.com/index.xml\n"),
+        },
+        "/index.xml": { type: "application/xml", body: index },
+        "/a.xml": many(50005),
+        "/b.xml": many(50000),
+        "/c.xml": many(50000),
+        "/d.xml": many(50000),
+        "/e.xml": { type: "application/xml", body: urlset(["/", "/about/"]) }, // past the 200,000 kept
+      },
+    },
+    "https://example.com",
+  );
+  assert.equal(r.stats.sitemapUrls, 200000);
+  assert.match(
+    evidenceOf(r, "sitemap-too-big")["/a.xml"] || "",
+    /50,005 URLs/,
+    "the URLs past 50,000 are still counted",
+  );
+  assert.ok(
+    r.notes.some(n => /200,000/.test(n) && /sitemap/.test(n)),
+    r.notes.join("\n"),
+  );
+  assert.ok(!r.findings.some(f => f.check === "missing-from-sitemap"), "/about/ may be in the part that wasn't read");
+  assert.ok(!r.passed.some(p => p.rule === "MAP-03") && r.notChecked.some(n => n.rule === "MAP-03"));
+});
+
 test("news sitemaps: required tags, articles from the last two days and at most 1,000 per file; a correct one and a normal sitemap pass", async () => {
   const NS = ` xmlns:news="http://www.google.com/schemas/sitemap-news/0.9"`,
     old = new Date(Date.now() - 10 * 864e5).toISOString().slice(0, 10);
@@ -508,6 +550,32 @@ test("robots.txt answering 5xx or 429 is a high crawl finding, and its rules cou
       fine.passed.some(p => p.rule === rule),
       rule,
     );
+});
+
+test("MAP-01 isn't passed while robots.txt is down, as its Sitemap: line went unread; a sitemap finding still counts", async () => {
+  const down = (req, res) => req.url === "/robots.txt" && (res.writeHead(503).end("busy"), true);
+  const [found, none] = await Promise.all([
+    crawlOnePage({ before: down }), // the guessed /sitemap.xml exists
+    crawlOnePage({
+      before: (req, res) => down(req, res) || (req.url === "/sitemap.xml" && (res.writeHead(404).end(), true)),
+    }),
+  ]);
+  assert.ok(!found.passed.some(p => p.rule === "MAP-01"), "half of MAP-01 is the robots.txt reference");
+  assert.match(found.notChecked.find(n => n.rule === "MAP-01")?.reason || "", /robots\.txt answered status 503/);
+  assert.ok(none.findings.some(f => f.check === "sitemap-missing"));
+  assert.ok(!none.notChecked.some(n => n.rule === "MAP-01"), "a missing sitemap fails MAP-01 whatever robots.txt says");
+});
+
+test("a robots.txt redirect loop is a missing robots.txt, as Google reads it after 5 hops, not a server error", async () => {
+  const r = await crawlOnePage({
+    before: (req, res) => req.url === "/robots.txt" && (res.writeHead(301, { Location: "/robots.txt" }).end(), true),
+  });
+  assert.ok(!r.findings.some(f => f.check === "robots-server-error"), JSON.stringify(r.findings.map(f => f.check)));
+  assert.match(evidenceOf(r, "robots-missing")["/robots.txt"] || "", /redirect loop.*\/robots\.txt → .*\/robots\.txt/);
+  assert.ok(
+    r.passed.some(p => p.rule === "CRAWL-01"),
+    "no rules means nothing is blocked",
+  );
 });
 
 // Pages ({ "/path/": html }) in a temp folder, crawled as the site at `origin`; `args` and `env` go to the crawler.

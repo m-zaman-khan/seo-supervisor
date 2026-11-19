@@ -1259,7 +1259,9 @@ function markdown() {
     for (const t of searchLines()) L.push(mdText(t), ""); // paths from Search Console, escaped
     L.push("## Area scores", "", "| Area | Score | Open findings | Top issue |", "| --- | ---: | ---: | --- |");
     for (const a of areas)
-      L.push(`| ${mdEsc(a.name)} | ${a.value} | ${a.top.length} | ${mdEsc(a.top[0]?.title || "All checks pass")} |`);
+      L.push(
+        `| ${mdEsc(a.name)} | ${a.value} | ${a.top.length} | ${mdEsc(a.top[0] ? mdSafe(a.top[0].title) : "All checks pass")} |`,
+      );
     L.push("");
     if (bingLinks || linkCheckLine) L.push(`## Links from other sites${bingLinks ? " (Bing)" : ""}`, "");
     if (linkCheckLine)
@@ -1299,8 +1301,8 @@ function markdown() {
   if (decisions.length) {
     L.push("## Decisions needed", "");
     for (const d of decisions) {
-      L.push(`### ${d.id ? `${d.id}: ` : ""}${d.question}`, "");
-      if (d.context) L.push(d.context, "");
+      L.push(`### ${d.id ? `${d.id}: ` : ""}${mdSafe(d.question)}`, "");
+      if (d.context) L.push(mdSafe(d.context), "");
       for (const o of d.options || []) L.push(`- ${o}`);
       if ((d.options || []).length) L.push("");
       if (d.recommendation) L.push(`**Recommended:** ${d.recommendation}`, "");
@@ -1310,18 +1312,19 @@ function markdown() {
     L.push("## What was changed", "");
     for (const f of fixed)
       L.push(
-        `- **${f.id}** ${f.title}${f.fixed?.summary ? `: ${f.fixed.summary}` : ""}${(f.fixed?.files || []).length ? ` (${f.fixed.files.map(x => "`" + x + "`").join(", ")})` : ""}${f.fixed?.verified ? `. Verified: ${f.fixed.verified}` : ""}`,
+        `- **${f.id}** ${mdSafe(f.title)}${f.fixed?.summary ? `: ${f.fixed.summary}` : ""}${(f.fixed?.files || []).length ? ` (${f.fixed.files.map(x => "`" + x + "`").join(", ")})` : ""}${f.fixed?.verified ? `. Verified: ${f.fixed.verified}` : ""}`,
       );
     L.push("");
   }
   L.push("## Findings", "");
   for (const f of findings) {
-    L.push(`### ${f.id} · ${SEV_LABEL[f.severity]}${needsYou(f) ? " · Needs you" : ""} · ${f.title}`, "");
+    // Titles and what's wrong can quote crawled pages and Google's messages, so they're escaped like evidence.
+    L.push(`### ${f.id} · ${SEV_LABEL[f.severity]}${needsYou(f) ? " · Needs you" : ""} · ${mdSafe(f.title)}`, "");
     L.push(
       `Status: ${STATUS_LABEL[f.status] || f.status} · Area: ${f.category}${f.rule ? ` · Rule: ${f.rule}` : ""}${f.count ? ` · Cases: ${f.count}` : ""}${effortOf(f) ? ` · ${effortOf(f)}` : ""}`,
       "",
     );
-    if (f.what) L.push(`**What's wrong.** ${f.what}`, "");
+    if (f.what) L.push(`**What's wrong.** ${mdSafe(f.what)}`, "");
     if (f.why) L.push(`**Why it matters.** ${f.why}`, "");
     if (f.fix) L.push(`**How to fix.** ${f.fix}`, "");
     if (f.decision) {

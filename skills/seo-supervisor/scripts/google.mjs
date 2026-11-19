@@ -340,7 +340,8 @@ export async function fetchGoogle({
     urls = {},
     pageQueries = {},
     pq = {};
-  let queries = [];
+  let queries = [],
+    pagesRead = false;
   await attempt(
     `${prop} in Search Console`,
     SC_API,
@@ -352,6 +353,7 @@ export async function fetchGoogle({
           addTraffic(traffic, p, metrics(r));
         }
       }
+      pagesRead = true;
       queries = (await rowsFor(["query"])).map(r => ({ query: r.keys[0], ...metrics(r) }));
       for (const r of await rowsFor(["page", "query"])) {
         const p = pathOf(r.keys[0]);
@@ -375,6 +377,11 @@ export async function fetchGoogle({
   if (2 * days + 2 > 482)
     notes.push(
       "Search Console keeps 16 months of data, so a period longer than 240 days has no full period before it to compare with; the change in search clicks was left out.",
+    );
+  // Without this period's pages every page would look like a drop to 0.
+  else if (!pagesRead)
+    notes.push(
+      "This period's pages couldn't be read from Search Console, so the change in search clicks from the period before was left out.",
     );
   else
     await attempt(`${prop} in Search Console for the period before`, SC_API, async () => {
@@ -489,38 +496,58 @@ export async function fetchGoogle({
         .map(i => i.issueMessage),
     ),
   ];
-  await attempt("URL Inspection in Search Console", SC_API, async () => {
-    for (const url of picked.slice(0, INSPECT_MAX)) {
-      const r =
-          (await g.call(`${E.inspection}/urlInspection/index:inspect`, { inspectionUrl: url, siteUrl: prop }))
-            .inspectionResult || {},
-        x = r.indexStatusResult || {},
-        rr = r.richResultsResult;
-      inspection.push({
-        url,
-        verdict: x.verdict ?? null,
-        coverageState: x.coverageState ?? null,
-        indexingState: x.indexingState ?? null,
-        robotsTxtState: x.robotsTxtState ?? null,
-        pageFetchState: x.pageFetchState ?? null,
-        googleCanonical: x.googleCanonical ?? null,
-        userCanonical: x.userCanonical ?? null,
-        lastCrawlTime: x.lastCrawlTime ?? null,
-        link: r.inspectionResultLink ?? null,
-        richResults: rr
-          ? {
-              verdict: rr.verdict ?? null,
-              types: (rr.detectedItems || []).map(d => ({
-                type: d.richResultType,
-                items: (d.items || []).length,
-                errors: issues(d, "ERROR"),
-                warnings: issues(d, "WARNING"),
-              })),
-            }
-          : null,
-      });
+  // Each page on its own, so one error loses only that page. A usage limit (429), a lost connection or a refused
+  // sign-in would fail every page after it, so those stop the run and keep what was read.
+  const toInspect = picked.slice(0, INSPECT_MAX),
+    failed = [];
+  for (const url of toInspect) {
+    let r;
+    try {
+      r =
+        (await g.call(`${E.inspection}/urlInspection/index:inspect`, { inspectionUrl: url, siteUrl: prop }))
+          .inspectionResult || {};
+    } catch (e) {
+      if (e.status === 429 || e instanceof Fail) {
+        notes.push(
+          `${explain(e, "URL Inspection in Search Console", SC_API, who)} URL Inspection stopped after ${inspection.length + failed.length} of ${toInspect.length} pages; the ones it read are kept.`,
+        );
+        break;
+      }
+      failed.push(
+        `${url} (Google answered ${e.status || "with an error"}${/^HTTP \d+$/.test(e.message) ? "" : `: ${e.message}`})`,
+      );
+      continue;
     }
-  });
+    const x = r.indexStatusResult || {},
+      rr = r.richResultsResult;
+    inspection.push({
+      url,
+      verdict: x.verdict ?? null,
+      coverageState: x.coverageState ?? null,
+      indexingState: x.indexingState ?? null,
+      robotsTxtState: x.robotsTxtState ?? null,
+      pageFetchState: x.pageFetchState ?? null,
+      googleCanonical: x.googleCanonical ?? null,
+      userCanonical: x.userCanonical ?? null,
+      lastCrawlTime: x.lastCrawlTime ?? null,
+      link: r.inspectionResultLink ?? null,
+      richResults: rr
+        ? {
+            verdict: rr.verdict ?? null,
+            types: (rr.detectedItems || []).map(d => ({
+              type: d.richResultType,
+              items: (d.items || []).length,
+              errors: issues(d, "ERROR"),
+              warnings: issues(d, "WARNING"),
+            })),
+          }
+        : null,
+    });
+  }
+  if (failed.length)
+    notes.push(
+      `URL Inspection couldn't read ${failed.length} of ${toInspect.length} pages, so they're left out: ${failed.slice(0, 5).join(", ")}${failed.length > 5 ? ` and ${failed.length - 5} more` : ""}.`,
+    );
 
   const sitemaps = [];
   await attempt("the sitemaps in Search Console", SC_API, async () => {
