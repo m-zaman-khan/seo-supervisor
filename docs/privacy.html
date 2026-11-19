@@ -23,7 +23,7 @@
 
     <h2>The short version</h2>
     <ul>
-      <li>Google data you connect is read-only, goes from Google straight to your computer, and stays there.</li>
+      <li>Google data you connect is read-only (the one exception: submitting your sitemap, only when you ask), goes from Google straight to your computer, and stays there.</li>
       <li>We never receive, store, sell or share your data, and we don't use it for advertising or to train AI models.</li>
       <li>You can remove access at any time, and delete everything by deleting a folder.</li>
     </ul>
@@ -34,7 +34,8 @@
       <li><strong>Google Search Console</strong> (<code>webmasters.readonly</code>): the list of your Search Console properties, search performance (clicks, impressions, click-through rate and position by page and query), URL Inspection results for key pages, and the status of your submitted sitemaps.</li>
       <li><strong>Google Analytics</strong> (<code>analytics.readonly</code>): the list of your Analytics properties and their web streams, and organic sessions by landing page.</li>
     </ul>
-    <p>SEO Supervisor can't change anything in your Google accounts, and it doesn't ask for your name, email address or contacts.</p>
+    <p>SEO Supervisor doesn't ask for your name, email address or contacts.</p>
+    <p><strong>One exception you control:</strong> if you ask SEO Supervisor to submit your sitemap (<code>submit-sitemap --yes</code>), it first asks Google for permission to manage your Search Console sitemaps (<code>webmasters</code>). It uses that permission only to submit the sitemap you named and read back its status. It never adds or removes properties, changes users or settings, or deletes sitemaps, and it never submits anything without your yes. Otherwise it can't change anything in your Google accounts.</p>
 
     <h2>How the data is used</h2>
     <p>Only to build the SEO report you asked for, for the website you named: showing the search traffic of each page, finding pages Google hasn't indexed, spotting sitemap errors, and ordering fixes so the pages with the most traffic come first. It isn't used for anything else.</p>
