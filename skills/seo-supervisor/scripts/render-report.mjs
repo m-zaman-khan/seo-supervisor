@@ -1142,6 +1142,27 @@ function markdown() {
     String(s ?? "")
       .replace(/\|/g, "\\|")
       .replace(/\r?\n/g, " ");
+  // Third-party text: URLs in code spans, anchor text with Markdown and HTML characters backslash-escaped.
+  const mdCode = s => "`" + String(s ?? "").replace(/[`\r\n]/g, " ") + "`";
+  const mdText = s =>
+    String(s ?? "")
+      .replace(/\s+/g, " ")
+      .replace(/[\\`*_[\]<>]/g, "\\$&");
+  // Evidence can quote crawled pages and other sites: its own `code` spans stay, URLs outside them become code spans
+  // and the rest is escaped, so none of it renders as a link or a tag.
+  const mdSafe = s =>
+    String(s ?? "")
+      .replace(/\s+/g, " ")
+      .split(/(`[^`]+`)/)
+      .map((p, i) =>
+        i % 2
+          ? p
+          : p
+              .split(/(https?:\/\/[^\s<>"]*[^\s<>".,;:!?)'])/)
+              .map((q, j) => (j % 2 ? mdCode(q) : mdText(q)))
+              .join(""),
+      )
+      .join("");
   L.push(`# SEO report: ${site.name}`, "");
   L.push(
     [
@@ -1191,12 +1212,6 @@ function markdown() {
     for (const a of areas)
       L.push(`| ${mdEsc(a.name)} | ${a.value} | ${a.top.length} | ${mdEsc(a.top[0]?.title || "All checks pass")} |`);
     L.push("");
-    // Third-party text: URLs in code spans, anchor text with Markdown and HTML characters backslash-escaped.
-    const mdCode = s => "`" + String(s ?? "").replace(/[`\r\n]/g, " ") + "`";
-    const mdText = s =>
-      String(s ?? "")
-        .replace(/\s+/g, " ")
-        .replace(/[\\`*_[\]<>]/g, "\\$&");
     if (bingLinks || linkCheckLine) L.push(`## Links from other sites${bingLinks ? " (Bing)" : ""}`, "");
     if (linkCheckLine)
       L.push(
@@ -1277,7 +1292,7 @@ function markdown() {
       L.push("| Where | Detail |", "| --- | --- |");
       for (const e of f.evidence)
         L.push(
-          `| ${mdEsc([e.url, e.file && `\`${e.file}${e.line ? ":" + e.line : ""}\``].filter(Boolean).join(" "))} | ${mdEsc(e.detail || "")} |`,
+          `| ${mdEsc([e.url && mdCode(e.url), e.file && `\`${e.file}${e.line ? ":" + e.line : ""}\``].filter(Boolean).join(" "))} | ${mdEsc(mdSafe(e.detail))} |`,
         );
       if (f.count > f.evidence.length) L.push("", `${f.count - f.evidence.length} more cases not listed.`);
       L.push("");

@@ -109,7 +109,7 @@ Status: Open · Area: Interactive tools · Rule: TOOL-05 · Cases: 1240
 
 | Where | Detail |
 | --- | --- |
-| https://security.example/r/8f2k1/ | 200, no robots meta, no X-Robots-Tag |
+| `https://security.example/r/8f2k1/` | 200, no robots meta, no X-Robots-Tag |
 | `src/app/r/[id]/page.tsx:12` | metadata has no robots field |
 
 1238 more cases not listed.
@@ -128,7 +128,7 @@ Search Console: 120 clicks · 9,800 impressions (last 3 months) on `/tools/mx-lo
 
 | Where | Detail |
 | --- | --- |
-| https://security.example/tools/mx-lookup/ | 78% shared with /tools/txt-lookup/ |
+| `https://security.example/tools/mx-lookup/` | 78% shared with /tools/txt-lookup/ |
 | `src/data/tools/dns.ts:8` | intro: `Look up the ${type} records for any domain…` |
 
 416 more cases not listed.
@@ -145,7 +145,7 @@ Status: Open · Area: Crawling & indexing · Rule: CRAWL-05
 
 | Where | Detail |
 | --- | --- |
-| https://security.example/seo-supervisor-404-probe-x1/ | 200, x-nextjs-postponed: 1 |
+| `https://security.example/seo-supervisor-404-probe-x1/` | 200, x-nextjs-postponed: 1 |
 
 ### F-008 · Decision · robots.txt blocks OAI-SearchBot and PerplexityBot
 
@@ -167,7 +167,7 @@ Recommended: Block training only, so the tools can still be cited in AI answers.
 
 | Where | Detail |
 | --- | --- |
-| https://security.example/robots.txt | User-agent: OAI-SearchBot / Disallow: / |
+| `https://security.example/robots.txt` | User-agent: OAI-SearchBot / Disallow: / |
 
 ### F-007 · Medium · 14 titles are longer than 60 characters
 
@@ -183,7 +183,7 @@ Search Console: 960 clicks · 31,200 impressions (last 3 months) on `/tools/ssl-
 
 | Where | Detail |
 | --- | --- |
-| https://security.example/tools/ssl-checker/ | 74 chars: SSL Certificate Checker - Free Online SSL Test Tool \| Example Security |
+| `https://security.example/tools/ssl-checker/` | 74 chars: SSL Certificate Checker - Free Online SSL Test Tool \| Example Security |
 
 13 more cases not listed.
 
@@ -199,7 +199,7 @@ Status: Open · Area: Interactive tools · Rule: TOOL-03 · Cases: 9
 
 | Where | Detail |
 | --- | --- |
-| `src/components/tools/DomainInput.tsx:21` | <input placeholder="Enter domain"> |
+| `src/components/tools/DomainInput.tsx:21` | \<input placeholder="Enter domain"\> |
 
 8 more cases not listed.
 
@@ -215,7 +215,7 @@ Status: Open · Area: Trust & security · Rule: TRUST-02
 
 | Where | Detail |
 | --- | --- |
-| https://security.example/.well-known/security.txt | status 404 |
+| `https://security.example/.well-known/security.txt` | status 404 |
 
 ### F-004 · High · The sitemap listed localhost URLs
 
@@ -231,7 +231,7 @@ Status: Fixed · Area: Sitemaps & robots · Rule: MAP-02 · Cases: 214
 
 | Where | Detail |
 | --- | --- |
-| https://security.example/sitemap.xml | <loc>http://localhost:3000/tools/</loc> |
+| `https://security.example/sitemap.xml` | \<loc\>`http://localhost:3000/tools/`\</loc\> |
 
 213 more cases not listed.
 
@@ -251,7 +251,7 @@ Search Console: 960 clicks · 31,200 impressions (last 3 months) on `/tools/ssl-
 
 | Where | Detail |
 | --- | --- |
-| https://security.example/tools/ssl-checker/ | canonical → https://staging.security.example/tools/ssl-checker/ |
+| `https://security.example/tools/ssl-checker/` | canonical → `https://staging.security.example/tools/ssl-checker/` |
 
 51 more cases not listed.
 

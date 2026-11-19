@@ -2,7 +2,10 @@
 // Checks that known backlinks still exist: opens each linking page and looks for an <a href> to the site. Visiting
 // other people's sites is an outside action, so without --yes it's a dry run that visits nothing.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { lookup } from "node:dns/promises";
+import { lookup } from "node:dns";
+import { get as httpGet } from "node:http";
+import { get as httpsGet } from "node:https";
+import { BlockList, isIP } from "node:net";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 import { parseCsv } from "./lib/csv.mjs";
@@ -12,7 +15,9 @@ const USAGE =
 const UA = "seo-supervisor-backlinks",
   MAX = 100,
   AT_ONCE = 4,
-  HOPS = 5;
+  HOPS = 5,
+  MB = 5,
+  CAP = MB * 1024 * 1024;
 class Fail extends Error {}
 const fail = msg => {
   throw new Fail("backlinks: " + msg);
@@ -20,10 +25,31 @@ const fail = msg => {
 const obj = x => (x && typeof x === "object" ? x : null);
 const bare = h => h.toLowerCase().replace(/^www\./, "");
 
-// The same address test as seo-crawl.mjs's isPublic: no private or local IP, no intranet or reserved name.
-const PRIVATE =
-  /^(0\.|10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)|^(::1?|f[cd].*|fe[89ab].*)$/i;
-const privateIp = a => PRIVATE.test(a.replace(/^::ffff:/i, ""));
+// Private, local and reserved addresses: what seo-crawl.mjs's isPublic refuses, plus benchmarking, multicast, reserved
+// and broadcast, NAT64 and IPv4 inside IPv6 (BlockList reads ::ffff:127.0.0.1 as 127.0.0.1). A non-IP counts too.
+const PRIVATE = new BlockList();
+for (const s of [
+  "0.0.0.0/8",
+  "10.0.0.0/8",
+  "100.64.0.0/10",
+  "127.0.0.0/8",
+  "169.254.0.0/16",
+  "172.16.0.0/12",
+  "192.168.0.0/16",
+  "198.18.0.0/15",
+  "224.0.0.0/3",
+  "::/96",
+  "fc00::/7",
+  "fe80::/10",
+  "ff00::/8",
+  "64:ff9b::/96",
+  "64:ff9b:1::/48",
+]) {
+  const [a, n] = s.split("/");
+  PRIVATE.addSubnet(a, +n, isIP(a) === 6 ? "ipv6" : "ipv4");
+}
+const privateIp = a => !isIP(a) || PRIVATE.check(a, isIP(a) === 6 ? "ipv6" : "ipv4");
+// The address: no private IP, no intranet or reserved name. The name's own answer is checked when connecting (guarded).
 const isPublic = u => {
   try {
     const { protocol, hostname: h } = new URL(u);
@@ -37,16 +63,34 @@ const isPublic = u => {
     return false;
   }
 };
-// Also refuses a public name that resolves to a private address; one that doesn't resolve is left for fetch to report.
-// fetch resolves the name again, so an answer that changes in between (DNS rebinding) gets through. Pin the address
-// with a custom dispatcher if that matters.
-const reachable = async u =>
-  isPublic(u) && (await lookup(new URL(u).hostname, { all: true }).catch(() => [])).every(a => !privateIp(a.address));
+// The lookup every request connects with, so the address checked is the one used: a name can't pass a check and then
+// answer differently (DNS rebinding). A name that doesn't resolve fails the visit.
+const guarded = dns => (name, opts, cb) =>
+  dns(name, opts, (err, addr, family) => {
+    const bad = !err && (Array.isArray(addr) ? addr.map(a => a.address) : [addr]).find(privateIp);
+    bad
+      ? cb(
+          Object.assign(new Error(`${name} points at a private or local address (${bad}), so it wasn't visited`), {
+            code: "ENOTPUBLIC",
+          }),
+        )
+      : cb(err, addr, family);
+  });
+const open = (u, opts) =>
+  new Promise((ok, ko) => (u.startsWith("https:") ? httpsGet : httpGet)(u, opts, ok).on("error", ko));
 
-// Each <a href> to the site, as the rel values that hold it back (nofollow, sponsored, ugc); www, the bare domain,
-// http and https are one site. Raw HTML only: links a script adds aren't seen, which is why the fix says to open the
-// page first.
 const ATTR = /([^\s"'=<>/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+// A link through a redirect wrapper (youtube.com/redirect?q=…, l.facebook.com/l.php?u=…) counts for the address it
+// wraps.
+const WRAPS = ["q", "u", "url", "target", "to", "dest"];
+const wrapped = u =>
+  WRAPS.flatMap(k => u.searchParams.getAll(k)).flatMap(v => {
+    try {
+      return [new URL(v)];
+    } catch {
+      return [];
+    }
+  });
 function linksTo(html, base, host) {
   const out = [];
   for (const [tag] of html.replace(/<!--[\s\S]*?-->|<script\b[\s\S]*?<\/script>/gi, "").matchAll(/<a\s[^>]*>/gi)) {
@@ -58,7 +102,10 @@ function linksTo(html, base, host) {
     } catch {
       continue;
     }
-    if (/^https?:$/.test(u.protocol) && bare(u.hostname) === host)
+    if (
+      /^https?:$/.test(u.protocol) &&
+      [u, ...wrapped(u)].some(t => /^https?:$/.test(t.protocol) && bare(t.hostname) === host)
+    )
       out.push(
         (a.rel || "")
           .toLowerCase()
@@ -69,11 +116,40 @@ function linksTo(html, base, host) {
   return out;
 }
 
+// Why a page without the link may not really be gone: truncated, behind a consent screen, built by a script, or naming
+// the site without a link. "" when the page was clearly read.
+// Heuristics on text size and keywords; a headless browser would settle them, at the cost of a dependency.
+function unread(page, cut, moved, host) {
+  if (cut) return `the page is very large: only its first ${MB} MB were read, and the link isn't in them`;
+  const html = page.replace(/<!--[\s\S]*?-->|<(script|style|noscript|template|svg)\b[\s\S]*?<\/\1\s*>/gi, " ");
+  const text = html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&#?\w+;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (
+    (moved && /consent|gdpr|cookie/i.test(new URL(moved).hostname + new URL(moved).pathname)) ||
+    (text.length < 2000 && /\bcookies?\b/i.test(text) && /\b(accept|agree|reject|consent)/i.test(text))
+  )
+    return "it shows a cookie or privacy consent screen instead of the page, so its links couldn't be read";
+  if (
+    text.length < 200 ||
+    /<(\w+)\b[^>]*\bid\s*=\s*["']?(root|app|__next|__nuxt|react-root|app-root|__pws_root__)(?=["'\s>])[^>]*>\s*<\/\1>/i.test(
+      html,
+    )
+  )
+    return "it looks built by JavaScript: its HTML has almost no content, so its links couldn't be read";
+  if (!/<a\s/i.test(html)) return "the page has no links at all in its HTML, so a script probably adds them";
+  if (new RegExp(`(^|[^\\w.-])(www\\.)?${host.replace(/\./g, "\\.")}(?![\\w-]|\\.\\w)`, "i").test(page))
+    return `the page mentions ${host} but no link to it was found (a script may add it), so it couldn't be confirmed`;
+  return "";
+}
+
 // pinnedGet follows redirects by hand so every hop gets the public-address check. robots.txt isn't read: each visit is
 // one requested page, like opening it in a browser, not a crawl.
-async function visit(url, host, allow, timeout) {
+async function visit(url, host, allow, timeout, lookup) {
   const signal = AbortSignal.timeout(timeout),
-    headers = { "user-agent": UA, accept: "text/html,application/xhtml+xml" };
+    opts = { signal, lookup, headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml" } };
   const no = reason => ({ state: "unreachable", reason });
   let u = url;
   try {
@@ -84,39 +160,56 @@ async function visit(url, host, allow, timeout) {
             ? `it redirects to ${u}, which isn't a public web address, so that wasn't visited`
             : "isn't a public web address, so it wasn't visited",
         );
-      const r = await fetch(u, { redirect: "manual", signal, headers });
-      const to = r.status >= 300 && r.status < 400 && r.headers.get("location");
+      const r = await open(u, opts),
+        status = r.statusCode,
+        ok = status >= 200 && status < 300;
+      const to = status >= 300 && status < 400 && r.headers.location,
+        type = (r.headers["content-type"] || "").split(";")[0].trim();
+      if (to || !ok || (type && !/html/i.test(type))) r.destroy();
       if (to) {
-        await r.body?.cancel();
         u = new URL(to, u).href;
         continue;
       }
-      const type = (r.headers.get("content-type") || "").split(";")[0].trim();
-      if (!r.ok || (type && !/html/i.test(type))) await r.body?.cancel();
-      if (r.status === 404 || r.status === 410)
+      if (status === 404 || status === 410)
         return {
           state: "gone",
-          reason: `the page answered ${r.status}: ${r.status === 404 ? "it no longer exists" : "it was removed"}`,
+          reason: `the page answered ${status}: ${status === 404 ? "it no longer exists" : "it was removed"}`,
         };
-      if (!r.ok)
+      if (!ok)
         return no(
-          `the site answered ${r.status}${r.status === 401 || r.status === 403 ? ", turning the visit away" : r.status >= 500 ? ", an error on their side" : ""}`,
+          `the site answered ${status}${status === 401 || status === 403 ? ", turning the visit away" : status >= 500 ? ", an error on their side" : ""}`,
         );
       if (type && !/html/i.test(type)) return no(`it isn't a web page (${type}), so its links couldn't be read`);
-      const links = linksTo(await r.text(), u, host);
-      if (!links.length)
-        return {
-          state: "gone",
-          reason: `the page loads but no longer links to your site${u !== url ? ` (it now redirects to ${u})` : ""}`,
-        };
-      return { state: "live", rel: links.every(l => l.length) ? [...new Set(links.flat())].join(" ") : null };
+      const chunks = [];
+      let n = 0;
+      for await (const c of r) {
+        chunks.push(c);
+        if ((n += c.length) > CAP) break;
+      }
+      const page = Buffer.concat(chunks).toString();
+      if (!type && !/<!doctype html|<html[\s>]/i.test(page.slice(0, 1024)))
+        return no(
+          "it didn't say what kind of file it is and doesn't look like a web page, so its links couldn't be read",
+        );
+      const links = linksTo(page, u, host);
+      if (links.length)
+        return { state: "live", rel: links.every(l => l.length) ? [...new Set(links.flat())].join(" ") : null };
+      const why = unread(page, n > CAP, u !== url && u, host);
+      return why
+        ? no(why)
+        : {
+            state: "gone",
+            reason: `the page loads but no longer links to your site${u !== url ? `; it now redirects to ${u}` : ""}`,
+          };
     }
     return no(`it redirects more than ${HOPS} times`);
   } catch (e) {
     return no(
-      e.name === "TimeoutError"
+      signal.aborted
         ? `no answer within ${timeout / 1000} seconds`
-        : `couldn't connect (${e.cause?.code || e.message})`,
+        : e.code === "ENOTPUBLIC"
+          ? e.message
+          : `couldn't connect (${e.code || e.cause?.code || e.message})`,
     );
   }
 }
@@ -140,16 +233,22 @@ const pick = urls => {
 };
 const capNote = extra => `${extra} more linking page(s) weren't checked: at most ${MAX} are visited per run.`;
 
-export async function checkBacklinks(urls, site, { allow = reachable, timeout = 15000 } = {}) {
+// URLs in the finding's text go in code spans, so in Markdown another site's address can't become a link with
+// misleading text.
+const code = s => s.replace(/https?:\/\/\S+/g, u => "`" + u.replace(/`/g, "%60") + "`");
+
+// `allow` vets each address before a request; `dns` (dns.lookup's signature) resolves the address checked and used.
+export async function checkBacklinks(urls, site, { allow = isPublic, timeout = 15000, dns = lookup } = {}) {
   const host = bare(new URL(site).hostname),
     { list, extra } = pick(urls),
-    results = [];
+    results = [],
+    connect = guarded(dns);
   let next = 0;
   await Promise.all(
     Array.from({ length: Math.min(AT_ONCE, list.length) }, async () => {
       while (next < list.length) {
         const i = next++;
-        results[i] = { url: list[i], ...(await visit(list[i], host, allow, timeout)) };
+        results[i] = { url: list[i], ...(await visit(list[i], host, allow, timeout, connect)) };
       }
     }),
   );
@@ -174,7 +273,7 @@ export async function checkBacklinks(urls, site, { allow = reachable, timeout = 
           severity: "low",
           category: "Launch & monitoring",
           title: `${gone.length} known link(s) from other sites are gone`,
-          what: `${gone.length === 1 ? "Found on" : `${gone.length} cases, for example`} ${gone[0].url} (${gone[0].reason}).`,
+          what: `${gone.length === 1 ? "Found on" : `${gone.length} cases, for example`} ${code(gone[0].url)} (${code(gone[0].reason)}).`,
           why: "Links from other sites help search engines find your pages and trust them. After a redesign or a move, links quietly break or get removed, and what they brought goes with them.",
           fix: "Open each page in a browser first to confirm the link is really gone. If the page still mentions you, ask the site to put the link back or update it. If the link pointed at a page of yours that moved or no longer works, redirect that old address to the closest live page with a 301, then ask the site to update the link.",
           count: gone.length,
@@ -289,7 +388,7 @@ async function main(argv) {
   return 0;
 }
 
-// Not process.exit(): exiting while fetch's sockets close crashes Node on Windows.
+// Exit by setting the code, not process.exit(): exiting while sockets close crashes Node on Windows.
 if (isMain(import.meta.url)) {
   process.exitCode = await main(process.argv.slice(2)).then(null, e => {
     if (!(e instanceof Fail)) throw e;

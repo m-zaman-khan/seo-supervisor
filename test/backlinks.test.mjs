@@ -74,11 +74,14 @@ test("a link to any page of the site counts, www or not and http or https; nofol
   }
 });
 
+// Enough text to read as a real article.
+const ARTICLE = `<p>${"A long post about something else entirely, with enough words to read like a real page. ".repeat(6)}</p>`;
+
 test("gone means the page loads without a link, or answers 404 or 410, and the reason says which", async () => {
   const srv = await sites(
     {
       "/nolink": html(
-        `<a href="https://shop.example.com/">a subdomain</a> <a href="https://notexample.com/">another site</a> <!-- <a href="https://example.com/">commented out</a> --><script>var s = '<a href="https://example.com/">';</script>`,
+        `${ARTICLE}<a href="https://shop.example.com/">a subdomain</a> <a href="https://notexample.com/">another site</a>`,
       ),
     },
     { status: { "/404": 404, "/410": 410 } },
@@ -136,6 +139,137 @@ test("a page that fails to load is 'couldn't check', never gone", async () => {
     assert.match(why[urls[2]], /no answer within 0\.3 seconds/);
     assert.match(why[urls[3]], /application\/pdf/);
     assert.match(why["http://127.0.0.1:1/"], /couldn't connect/);
+  } finally {
+    await srv.close();
+  }
+});
+
+test("a huge page is read only up to 5 MB, and one that doesn't say what it is is read as a page only when it looks like one", async () => {
+  let sent = 0;
+  const MB = 1024 * 1024,
+    chunk = Buffer.alloc(64 * 1024, "words and ");
+  const srv = await serve(tmp(), {
+    before(req, res) {
+      const path = new URL(req.url, "http://x").pathname;
+      if (path === "/sniffed") {
+        res.writeHead(200).end(`<!DOCTYPE html><a href="${SITE}/">us</a>`);
+        return true;
+      }
+      res.writeHead(200, path === "/big.html" ? { "Content-Type": "text/html" } : {}).on("error", () => {});
+      res.write(path === "/big.html" ? `<!doctype html><title>t</title><p>` : "");
+      let left = 64 * MB;
+      const pump = () => {
+        while (left > 0 && !res.destroyed) {
+          left -= chunk.length;
+          sent += chunk.length;
+          if (!res.write(chunk)) return;
+        }
+        res.end();
+      };
+      res.on("drain", pump);
+      pump();
+      return true;
+    },
+  });
+  try {
+    const urls = ["/untyped", "/big.html", "/sniffed"].map(p => srv.url + p);
+    const { backlinks } = await checkBacklinks(urls, SITE, anyAddress);
+    assert.equal(backlinks.live, 1, "a page without a type that starts like HTML is read");
+    assert.deepEqual(backlinks.gone, []);
+    const why = Object.fromEntries(backlinks.unreachable.map(u => [u.url, u.reason]));
+    assert.match(why[urls[0]], /didn't say what kind of file it is/);
+    assert.match(why[urls[1]], /only its first 5 MB were read/);
+    assert.ok(sent < 40 * MB, `stopped reading early (${Math.round(sent / MB)} MB sent)`);
+  } finally {
+    await srv.close();
+  }
+});
+
+test("a name is checked at the address the visit connects to: a private answer, a mapped or reserved one, or a failed lookup isn't visited", async () => {
+  const srv = await sites({ "/": html(`<a href="${SITE}/">us</a>`) }),
+    port = new URL(srv.url).port;
+  const answers = {
+    "rebind.example": "127.0.0.1",
+    "mapped.example": "::ffff:127.0.0.1",
+    "nat64.example": "64:ff9b::7f00:1",
+    "bench.example": "198.19.0.1",
+    "multicast.example": "224.0.0.1",
+    "reserved.example": "240.0.0.1",
+    "broadcast.example": "255.255.255.255",
+  };
+  const asked = [];
+  // Stands in for DNS: answers what a name changed to after the address check, the way rebinding does.
+  const dns = (name, opts, cb) => {
+    asked.push(name);
+    const a = answers[name],
+      family = a?.includes(":") ? 6 : 4;
+    if (!a) return cb(Object.assign(new Error(`getaddrinfo ENOTFOUND ${name}`), { code: "ENOTFOUND" }));
+    opts.all ? cb(null, [{ address: a, family }]) : cb(null, a, family);
+  };
+  try {
+    const urls = [...Object.keys(answers), "nowhere.example"].map(h => `http://${h}:${port}/`);
+    const { backlinks } = await checkBacklinks(urls, SITE, { dns, timeout: 3000 });
+    assert.equal(srv.hits.length, 0, "nothing reached the local server");
+    assert.equal(backlinks.live + backlinks.gone.length, 0);
+    assert.deepEqual(
+      [...new Set(asked)].sort(),
+      urls.map(u => new URL(u).hostname).sort(),
+      "each name is looked up for the connection itself",
+    );
+    const why = Object.fromEntries(backlinks.unreachable.map(u => [new URL(u.url).hostname, u.reason]));
+    for (const h of Object.keys(answers))
+      assert.match(
+        why[h],
+        new RegExp(
+          `${h.replace(".", "\\.")} points at a private or local address \\(${answers[h].replace(/\./g, "\\.")}\\), so it wasn't visited`,
+        ),
+      );
+    assert.match(why["nowhere.example"], /couldn't connect \(ENOTFOUND\)/);
+  } finally {
+    await srv.close();
+  }
+});
+
+test("a page whose links couldn't be read is 'couldn't check', not gone; a link through a redirect wrapper counts", async () => {
+  const srv = await sites({
+    "/app": html(`<script src="/main.js"></script><div id="root"></div>`),
+    "/bare": html(`<noscript>${ARTICLE}</noscript><div class="shell"></div>`),
+    "/consent": html(
+      `<h1>Before you continue</h1><p>We use cookies and data to deliver and maintain our services, measure audiences and show ads. If you choose Accept all, we will also use cookies to develop new services.</p><form><button>Reject all</button><button>Accept all</button></form><a href="/privacy">Privacy Policy</a>`,
+    ),
+    "/nolinks": html(ARTICLE),
+    "/mention": html(`${ARTICLE}<p>Thanks to www.example.com for the tip.</p><a href="/about">About</a>`),
+    "/scripted": html(
+      `${ARTICLE}<a href="/about">About</a><!-- <a href="https://example.com/">commented out</a> --><script>var s = '<a href="https://example.com/">';</script>`,
+    ),
+    "/wrapped": html(
+      `${ARTICLE}<a rel="nofollow" href="https://www.youtube.com/redirect?event=video&amp;q=https%3A%2F%2Fwww.example.com%2Fpricing">us</a>`,
+    ),
+    "/wrapped-elsewhere": html(
+      `${ARTICLE}<a href="https://l.example.net/out?u=https%3A%2F%2Fother.example%2F&amp;to=not-a-url">them</a>`,
+    ),
+  });
+  try {
+    const paths = ["/app", "/bare", "/consent", "/nolinks", "/mention", "/scripted", "/wrapped", "/wrapped-elsewhere"];
+    const { backlinks } = await checkBacklinks(
+      paths.map(p => srv.url + p),
+      SITE,
+      anyAddress,
+    );
+    assert.equal(backlinks.live, 1);
+    assert.deepEqual(backlinks.nofollow, [{ url: srv.url + "/wrapped", rel: "nofollow" }], "the wrapper's rel is kept");
+    assert.deepEqual(
+      backlinks.gone.map(g => g.url),
+      [srv.url + "/wrapped-elsewhere"],
+      "a wrapper to another site isn't a link",
+    );
+    const why = Object.fromEntries(backlinks.unreachable.map(u => [new URL(u.url).pathname, u.reason]));
+    assert.match(why["/app"], /built by JavaScript/);
+    assert.match(why["/bare"], /built by JavaScript/);
+    assert.match(why["/consent"], /cookie or privacy consent screen/);
+    assert.match(why["/nolinks"], /has no links at all/);
+    assert.match(why["/mention"], /mentions example\.com but no link to it was found/);
+    assert.match(why["/scripted"], /mentions example\.com but no link to it was found/);
   } finally {
     await srv.close();
   }
@@ -333,6 +467,60 @@ test("the report's links section says how many known links are still there and l
     }
     assert.equal(r.html, none.html, `junk ${JSON.stringify(junk)} adds nothing`);
     assert.equal(r.md, none.md);
+  }
+});
+
+test("a linking page's address can't become a link with made-up text in the Markdown report", async () => {
+  const PHISH = "/[Verify your account](https://phish.example/)";
+  const srv = await sites({}, { status: { [new URL("http://x" + PHISH).pathname]: 404 } });
+  try {
+    const { backlinks, findings } = await checkBacklinks([srv.url + PHISH], SITE, anyAddress);
+    assert.equal(findings.length, 1);
+    const evil = "https://evil.example/[Verify your account](https://phish.example/)";
+    const other = {
+      id: "X-001",
+      check: "x",
+      rule: "LAUNCH-05",
+      severity: "low",
+      category: "Launch & monitoring",
+      title: "Another check",
+      what: "w",
+      why: "y",
+      fix: "f",
+      status: "open",
+      count: 2,
+      evidence: [
+        { url: evil, detail: `it now redirects to ${evil}, see \`kept | code\` <img src=x onerror=alert(1)>` },
+        { url: "https://ok.example/a|b", detail: "[Verify](https://phish.example/)" },
+      ],
+    };
+    const { md } = await render(d => {
+      d.backlinks = backlinks;
+      d.findings.push(...findings, other);
+    });
+    assert.ok(
+      md.includes(
+        `**What's wrong.** Found on \`${srv.url}/[Verify%20your%20account](https://phish.example/)\` (the page answered 404: it no longer exists).`,
+      ),
+      "the address in the finding is a code span",
+    );
+    assert.doesNotMatch(
+      md.replace(/`[^`\n]*`/g, ""),
+      /phish\.example/,
+      "outside code spans phish.example never appears, so it can't be a link",
+    );
+    assert.ok(
+      md.includes(
+        "| `https://evil.example/[Verify your account](https://phish.example/)` | it now redirects to `https://evil.example/[Verify` your account\\](`https://phish.example/`), see `kept \\| code` \\<img src=x onerror=alert(1)\\> |",
+      ),
+      "the agent's own code spans stay",
+    );
+    assert.ok(
+      md.includes("| `https://ok.example/a\\|b` | \\[Verify\\](`https://phish.example/`) |"),
+      "a | can't split the table",
+    );
+  } finally {
+    await srv.close();
   }
 });
 
