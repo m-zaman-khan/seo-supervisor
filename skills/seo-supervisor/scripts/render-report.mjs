@@ -236,13 +236,25 @@ const fmtDate = d => {
   return isNaN(x) ? String(d) : x.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 };
 const num = n => Number(n).toLocaleString("en-US");
-// Search traffic by path, one line on findings and plan rows: Search Console (`traffic`, gsc-import.mjs or google.mjs),
-// Bing (`bing.traffic`, connect-keys.mjs) and GA4 organic visits (`analytics`, google.mjs), each part only when
-// present.
+// Search traffic by path, one line on findings and plan rows: Search Console (`traffic`, gsc-import.mjs or
+// google.mjs), Bing (`bing.traffic`, connect-keys.mjs), GA4 organic visits (`analytics`, google.mjs) and the visits
+// from search engines in Matomo and PostHog (`matomo.traffic`, `posthog.traffic`, connect-keys.mjs). Each part only
+// when present.
 const obj = x => (x && typeof x === "object" ? x : null);
 const traffic = obj(raw.traffic),
   bing = obj(raw.bing),
-  analytics = obj(raw.analytics);
+  analytics = obj(raw.analytics),
+  matomo = obj(raw.matomo),
+  posthog = obj(raw.posthog);
+// Matomo and PostHog: a page counts only with visits above zero, and dates show only when they are dates.
+const visitsOf = t => {
+  const n = Number(t?.visits);
+  return n > 0 ? n : 0;
+};
+const isoDates = x =>
+  [x?.period?.from, x?.period?.to].every(d => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    ? `${x.period.from} to ${x.period.to}`
+    : "";
 const byPath = (map, u) => {
   if (!obj(map) || !u) return null;
   let x;
@@ -258,14 +270,20 @@ const bingDates = bing?.period?.from ? `${bing.period.from} to ${bing.period.to}
 const trafficFor = (u, plain = false) => {
   const g = byPath(traffic, u),
     b = byPath(bing?.traffic, u),
-    a = byPath(analytics, u);
+    a = byPath(analytics, u),
+    m = visitsOf(byPath(matomo?.traffic, u)),
+    p = visitsOf(byPath(posthog?.traffic, u));
   const parts = [
-    g && `${plain && !b && !a ? "" : "Search Console: "}${num(g.clicks)} clicks · ${num(g.impressions)} impressions`,
+    g &&
+      `${plain && !b && !a && !m && !p ? "" : "Search Console: "}${num(g.clicks)} clicks · ${num(g.impressions)} impressions`,
     b && `Bing: ${num(b.clicks)} clicks · ${num(b.impressions)} impressions`,
     a && `Google Analytics: ${plural(a.sessions, "organic visit")}`,
+    m && `Matomo: ${plural(m, "organic visit")}`,
+    p && `PostHog: ${plural(p, "organic visit")}`,
   ].filter(Boolean);
-  // One period per line: Google's, shared by Search Console and GA4. Bing's dates are on its own Overview line.
-  const when = g || a ? raw.trafficPeriod : bingDates;
+  // One period per line: Google's, shared by Search Console and GA4 (connect-keys reads Matomo and PostHog for the
+  // same days), else Matomo's or PostHog's. Bing's dates are on its own Overview line.
+  const when = g || a ? raw.trafficPeriod : m ? isoDates(matomo) : p ? isoDates(posthog) : bingDates;
   return parts.length ? `${parts.join(" · ")}${when ? ` (${String(when).toLowerCase()})` : ""}` : null;
 };
 // The first evidence page with traffic.
@@ -277,9 +295,22 @@ const trafficHtml = f => {
   const t = trafficOf(f);
   return t ? `<p class="quiet">${esc(t.text)} on <code>${esc(t.path)}</code></p>` : "";
 };
-// Site-wide totals for the Overview: Bing's clicks, impressions and linked pages, and GA4's organic visits. Third-party
-// data, escaped where shown.
+// Site-wide totals for the Overview: Bing's clicks, impressions and linked pages, and GA4's, Matomo's and PostHog's
+// organic visits. Third-party data, escaped where shown.
 const sum = (map, k) => Object.values(obj(map) || {}).reduce((s, t) => s + (Number(t?.[k]) || 0), 0);
+const visitsLine = (name, x) => {
+  const counts = Object.values(obj(x?.traffic) || {})
+      .map(visitsOf)
+      .filter(Boolean),
+    d = isoDates(x);
+  return (
+    counts.length &&
+    `${name}: ${plural(
+      counts.reduce((s, n) => s + n, 0),
+      "organic visit",
+    )} to ${plural(counts.length, "landing page")}${d ? ` (${d})` : ""}`
+  );
+};
 const linked = Array.isArray(bing?.backlinks?.pages) ? bing.backlinks.pages.filter(obj) : [];
 const topLinked = [...linked].sort((a, b) => (Number(b.count) || 0) - (Number(a.count) || 0)).slice(0, 10);
 const linkSample = (Array.isArray(bing?.backlinks?.sample) ? bing.backlinks.sample.filter(obj) : []).slice(0, 5);
@@ -302,6 +333,8 @@ function searchLines() {
     bits.length && `Bing${bingDates ? ` (${bingDates})` : ""}: ${bits.join(" · ")}`,
     ga &&
       `Google Analytics: ${plural(sum(analytics, "sessions"), "organic visit")} to ${plural(ga, "landing page")}${raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : ""}`,
+    visitsLine("Matomo", matomo),
+    visitsLine("PostHog", posthog),
   ].filter(Boolean);
 }
 const linkCount = p => plural(Number(p.count) || 0, "link");

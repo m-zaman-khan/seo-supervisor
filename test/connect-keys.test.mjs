@@ -4,6 +4,7 @@ import { readFileSync, readdirSync, existsSync, statSync, writeFileSync, mkdirSy
 import { join } from "node:path";
 import { SCRIPTS, node, tmp } from "./helpers.mjs";
 import { serve } from "./serve.mjs";
+import { fetchKeys } from "../skills/seo-supervisor/scripts/connect-keys.mjs";
 
 const CLI = join(SCRIPTS, "connect-keys.mjs");
 const SITE = "https://www.example.com";
@@ -16,6 +17,12 @@ const envFor = (home, srv, extra = {}) => ({
   BING_WEBMASTER_KEY: "",
   OPENPAGERANK_KEY: "",
   AHREFS_KEY: "",
+  MATOMO_TOKEN_AUTH: "",
+  MATOMO_URL: "",
+  MATOMO_SITE_ID: "",
+  POSTHOG_PERSONAL_API_KEY: "",
+  POSTHOG_HOST: "",
+  POSTHOG_PROJECT_ID: "",
   ...(srv
     ? {
         BING_WEBMASTER_ENDPOINT: srv.url + "/bing",
@@ -72,6 +79,22 @@ const BING = {
   },
 };
 
+// Matomo's flat entry-page rows and PostHog's [host, path, visits] rows, with the cases fetch must leave out.
+const MATOMO_ROWS = [
+  { label: "/pricing", url: "https://www.example.com/pricing", entry_nb_visits: 40, nb_visits: 55 },
+  { label: "/pricing", url: "http://example.com/pricing?utm_source=news", entry_nb_visits: 2 },
+  { label: "/index", url: "https://www.example.com/", entry_nb_visits: 120 },
+  { label: "/about", url: "https://www.example.com/about", nb_visits: 9 },
+  { label: "/x", url: "https://elsewhere.example.net/x", entry_nb_visits: 7 },
+  { label: "Others", entry_nb_visits: 30 },
+];
+const POSTHOG_ROWS = [
+  ["example.com", "/pricing", 40],
+  ["example.com", "/", 120],
+  ["elsewhere.example.net", "/x", 7],
+  ["example.com", null, 3],
+];
+
 // One local server plays Bing Webmaster, Open PageRank, Ahrefs, Matomo (/matomo/) and PostHog (/posthog/).
 // `reply` overrides a route: (req, body) => [status, json or an HTML string, headers].
 async function fake({ bing = BING, reply = {} } = {}) {
@@ -86,9 +109,19 @@ async function fake({ bing = BING, reply = {} } = {}) {
         const u = new URL(req.url, "http://x"),
           route = u.pathname.split("/")[1],
           method = u.pathname.split("/")[2];
-        hits.push({ route, method, query: u.searchParams, headers: req.headers, body: body && JSON.parse(body) });
-        const send = (status, json) =>
-          res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(json));
+        hits.push({
+          route,
+          method,
+          verb: req.method,
+          path: u.pathname,
+          query: u.searchParams,
+          headers: req.headers,
+          body: body && (/json/.test(req.headers["content-type"]) ? JSON.parse(body) : body),
+        });
+        const send = (status, x, headers = {}) =>
+          res
+            .writeHead(status, { "content-type": typeof x === "string" ? "text/html" : "application/json", ...headers })
+            .end(typeof x === "string" ? x : JSON.stringify(x));
         if (reply[route]) return send(...reply[route](req, body));
         if (route === "bing") {
           const r = bing[method];
@@ -119,6 +152,9 @@ async function fake({ bing = BING, reply = {} } = {}) {
               targets: JSON.parse(body).targets.map((t, i) => ({ target: t, domain_rating: 60 - 10 * i })),
             },
           });
+        if (route === "matomo") return send(200, MATOMO_ROWS);
+        if (route === "posthog")
+          return send(200, { columns: ["host", "path", "visits"], results: POSTHOG_ROWS, hasMore: false });
         send(404, {});
       });
       return true;
@@ -156,7 +192,7 @@ test("set, status and remove keep keys in the home folder, private, and never in
 
   await assert.rejects(
     cli(["set", "moz", "x"], env),
-    e => e.code === 2 && /bing, openpagerank or ahrefs/.test(e.stderr),
+    e => e.code === 2 && /bing, openpagerank, ahrefs, matomo or posthog/.test(e.stderr),
   );
   await assert.rejects(cli(["set"], env), e => e.code === 2 && /usage/i.test(e.stderr));
 });
@@ -178,11 +214,11 @@ test("names that only exist on every object, like toString, aren't services", as
   const env = envFor(tmp());
   await assert.rejects(
     cli(["set", "toString", "k-123456"], env),
-    e => e.code === 2 && /bing, openpagerank or ahrefs/.test(e.stderr),
+    e => e.code === 2 && /bing, openpagerank, ahrefs, matomo or posthog/.test(e.stderr),
   );
   await assert.rejects(
     cli(["guide", "constructor"], env),
-    e => e.code === 2 && /bing, openpagerank or ahrefs/.test(e.stderr),
+    e => e.code === 2 && /bing, openpagerank, ahrefs, matomo or posthog/.test(e.stderr),
   );
 });
 
@@ -450,7 +486,7 @@ test("a 401 says the key is wrong and where to get a new one", async () => {
   }
 });
 
-test("fetch without any key set writes an empty result that lists all three under Limits", async () => {
+test("fetch without any key set writes an empty result that lists every service under Limits", async () => {
   const home = tmp(),
     srv = await fake();
   try {
@@ -458,7 +494,7 @@ test("fetch without any key set writes an empty result that lists all three unde
     assert.equal(srv.hits.length, 0);
     const o = output(home);
     assert.equal(o.bing, null);
-    assert.equal(o.notChecked.length, 3);
+    assert.equal(o.notChecked.length, 5);
     assert.ok(o.notChecked.every(n => /connect-keys\.mjs guide/.test(n.reason)));
   } finally {
     await srv.close();
@@ -474,4 +510,285 @@ test("a broken keys.json is reported, not overwritten", async () => {
     e => e.code === 2 && /keys\.json/.test(e.stderr),
   );
   assert.equal(readFileSync(join(home, ".seo-supervisor", "keys.json"), "utf8"), "{ not json");
+});
+
+// ---------- Matomo and PostHog ----------
+const day = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+const savedFile = home => JSON.parse(readFileSync(join(home, ".seo-supervisor", "keys.json"), "utf8"));
+const MATOMO_ENV = srv => ({
+  MATOMO_URL: srv.url + "/matomo/",
+  MATOMO_SITE_ID: "3",
+  MATOMO_TOKEN_AUTH: "matomo-token-0001",
+});
+const POSTHOG_ENV = srv => ({
+  POSTHOG_HOST: srv.url + "/posthog/",
+  POSTHOG_PROJECT_ID: "12345",
+  POSTHOG_PERSONAL_API_KEY: "phx_posthog_key_0001",
+});
+
+test("set matomo asks for the address and site ID in plain view, then the token, and status hides only the token", async () => {
+  const home = tmp(),
+    env = envFor(home);
+  await cliIn(["set", "matomo"], env, "analytics.example.org/index.php?module=CoreHome\n 3 \nmatomo-token-abcd1234\n");
+  assert.deepEqual(savedFile(home), {
+    matomo: { url: "https://analytics.example.org/", siteId: "3", key: "matomo-token-abcd1234" },
+  });
+  const s = (await cli(["status"], env)).stdout;
+  assert.match(s, /Matomo: set \(…1234, saved in [^)]+\) for site ID 3 at https:\/\/analytics\.example\.org\//);
+  assert.doesNotMatch(s, /matomo-token-abcd1234/);
+  // The address and site ID can be options, so only the token is typed.
+  await cliIn(
+    ["set", "matomo", "--url", "https://stats.example.org/matomo/", "--site-id", "7"],
+    env,
+    "second-token-5678\n",
+  );
+  assert.deepEqual(savedFile(home).matomo, {
+    url: "https://stats.example.org/matomo/",
+    siteId: "7",
+    key: "second-token-5678",
+  });
+  await assert.rejects(
+    cliIn(["set", "matomo"], env, "analytics.example.org\nmain site\ntoken-0000\n"),
+    e => e.code === 2 && /site ID is a number/.test(e.stderr),
+  );
+  await assert.rejects(
+    cliIn(["set", "matomo"], env, "http://analytics.example.org\n3\ntoken-0000\n"),
+    e => e.code === 2 && /https:\/\//.test(e.stderr) && /unencrypted/.test(e.stderr),
+  );
+  assert.equal(savedFile(home).matomo.key, "second-token-5678", "a refused set changes nothing");
+});
+
+test("set posthog takes us, eu or an address, and refuses the project key from the tracking code", async () => {
+  const home = tmp(),
+    env = envFor(home);
+  await cliIn(["set", "posthog"], env, "eu\n12345\nphx_secret_key_9876\n");
+  assert.deepEqual(savedFile(home).posthog, {
+    host: "https://eu.posthog.com/",
+    projectId: "12345",
+    key: "phx_secret_key_9876",
+  });
+  await cliIn(["set", "posthog", "--host", "us.i.posthog.com", "--project-id", "777"], env, "phx_other_key_1111\n");
+  assert.equal(
+    savedFile(home).posthog.host,
+    "https://us.posthog.com/",
+    "the tracking code's address becomes the app's",
+  );
+  await assert.rejects(
+    cliIn(["set", "posthog"], env, "us\n12345\nphc_projectkey123\n"),
+    e => e.code === 2 && /personal API key/.test(e.stderr) && /phx_/.test(e.stderr),
+  );
+  const s = (await cli(["status"], env)).stdout;
+  assert.match(s, /PostHog: set \(…1111, saved in [^)]+\) for project ID 777 at https:\/\/us\.posthog\.com\//);
+  assert.doesNotMatch(s, /phx_other_key_1111/);
+});
+
+test("guide matomo and guide posthog say where to find each value, step by step", async () => {
+  const env = envFor(tmp());
+  const m = (await cli(["guide", "matomo"], env)).stdout;
+  for (const re of [
+    /Websites → Manage/,
+    /Personal → Security/,
+    /Auth tokens/,
+    /view access/,
+    /Channel Type/,
+    /node connect-keys\.mjs set matomo(?! <)/,
+    /your own terminal/,
+  ])
+    assert.match(m, re);
+  const p = (await cli(["guide", "posthog"], env)).stdout;
+  for (const re of [
+    /us\.posthog\.com/,
+    /eu\.posthog\.com/,
+    /Personal API keys/,
+    /Query: Read/,
+    /phx_/,
+    /Project ID/,
+    /node connect-keys\.mjs set posthog(?! <)/,
+    /your own terminal/,
+  ])
+    assert.match(p, re);
+});
+
+test("Matomo and PostHog dry runs show the exact requests, without the secrets, and send nothing", async () => {
+  const home = tmp(),
+    srv = await fake();
+  try {
+    const r = await fetchCli(home, srv, { ...MATOMO_ENV(srv), ...POSTHOG_ENV(srv) }, ["--days", "30"]);
+    assert.equal(srv.hits.length, 0);
+    const from = day(32),
+      to = day(3);
+    assert.match(r.stdout, /Matomo: your token \(in the request body, never in the address\) and site ID 3/);
+    assert.ok(
+      r.stdout.includes(
+        `POST ${srv.url}/matomo/index.php?module=API&method=Actions.getEntryPageUrls&idSite=3&period=range&date=${from}%2C${to}&segment=referrerType%3D%3Dsearch`,
+      ),
+    );
+    assert.match(r.stdout, /PostHog: your key and project ID 12345/);
+    assert.ok(r.stdout.includes(`POST ${srv.url}/posthog/api/projects/12345/query/`));
+    assert.match(r.stdout, /\$channel_type = 'Organic Search'/);
+    assert.ok(r.stdout.includes(`'${from}'`) && r.stdout.includes(`'${to}'`));
+    assert.doesNotMatch(r.stdout, /matomo-token-0001|phx_posthog_key_0001|token_auth=/);
+    assert.equal(existsSync(join(home, "keys-out.json")), false);
+    await assert.rejects(fetchCli(home, srv, {}, ["--days", "0"]), e => e.code === 2 && /--days/.test(e.stderr));
+  } finally {
+    await srv.close();
+  }
+});
+
+test("Matomo: search-engine visits by landing page for Google Analytics' period, the token only in the POST body", async () => {
+  const home = tmp(),
+    srv = await fake();
+  try {
+    const r = await fetchCli(home, srv, MATOMO_ENV(srv), ["--yes"]);
+    assert.equal(srv.hits.length, 1);
+    const h = srv.hits[0];
+    assert.equal(h.verb, "POST");
+    assert.equal(h.path, "/matomo/index.php");
+    assert.deepEqual(Object.fromEntries(h.query), {
+      module: "API",
+      method: "Actions.getEntryPageUrls",
+      idSite: "3",
+      period: "range",
+      date: `${day(92)},${day(3)}`,
+      segment: "referrerType==search",
+      flat: "1",
+      filter_limit: "25000",
+      filter_sort_column: "entry_nb_visits",
+      filter_sort_order: "desc",
+      format: "JSON",
+    });
+    assert.equal(new URLSearchParams(h.body).get("token_auth"), "matomo-token-0001");
+    const o = output(home);
+    assert.deepEqual(o.matomo, {
+      period: { from: day(92), to: day(3) },
+      traffic: { "/pricing": { visits: 42 }, "/": { visits: 120 } },
+    });
+    assert.equal(o.posthog, null);
+    assert.match(r.stdout, /Matomo 2 pages/);
+  } finally {
+    await srv.close();
+  }
+});
+
+test("PostHog: organic-search sessions by entry page through the Query API", async () => {
+  const home = tmp(),
+    srv = await fake();
+  try {
+    await fetchCli(home, srv, POSTHOG_ENV(srv), ["--yes"]);
+    assert.equal(srv.hits.length, 1);
+    const h = srv.hits[0];
+    assert.equal(h.verb, "POST");
+    assert.equal(h.path, "/posthog/api/projects/12345/query/");
+    assert.equal(h.headers.authorization, "Bearer phx_posthog_key_0001");
+    assert.equal(h.body.query.kind, "HogQLQuery");
+    const q = h.body.query.query;
+    for (const re of [/FROM sessions/, /\$channel_type = 'Organic Search'/, /\$entry_pathname/, /LIMIT 25000/])
+      assert.match(q, re);
+    assert.ok(q.includes(`'${day(92)}'`) && q.includes(`'${day(3)}'`));
+    assert.deepEqual(output(home).posthog, {
+      period: { from: day(92), to: day(3) },
+      traffic: { "/pricing": { visits: 40 }, "/": { visits: 120 } },
+    });
+  } finally {
+    await srv.close();
+  }
+});
+
+const both = srv => ({
+  matomo: { key: "matomo-token-0001", url: srv.url + "/matomo/", siteId: "3" },
+  posthog: { key: "phx_posthog_key_0001", host: srv.url + "/posthog/", projectId: "12345" },
+});
+test("Matomo and PostHog refusals say what to fix: the token or key, the site or project ID, the address", async () => {
+  const cases = [
+    [
+      () => [
+        401,
+        {
+          result: "error",
+          message: "Unable to authenticate with the provided token. It is either invalid or expired.",
+        },
+      ],
+      /^Matomo didn't accept the token[^\n]*set matomo/,
+      () => [
+        401,
+        {
+          type: "authentication_error",
+          code: "authentication_failed",
+          detail: "Personal API key found in request Authorization header is invalid.",
+        },
+      ],
+      /^PostHog didn't accept the key[^\n]*other PostHog region/,
+    ],
+    [
+      () => [
+        200,
+        {
+          result: "error",
+          message: "You can't access this resource as it requires 'view' access for the website id = 3.",
+        },
+      ],
+      /^Matomo[^\n]*site ID[^\n]*Websites → Manage/,
+      () => [
+        403,
+        { type: "authentication_error", code: "permission_denied", detail: "You don't have access to the project." },
+      ],
+      /^PostHog[^\n]*project ID[^\n]*Settings → Project/,
+    ],
+    [
+      () => [
+        200,
+        {
+          result: "error",
+          message:
+            "The Segment you requested has not yet been created in the Segment Editor and so the report data has not been pre-processed.",
+        },
+      ],
+      /^Matomo[^\n]*segment[^\n]*Channel Type/,
+      () => [
+        403,
+        {
+          type: "authentication_error",
+          code: "permission_denied",
+          detail: "API key missing required scope 'query:read'",
+        },
+      ],
+      /^PostHog[^\n]*Query Read/,
+    ],
+    [
+      () => [200, "<!doctype html><title>Example</title>"],
+      /^Matomo: 127\.0\.0\.1:\d+ didn't answer like Matomo/,
+      () => [404, "<!doctype html><h1>Not found</h1>"],
+      /^PostHog: 127\.0\.0\.1:\d+ didn't answer like PostHog/,
+    ],
+    [
+      () => [301, "", { location: "https://matomo.example.org/" }],
+      /^Matomo[^\n]*on to https:\/\/matomo\.example\.org\//,
+      () => [308, "", { location: "https://eu.posthog.com/api/projects/12345/query/" }],
+      /^PostHog[^\n]*on to https:\/\/eu\.posthog\.com\//,
+    ],
+  ];
+  for (const [matomo, mRe, posthog, pRe] of cases) {
+    const srv = await fake({ reply: { matomo, posthog } });
+    try {
+      const { result, problems } = await fetchKeys({ site: SITE, keys: both(srv) });
+      assert.equal(problems.length, 2);
+      assert.match(problems[0], mRe);
+      assert.match(problems[1], pRe);
+      assert.equal(srv.hits.length, 2, "a redirect isn't followed");
+      assert.ok(problems.every(p => !/matomo-token-0001|phx_posthog_key_0001/.test(p)));
+      assert.equal(result.matomo, null);
+      assert.equal(result.posthog, null);
+      assert.ok(result.notChecked.some(n => /^Matomo/.test(n.area) && n.reason === problems[0]));
+    } finally {
+      await srv.close();
+    }
+  }
+});
+
+test("a Matomo or PostHog server that can't be reached says to check the address", async () => {
+  const gone = await serve(tmp());
+  await gone.close();
+  const { problems } = await fetchKeys({ site: SITE, keys: both(gone) });
+  assert.match(problems[0], /^Matomo: couldn't reach 127\.0\.0\.1:\d+[^\n]*address/);
+  assert.match(problems[1], /^PostHog: couldn't reach 127\.0\.0\.1:\d+[^\n]*address/);
 });

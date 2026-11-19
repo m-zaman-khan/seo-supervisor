@@ -248,6 +248,66 @@ test("the Overview shows Bing and Google Analytics totals only when that data ex
   assert.doesNotMatch(bingOnly.html + bingOnly.md, /Google Analytics/);
 });
 
+const MATOMO = () => ({
+  period: { from: "2026-08-20", to: "2026-11-16" },
+  traffic: { "/tools/mx-lookup/": { visits: 31 }, "/": { visits: 5320 } },
+});
+const POSTHOG = () => ({
+  period: { from: "2026-08-20", to: "2026-11-16" },
+  traffic: { "/tools/mx-lookup/": { visits: 1 } },
+});
+
+test("a page with only Matomo data still gets its traffic line, with Matomo's dates", async () => {
+  const { html, md } = await renderEdited(d => {
+    delete d.traffic;
+    delete d.trafficPeriod;
+    d.matomo = MATOMO();
+  });
+  const line = "Matomo: 31 organic visits (2026-08-20 to 2026-11-16)";
+  assert.ok(html.includes(`<p class="quiet">${line} on <code>/tools/mx-lookup/</code></p>`), "on the finding card");
+  assert.ok(f002(md).includes(`\n${line} on \`/tools/mx-lookup/\`\n`), "under the finding in the Markdown");
+  assert.ok(
+    html.includes("<dt>Search traffic</dt><dd>Matomo: 5,320 organic visits (2026-08-20 to 2026-11-16)</dd>"),
+    "labelled in the plan row",
+  );
+});
+
+test("Matomo and PostHog join the traffic line, and get an Overview line each", async () => {
+  const { html, md } = await renderEdited(d => {
+    d.analytics = GA();
+    d.matomo = MATOMO();
+    d.posthog = POSTHOG();
+  });
+  const line =
+    "Search Console: 120 clicks · 9,800 impressions · Google Analytics: 340 organic visits · Matomo: 31 organic visits · PostHog: 1 organic visit (last 3 months)";
+  assert.ok(html.includes(`<p class="quiet">${line} on <code>/tools/mx-lookup/</code></p>`));
+  for (const s of [html, md]) {
+    assert.ok(s.includes("Matomo: 5,351 organic visits to 2 landing pages (2026-08-20 to 2026-11-16)"), "Matomo total");
+    assert.ok(s.includes("PostHog: 1 organic visit to 1 landing page (2026-08-20 to 2026-11-16)"), "PostHog total");
+  }
+});
+
+test("Matomo and PostHog data is guarded: odd values and dates are dropped, never shown raw", async () => {
+  const { html, md } = await renderEdited(d => {
+    delete d.traffic;
+    delete d.trafficPeriod;
+    d.matomo = {
+      period: { from: "<img src=x onerror=alert(1)>", to: "2026-11-16" },
+      traffic: { "/tools/mx-lookup/": { visits: 31 }, "/": { visits: "<b>9</b>" } },
+    };
+    d.posthog = { period: "soon", traffic: "not a map" };
+  });
+  assert.ok(
+    html.includes(`<p class="quiet">Matomo: 31 organic visits on <code>/tools/mx-lookup/</code></p>`),
+    "no dates when they aren't dates",
+  );
+  assert.ok(
+    (html + md).includes("Matomo: 31 organic visits to 1 landing page"),
+    "a page without a number of visits isn't counted",
+  );
+  assert.doesNotMatch(html + md, /<img src=x|<b>9<\/b>|PostHog/);
+});
+
 test("the links list shows Bing's 10 most-linked pages and 5 sample links, escaped", async () => {
   const { html, md } = await renderEdited(d => {
     d.bing = BING();
@@ -294,10 +354,15 @@ test("a report without Search Console, Bing or Analytics data has no traffic or 
       backlinks: { pages: [], sample: [] },
       crawlIssues: null,
     };
+    d.matomo = { period: null, traffic: {} };
+    d.posthog = null;
   });
   assert.equal(empty.html, none.html);
   assert.equal(empty.md, none.md);
-  assert.doesNotMatch(none.html + none.md, /Search Console:|Bing|Google Analytics|Links from other sites/);
+  assert.doesNotMatch(
+    none.html + none.md,
+    /Search Console:|Bing|Google Analytics|Matomo|PostHog|Links from other sites/,
+  );
   assert.match(none.html, /<\/ol>\n    <\/section>\n    <\/div>\n  <\/div>/, "nothing added after the score factors");
   assert.doesNotMatch(none.md, /\n\n\n/, "no empty lines");
   assert.doesNotMatch(none.html, /<p class="quiet"><\/p>/);

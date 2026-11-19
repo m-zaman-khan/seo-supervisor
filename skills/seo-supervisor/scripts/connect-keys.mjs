@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-// Services connected by an API key alone: Bing Webmaster Tools, Open PageRank and Ahrefs' free Domain Rating. Keys
-// are saved in ~/.seo-supervisor/keys.json, never in the project; a service's environment variable wins over its
-// saved key. fetch sends the site's address and domain names to these services, so without --yes it's a dry run
-// that prints what it would send. *_ENDPOINT variables point the services at the tests' fakes.
+// Services connected by an API key alone: Bing Webmaster Tools, Open PageRank, Ahrefs' free Domain Rating, Matomo and
+// PostHog. Keys, with Matomo's and PostHog's addresses and IDs, are saved in ~/.seo-supervisor/keys.json, never in the
+// project; a service's environment variable wins over its saved value. fetch sends the site's address and domain
+// names to these services, so without --yes it's a dry run that prints what it would send. *_ENDPOINT variables
+// point the services at the tests' fakes; Matomo and PostHog use their saved address instead.
 import { readFileSync, writeFileSync, mkdirSync, chmodSync, existsSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { isMain } from "./lib/is-main.mjs";
 
 const setLine = id => `node connect-keys.mjs set ${id}`;
@@ -62,19 +64,111 @@ export const SERVICES = {
       'Ahrefs\' licence requires every place that shows these numbers to say "Domain Rating by Ahrefs" with a link to https://ahrefs.com/. The report does this for you.',
     ],
   },
+  // Matomo and PostHog also need an address and an ID (`fields`), saved with the key: { url, siteId, key }.
+  matomo: {
+    name: "Matomo",
+    env: "MATOMO_TOKEN_AUTH",
+    adds: "visits from search engines to each page, from your Matomo",
+    where: "Administration (the gear icon) → Personal → Security → Auth tokens",
+    fields: [
+      {
+        id: "url",
+        flag: "url",
+        env: "MATOMO_URL",
+        ask: "Your Matomo address (the one you open Matomo at, like https://analytics.example.com)",
+        check: s => address(s, "The Matomo address"),
+      },
+      {
+        id: "siteId",
+        flag: "site-id",
+        env: "MATOMO_SITE_ID",
+        ask: "The site ID (a number, like 1)",
+        check: s => idOf(s, "site ID", "in Matomo under Administration → Websites → Manage, in the ID column"),
+      },
+    ],
+    about: k => `site ID ${k.siteId} at ${k.url}`,
+    guide: [
+      "Matomo adds the visits that came from search engines to each page, from your own Matomo (self-hosted or Matomo Cloud). You need three things: your Matomo address, the site ID and a token.",
+      "1. Sign in to Matomo. Its address is the one in your browser's address bar, like https://analytics.example.com or https://example.matomo.cloud.",
+      "2. The site ID: open Administration (the gear icon) → Websites → Manage. It's the number in the ID column next to your site.",
+      '3. The token: open Administration → Personal → Security, scroll to Auth tokens and click Create new token. Confirm your password, write "SEO Supervisor" as the description, tick "Only allow secure requests" if it\'s offered, and create it. Copy the token straight away: Matomo shows it only once.',
+      "   The token reads whatever your Matomo user can, so a user with view access to this one site is enough.",
+      `4. In your own terminal run: ${setLine("matomo")}`,
+      "   It asks for the address and the site ID (shown as you type), then the token. Paste the token and press Enter. It isn't shown, so it stays out of chats and your command history.",
+      "If fetch says the segment hasn't been created, your Matomo only reports on saved segments. Above any report, open the segment menu → Add new segment, choose Channel Type, Is, search, and save it with its reports pre-processed. Matomo fills it in within a few hours; then fetch again.",
+    ],
+  },
+  posthog: {
+    name: "PostHog",
+    env: "POSTHOG_PERSONAL_API_KEY",
+    adds: "visits from search engines to each page, from your PostHog",
+    where: "PostHog → Settings → User → Personal API keys",
+    fields: [
+      {
+        id: "host",
+        flag: "host",
+        env: "POSTHOG_HOST",
+        ask: "Your PostHog address: us, eu, or your own PostHog's address",
+        check: s =>
+          /^(us|eu)$/i.test(s)
+            ? `https://${s.toLowerCase()}.posthog.com/`
+            : address(s, "The PostHog address").replace(
+                /^https:\/\/(us|eu)\.i\.posthog\.com\/$/,
+                "https://$1.posthog.com/",
+              ),
+      },
+      {
+        id: "projectId",
+        flag: "project-id",
+        env: "POSTHOG_PROJECT_ID",
+        ask: "The project ID (a number)",
+        check: s => idOf(s, "project ID", "in PostHog under Settings → Project"),
+      },
+    ],
+    about: k => `project ID ${k.projectId} at ${k.host}`,
+    guide: [
+      "PostHog adds the visits that came from search engines to each page (the sessions PostHog counts as Organic Search), from your own PostHog. You need three things: the PostHog address, the project ID and a personal API key.",
+      "1. Sign in to PostHog. The address is https://us.posthog.com (US cloud), https://eu.posthog.com (EU cloud) or your own PostHog's address.",
+      "2. The project ID: open Settings → Project. It's the number shown as Project ID (it's also in the address bar, after /project/).",
+      '3. The key: open Settings → User → Personal API keys and click Create personal API key. Name it "SEO Supervisor", let it use only this project, and give it one permission: Query: Read. Copy the key straight away: it starts with phx_ and PostHog shows it only once.',
+      "   Not the project key in your site's tracking code (it starts with phc_): that one can only send data, not read it.",
+      `4. In your own terminal run: ${setLine("posthog")}`,
+      "   It asks for the address (type us, eu or your own address) and the project ID, shown as you type, then the key. Paste the key and press Enter. It isn't shown, so it stays out of chats and your command history.",
+    ],
+  },
 };
-const USAGE =
-  "usage: node connect-keys.mjs set bing|openpagerank|ahrefs [<key>]   (no key: it asks, hidden)\n       node connect-keys.mjs status | remove <service> | guide <service>\n       node connect-keys.mjs fetch --site https://www.example.com [--competitors a.com,b.com] [--out seo-audit/keys.json] [--yes]";
+const USAGE = `usage: node connect-keys.mjs set bing|openpagerank|ahrefs|matomo|posthog [<key>]   (no key: it asks, hidden)
+       node connect-keys.mjs set matomo [--url <address>] [--site-id <id>] | set posthog [--host us|eu|<address>] [--project-id <id>]
+       node connect-keys.mjs status | remove <service> | guide <service>
+       node connect-keys.mjs fetch --site https://www.example.com [--competitors a.com,b.com] [--days 90] [--out seo-audit/keys.json] [--yes]`;
 const UA = "seo-supervisor-connect-keys";
 const ATTRIBUTION = { text: "Domain Rating by Ahrefs", url: "https://ahrefs.com/" };
 const MAX_LINK_PAGES = 10;
+const ROWS = 25000; // the most pages read from Matomo or PostHog, as google.mjs reads from Google Analytics
 class Fail extends Error {} // bad input: exit 2
 class Refused extends Error {} // a service said no: noted, the rest still runs, exit 1
 const fail = msg => {
   throw new Fail("connect-keys: " + msg);
 };
 const serviceOf = id =>
-  Object.hasOwn(SERVICES, id) ? id : fail(`there's no "${id}" connection. Use bing, openpagerank or ahrefs.`);
+  Object.hasOwn(SERVICES, id)
+    ? id
+    : fail(`there's no "${id}" connection. Use bing, openpagerank, ahrefs, matomo or posthog.`);
+// A typed address, kept as origin and path ending in "/": https:// added when missing, a page such as index.php and
+// anything after it dropped. Plain http only on this computer, since the token travels with it.
+function address(s, what) {
+  let x;
+  try {
+    x = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? s : "https://" + s);
+  } catch {}
+  if (!x || !/^https?:$/.test(x.protocol)) fail(`${what} isn't a web address (got "${s}").`);
+  if (x.protocol === "http:" && !/^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$/.test(x.hostname))
+    fail(`${what} must start with https://. Over plain http:// your token would travel unencrypted.`);
+  return x.origin + x.pathname.replace(/[^/]*\.php$/, "").replace(/\/*$/, "/");
+}
+function idOf(s, what, where) {
+  return /^\d+$/.test(s) ? s : fail(`the ${what} is a number, like 1 or 3 (got "${s}"). Find it ${where}.`);
+}
 
 // ---------- keys ----------
 export const keyFile = () => join(homedir(), ".seo-supervisor", "keys.json");
@@ -99,20 +193,46 @@ function save(keys) {
   renameSync(t, f);
 }
 
-// The key from the terminal, without showing it, or the first line of piped stdin.
-async function readKey(id) {
-  const { stdin, stderr } = process;
+// What set still needs. Piped stdin gives a line each, in order; a terminal asks for the address and ID in plain view
+// (they aren't secret), then for the key without showing it.
+async function ask(id, missing, needKey) {
+  const { stdin, stderr } = process,
+    values = {};
   if (!stdin.isTTY) {
     let text = "";
+    const n = missing.length + (needKey ? 1 : 0);
     for await (const c of stdin) {
       text += c;
-      if (text.includes("\n")) break;
+      if (text.split("\n").length > n) break;
     }
-    return (
-      text.split(/\r?\n/)[0].trim() ||
-      fail(`no key was given. In your own terminal, run ${setLine(id)} and paste the key when it asks.`)
-    );
+    const lines = text.split(/\r?\n/).map(s => s.trim());
+    missing.forEach((f, i) => {
+      values[f.id] = lines[i];
+    });
+    return {
+      values,
+      key: needKey
+        ? lines[missing.length] ||
+          fail(`no key was given. In your own terminal, run ${setLine(id)} and paste the key when it asks.`)
+        : undefined,
+    };
   }
+  if (missing.length) {
+    const rl = createInterface({ input: stdin, output: stderr });
+    rl.on("SIGINT", () => rl.close());
+    try {
+      for (const f of missing) values[f.id] = await rl.question(`${f.ask}: `);
+    } catch {
+      fail("cancelled, nothing was saved.");
+    } finally {
+      rl.close();
+    }
+  }
+  return { values, key: needKey ? await readKey(id) : undefined };
+}
+// The key from the terminal, without showing it.
+async function readKey(id) {
+  const { stdin, stderr } = process;
   stderr.write(`Paste the ${SERVICES[id].name} key and press Enter (it isn't shown): `);
   stdin.setRawMode(true);
   stdin.setEncoding("utf8");
@@ -149,12 +269,18 @@ async function readKey(id) {
     stdin.resume();
   });
 }
-export function setKey(id, key) {
-  serviceOf(id);
+// values: Matomo's or PostHog's address and ID, checked and tidied before anything is saved.
+export function setKey(id, key, values = {}) {
+  const s = SERVICES[serviceOf(id)];
   key = String(key ?? "").trim();
   if (!key || /\s/.test(key))
-    fail(`that doesn't look like a key (it's empty or has spaces). Copy it again from ${SERVICES[id].where}.`);
-  save({ ...savedKeys(), [id]: key });
+    fail(`that doesn't look like a key (it's empty or has spaces). Copy it again from ${s.where}.`);
+  if (id === "posthog" && key.startsWith("phc_"))
+    fail(
+      `that's the project key from your site's tracking code (it starts with phc_), which can only send data to PostHog. Reading needs a personal API key, which starts with phx_. To make one: node connect-keys.mjs guide posthog`,
+    );
+  const extra = Object.fromEntries((s.fields || []).map(f => [f.id, f.check(String(values[f.id] ?? "").trim())]));
+  save({ ...savedKeys(), [id]: s.fields ? { ...extra, key } : key });
 }
 export function removeKey(id) {
   serviceOf(id);
@@ -164,22 +290,61 @@ export function removeKey(id) {
   save(keys);
   return true;
 }
-// { bing: { key, from } | null, ... }; an environment variable wins over the saved key.
+// { bing: { key, from } | null, matomo: { key, from, url, siteId } | null, ... }; an environment variable wins over the
+// saved value. Matomo and PostHog count as set only with their address and ID too.
 export function activeKeys(env = process.env) {
   const saved = savedKeys();
   return Object.fromEntries(
-    Object.entries(SERVICES).map(([id, s]) => [
-      id,
-      env[s.env] ? { key: env[s.env], from: s.env } : saved[id] ? { key: saved[id], from: keyFile() } : null,
-    ]),
+    Object.entries(SERVICES).map(([id, s]) => {
+      const v = saved[id],
+        savedKey = s.fields ? v?.key : v;
+      const k = env[s.env] ? { key: env[s.env], from: s.env } : savedKey ? { key: savedKey, from: keyFile() } : null;
+      for (const f of (k && s.fields) || []) k[f.id] = env[f.env] ? f.check(env[f.env].trim()) : v?.[f.id];
+      return [id, k && (s.fields || []).every(f => k[f.id]) ? k : null];
+    }),
   );
 }
 const mask = k => (k.length > 8 ? "…" + k.slice(-4) : "…");
 
 // ---------- requests ----------
 const BING_ERRORS = { 3: "key", 4: "busy", 5: "busy", 6: "blocked", 14: "site" };
-function refusal(id, status, body, retryAfter) {
+// Matomo and PostHog live at a typed address, so a wrong address, site or project ID gets its own message.
+// Matomo answers errors as { result: "error", message }, often with HTTP 200; PostHog as { detail } with the status.
+function addressed(id, status, body, host, moved) {
+  const s = SERVICES[id],
+    fix = `Check it with node connect-keys.mjs guide ${id}, then run: ${setLine(id)}`,
+    msg = String(body?.message || body?.detail || "");
+  if (status >= 300 && status < 400)
+    return `${s.name}: ${host} sent the request on to ${moved || "another address"}, so nothing was read. Set the address it goes to instead. ${fix}`;
+  if (body === null && status < 500)
+    return `${s.name}: ${host} didn't answer like ${s.name} (HTTP ${status}), so the address is probably wrong. Use the address you open ${s.name} at in your browser. ${fix}`;
+  if (id === "matomo") {
+    if (/authenticat|token/i.test(msg))
+      return `Matomo didn't accept the token: it's mistyped, expired or was deleted. Create a new one under ${s.where}, then run: ${setLine(id)}`;
+    if (/segment/i.test(msg))
+      return `Matomo hasn't processed the segment for visits from search engines, so it has no report yet. In Matomo, open the segment menu above any report → Add new segment, choose Channel Type, Is, search, and save it with its reports pre-processed. Matomo fills it in within a few hours; then fetch again.`;
+    if (/access|website id|idsite/i.test(msg))
+      return `Matomo says this token can't see the site ID you set (${msg}). Check the site ID under Administration → Websites → Manage, and that the token's user has at least view access to that site. Then run: ${setLine(id)}`;
+    if (body?.result === "error") return `Matomo said: ${msg}`;
+  }
+  if (id === "posthog") {
+    if (status === 401)
+      return `PostHog didn't accept the key (401): it's mistyped or was deleted, or it belongs to the other PostHog region (a US key doesn't work on eu.posthog.com, nor an EU key on us.posthog.com). ${fix}`;
+    if (status === 403 && /scope/i.test(msg))
+      return `PostHog says the key isn't allowed to read data (it lacks the Query Read permission). Create a personal API key with Query: Read under ${s.where}, then run: ${setLine(id)}`;
+    if (status === 403 || status === 404)
+      return `PostHog has no project with the ID you set that this key may use (${status}${msg ? `: ${msg}` : ""}). Check the project ID under Settings → Project, and that the key is allowed to use that project. ${fix}`;
+    if (status === 400)
+      return `PostHog couldn't run the query for visits from search engines (${msg || 400}). If it keeps happening, PostHog may have changed.`;
+  }
+  return null;
+}
+function refusal(id, status, body, retryAfter, host, moved) {
   const s = SERVICES[id];
+  if (s.fields) {
+    const m = addressed(id, status, body, host, moved);
+    if (m) return m;
+  }
   const bing = id === "bing" ? BING_ERRORS[body?.ErrorCode] : null;
   if (status === 401 || bing === "key")
     return `${s.name} didn't accept the key (${status === 401 ? 401 : "InvalidApiKey"}): it's mistyped, or it was deleted or replaced. Get the current key at ${s.where}, then run: ${setLine(id)}`;
@@ -193,10 +358,13 @@ function refusal(id, status, body, retryAfter) {
     return `Bing Webmaster Tools says the account is blocked (UserBlocked). Sign in at bing.com/webmasters to see why.`;
   if (status === 403)
     return `${s.name} refused the request (403): the key isn't allowed to do this. Check the key at ${s.where}, then run: ${setLine(id)}`;
-  const detail = body?.Message || body?.error || (Array.isArray(body) ? body.join(" ") : "");
+  const detail =
+    body?.Message || body?.message || body?.detail || body?.error || (Array.isArray(body) ? body.join(" ") : "");
   return `${s.name} answered ${status}${detail ? ` (${detail})` : ""}. Try again later; if it keeps happening, the service may have changed.`;
 }
 async function call(id, url, init = {}) {
+  const s = SERVICES[id],
+    host = new URL(url).host;
   let r;
   try {
     r = await fetch(url, {
@@ -206,7 +374,7 @@ async function call(id, url, init = {}) {
     });
   } catch (e) {
     throw new Refused(
-      `${SERVICES[id].name}: couldn't reach ${new URL(url).host} (${e.cause?.code || e.message}). Check the internet connection and try again.`,
+      `${s.name}: couldn't reach ${host} (${e.cause?.code || e.message}). Check the internet connection${s.fields ? ` and the ${s.name} address (node connect-keys.mjs status shows it)` : ""} and try again.`,
     );
   }
   const text = await r.text();
@@ -214,7 +382,8 @@ async function call(id, url, init = {}) {
   try {
     body = JSON.parse(text);
   } catch {}
-  if (!r.ok) throw new Refused(refusal(id, r.status, body, r.headers.get("retry-after")));
+  if (!r.ok)
+    throw new Refused(refusal(id, r.status, body, r.headers.get("retry-after"), host, r.headers.get("location")));
   return body;
 }
 const chunks = (list, n) => Array.from({ length: Math.ceil(list.length / n) }, (_, i) => list.slice(i * n, i * n + n));
@@ -370,9 +539,68 @@ function crawlFinding(bing) {
   ];
 }
 
+// ---------- Matomo and PostHog: visits from search engines by landing page ----------
+// The same days google.mjs reads Google Analytics for, ending 3 days ago, so the numbers line up.
+const periodFor = days => ({ from: day(Date.now() - (days + 2) * 864e5), to: day(Date.now() - 3 * 864e5) });
+// Matomo: visits from a search engine (segment referrerType==search) by entry page, most first. token_auth goes in
+// the POST body, so the URL holds nothing secret.
+const matomoUrl = (k, p) =>
+  `${k.url}index.php?${new URLSearchParams({ module: "API", method: "Actions.getEntryPageUrls", idSite: k.siteId, period: "range", date: `${p.from},${p.to}`, segment: "referrerType==search", flat: 1, filter_limit: ROWS, filter_sort_column: "entry_nb_visits", filter_sort_order: "desc", format: "JSON" })}`;
+// PostHog: sessions it files as Organic Search (a search engine as referrer or utm_source, paid search left out, as
+// in GA4), by entry page. The site's host is matched here, not sent.
+const posthogQuery = p =>
+  `SELECT domainWithoutWWW($entry_current_url) AS host, $entry_pathname AS path, count() AS visits FROM sessions WHERE $channel_type = 'Organic Search' AND toDate($start_timestamp) BETWEEN toDate('${p.from}') AND toDate('${p.to}') GROUP BY host, path ORDER BY visits DESC LIMIT ${ROWS}`;
+const posthogUrl = k => `${k.host}api/projects/${k.projectId}/query/`;
+// One page's http/https, www/apex and tracking-parameter variants add up, by path as GA4's landing page is.
+const addVisits = (map, path, n) => {
+  map[path] = { visits: (map[path]?.visits || 0) + n };
+};
+const tooMany = name =>
+  `${name} has ${ROWS.toLocaleString("en-US")} or more pages with visits from search engines for this period; only the top ${ROWS.toLocaleString("en-US")} were read.`;
+// A redirect isn't followed: on a 307 or 308 the token would go along to wherever it points.
+const POST = { method: "POST", redirect: "manual" };
+
+async function fetchMatomo(k, site, period, notes) {
+  const want = bare(new URL(site).hostname),
+    traffic = {};
+  const rows = await call("matomo", matomoUrl(k, period), {
+    ...POST,
+    body: new URLSearchParams({ token_auth: k.key }),
+  });
+  if (!Array.isArray(rows)) throw new Refused(refusal("matomo", 200, rows, null, new URL(k.url).host));
+  // Rows without a URL (Matomo's "Others") and other sites tracked in the same Matomo are left out.
+  for (const r of rows) {
+    let x;
+    try {
+      x = new URL(r?.url);
+    } catch {
+      continue;
+    }
+    const n = Number(r.entry_nb_visits) || 0;
+    if (n > 0 && bare(x.hostname) === want) addVisits(traffic, x.pathname, n);
+  }
+  if (rows.length >= ROWS) notes.push(tooMany("Matomo"));
+  return { period, traffic };
+}
+
+async function fetchPosthog(k, site, period, notes) {
+  const want = bare(new URL(site).hostname),
+    traffic = {};
+  const b = await call("posthog", posthogUrl(k), {
+    ...POST,
+    headers: { authorization: `Bearer ${k.key}`, "content-type": "application/json" },
+    body: JSON.stringify({ query: { kind: "HogQLQuery", query: posthogQuery(period) } }),
+  });
+  if (!Array.isArray(b?.results)) throw new Refused(refusal("posthog", 200, null, null, new URL(k.host).host));
+  for (const [h, path, n] of b.results.filter(Array.isArray))
+    if (bare(String(h ?? "")) === want && /^\//.test(path) && Number(n) > 0) addVisits(traffic, path, Number(n));
+  if (b.results.length >= ROWS) notes.push(tooMany("PostHog"));
+  return { period, traffic };
+}
+
 // Each service runs only when its key is set. problems holds the refusals, also kept in result.notes.
 // bingPages and bingSister add Bing's links to chosen pages and to a sister site in the same account.
-export async function fetchKeys({ site, competitors = [], keys = activeKeys(), endpoints = {} }) {
+export async function fetchKeys({ site, competitors = [], keys = activeKeys(), endpoints = {}, days = 90 }) {
   const siteUrl = new URL("/", site).href,
     notes = [],
     problems = [],
@@ -386,7 +614,9 @@ export async function fetchKeys({ site, competitors = [], keys = activeKeys(), e
     if (a) a[field] = v;
   };
   let bing = null,
-    attribution = null;
+    attribution = null,
+    matomo = null,
+    posthog = null;
   const run = async (id, fn) => {
     const s = SERVICES[id];
     if (!keys[id]) {
@@ -397,7 +627,7 @@ export async function fetchKeys({ site, competitors = [], keys = activeKeys(), e
       return;
     }
     try {
-      await fn(keys[id].key ?? keys[id]);
+      await fn(s.fields ? keys[id] : (keys[id].key ?? keys[id]));
     } catch (e) {
       if (!(e instanceof Refused)) throw e;
       problems.push(e.message);
@@ -438,6 +668,13 @@ export async function fetchKeys({ site, competitors = [], keys = activeKeys(), e
       };
     }
   });
+  const period = periodFor(days);
+  await run("matomo", async k => {
+    matomo = await fetchMatomo(k, siteUrl, period, notes);
+  });
+  await run("posthog", async k => {
+    posthog = await fetchPosthog(k, siteUrl, period, notes);
+  });
   return {
     result: {
       source: "keys",
@@ -446,6 +683,8 @@ export async function fetchKeys({ site, competitors = [], keys = activeKeys(), e
       bing,
       authority,
       attribution,
+      matomo,
+      posthog,
       findings: crawlFinding(bing),
       notChecked,
       notes,
@@ -456,37 +695,48 @@ export async function fetchKeys({ site, competitors = [], keys = activeKeys(), e
 
 async function main(argv) {
   const [cmd, ...rest] = argv;
-  const args = {};
+  const args = {},
+    pos = [];
   for (let i = 0; i < rest.length; i++)
     if (rest[i].startsWith("--")) {
       const k = rest[i].slice(2);
       args[k] = rest[i + 1] && !rest[i + 1].startsWith("--") ? rest[++i] : true;
-    }
+    } else pos.push(rest[i]);
   const str = k => (typeof args[k] === "string" ? args[k] : null);
 
   if (cmd === "set") {
-    if (!rest[0]) throw new Fail(USAGE);
-    setKey(rest[0], rest[1] ?? (await readKey(serviceOf(rest[0]))));
+    if (!pos[0]) throw new Fail(USAGE);
+    const id = serviceOf(pos[0]),
+      fields = SERVICES[id].fields || [];
+    const values = Object.fromEntries(fields.map(f => [f.id, str(f.flag)])),
+      missing = fields.filter(f => !values[f.id]);
+    let key = pos[1];
+    if (key == null || missing.length) {
+      const got = await ask(id, missing, key == null);
+      Object.assign(values, got.values);
+      key ??= got.key;
+    }
+    setKey(id, key, values);
     console.log(
-      `connect-keys: saved the ${SERVICES[rest[0]].name} key in ${keyFile()} (only your user account can read it). ${process.env[SERVICES[rest[0]].env] ? `Note: ${SERVICES[rest[0]].env} is also set and wins over the saved key.` : ""}`.trim(),
+      `connect-keys: saved the ${SERVICES[id].name} key in ${keyFile()} (only your user account can read it). ${process.env[SERVICES[id].env] ? `Note: ${SERVICES[id].env} is also set and wins over the saved key.` : ""}`.trim(),
     );
   } else if (cmd === "remove") {
-    if (!rest[0]) throw new Fail(USAGE);
+    if (!pos[0]) throw new Fail(USAGE);
     console.log(
-      removeKey(rest[0])
-        ? `connect-keys: removed the ${SERVICES[rest[0]].name} key.`
-        : `connect-keys: no saved ${SERVICES[rest[0]].name} key to remove.`,
+      removeKey(pos[0])
+        ? `connect-keys: removed the ${SERVICES[pos[0]].name} key.`
+        : `connect-keys: no saved ${SERVICES[pos[0]].name} key to remove.`,
     );
   } else if (cmd === "guide") {
-    if (!rest[0]) throw new Fail(USAGE);
-    console.log(SERVICES[serviceOf(rest[0])].guide.join("\n"));
+    if (!pos[0]) throw new Fail(USAGE);
+    console.log(SERVICES[serviceOf(pos[0])].guide.join("\n"));
   } else if (cmd === "status") {
     const keys = activeKeys();
     for (const [id, s] of Object.entries(SERVICES)) {
       const k = keys[id];
       console.log(
         k
-          ? `${s.name}: set (${mask(k.key)}, ${k.from === s.env ? `from ${s.env}` : `saved in ${k.from}`})`
+          ? `${s.name}: set (${mask(k.key)}, ${k.from === s.env ? `from ${s.env}` : `saved in ${k.from}`})${s.about ? ` for ${s.about(k)}` : ""}`
           : `${s.name}: not set. It adds ${s.adds}. To get a key: node connect-keys.mjs guide ${id}`,
       );
     }
@@ -498,6 +748,10 @@ async function main(argv) {
     } catch {}
     if (!site || !/^https?:$/.test(site.protocol))
       fail(`--site must be the site's address, like https://www.example.com (got ${args.site})`);
+    const days = args.days === undefined ? 90 : Number(str("days"));
+    if (!(Number.isInteger(days) && days >= 1 && days <= 480))
+      fail(`--days must be a whole number from 1 to 480, as with google.mjs (got ${args.days}).`);
+    const period = periodFor(days);
     const listed = (str("competitors") || "")
       .split(",")
       .map(s => s.trim())
@@ -515,25 +769,31 @@ async function main(argv) {
 
     if (args.yes !== true) {
       const list = domains.slice(0, 10).join(", ") + (domains.length > 10 ? ` … and ${domains.length - 10} more` : "");
+      const { matomo: m, posthog: p } = keys;
       const lines = Object.entries(SERVICES).map(([id, s]) =>
         !keys[id]
           ? `  ${s.name}: not set, skipped (to add it: node connect-keys.mjs guide ${id})`
-          : `  ${s.name}: ${id === "bing" ? `your site's address (${siteUrl})` : `${domains.length} domain name(s) (${list})`} and your key, to ${new URL(endpoints[id]).host}`,
+          : id === "matomo"
+            ? `  Matomo: your token (in the request body, never in the address) and site ID ${m.siteId}, to ${new URL(m.url).host}:\n    POST ${matomoUrl(m, period)}`
+            : id === "posthog"
+              ? `  PostHog: your key and project ID ${p.projectId}, to ${new URL(p.host).host}:\n    POST ${posthogUrl(p)} with the query: ${posthogQuery(period)}`
+              : `  ${s.name}: ${id === "bing" ? `your site's address (${siteUrl})` : `${domains.length} domain name(s) (${list})`} and your key, to ${new URL(endpoints[id]).host}`,
       );
       console.log(
         `connect-keys: dry run, nothing sent. With --yes it would send:\n${lines.join("\n")}${skipNote.length ? "\n" + skipNote.join("\n") : ""}\nThese go to outside services, so re-run with --yes once the owner agrees.`,
       );
       return 0;
     }
-    const { result, problems } = await fetchKeys({ site: siteUrl, competitors, keys, endpoints });
+    const { result, problems } = await fetchKeys({ site: siteUrl, competitors, keys, endpoints, days });
     result.notes.push(...skipNote);
     const out = resolve(str("out") || "seo-audit/keys.json");
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, JSON.stringify(result, null, 2));
     for (const p of problems) console.log("connect-keys: " + p);
-    const b = result.bing;
+    const b = result.bing,
+      visits = (name, x) => (x ? `${name} ${Object.keys(x.traffic).length} pages · ` : "");
     console.log(
-      `connect-keys: ${b ? `Bing ${Object.keys(b.traffic).length} pages, ${b.queries.length} queries, ${b.backlinks.pages.length} linked pages${b.crawlIssues ? `, ${b.crawlIssues.length} crawl issues` : ""} · ` : ""}${result.authority.length ? `authority for ${result.authority.length} domain(s) · ` : ""}${result.findings.length} finding(s) · wrote ${out}`,
+      `connect-keys: ${b ? `Bing ${Object.keys(b.traffic).length} pages, ${b.queries.length} queries, ${b.backlinks.pages.length} linked pages${b.crawlIssues ? `, ${b.crawlIssues.length} crawl issues` : ""} · ` : ""}${result.authority.length ? `authority for ${result.authority.length} domain(s) · ` : ""}${visits("Matomo", result.matomo)}${visits("PostHog", result.posthog)}${result.findings.length} finding(s) · wrote ${out}`,
     );
     return problems.length ? 1 : 0;
   } else throw new Fail(USAGE);
