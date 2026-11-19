@@ -1,7 +1,7 @@
 // OG cards without a browser; the test that launches Chrome is in test/browser/og-card.test.mjs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SCRIPTS, node, tmp } from "./helpers.mjs";
 import { cardHtml, pngSize } from "../skills/seo-supervisor/scripts/og-card.mjs";
@@ -47,6 +47,35 @@ test("the CLI exits 2 with a clear message when CHROME_PATH isn't a browser", as
   );
 });
 
+test("batch file names: a non-ASCII slug isn't home.png, and names that differ only in case collide", async () => {
+  const dir = tmp(),
+    pages = join(dir, "pages.json");
+  const runWith = list => {
+    writeFileSync(pages, JSON.stringify(list));
+    return node([CLI, "--pages", pages, "--out-dir", join(dir, "og")], {
+      env: { ...process.env, CHROME_PATH: process.execPath },
+    }).then(
+      () => "",
+      e => e.stderr,
+    );
+  };
+  assert.doesNotMatch(
+    await runWith([
+      { slug: "/", title: "Home" },
+      { slug: "/日本語/", title: "Japanese" },
+      { slug: "/中文/", title: "Chinese" },
+    ]),
+    /two pages/,
+  );
+  assert.match(
+    await runWith([
+      { slug: "/About/", title: "About" },
+      { slug: "/about/", title: "About us" },
+    ]),
+    /two pages would both write/,
+  );
+});
+
 const browser = findBrowser();
 test(
   "a real card renders at exactly 1200x630, single and batch",
@@ -79,11 +108,15 @@ test(
       JSON.stringify([
         { slug: "/", title: "Home" },
         { slug: "/blog/first-post/", title: "A".repeat(120), subtitle: "Long one" },
+        { slug: "/日本語/", title: "日本語のページ" },
       ]),
     );
     const { stdout } = await node([CLI, "--pages", pages, "--brand", "Example", "--out-dir", join(dir, "og")]);
-    assert.match(stdout, /2 card/);
-    for (const f of ["home.png", "blog-first-post.png"])
-      assert.deepEqual(pngSize(readFileSync(join(dir, "og", f))), { width: 1200, height: 630 }, f);
+    assert.match(stdout, /3 card/);
+    const files = readdirSync(join(dir, "og")).sort();
+    assert.equal(files.length, 3, files.join(", "));
+    assert.deepEqual(files.slice(0, 2), ["blog-first-post.png", "home.png"]);
+    assert.match(files[2], /^page-[0-9a-f]{8}\.png$/, "a short hash-based name for an all-non-ASCII slug");
+    for (const f of files) assert.deepEqual(pngSize(readFileSync(join(dir, "og", f))), { width: 1200, height: 630 }, f);
   },
 );

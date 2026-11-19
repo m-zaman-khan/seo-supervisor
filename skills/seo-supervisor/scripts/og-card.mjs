@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Makes 1200x630 Open Graph cards locally: plain HTML with system fonts, screenshotted in headless Chrome or Edge.
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
@@ -159,11 +160,15 @@ const MIME = {
   ".jpeg": "image/jpeg",
   ".webp": "image/webp",
 };
-// "/blog/first-post/" -> "blog-first-post"; "/" -> "home". Only word characters and dashes, so it can't leave --out-dir.
-const fileOf = slug =>
-  (String(slug ?? "")
-    .replace(/[^\w-]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "home") + ".png";
+// "/blog/first-post/" -> "blog-first-post"; "/" -> "home"; "/日本語/" (no ASCII letters or digits) -> "page-" + a
+// short hash. Only word characters and dashes, so it can't leave --out-dir.
+const fileOf = slug => {
+  const s = String(slug ?? "")
+      .trim()
+      .replace(/^\/+|\/+$/g, ""),
+    name = s.replace(/[^\w-]+/g, "-").replace(/^-+|-+$/g, "");
+  return (name || (s ? `page-${createHash("sha256").update(s).digest("hex").slice(0, 8)}` : "home")) + ".png";
+};
 
 if (isMain(import.meta.url)) {
   const args = {};
@@ -212,9 +217,10 @@ if (isMain(import.meta.url)) {
       resolve(args["out-dir"], fileOf(p.slug)),
     ]);
     const seen = new Set();
+    // Case-insensitive: About.png and about.png are one file on Windows and macOS.
     for (const [, out] of jobs) {
-      if (seen.has(out)) fail(`og-card: two pages would both write ${out}; give them different slugs`);
-      seen.add(out);
+      if (seen.has(out.toLowerCase())) fail(`og-card: two pages would both write ${out}; give them different slugs`);
+      seen.add(out.toLowerCase());
     }
   }
   try {
