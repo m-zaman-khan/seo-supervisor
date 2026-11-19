@@ -81,7 +81,9 @@ async function key() {
   const dir = str("public-dir");
   if (!dir) throw new Fail(USAGE);
   if (!existsSync(dir) || !statSync(dir).isDirectory())
-    fail(`${dir} isn't a folder. Pass the folder the site serves at its root (public/, static/ or the build output).`);
+    fail(
+      `${dir} isn't a folder. Pass the committed folder the site serves at its root, like public/ or static/ (not the build output, which the next build wipes).`,
+    );
   const site = str("site") && siteOf(args.site);
   const existing = readdirSync(dir, { withFileTypes: true })
     .filter(f => f.isFile() && f.name.endsWith(".txt"))
@@ -102,15 +104,22 @@ async function submit() {
   if (!KEY.test(key)) fail(`--key must be 8 to 128 letters, digits or dashes, as IndexNow requires (got "${key}").`);
   const keyLocation = new URL(`/${key}.txt`, site).href;
   const ENDPOINT = str("endpoint") || "https://api.indexnow.org/indexnow";
-  const OUT = resolve(str("out") || "seo-audit/indexnow.json");
+  // A dry run writes its own file, so it never overwrites the record of a real send.
+  const OUT = resolve(str("out") || "seo-audit/indexnow.json"),
+    DRY_OUT = OUT.replace(/(\.json)?$/i, "-dryrun.json");
 
+  // "www.example.com/about" is a URL without its scheme; "page.html" and "docs/setup" stay paths.
+  const schemeless = s =>
+    /^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?(\/|$)/i.test(s) &&
+    !/^[^/]*\.(html?|php|aspx?|jsp|xml|txt|json|pdf)(\/|$)/i.test(s);
   const found = [];
   if (str("urls"))
     found.push(
       ...read(args.urls)
         .split(/\r?\n/)
         .map(s => s.trim())
-        .filter(s => s && !s.startsWith("#")),
+        .filter(s => s && !s.startsWith("#"))
+        .map(s => (schemeless(s) ? "https://" + s : s)),
     );
   if (str("from-diff")) {
     let d;
@@ -120,8 +129,12 @@ async function submit() {
       if (e instanceof Fail) throw e;
       fail(`${args["from-diff"]} isn't a seo-diff.json (run seo-diff.mjs first).`);
     }
+    // A page that fails in the new crawl (status-error) isn't one to announce. seo-diff already leaves failing URLs out
+    // of added.
     found.push(
-      ...[...(d.regressions || []), ...(d.improvements || []), ...(d.changed || [])].map(c => c.path),
+      ...[...(d.regressions || []), ...(d.improvements || []), ...(d.changed || [])]
+        .filter(c => c.kind !== "status-error")
+        .map(c => c.path),
       ...(d.added || []),
     );
   }
@@ -157,7 +170,7 @@ async function submit() {
   const record = (sent, results) => {
     mkdirSync(dirname(OUT), { recursive: true });
     writeFileSync(
-      OUT,
+      sent ? OUT : DRY_OUT,
       JSON.stringify(
         {
           when: new Date().toISOString(),
@@ -184,18 +197,32 @@ async function submit() {
         .map(u => "  " + u)
         .join(
           "\n",
-        )}${urls.length > 20 ? `\n  … and ${urls.length - 20} more` : ""}\nThe full list is in ${OUT}. Sending tells outside search engines about these URLs: re-run with --yes once the owner approves and ${keyLocation} is live.`,
+        )}${urls.length > 20 ? `\n  … and ${urls.length - 20} more` : ""}\nThe full list is in ${DRY_OUT}. Sending tells outside search engines about these URLs: re-run with --yes once the owner approves and ${keyLocation} is live.`,
     );
     return 0;
   }
 
   let check;
+  // Redirects aren't followed: IndexNow wants the key at keyLocation itself, and a redirect to another host means
+  // --site is wrong.
   try {
-    const r = await fetch(keyLocation, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(20000) });
-    check = { status: r.status, body: (await r.text()).trim() };
+    const r = await fetch(keyLocation, {
+      redirect: "manual",
+      headers: { "user-agent": UA },
+      signal: AbortSignal.timeout(20000),
+    });
+    check = { status: r.status, body: (await r.text()).trim(), location: r.headers.get("location") };
   } catch (e) {
     check = { status: e.cause?.code || e.message, body: "" };
   }
+  let moved;
+  try {
+    moved = check.location && new URL(check.location, keyLocation);
+  } catch {}
+  if (moved && moved.host !== site.host)
+    fail(
+      `${keyLocation} redirects to ${moved.href}: your site answers at ${moved.host}; use --site ${moved.origin}. Nothing was sent.`,
+    );
   if (check.status !== 200 || check.body !== key)
     fail(
       `the key file isn't deployed yet: ${keyLocation} ${check.status === 200 ? "doesn't contain the key" : `returned ${check.status}`}. Deploy it (node indexnow.mjs key --public-dir <the folder served at the site root>), check it opens in a browser, then re-run. Nothing was sent.`,

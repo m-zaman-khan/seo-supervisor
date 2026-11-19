@@ -74,7 +74,11 @@ export function diffCrawls(oldReport, newReport) {
     regressions,
     improvements,
     changed,
-    added: [...after.keys()].filter(p => !before.has(p)).sort(),
+    // Only new pages that load: a new URL in the error list is a broken link target, not an added page.
+    added: [...after]
+      .filter(([p, n]) => !before.has(p) && ok(n.status))
+      .map(([p]) => p)
+      .sort(),
     removed: [...before.keys()].filter(p => !after.has(p)).sort(),
   };
 }

@@ -108,6 +108,14 @@ test("pages are keyed by path and query, a lost self-canonical is a regression, 
   assert.deepEqual(d.changed, [], "?page=2 isn't confused with /blog");
   assert.deepEqual(kinds(d.regressions), ["/a/ canonical-changed", "/x/ status-error"]);
   assert.deepEqual(d.removed, [], "a page that now errors isn't 'gone'");
+  const n = diffCrawls(
+    { pages: [P("https://e.com/a/")] },
+    {
+      pages: [P("https://e.com/a/"), P("https://e.com/new/")],
+      errors: [{ url: "https://e.com/broken/", status: 404 }],
+    },
+  );
+  assert.deepEqual(n.added, ["/new/"], "a new URL that only fails (a broken link target) isn't an added page");
 });
 
 test("descriptions, share tags and word counts are compared only when both crawls recorded them", () => {
