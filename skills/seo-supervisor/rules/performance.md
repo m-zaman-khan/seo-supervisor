@@ -13,7 +13,12 @@
 - **Check:** field data (Search Console CWV report, PageSpeed Insights or CrUX) when the site is live; lab data (Lighthouse) before launch. The crawler can't measure CWV, so list it under `notChecked` unless you ran one of these.
 - **Fix:** send real-user metrics to analytics with the `web-vitals` library, and fix the worst template first.
 - **Data source:** with outside checks on, the crawler (`--outside`) fetches field data from PageSpeed Insights for the home page and one URL per section, up to 10, and flags a section whose 75th-percentile LCP, INP or CLS fails (`cwv-fail`). It needs a free PageSpeed Insights API key in `PSI_API_KEY`: Google refuses almost all keyless requests. Without the key, without outside checks, or before launch, PERF-01 stays under Limits.
-- **Lab speed:** with outside checks on and Chrome or Edge installed, each sample page is also loaded once on a phone with 4× CPU slowdown and slow 4G. LCP, CLS and an approximate TBT go into the crawl as `labSpeed` and one Overview line labelled indicative. They aren't Lighthouse numbers and raise no findings. With the optional Lighthouse add-on and `--lighthouse`, up to 5 sample pages also get a real Lighthouse run, which is information too: lab data never passes or fails PERF-01; use them before launch, when there's no real-user data.
+- **Lab speed:** with outside checks on and Chrome or Edge installed, each sample page is also loaded once on a phone with 4× CPU slowdown and slow 4G. LCP, CLS and an approximate TBT go into the crawl as `labSpeed` and one Overview line labelled indicative. They aren't Lighthouse numbers and raise no findings. With the optional Lighthouse add-on and `--lighthouse`, up to 5 sample pages also get a real Lighthouse run, which is information too: lab data never passes or fails PERF-01; use them before launch, when there's no real-user data. `--lighthouse all` runs it on every indexable page (up to 200, about 20 seconds a page).
+- **LCP breakdown:** the Overview names the biggest of LCP's four parts (server response, the wait before the main image starts loading, its download, drawing it) with the fix for that part. It comes from real visitors with `CRUX_API_KEY`, else from the home page's lab run.
+- **Since last audit** says a page got slower or faster only when the change is real, and never compares one source with another:
+  - Real visitors: LCP moved 20% and 300 ms, or a Core Web Vital crossed its limit.
+  - Lab load: LCP moved 40% and 1 s.
+  - Lighthouse: the performance score moved 15 points.
 
 ### PERF-02 · Each page loads only its own code · medium
 - **Check:** code: shared bundles importing every widget or heavy library; client components wrapping whole pages.

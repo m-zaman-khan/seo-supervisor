@@ -20,7 +20,7 @@
   <img src="docs/images/report-overview-dark.png" alt="SEO Supervisor report: a 49/100 health score held down by two blockers, the 90 the site reaches once they are fixed, and the areas losing the most points" width="900">
 </p>
 
-SEO Supervisor is a skill for Claude Code and other coding agents. It crawls your site the way Google does and checks it against 157 current SEO rules. Then it gives you one clear report: a 0–100 score, every problem with its evidence, and what to do first.
+SEO Supervisor is a skill for Claude Code and other coding agents. It crawls your site the way Google does and checks it against 163 current SEO rules. Then it gives you one clear report: a 0–100 score, every problem with its evidence, and what to do first.
 
 Then it fixes what can safely be fixed in code, re-checks each fix, and tells you plainly what only you can fix.
 
@@ -52,6 +52,8 @@ npx seo-supervisor        # then, in Claude Code: /seo-audit
 - **Search intent and briefs:** checks whether a page is the kind of page that ranks for its phrase, and the new `/seo-brief` writes a content brief.
 - **Free tools that need no account:** a share-image generator using your own Chrome, IndexNow pings to Bing and others, an offline structured-data checker with optional git, CI and agent hooks, and a server-log scan that shows what search and AI crawlers really get.
 - **A fairer score:** a site whose pages all share a default title, or have no H1 or canonical, now scores as Poor instead of Good.
+- **Speed you can act on:** which part of the main image's load is slow, with the fix for that part, and "Since last audit" says when a page got slower. Plus checks for next-page preloading, instant Back and Forward, and oversized pages.
+- **More connections and checks:** Matomo and PostHog visits, a check that your known backlinks still exist, Google ranking updates next to your numbers, Lighthouse on every page if you want it, and "Since last audit" now notices schema that lost fields.
 
 ## Install
 
@@ -148,23 +150,28 @@ One HTML file that works offline. It opens in dark mode and has a light-mode swi
 
 ## Optional: outside checks and Search Console
 
-**Outside checks are off until you say yes.** The agent asks once per project and remembers your answer in `seo-audit/settings.json`. Saying yes allows four things:
+**Outside checks are off until you say yes.** The agent asks once per project and remembers your answer in `seo-audit/settings.json`. Saying yes allows these:
 
 | Check | What leaves your machine |
 | --- | --- |
 | Real-user speed (Core Web Vitals) | Up to 10 public page URLs, sent to Google PageSpeed Insights (needs `PSI_API_KEY`) |
-| Lighthouse scores (only if you added Lighthouse) | Nothing is sent by the skill, but the sample pages load in your Chrome and run their own scripts |
-| What your JavaScript changes, and how pages look on a phone | Nothing is sent by the skill, but up to 10 pages run in a headless Chrome or Edge, so their own scripts (analytics included) run. Screenshots are saved locally |
+| Lighthouse scores (only if you added Lighthouse) | Nothing is sent by the skill, but the sample pages load in your Chrome and run their own scripts. 5 pages by default; `--lighthouse all` covers every page (up to 200, about 20 seconds each) |
+| What your JavaScript changes, how pages look on a phone, and whether Back and Forward are instant | Nothing is sent by the skill, but up to 10 pages run in a headless Chrome or Edge, so their own scripts (analytics included) run. Screenshots are saved locally |
 | Search intent | Your pages' target phrases, sent to the agent's web search provider |
 | Off-site brand presence | Your brand name, sent to the agent's web search provider |
+| Google ranking updates in the period, so you can tell a drop that came with a Google update from one your site caused | Nothing about your site: a plain read of Google's public Search Status Dashboard |
 
-Two more things send data out, each only after its own yes: **IndexNow** (the URLs of changed pages, to api.indexnow.org) and the **connections** below (your site's address and domain names, to Google, Bing, Open PageRank or Ahrefs).
+A few more things reach out, each only after its own yes:
+- **IndexNow** sends the URLs of changed pages to api.indexnow.org.
+- **The backlink check** visits the pages that link to you, to see if the links are still there. Useful after a redesign or a move.
+- **The connections** below send your site's address and domain names to Google, Bing, Open PageRank or Ahrefs, or to your own Matomo or PostHog.
 
-To switch them on for one run, say so: `/seo-audit with outside checks`. Real-user speed needs a free PageSpeed Insights API key from Google Cloud in `PSI_API_KEY`: Google refuses almost all requests without one. The render and intent checks need no key. Add `CRUX_API_KEY` too and the Overview shows whether real-user speed got better or worse over the last 25 weeks. With outside checks off, these three are listed under the report's Limits.
+To switch them on for one run, say so: `/seo-audit with outside checks`. Real-user speed needs a free PageSpeed Insights API key from Google Cloud in `PSI_API_KEY`: Google refuses almost all requests without one. The render and intent checks need no key. Add `CRUX_API_KEY` too and the Overview shows whether real-user speed got better or worse over the last 25 weeks, and which part of the main image's load real visitors wait on. With outside checks off, these checks are listed under the report's Limits.
 
 **Connect your accounts (optional).** In `/seo-setup` and `/seo-fix` the agent offers each connection once, and you can say no:
 - **Google Search Console and Analytics:** "Sign in with Google" in your browser, or set up your own Google client in a few guided steps. Read-only. It adds your real queries and clicks, "is this page in Google" for key pages, sitemap errors and organic visits, next to Bing's numbers on each page. The one write action is optional: `google.mjs submit-sitemap` submits your sitemap only when you say yes, and asks Google for that permission only then. Remove access any time at myaccount.google.com/connections, or with `google.mjs disconnect`.
 - **Bing Webmaster Tools, Open PageRank and Ahrefs' free Domain Rating:** paste a free API key at a hidden prompt in your own terminal. They add Bing data, the pages other sites link to, and authority scores next to your competitors'.
+- **Matomo or PostHog:** offered only if your site uses one. It adds visits from search engines to each page, from your own analytics. `connect-keys.mjs guide matomo` (or `posthog`) shows where to find each value; `set matomo` asks for them, with the token at a hidden prompt.
 
 Logins and keys stay in `~/.seo-supervisor/` on your computer, never in your project. Anything you skip is listed under Limits and doesn't lower your score.
 
@@ -172,26 +179,26 @@ Logins and keys stay in `~/.seo-supervisor/` on your computer, never in your pro
 
 ## What it checks
 
-**115 core rules**, up to date as of November 2026:
+**119 core rules**, up to date as of November 2026:
 
 | Area | Rules | Examples |
 | --- | ---: | --- |
 | Crawling & indexing | 12 | robots.txt, noindex, soft 404s, status codes, redirect chains, AI crawlers |
 | URLs & canonicals | 9 | one URL per page, trailing slashes, canonicals on the right host, old URLs with 301s |
-| Rendering | 9 | content in the server HTML, not only in JavaScript; links crawlers can follow; doctype and mobile viewport |
-| Metadata | 8 | titles, descriptions, Open Graph, robots meta |
+| Rendering | 10 | content in the server HTML, not only in JavaScript; links crawlers can follow; doctype, charset and mobile viewport; obsolete tags |
+| Metadata | 9 | titles (and whether they match the page), descriptions, Open Graph, robots meta |
 | Headings & content | 12 | one H1, heading order, thin or templated pages, placeholder text, banned claims |
 | Structured data | 8 | valid JSON-LD that matches the page; which rich results still exist |
 | Sitemaps & robots | 8 | sitemap host and status, lastmod, llms.txt (and why Google ignores it) |
 | Internal linking | 9 | orphans, click depth, hubs and circular linking, anchor text |
-| Performance | 8 | Core Web Vitals (LCP, INP, CLS), the first image, image weight and format |
+| Performance | 10 | Core Web Vitals (LCP, INP, CLS) and what slows LCP, the first image, image weight and format, page size, next-page preloading, instant Back and Forward |
 | Trust & security | 7 | security headers, security.txt, who's behind the site, the HTTPS certificate |
 | AI search | 6 | being cited in ChatGPT, Perplexity and Google's AI answers, and what doesn't work |
 | Media | 6 | alt text, file names, video and image discovery |
 | Launch & monitoring | 8 | the indexing switch, Search Console, post-deploy checks |
 | Search intent | 5 | the right kind of page for each phrase, one page per query, low click rates, pages almost on page one |
 
-**Plus 42 rules for your type of site:**
+**Plus 44 rules for your type of site:**
 - interactive tools
 - local businesses
 - blogs and content sites

@@ -31,11 +31,12 @@
 ### LAUNCH-05 · Watch Search Console every week · medium
 - **Pages report:** "Crawled, currently not indexed" on templated pages usually means thin or duplicate content (CONTENT-04/05).
 - 404s that have backlinks get redirects.
+- Known backlinks still link (`backlinks-gone`, `scripts/backlinks.mjs`, after a redesign or move). For each gone one, ask the site to restore or update the link. If it pointed at a page that moved, 301 the old address to the closest live page.
 - Core Web Vitals and enhancement reports.
 - Manual actions and security issues.
 
 ### LAUNCH-08 · Traffic drops are checked against Google updates first · medium
-- Before diagnosing a drop as technical, compare its dates with the Google Search Status Dashboard (status.search.google.com). Recent windows:
+- Before diagnosing a drop as technical, compare its dates with the Google Search Status Dashboard (status.search.google.com). With outside checks on, `scripts/google-updates.mjs` reads it live for the period (`googleUpdates`, one line in the report). The windows below are only a fallback and stop at this release:
   - **Core updates:** Mar, Jun and Dec 2025; Mar, May and Nov 2026.
   - **Spam updates:** Aug 2025; Mar, Jun, Aug and Sep 2026.
 - Wait at least a week after an update finishes, compare by search type, and expect recovery to take months, through better content rather than technical tweaks.

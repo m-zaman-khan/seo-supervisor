@@ -180,8 +180,12 @@ test("every outside action is named before the owner says yes, and launch mode e
   assert.match(skill, /naming each of them/);
   assert.match(skill, /off-site brand lookups/);
   assert.match(skill, /Launch mode edits nothing/);
-  assert.match(readme, /Saying yes allows four things/);
-  assert.match(readme, /IndexNow\*\* \(the URLs of changed pages/);
+  assert.match(readme, /Saying yes allows these/);
+  assert.match(readme, /\*\*IndexNow\*\* sends the URLs of changed pages/);
+  for (const action of [/Google ranking updates/, /backlink check\*\* visits/, /Matomo or PostHog/])
+    assert.match(readme, action);
+  for (const action of [/google-updates\.mjs[^\n]*--yes/, /backlinks\.mjs[^\n]*Add `--yes` once the owner agrees/])
+    assert.match(skill, action);
   assert.doesNotMatch(
     readme,
     /The only key it can use|Nothing leaves your machine unless you switch on outside checks/,

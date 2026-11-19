@@ -61,7 +61,7 @@
     </ul>
 
     <h2>Other optional services</h2>
-    <p>Some features contact other services, each only after you say yes: Google PageSpeed Insights and the Chrome UX Report (your public page addresses), IndexNow (the addresses of pages that changed), Bing Webmaster Tools, Open PageRank and Ahrefs (your site's address and the domain names you choose, using API keys you provide), and your agent's web search (search phrases and your brand name). Their own privacy policies apply. Keys you provide are saved in <code>~/.seo-supervisor/</code> on your computer.</p>
+    <p>Some features contact other services, each only after you say yes: Google PageSpeed Insights and the Chrome UX Report (your public page addresses), IndexNow (the addresses of pages that changed), Bing Webmaster Tools, Open PageRank and Ahrefs (your site's address and the domain names you choose, using API keys you provide), your own Matomo or PostHog (a request for your search visits, using the token you provide), Google's Search Status Dashboard (a plain read of its public list of ranking updates; nothing about your site), the pages that link to your site (each is visited once to see whether the link is still there), and your agent's web search (search phrases and your brand name). Their own privacy policies apply. Keys you provide are saved in <code>~/.seo-supervisor/</code> on your computer.</p>
 
     <h2>Update notices</h2>
     <p>At most once a week, SEO Supervisor asks npm (registry.npmjs.org) for the latest version number of the <code>seo-supervisor</code> package, so it can tell you when an update is out. Only the package name is sent; npm sees the request like any download. Turn it off with <code>node update-check.mjs off</code>.</p>
