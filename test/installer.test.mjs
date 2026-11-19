@@ -208,9 +208,8 @@ test("an unknown agent key fails with the list of valid keys", async () => {
   );
 });
 
-test("the install says update notices are on, and how to turn them off", async () => {
+test("the install output stays short: no update-notice line (the agent mentions new versions when there are any)", async () => {
   const home = tmp();
   const { stdout } = await node([BIN, "--agent", "cursor", "--yes"], { env: env(home), cwd: home });
-  assert.match(stdout, /Update notices are on/);
-  assert.match(stdout, /update-check\.mjs"? off/);
+  assert.doesNotMatch(stdout, /update notice|update-check/i);
 });
