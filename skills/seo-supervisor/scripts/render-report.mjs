@@ -467,15 +467,15 @@ function lighthouseText() {
     ["Accessibility", s.accessibility],
     ["Best practices", s.bestPractices],
   ].filter(([, v]) => v != null);
-  const slow =
+  const scored =
     l.length > 5
-      ? l
-          .filter(y => y.scores?.performance != null)
-          .sort((a, b) => a.scores.performance - b.scores.performance)
-          .slice(0, 3)
+      ? l.filter(y => y.scores?.performance != null).sort((a, b) => a.scores.performance - b.scores.performance)
       : [];
-  const slowest = slow.length
-    ? `. Lowest performance of ${l.length} pages: ${slow.map(y => `${new URL(y.url).pathname} ${y.scores.performance}`).join(" · ")}`
+  const slowest = scored.length
+    ? `. Lowest performance of ${scored.length} pages: ${scored
+        .slice(0, 3)
+        .map(y => `${new URL(y.url).pathname} ${y.scores.performance}`)
+        .join(" · ")}`
     : "";
   return parts.length
     ? `Lighthouse (mobile, ${new URL(x.url).pathname === "/" ? "home page" : new URL(x.url).pathname}): ${parts.map(([k, v]) => `${k} ${v}`).join(" · ")}${slowest}`

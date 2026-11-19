@@ -80,6 +80,46 @@ test("ranking updates whose rollout overlaps the window, oldest first, with Goog
   assert.equal(FEED, "https://status.search.google.com/incidents.json");
 });
 
+test("odd entries in the feed are skipped, not a crash", () => {
+  const odd = [
+    { id: "x", begin: "2026-03-05T09:00:00+00:00", external_desc: "Odd", affected_products: "Ranking" },
+    null,
+    7,
+    incident("core-mar", "March 2026 core update", "2026-03-05T09:00:00+00:00", "2026-03-19T13:00:00+00:00"),
+  ];
+  assert.deepEqual(
+    rankingUpdates(odd, { from: "2026-03-01", to: "2026-03-31" }).map(u => u.name),
+    ["March 2026 core update"],
+  );
+});
+
+test("a feed with incidents but none marked Ranking stops instead of reporting that none were announced", async () => {
+  const feed = await fakeFeed([
+    incident(
+      "serving",
+      "Serving was experiencing an issue",
+      "2026-03-10T03:55:00+00:00",
+      "2026-03-10T04:10:00+00:00",
+      "Serving",
+    ),
+    {
+      ...incident("core-mar", "March 2026 core update", "2026-03-05T09:00:00+00:00"),
+      service_name: "Rankings",
+      affected_products: [{ title: "Rankings" }],
+    },
+  ]);
+  const out = join(tmp(), "google-updates.json");
+  try {
+    await assert.rejects(
+      run(["--from", "2026-03-01", "--to", "2026-03-31", "--endpoint", feed.endpoint, "--out", out, "--yes"]),
+      e => e.code === 1 && /format may have changed/.test(e.stderr),
+    );
+    assert.ok(!existsSync(out), "nothing written, so the report can't claim there were none");
+  } finally {
+    await feed.close();
+  }
+});
+
 test("without --yes it's a dry run: nothing fetched, nothing written", async () => {
   const feed = await fakeFeed(),
     out = join(tmp(), "google-updates.json");

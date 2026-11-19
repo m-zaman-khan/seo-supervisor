@@ -164,7 +164,7 @@ One HTML file that works offline. It opens in dark mode and has a light-mode swi
 A few more things reach out, each only after its own yes:
 - **IndexNow** sends the URLs of changed pages to api.indexnow.org.
 - **The backlink check** visits the pages that link to you, to see if the links are still there. Useful after a redesign or a move.
-- **The connections** below send your site's address and domain names to Google, Bing, Open PageRank or Ahrefs, or to your own Matomo or PostHog.
+- **The connections** below send your site's address and domain names to Google, Bing, Open PageRank or Ahrefs. Matomo and PostHog get only your site or project ID and a request for search visits, sent to your own Matomo or PostHog server.
 
 To switch them on for one run, say so: `/seo-audit with outside checks`. Real-user speed needs a free PageSpeed Insights API key from Google Cloud in `PSI_API_KEY`: Google refuses almost all requests without one. The render and intent checks need no key. Add `CRUX_API_KEY` too and the Overview shows whether real-user speed got better or worse over the last 25 weeks, and which part of the main image's load real visitors wait on. With outside checks off, these checks are listed under the report's Limits.
 

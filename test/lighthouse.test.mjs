@@ -354,7 +354,7 @@ test("with more than five Lighthouse pages, the line adds the three with the low
   writeFileSync(join(dir, "a.json"), JSON.stringify(data));
   await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "r.html")]);
   const line =
-    /Lighthouse \(mobile, home page\): Performance 72 · SEO 92 · Accessibility 88 · Best practices 96\. Lowest performance of 7 pages: \/blog\/ 31 · \/shop\/ 38 · \/about\/ 45/;
+    /Lighthouse \(mobile, home page\): Performance 72 · SEO 92 · Accessibility 88 · Best practices 96\. Lowest performance of 6 pages: \/blog\/ 31 · \/shop\/ 38 · \/about\/ 45/; // a run with no score isn't counted
   assert.ok(line.test(readFileSync(join(dir, "r.html"), "utf8")), "HTML overview");
   assert.ok(line.test(readFileSync(join(dir, "r.md"), "utf8")), "Markdown overview");
 });

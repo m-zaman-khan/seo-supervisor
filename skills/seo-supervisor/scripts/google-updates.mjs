@@ -14,11 +14,14 @@ const ymd = t => {
   return isNaN(d) ? null : d.toISOString().slice(0, 10);
 };
 
+const isRanking = i =>
+  i?.service_name === "Ranking" ||
+  (Array.isArray(i?.affected_products) && i.affected_products.some(p => p?.title === "Ranking"));
+
 /** Ranking incidents whose rollout overlaps from..to (inclusive dates), oldest first. */
 export function rankingUpdates(incidents, { from, to, feed = FEED }) {
-  const ranking = i => i?.service_name === "Ranking" || (i?.affected_products || []).some(p => p?.title === "Ranking");
   return incidents
-    .filter(ranking)
+    .filter(isRanking)
     .map(i => ({
       name: String(i.external_desc || "").trim(),
       start: ymd(i.begin),
@@ -81,6 +84,13 @@ async function main() {
   } catch {}
   if (!Array.isArray(list))
     throw new Fail(`${feed} isn't the list of incidents it used to be. Nothing was written.`, 1);
+  // Google announces several ranking updates a year, so a year of incidents with none marked Ranking means the labels
+  // changed, not a quiet year. Writing an empty list would make the report say none were announced.
+  if (list.length && !list.some(isRanking))
+    throw new Fail(
+      `none of the ${list.length} incidents in ${feed} is marked Ranking, so the feed's format may have changed. Nothing was written.`,
+      1,
+    );
 
   const updates = rankingUpdates(list, { from, to, feed });
   const note =
