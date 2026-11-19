@@ -235,27 +235,67 @@ const fmtDate = d => {
   return isNaN(x) ? String(d) : x.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 };
 const num = n => Number(n).toLocaleString("en-US");
-// Search Console traffic by path (gsc-import.mjs), shown on findings and plan rows.
-const traffic = raw.traffic && typeof raw.traffic === "object" ? raw.traffic : null;
-const trafficFor = u => {
-  if (!traffic || !u) return null;
+// Search traffic by path, one line on findings and plan rows: Search Console (`traffic`, gsc-import.mjs or google.mjs),
+// Bing (`bing.traffic`, connect-keys.mjs) and GA4 organic visits (`analytics`, google.mjs), each part only when
+// present.
+const obj = x => (x && typeof x === "object" ? x : null);
+const traffic = obj(raw.traffic),
+  bing = obj(raw.bing),
+  analytics = obj(raw.analytics);
+const byPath = (map, u) => {
+  if (!obj(map) || !u) return null;
   let x;
   try {
     x = new URL(u, "https://site.invalid");
   } catch {
     return null;
   }
-  const t = traffic[x.pathname + x.search] || traffic[x.pathname];
-  return t
-    ? `${num(t.clicks)} clicks · ${num(t.impressions)} impressions${raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : ""}`
-    : null;
+  return obj(map[x.pathname + x.search] || map[x.pathname]);
+};
+const bingDates = bing?.period?.from ? `${bing.period.from} to ${bing.period.to}` : "";
+// plain: Search Console alone reads unlabelled, to match the plan's "Search traffic" field.
+const trafficFor = (u, plain = false) => {
+  const g = byPath(traffic, u),
+    b = byPath(bing?.traffic, u),
+    a = byPath(analytics, u);
+  const parts = [
+    g && `${plain && !b && !a ? "" : "Search Console: "}${num(g.clicks)} clicks · ${num(g.impressions)} impressions`,
+    b && `Bing: ${num(b.clicks)} clicks · ${num(b.impressions)} impressions`,
+    a && `Google Analytics: ${plural(a.sessions, "organic visit")}`,
+  ].filter(Boolean);
+  // One period per line: Google's, shared by Search Console and GA4. Bing's dates are on its own Overview line.
+  const when = g || a ? raw.trafficPeriod : bingDates;
+  return parts.length ? `${parts.join(" · ")}${when ? ` (${String(when).toLowerCase()})` : ""}` : null;
+};
+// The first evidence page with traffic.
+const trafficOf = f => {
+  const e = (f.evidence || []).find(x => x.url && trafficFor(x.url));
+  return e && { text: trafficFor(e.url), path: new URL(e.url, "https://site.invalid").pathname };
 };
 const trafficHtml = f => {
-  const e = (f.evidence || []).find(x => x.url && trafficFor(x.url));
-  return e
-    ? `<p class="quiet">Search Console: ${esc(trafficFor(e.url))} on <code>${esc(new URL(e.url, "https://site.invalid").pathname)}</code></p>`
-    : "";
+  const t = trafficOf(f);
+  return t ? `<p class="quiet">${esc(t.text)} on <code>${esc(t.path)}</code></p>` : "";
 };
+// Site-wide totals for the Overview: Bing's clicks, impressions and linked pages, and GA4's organic visits. Third-party
+// data, escaped where shown.
+const sum = (map, k) => Object.values(obj(map) || {}).reduce((s, t) => s + (Number(t?.[k]) || 0), 0);
+const linked = Array.isArray(bing?.backlinks?.pages) ? bing.backlinks.pages.filter(obj) : [];
+const topLinked = [...linked].sort((a, b) => (Number(b.count) || 0) - (Number(a.count) || 0)).slice(0, 10);
+const linkSample = (Array.isArray(bing?.backlinks?.sample) ? bing.backlinks.sample.filter(obj) : []).slice(0, 5);
+function searchLines() {
+  const pages = Object.keys(obj(bing?.traffic) || {}).length,
+    ga = Object.keys(analytics || {}).length;
+  const bits = [
+    pages && `${num(sum(bing.traffic, "clicks"))} clicks · ${num(sum(bing.traffic, "impressions"))} impressions`,
+    linked.length && `${plural(linked.length, "page")} ${linked.length === 1 ? "has" : "have"} links from other sites`,
+  ].filter(Boolean);
+  return [
+    bits.length && `Bing${bingDates ? ` (${bingDates})` : ""}: ${bits.join(" · ")}`,
+    ga &&
+      `Google Analytics: ${plural(sum(analytics, "sessions"), "organic visit")} to ${plural(ga, "landing page")}${raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : ""}`,
+  ].filter(Boolean);
+}
+const linkCount = p => plural(Number(p.count) || 0, "link");
 const plural = (n, w, p = w + "s") => `${num(n)} ${n === 1 ? w : p}`;
 const firstSentence = s => {
   const m = String(s || "").match(/^.*?[.!?](\s|$)/);
@@ -436,7 +476,14 @@ function overviewHtml() {
         }
         return rows.join("");
       })()}</ol>
-    </section>
+    </section>${searchLines()
+      .map(t => `\n    <p class="quiet">${esc(t)}</p>`)
+      .join("")}${
+      topLinked.length || linkSample.length
+        ? `
+    <details class="how links"><summary>Links from other sites (Bing)</summary>${topLinked.length ? `<p>The pages with the most links from other sites:</p><ul class="lim">${topLinked.map(p => `<li><b><code>${esc(p.url)}</code></b><span>${linkCount(p)}</span></li>`).join("")}</ul>` : ""}${linkSample.length ? `<p>Some of the links to the home page:</p><ul class="lim">${linkSample.map(s => `<li><b><code>${esc(s.url)}</code></b><span>${esc(s.anchorText || "")}</span></li>`).join("")}</ul>` : ""}</details>`
+        : ""
+    }
     </div>
   </div>
   ${
@@ -659,7 +706,7 @@ const DEFAULT_TAB = tabs[0][0];
 const PANELS = {
   overview: overviewHtml,
   diff: diffHtml,
-  plan: () => planHtml(plan, { esc, inl, num, traffic: trafficFor }),
+  plan: () => planHtml(plan, { esc, inl, num, traffic: u => trafficFor(u, true) }),
   findings: findingsHtml,
   decisions: decisionsHtml,
   changes: changesHtml,
@@ -1000,10 +1047,32 @@ function markdown() {
     if (labSpeedText()) L.push(labSpeedText(), "");
     if (authorityText())
       L.push(`${authorityText()}${ahrefsCredit() ? ` · [${ahrefsCredit().text}](${ahrefsCredit().url})` : ""}`, "");
+    for (const t of searchLines()) L.push(t, "");
     L.push("## Area scores", "", "| Area | Score | Open findings | Top issue |", "| --- | ---: | ---: | --- |");
     for (const a of areas)
       L.push(`| ${mdEsc(a.name)} | ${a.value} | ${a.top.length} | ${mdEsc(a.top[0]?.title || "All checks pass")} |`);
     L.push("");
+    // Third-party text: URLs in code spans, anchor text with Markdown and HTML characters backslash-escaped.
+    const mdCode = s => "`" + String(s ?? "").replace(/[`\r\n]/g, " ") + "`";
+    const mdText = s =>
+      String(s ?? "")
+        .replace(/\s+/g, " ")
+        .replace(/[\\`*_[\]<>]/g, "\\$&");
+    if (topLinked.length || linkSample.length) L.push("## Links from other sites (Bing)", "");
+    if (topLinked.length)
+      L.push(
+        "The pages with the most links from other sites:",
+        "",
+        ...topLinked.map(p => `- ${mdCode(p.url)} ${linkCount(p)}`),
+        "",
+      );
+    if (linkSample.length)
+      L.push(
+        "Some of the links to the home page:",
+        "",
+        ...linkSample.map(s => `- ${mdCode(s.url)}${s.anchorText ? ` ${mdText(s.anchorText)}` : ""}`),
+        "",
+      );
   }
   if (plan) L.push(...planMarkdown(plan));
   if (diff) {
@@ -1055,6 +1124,8 @@ function markdown() {
         `**What was done.** ${f.fixed.summary || ""}${(f.fixed.files || []).length ? ` Files: ${f.fixed.files.map(x => "`" + x + "`").join(", ")}.` : ""}${f.fixed.verified ? ` Verified: ${f.fixed.verified}.` : ""}`,
         "",
       );
+    const t = trafficOf(f);
+    if (t) L.push(`${t.text} on \`${t.path}\``, "");
     if ((f.evidence || []).length) {
       L.push("| Where | Detail |", "| --- | --- |");
       for (const e of f.evidence)

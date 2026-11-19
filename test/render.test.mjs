@@ -152,3 +152,153 @@ test("the authority line is hidden when every score is empty, and Open PageRank 
   assert.match(opr.html, /Authority: Open PageRank 3\.6</, "a rival without scores is left out");
   assert.doesNotMatch(opr.html, AHREFS_LINK);
 });
+
+const renderEdited = async edit => {
+  const dir = tmp(),
+    data = JSON.parse(readFileSync(SAMPLE, "utf8"));
+  edit(data);
+  writeFileSync(join(dir, "a.json"), JSON.stringify(data));
+  await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "r.html")]);
+  return { html: readFileSync(join(dir, "r.html"), "utf8"), md: readFileSync(join(dir, "r.md"), "utf8") };
+};
+const BING = () => ({
+  siteUrl: "https://security.example/",
+  period: { from: "2026-05-18", to: "2026-11-15" },
+  queries: [],
+  crawlIssues: [],
+  traffic: { "/tools/mx-lookup/": { clicks: 14, impressions: 600 }, "/": { clicks: 1226, impressions: 29500 } },
+  backlinks: {
+    // 12 linked pages out of order: the list shows the 10 with the most links, most first.
+    pages: [5, 12, 1, 9, 3, 11, 7, 2, 10, 4, 8, 6].map(n => ({
+      url: `https://security.example/p${n}/`,
+      count: n * 10,
+    })),
+    sample: [
+      { url: "https://blog.example/post", anchorText: "<img src=x onerror=alert(1)>" },
+      ...[2, 3, 4, 5, 6].map(n => ({ url: `https://ref${n}.example/`, anchorText: `ref ${n}` })),
+    ],
+  },
+});
+const GA = () => ({ "/tools/mx-lookup/": { sessions: 340, engaged: 200 }, "/": { sessions: 4980, engaged: 3000 } });
+const ALL3 =
+  "Search Console: 120 clicks · 9,800 impressions · Bing: 14 clicks · 600 impressions · Google Analytics: 340 organic visits (last 3 months)";
+// The lines under finding F-002 in the Markdown, up to the next heading.
+const f002 = md => md.split("\n### F-002 ")[1].split("\n### ")[0];
+
+test("a finding's traffic line combines Search Console, Bing and Google Analytics, in the HTML and the Markdown", async () => {
+  const { html, md } = await renderEdited(d => {
+    d.bing = BING();
+    d.analytics = GA();
+  });
+  assert.ok(
+    html.includes(`<p class="quiet">${ALL3} on <code>/tools/mx-lookup/</code></p>`),
+    "one line on the finding card",
+  );
+  assert.ok(
+    f002(md).includes(`\n${ALL3} on \`/tools/mx-lookup/\`\n`),
+    "the same line under the finding in the Markdown",
+  );
+});
+
+test("a plan row's Search traffic field shows every source for that page", async () => {
+  const { html } = await renderEdited(d => {
+    d.bing = BING();
+    d.analytics = GA();
+  });
+  assert.ok(
+    html.includes(
+      "<dt>Search traffic</dt><dd>Search Console: 1,840 clicks · 52,300 impressions · Bing: 1,226 clicks · 29,500 impressions · Google Analytics: 4,980 organic visits (last 3 months)</dd>",
+    ),
+  );
+});
+
+test("Search Console traffic alone keeps its line on the finding card and shows in the Markdown too", async () => {
+  const { html, md } = await renderEdited(() => {});
+  assert.ok(
+    html.includes(
+      `<p class="quiet">Search Console: 120 clicks · 9,800 impressions (last 3 months) on <code>/tools/mx-lookup/</code></p>`,
+    ),
+  );
+  assert.ok(
+    f002(md).includes("\nSearch Console: 120 clicks · 9,800 impressions (last 3 months) on `/tools/mx-lookup/`\n"),
+  );
+});
+
+test("the Overview shows Bing and Google Analytics totals only when that data exists", async () => {
+  const bingLine =
+    "Bing (2026-05-18 to 2026-11-15): 1,240 clicks · 30,100 impressions · 12 pages have links from other sites";
+  const gaLine = "Google Analytics: 5,320 organic visits to 2 landing pages (last 3 months)";
+  const both = await renderEdited(d => {
+    d.bing = BING();
+    d.analytics = GA();
+  });
+  for (const s of [both.html, both.md]) {
+    assert.ok(s.includes(bingLine), "Bing line");
+    assert.ok(s.includes(gaLine), "Analytics line");
+  }
+  const gaOnly = await renderEdited(d => {
+    d.analytics = GA();
+  });
+  assert.ok(gaOnly.html.includes(gaLine));
+  assert.doesNotMatch(gaOnly.html + gaOnly.md, /Bing|Links from other sites/);
+  const bingOnly = await renderEdited(d => {
+    d.bing = BING();
+  });
+  assert.ok(bingOnly.md.includes(bingLine));
+  assert.doesNotMatch(bingOnly.html + bingOnly.md, /Google Analytics/);
+});
+
+test("the links list shows Bing's 10 most-linked pages and 5 sample links, escaped", async () => {
+  const { html, md } = await renderEdited(d => {
+    d.bing = BING();
+  });
+  const det = html.match(/<details class="how links">[\s\S]*?<\/details>/)?.[0];
+  assert.ok(det, "a collapsed details");
+  assert.ok(
+    html.indexOf(det) > html.indexOf('id="p-overview"') && html.indexOf(det) < html.indexOf('id="p-findings"'),
+    "on the Overview",
+  );
+  assert.deepEqual(
+    [...det.matchAll(/security\.example\/p(\d+)\//g)].map(m => Number(m[1])),
+    [12, 11, 10, 9, 8, 7, 6, 5, 4, 3],
+    "top 10 by links, most first",
+  );
+  assert.ok(det.includes("<li><b><code>https://security.example/p12/</code></b><span>120 links</span></li>"));
+  assert.ok(
+    det.includes("blog.example/post") && det.includes("ref5.example") && !det.includes("ref6.example"),
+    "the first 5 sample links",
+  );
+  assert.ok(det.includes("&lt;img src=x onerror=alert(1)&gt;"), "anchor text is escaped");
+  assert.doesNotMatch(html, /<img src=x/);
+  assert.match(md, /^## Links from other sites \(Bing\)$/m);
+  assert.match(md, /^- `https:\/\/security\.example\/p12\/` 120 links$/m);
+  assert.doesNotMatch(md, /example\/p[12]\/`/, "the Markdown lists the top 10 too");
+  assert.ok(md.includes("\\<img src=x onerror=alert(1)\\>"), "the Markdown escapes the anchor text");
+  assert.doesNotMatch(md, /(^|[^\\])<img src=x/m);
+});
+
+test("a report without Search Console, Bing or Analytics data has no traffic or search lines, and empty data renders the same as none", async () => {
+  const strip = d => {
+    delete d.traffic;
+    delete d.trafficPeriod;
+  };
+  const none = await renderEdited(strip);
+  const empty = await renderEdited(d => {
+    strip(d);
+    d.analytics = {};
+    d.bing = {
+      siteUrl: "https://security.example/",
+      period: null,
+      traffic: {},
+      queries: [],
+      backlinks: { pages: [], sample: [] },
+      crawlIssues: null,
+    };
+  });
+  assert.equal(empty.html, none.html);
+  assert.equal(empty.md, none.md);
+  assert.doesNotMatch(none.html + none.md, /Search Console:|Bing|Google Analytics|Links from other sites/);
+  assert.match(none.html, /<\/ol>\n    <\/section>\n    <\/div>\n  <\/div>/, "nothing added after the score factors");
+  assert.doesNotMatch(none.md, /\n\n\n/, "no empty lines");
+  assert.doesNotMatch(none.html, /<p class="quiet"><\/p>/);
+});

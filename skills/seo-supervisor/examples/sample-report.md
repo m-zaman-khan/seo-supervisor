@@ -124,6 +124,8 @@ Status: Open · Area: Headings & content · Rule: CONTENT-04 · Cases: 418
 
 **How to fix.** Write a specific intro, checks and FAQs for each record type in `src/data/tools/dns.ts`, or merge the rare types into one DNS lookup tool with a type selector.
 
+Search Console: 120 clicks · 9,800 impressions (last 3 months) on `/tools/mx-lookup/`
+
 | Where | Detail |
 | --- | --- |
 | https://security.example/tools/mx-lookup/ | 78% shared with /tools/txt-lookup/ |
@@ -176,6 +178,8 @@ Status: Open · Area: Metadata · Rule: META-01 · Cases: 14
 **Why it matters.** Long titles get cut off in results, often losing the brand or the key phrase.
 
 **How to fix.** Shorten the tool title pattern in `src/lib/seo.ts` to “{Tool} - Free {Thing} Check”.
+
+Search Console: 960 clicks · 31,200 impressions (last 3 months) on `/tools/ssl-checker/`
 
 | Where | Detail |
 | --- | --- |
@@ -242,6 +246,8 @@ Status: Fixed · Area: URLs & canonicals · Rule: URL-04 · Cases: 52
 **How to fix.** Set the production origin in one place and use it for `metadataBase`.
 
 **What was done.** metadataBase now reads SITE_URL, which fails the build if missing; production env updated. Files: `src/lib/seo.ts`, `next.config.ts`. Verified: re-crawl 17 Nov: 0 canonicals on the wrong host.
+
+Search Console: 960 clicks · 31,200 impressions (last 3 months) on `/tools/ssl-checker/`
 
 | Where | Detail |
 | --- | --- |
