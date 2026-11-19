@@ -1791,7 +1791,9 @@ async function readSitemaps(urls, listed = true) {
       entries.push(e);
     }
   }
-  return { entries, files, cut };
+  // Files still queued after the 60-file limit went unread too, so pages in them can't be called missing.
+  const filesLeft = !cut && queue.some(([u]) => !seen.has(u));
+  return { entries, files, cut: cut || filesLeft, filesLeft };
 }
 
 // ---------- URL helpers ----------
@@ -1997,7 +1999,11 @@ if (!sm.entries.length && !smListed) {
   const alt = await readSitemaps([START_ORIGIN + "/sitemap_index.xml"], false);
   if (alt.entries.length) sm = alt;
 }
-if (sm.cut)
+if (sm.filesLeft)
+  notes.push(
+    "The sitemap index lists more than 60 sitemap files. Only the first 60 were read, so the URLs in the rest weren't checked.",
+  );
+else if (sm.cut)
   notes.push(
     `The sitemaps list more than ${SITEMAP_KEEP.toLocaleString("en-US")} URLs. Only the first ${SITEMAP_KEEP.toLocaleString("en-US")} were read, so the rest, and any sitemap files after them, weren't checked.`,
   );
@@ -3185,7 +3191,9 @@ if (sm.cut && findings.delete("missing-from-sitemap") && evaluated.delete("MAP-0
   notChecked.push({
     rule: "MAP-03",
     area: `MAP-03 ${RULES["MAP-03"][0]}`,
-    reason: `Some crawled pages aren't among the first ${SITEMAP_KEEP.toLocaleString("en-US")} sitemap URLs, the most this audit reads, so they may still be in the rest of the sitemap.`,
+    reason: sm.filesLeft
+      ? "Some crawled pages aren't in the first 60 sitemap files, the most this audit reads, so they may still be in the files after them."
+      : `Some crawled pages aren't among the first ${SITEMAP_KEEP.toLocaleString("en-US")} sitemap URLs, the most this audit reads, so they may still be in the rest of the sitemap.`,
   });
 if (!redirectSources.length)
   notChecked.push({

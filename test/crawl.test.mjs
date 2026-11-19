@@ -465,6 +465,43 @@ test("sitemaps: 50,000 URLs a file are kept and the rest only counted, 200,000 i
   assert.ok(!r.passed.some(p => p.rule === "MAP-03") && r.notChecked.some(n => n.rule === "MAP-03"));
 });
 
+test("past 60 sitemap files the rest aren't read, a note says so, and MAP-03 isn't judged", async () => {
+  const page = body =>
+    `<!doctype html><html lang="en"><head><title>Example page</title></head><body><h1>Example</h1>${body}</body></html>`;
+  const names = Array.from({ length: 61 }, (_, i) => `/s${i}.xml`);
+  const files = Object.fromEntries(
+    names.map((n, i) => [n, { type: "application/xml", body: urlset(i === 60 ? ["/about/"] : ["/"]) }]),
+  );
+  const r = await crawlSite(
+    { "/": page('<a href="/about/">About us</a>'), "/about/": page("") },
+    {
+      files: {
+        "/robots.txt": {
+          type: "text/plain",
+          body: Buffer.from("User-agent: *\nAllow: /\nSitemap: https://example.com/index.xml\n"),
+        },
+        "/index.xml": {
+          type: "application/xml",
+          body: xml(
+            `<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${names.map(n => `<sitemap><loc>https://example.com${n}</loc></sitemap>`).join("")}</sitemapindex>`,
+          ),
+        },
+        ...files,
+      },
+    },
+    "https://example.com",
+  );
+  assert.ok(
+    r.notes.some(n => /60 sitemap files/.test(n)),
+    r.notes.join("\n"),
+  );
+  assert.ok(
+    !r.findings.some(f => f.check === "missing-from-sitemap"),
+    "/about/ is in the 61st file, which wasn't read",
+  );
+  assert.ok(!r.passed.some(p => p.rule === "MAP-03") && r.notChecked.some(n => n.rule === "MAP-03"));
+});
+
 test("news sitemaps: required tags, articles from the last two days and at most 1,000 per file; a correct one and a normal sitemap pass", async () => {
   const NS = ` xmlns:news="http://www.google.com/schemas/sitemap-news/0.9"`,
     old = new Date(Date.now() - 10 * 864e5).toISOString().slice(0, 10);
