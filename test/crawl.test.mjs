@@ -58,8 +58,20 @@ const webp = (chunk, w, h) => {
   }
   return b;
 };
+// An ICO directory with one entry per size (0 stands for 256).
+const ico = sizes => {
+  const b = Buffer.alloc(6 + 16 * sizes.length);
+  b.writeUInt16LE(1, 2);
+  b.writeUInt16LE(sizes.length, 4);
+  sizes.forEach((s, i) => {
+    b[6 + 16 * i] = s % 256;
+    b[7 + 16 * i] = s % 256;
+  });
+  return b;
+};
 
-test("image sizes are read from PNG, JPEG, GIF and WebP headers", () => {
+test("image sizes are read from PNG, JPEG, GIF, WebP and ICO headers", () => {
+  assert.deepEqual(imageSize(ico([16, 32, 256])), { type: "ico", width: 256, height: 256 }, "an ICO's largest entry");
   assert.deepEqual(imageSize(png(1200, 630)), { type: "png", width: 1200, height: 630 });
   assert.deepEqual(imageSize(jpeg(800, 418)), { type: "jpeg", width: 800, height: 418 });
   assert.deepEqual(imageSize(gif(300, 200)), { type: "gif", width: 300, height: 200 });
@@ -815,4 +827,327 @@ test("obsolete tags are flagged; iframes and custom elements named like them are
     "<frameset>, <frame>",
     "a frameset page has no body",
   );
+});
+
+// A site of plumber pages ({ "/path/": [title, head, body] }); the home page links to every other page.
+const site = pages =>
+  Object.fromEntries(
+    Object.entries(pages).map(([p, [title, head = "", body = ""]], _, all) => [
+      p,
+      plumber(
+        title,
+        title,
+        p === "/"
+          ? body +
+              all
+                .filter(([q]) => q !== "/")
+                .map(([q]) => `<a href="${q}">${q}</a>`)
+                .join(" ")
+          : body,
+        { head: `<meta charset="utf-8">${head}` },
+      ),
+    ]),
+  );
+const file = (type, body) => ({ type, body: Buffer.from(body) });
+const pathOf = r => p => new URL(p.url).pathname;
+
+test("robots rules: none means noindex and nofollow, other crawlers' rules don't count, a nofollow page and noindex with a canonical elsewhere are flagged", async () => {
+  const r = await crawlSite(
+    site({
+      "/": ["Boiler Repairs and Servicing in Leeds"],
+      "/none/": ["Robots None Page in Leeds", '<meta name="robots" content="none">'],
+      "/otherbot/": ["Other Crawler Rules in Leeds"],
+      "/googlebot/": ["Googlebot Header Rules in Leeds"],
+      "/bingbot/": ["Bing Meta Rules in Leeds", '<meta name="bingbot" content="noindex, nofollow">'],
+      "/nofollow/": ["Nofollow Page in Leeds", '<meta name="robots" content="index, nofollow">'],
+      "/elsewhere/": [
+        "Noindex Canonical Elsewhere in Leeds",
+        '<meta name="robots" content="noindex"><link rel="canonical" href="https://site.example/">',
+      ],
+      "/hidden/": [
+        "Hidden Page in Leeds",
+        '<meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://site.example/hidden/">',
+      ],
+    }),
+    {
+      headers: {
+        "/otherbot/": { "X-Robots-Tag": "otherbot: noindex, nofollow, nosnippet" },
+        "/googlebot/": { "X-Robots-Tag": "googlebot: noindex" },
+      },
+    },
+  );
+  assert.deepEqual(
+    r.pages
+      .filter(p => p.noindex)
+      .map(pathOf(r))
+      .sort(),
+    ["/elsewhere/", "/googlebot/", "/hidden/", "/none/"],
+  );
+  assert.deepEqual(
+    pathsOf(r, "page-nofollow"),
+    ["/nofollow/"],
+    "noindex, nofollow is fine, and otherbot's and bingbot's rules aren't Google's",
+  );
+  assert.deepEqual([findingOf(r, "page-nofollow").rule, findingOf(r, "page-nofollow").severity], ["META-06", "medium"]);
+  assert.ok(!findingOf(r, "nosnippet"), "otherbot: nosnippet isn't for Google");
+  assert.ok(!findingOf(r, "robots-conflict"));
+  assert.deepEqual(
+    pathsOf(r, "noindex-canonical"),
+    ["/elsewhere/"],
+    "a noindex page with a canonical to itself is fine",
+  );
+  assert.deepEqual(
+    [findingOf(r, "noindex-canonical").rule, findingOf(r, "noindex-canonical").severity],
+    ["CRAWL-02", "medium"],
+  );
+});
+
+test("Markdown answers need Vary: Accept itself (or *); Accept-Encoding isn't it", async () => {
+  const runs = await Promise.all(
+    ["Accept-Encoding", "Accept-Encoding, Accept", "*"].map(v =>
+      crawlSite(two(), { markdown: { "/": "# Boiler repairs\n" }, headers: { "/": { Vary: v } } }),
+    ),
+  );
+  assert.equal(findingOf(runs[0], "markdown-no-vary")?.evidence[0].detail, "Vary: Accept-Encoding");
+  for (const r of runs.slice(1))
+    assert.ok(
+      !findingOf(r, "markdown-no-vary") && r.passed.some(p => p.rule === "AI-05"),
+      JSON.stringify(findingOf(r, "markdown-no-vary")?.evidence),
+    );
+});
+
+test("Chinese, Japanese and Thai pages are counted in words, so thin-page and near-duplicate work there", async () => {
+  const ZH_A =
+    "我们的工程师每天在城市各处修理漏水和散热器。每次开工之前，我们都会提供清楚的书面报价。工作完成后，我们会把现场打扫干净。";
+  const ZH_B =
+    "这家餐厅提供新鲜的海鲜和本地蔬菜。厨师每天早上去市场挑选食材。周末晚上最好提前预订座位，节假日也照常营业。";
+  const JA = "最新のBoilerの修理は私たちのエンジニアにお任せください。見積もりは無料で、作業の前に必ずご説明します。";
+  const TH = "ช่างของเราซ่อมท่อรั่วทั่วเมืองทุกวัน เราให้ใบเสนอราคาที่ชัดเจนก่อนเริ่มงานทุกครั้ง และทำความสะอาดหลังงานเสร็จ";
+  const page = (lang, title, text, links = "", h1 = title) =>
+    `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title></head><body><main><h1>${h1}</h1><p>${text}</p>${links}</main><script src="/app.js"></script></body></html>`;
+  const r = await crawlSite({
+    "/": page(
+      "zh",
+      "北风水暖维修服务",
+      ZH_A.repeat(6),
+      ["food", "copy", "short", "ja", "th"].map(p => `<a href="/${p}/">${p}</a>`).join(" "),
+    ),
+    "/food/": page("zh", "海鲜餐厅", ZH_B.repeat(6)),
+    "/copy/": page("zh", "水暖维修服务", ZH_A.repeat(6)),
+    "/short/": page("zh", "简短页面", ZH_B),
+    "/ja/": page("ja", "Boiler Service | ノースウィンド", JA.repeat(6), "", "ボイラーの修理"),
+    "/th/": page("th", "ซ่อมท่อ", TH.repeat(8)),
+  });
+  const words = Object.fromEntries(r.pages.map(p => [pathOf(r)(p), p.words]));
+  for (const p of ["/", "/food/", "/copy/", "/ja/", "/th/"]) assert.ok(words[p] >= 150, `${p}: ${words[p]} words`);
+  assert.deepEqual(pathsOf(r, "thin-page"), ["/short/"]);
+  assert.ok(!findingOf(r, "client-rendered"));
+  const dup = findingOf(r, "near-duplicate");
+  assert.equal(dup?.count, 1);
+  assert.match(dup.evidence[0].url + dup.evidence[0].detail, /\/copy\//);
+  assert.ok(!pathsOf(r, "title-mismatch").includes("/ja/"), "“Boiler” is on the page, written next to Japanese");
+});
+
+test("a missing llms.txt is a note, not a finding (it's optional); a well-formed one passes MAP-07", async () => {
+  const [none, good] = await Promise.all([
+    crawlOnePage(),
+    crawlSite(two(), {
+      files: {
+        "/llms.txt": file(
+          "text/plain; charset=utf-8",
+          "# Northwind Plumbing\n\n> Boiler repairs in Leeds.\n\n- [About](https://site.example/about/): the team\n",
+        ),
+      },
+    }),
+  ]);
+  assert.ok(!none.findings.some(f => f.rule === "MAP-07"));
+  assert.ok(!none.passed.some(p => p.rule === "MAP-07"), "nothing was measured, so MAP-07 doesn't pass either");
+  assert.ok(none.notes.some(n => /llms\.txt/.test(n) && /optional/.test(n)));
+  assert.ok(good.passed.some(p => p.rule === "MAP-07"));
+});
+
+test("the rule text matches the checks: short titles, and Book actions still in use", () => {
+  const read = f => readFileSync(join(ROOT, "skills", "seo-supervisor", "rules", f), "utf8");
+  assert.match(read("metadata.md"), /`title-short` \(flagged under 20 characters; aim for about 30–60\)/);
+  const sd = read("structured-data.md");
+  assert.doesNotMatch(sd.split("**Gone:**")[1].split("\n>\n")[0], /Book/);
+  assert.match(sd, /Book actions[^\n]*5 Nov 2025/);
+  assert.match(read("sitemaps-robots.md").split("### MAP-07 ·")[1].split("\n### ")[0], /note/);
+});
+
+test("every indexable page is checked for a language, not only the home page", async () => {
+  const r = await crawlSite({ ...two(), "/about/": two()["/about/"].replace(' lang="en"', "") });
+  assert.deepEqual(pathsOf(r, "lang-missing"), ["/about/"]);
+});
+
+test("<base href> is used to resolve links, canonicals and images", async () => {
+  const images = [];
+  const r = await crawlSite(
+    site({
+      "/": ["Boiler Repairs and Servicing in Leeds", "", '<a href="/guides/boilers/">Boiler guide</a>'],
+      "/guides/boilers/": [
+        "Boiler Buying Guide for Leeds",
+        '<base href="/guides/"><link rel="canonical" href="boilers/"><meta property="og:image" content="og.png">',
+        '<a href="radiators/">Radiator guide</a>',
+      ],
+      "/guides/radiators/": [
+        "Radiator Buying Guide for Leeds",
+        '<link rel="canonical" href="https://site.example/guides/radiators/">',
+      ],
+    }),
+    {
+      before: req => {
+        if (/og\.png$/.test(req.url)) images.push(req.url);
+      },
+    },
+  );
+  assert.ok(!findingOf(r, "broken-internal-link"), JSON.stringify(findingOf(r, "broken-internal-link")?.evidence));
+  assert.ok(!pathsOf(r, "canonical-not-self").includes("/guides/boilers/"));
+  assert.equal(new URL(r.pages.find(p => pathOf(r)(p) === "/guides/boilers/").canonical).pathname, "/guides/boilers/");
+  assert.deepEqual(images, ["/guides/og.png"]);
+});
+
+test("every offer of a product needs shipping and returns, not just one", async () => {
+  const full = {
+    shippingDetails: { "@type": "OfferShippingDetails" },
+    hasMerchantReturnPolicy: { "@type": "MerchantReturnPolicy" },
+  };
+  const product = offers =>
+    `<script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", "@type": "Product", name: "Combi boiler", offers: offers.map(o => ({ "@type": "Offer", price: "20.00", priceCurrency: "GBP", ...o })) })}</script>`;
+  const r = await crawlSite(
+    site({
+      "/": ["Boiler Repairs and Servicing in Leeds"],
+      "/mixed/": ["Combi Boiler in Two Sizes", product([full, {}]), "<p>£20.00</p>"],
+      "/complete/": ["Combi Boiler With Delivery", product([full, full]), "<p>£20.00</p>"],
+    }),
+  );
+  for (const key of ["product-no-shipping", "product-no-returns"]) {
+    assert.deepEqual(pathsOf(r, key), ["/mixed/"], key);
+    assert.equal(findingOf(r, key).evidence[0].detail, "Combi boiler: 1 of 2 offer(s)");
+  }
+});
+
+test("Content-Signal accepts Cloudflare's use= field", async () => {
+  const robots = line => ({ files: { "/robots.txt": file("text/plain", `User-agent: *\n${line}\nAllow: /\n`) } });
+  const [cf, bad] = await Promise.all([
+    crawlSite(two(), robots("Content-Signal: search=yes, ai-train=no, use=reference")),
+    crawlSite(two(), robots("Content-Signal: search=yes, use=maybe")),
+  ]);
+  assert.ok(
+    !findingOf(cf, "content-signal-invalid"),
+    JSON.stringify(findingOf(cf, "content-signal-invalid")?.evidence),
+  );
+  assert.equal(findingOf(bad, "content-signal-invalid")?.evidence[0].detail, "use=maybe");
+});
+
+test("Microdata and RDFa count as structured data, with a low note that only JSON-LD is validated", async () => {
+  const r = await crawlSite(
+    site({
+      "/": ["Boiler Repairs and Servicing in Leeds"],
+      "/micro/": [
+        "Combi Boiler Microdata Page",
+        "",
+        '<div itemscope itemtype="https://schema.org/Product"><span itemprop="name">Combi boiler</span></div><ol itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem"><a itemprop="item" href="/"><span itemprop="name">Home</span></a></li></ol>',
+      ],
+      "/rdfa/": [
+        "Northwind RDFa Business Page",
+        "",
+        '<div vocab="https://schema.org/" typeof="LocalBusiness"><span property="name">Northwind</span></div><ol vocab="https://schema.org/" typeof="BreadcrumbList"><li property="itemListElement" typeof="ListItem"><a property="item" typeof="WebPage" href="/"><span property="name">Home</span></a></li></ol>',
+      ],
+      "/plain/": [
+        "Plain Page Without Any Markup",
+        "",
+        '<script>if (typeof window !== "undefined") document.title += "";</script><p data-typeof="x">No markup here</p>',
+      ],
+    }),
+  );
+  assert.deepEqual(pathsOf(r, "jsonld-none"), ["/", "/plain/"]);
+  assert.deepEqual(pathsOf(r, "breadcrumb-missing"), ["/plain/"]);
+  assert.deepEqual(pathsOf(r, "schema-not-jsonld"), ["/micro/", "/rdfa/"]);
+  assert.deepEqual(
+    [findingOf(r, "schema-not-jsonld").rule, findingOf(r, "schema-not-jsonld").severity],
+    ["SCHEMA-01", "low"],
+  );
+  const other = p => r.pages.find(x => pathOf(r)(x) === p).schemaOther;
+  assert.deepEqual(other("/micro/"), ["Product", "BreadcrumbList", "ListItem"]);
+  assert.deepEqual(other("/rdfa/"), ["LocalBusiness", "BreadcrumbList", "ListItem", "WebPage"]);
+  assert.deepEqual(other("/plain/"), []);
+});
+
+test("favicon: missing or broken is medium, small, oblong or SVG-only is low, a good one passes, one on another host isn't checked", async () => {
+  const [none, broken, good, small, svg, cdn, oblong] = await Promise.all([
+    crawlSite(two()),
+    crawlSite(two('<link rel="icon" href="/missing.png">')),
+    crawlSite(
+      two('<link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple.png">'),
+      {
+        files: {
+          "/icon.svg": file("image/svg+xml", "<svg xmlns='http://www.w3.org/2000/svg'/>"),
+          "/apple.png": { type: "image/png", body: png(180, 180) },
+        },
+      },
+    ),
+    crawlSite(two(), { files: { "/favicon.ico": { type: "image/x-icon", body: ico([16, 32]) } } }),
+    crawlSite(two('<link rel="icon" href="/icon.svg">'), {
+      files: { "/icon.svg": file("image/svg+xml", "<svg xmlns='http://www.w3.org/2000/svg'/>") },
+    }),
+    crawlSite(two('<link rel="shortcut icon" href="https://cdn.example.net/icon.png">')),
+    crawlSite(two('<link rel="icon" href="/wide.png">'), {
+      files: { "/wide.png": { type: "image/png", body: png(96, 48) } },
+    }),
+  ]);
+  const fav = r =>
+    r.findings.filter(f => /^favicon-/.test(f.check)).map(f => [f.check, f.rule, f.severity, f.evidence[0].detail]);
+  assert.deepEqual(fav(oblong), [["favicon-unsuitable", "META-10", "low", "/wide.png: 96×48 px"]]);
+  assert.deepEqual(fav(none), [
+    ["favicon-missing", "META-10", "medium", "no icon link on the home page, and /favicon.ico → 404"],
+  ]);
+  assert.deepEqual(fav(broken), [["favicon-missing", "META-10", "medium", "/missing.png → 404; /favicon.ico → 404"]]);
+  assert.deepEqual(fav(good), []);
+  assert.ok(good.passed.some(p => p.rule === "META-10"));
+  assert.deepEqual(fav(small), [["favicon-unsuitable", "META-10", "low", "/favicon.ico: 32×32 px"]]);
+  assert.deepEqual(fav(svg), [["favicon-unsuitable", "META-10", "low", "/icon.svg: SVG"]]);
+  assert.deepEqual(fav(cdn), []);
+  assert.ok(!cdn.passed.some(p => p.rule === "META-10"));
+  assert.match(cdn.notChecked.find(n => n.rule === "META-10")?.reason || "", /another host/);
+});
+
+test("render-blocking scripts in the head, and many stylesheets, are flagged; deferred, async, module and body scripts aren't", async () => {
+  const css = n => Array.from({ length: n }, (_, i) => `<link rel="stylesheet" href="/s${i}.css">`).join("");
+  const r = await crawlSite(
+    site({
+      "/": ["Boiler Repairs and Servicing in Leeds", `<script src="/js/jquery.js"></script>${css(2)}`],
+      "/fine/": [
+        "Deferred Scripts and Two Stylesheets",
+        `<script src="/a.js" defer></script><script src="/b.js" async></script><script type="module" src="/c.js"></script><script src="/legacy.js" nomodule></script><script type="application/ld+json">{}</script><!--[if lt IE 9]><script src="/html5shiv.js"></script><![endif]-->${css(2)}<link rel="stylesheet" href="/print.css" media="print">`,
+        '<script src="/late.js"></script>',
+      ],
+      "/css/": ["Six Stylesheets in the Head", css(6)],
+    }),
+  );
+  assert.deepEqual(pathsOf(r, "render-blocking"), ["/", "/css/"]);
+  const f = findingOf(r, "render-blocking"),
+    d = Object.fromEntries(f.evidence.map(e => [new URL(e.url).pathname, e.detail]));
+  assert.deepEqual([f.rule, f.severity], ["PERF-03", "low"]);
+  assert.equal(d["/"], "1 script(s) without async or defer, e.g. /js/jquery.js");
+  assert.equal(d["/css/"], "6 stylesheets");
+});
+
+test("a local business's schema phone and street address must show on the page or the home page", async () => {
+  const biz = telephone =>
+    `<script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", "@type": "Plumber", name: "Northwind Plumbing", telephone, address: { "@type": "PostalAddress", streetAddress: "12 Park Row", addressLocality: "Leeds" } })}</script>`;
+  const r = await crawlSite(
+    site({
+      "/": ["Boiler Repairs and Servicing in Leeds", "", "<footer>Call us on (0113) 496-0000, any day.</footer>"],
+      "/contact/": ["Contact Northwind Plumbing", biz("+44 113 496 0000"), "<p>Visit us at 12 Park Row, Leeds.</p>"],
+      "/services/": ["Plumbing Services in Leeds", biz("+44 113 496 0000")],
+      "/wrong/": ["Plumbing Prices in Leeds", biz("+44 113 496 9999"), "<p>12 Park Row</p>"],
+    }),
+  );
+  assert.deepEqual(pathsOf(r, "nap-not-shown"), ["/services/", "/wrong/"]);
+  const f = findingOf(r, "nap-not-shown"),
+    d = Object.fromEntries(f.evidence.map(e => [new URL(e.url).pathname, e.detail]));
+  assert.deepEqual([f.rule, f.severity], ["LOCAL-05", "medium"]);
+  assert.equal(d["/services/"], "street address “12 Park Row” isn't shown on this page or the home page");
+  assert.equal(d["/wrong/"], "phone “+44 113 496 9999” isn't shown on this page or the home page");
 });

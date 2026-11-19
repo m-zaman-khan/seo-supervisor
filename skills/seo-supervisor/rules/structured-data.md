@@ -1,13 +1,15 @@
 # Structured data: JSON-LD (SCHEMA)
 
-> Facts checked **16 Nov 2026** against Google Search Central. Verify again if this is more than about six months old.
+> Facts checked **16 Nov 2026** against Google Search Central (Book actions **19 Nov 2026**). Verify again if this is more than about six months old.
 > **Still earn Google rich results:** Breadcrumb, Software app (needs a real rating or review), Article, Organization, Profile page, Product / merchant listing, Review snippet, Local business, Event, Recipe, Video, Dataset, Q&A and discussion forum.
 > **Gone:**
 > - FAQ rich results (removed for every site on 7 May 2026)
 > - HowTo (Sept 2023)
 > - sitelinks search box / SearchAction (Nov 2024)
-> - Book Actions, Course Info, ClaimReview, Estimated Salary, Learning Video, Special Announcement and Vehicle Listing (phased out from June 2025)
+> - Course Info, ClaimReview, Estimated Salary, Learning Video, Special Announcement and Vehicle Listing (phased out from June 2025)
 > - Practice Problem (Jan 2026)
+>
+> **Book actions** were announced for phase-out in June 2025, but Google removed that notice on 5 Nov 2025 because a Search feature still uses the markup. It's live, and open only to book providers Google accepts as partners.
 >
 > Leftover markup of these types is harmless dead weight. FAQPage is still valid schema that Bing and AI engines read, so keep it only where the FAQ is visible. Dataset markup now serves Dataset Search only.
 >
@@ -26,13 +28,14 @@
 ### SCHEMA-01 · JSON-LD parses and comes from data · high
 - **Check:** crawler `jsonld-invalid`. Code: the JSON-LD component.
 - **Pass:** built with `JSON.stringify` from typed data, with `<` escaped (`<`) so no string can close the script tag. Never string templates. No relative URLs, staging hosts or `new Date()` dates.
+- **Microdata and RDFa:** the crawler records their types (`itemtype`, `typeof`) per page as `schemaOther`, and they count as structured data for SCHEMA-02, SCHEMA-03 and SCHEMA-07. A page with only Microdata or RDFa gets `schema-not-jsonld` (low): Google reads them, but recommends JSON-LD, and the crawler and `schema-check.mjs` validate JSON-LD only.
 
 ### SCHEMA-02 · Organization (or the right business subtype) and WebSite, once, with stable `@id`s · medium
 - **Check:** crawler `org-missing`, `website-missing`. Code: root layout.
 - **Pass:** one node each, in the root layout: `https://site/#organization` and `https://site/#website`. Other nodes reference them by `@id` (`publisher`, `provider`, `isPartOf`) instead of repeating them. `sameAs` lists real profiles.
 
 ### SCHEMA-03 · Each page type carries the schema the profile assigns · medium
-- **Check:** crawler `jsonld-none` and the `schema` list per page in `seo-crawl.json`, compared with the profile's schema column.
+- **Check:** crawler `jsonld-none` (no JSON-LD, Microdata or RDFa at all) and the `schema` list per page in `seo-crawl.json` (plus `schemaOther` for Microdata and RDFa), compared with the profile's schema column.
 
 | Page type | Schema |
 | --- | --- |

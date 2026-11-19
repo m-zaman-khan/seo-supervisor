@@ -1,7 +1,7 @@
 # Metadata (META)
 
 ### META-01 · Every indexable page has a unique title of a sensible length · high
-- **Check:** crawler `title-missing`, `title-long`, `title-short`, `title-dup`, `title-multiple`.
+- **Check:** crawler `title-missing`, `title-long` (over 60 characters), `title-short` (flagged under 20 characters; aim for about 30–60), `title-dup`, `title-multiple`. The short-title flag stays at 20 so that short, honest titles (a product name, a brand and one word) aren't flagged; between 20 and 30 is a judgement call, not a finding.
 - **Pass:** unique, about 30–60 characters (some projects allow 65), main keyword first, brand once at the end.
 - **Fix:** a title pattern per page type in the profile, e.g. tool pages: "DMARC Checker - Free DMARC Record Lookup | Brand". Where pages compete for one phrase, give that phrase to one page and retitle the others (CONTENT-04).
 - **Site-wide:** when the title is missing, or one title is shared, on at least 80% of indexable pages (and at least 3), the crawler reports one `*-sitewide` finding as a **blocker**, not one high per page. Keep it a blocker: it's the usual sign of a site with no SEO work.
@@ -24,14 +24,15 @@
 - **Share images:** the crawler reads the first 64 KB of up to 20 og:images on the site itself (never a third-party host): `og-image-broken` (medium) when the URL doesn't return the image, `og-image-no-size` (low) when `og:image:width`/`og:image:height` are missing.
 
 ### META-05 · The page language is declared · low
-- **Check:** crawler `lang-missing`.
-- **Fix:** set `<html lang>` in the root layout.
+- **Check:** crawler `lang-missing` on every indexable page, listing the pages whose `<html>` has no `lang`.
+- **Fix:** set `<html lang>` in the root layout, and in any layout that replaces it.
 
 ### META-06 · Robots meta depends on page type, using the object form · medium
 - **Check:** code: robots values in the metadata helper.
 - **Pass:** indexable pages are `index, follow` with `max-image-preview:large` and `max-snippet:-1`. Search, filter and result pages are `noindex, follow`. Account, admin, sign-in and 404 pages are `noindex, nofollow`.
 - **Fix:** derive it from the page type. A plain string robots value can silently override the layout's richer object.
 - **Crawler:** flags a page whose robots meta and `X-Robots-Tag` header disagree on indexing (`robots-conflict`, high). Search engines follow the stricter of the two.
+- **Nofollow:** `page-nofollow` (medium) flags an indexable page whose robots meta or header says `nofollow` (or `none`): Google follows none of its links. Rules are read as Google reads them (CRAWL-02).
 
 ### META-07 · Google Search Console and Bing Webmaster Tools are verified · medium
 - **Check:** code: verification meta or DNS TXT (ask the owner if you can't tell).
@@ -49,3 +50,9 @@
 - **Conservative by design:** it needs at least two main words and 50 words of page text, and skips words in scripts written without spaces (Chinese, Japanese, Thai). META-09 counts as checked only when at least one page had enough to compare.
 - **Pass:** the title names what the page covers, in words its heading and text use.
 - **Fix:** rewrite the title from the page's H1 and main topic. A mismatch usually means a copied template, a title left over from an older page, or the wrong field mapped to the title.
+
+### META-10 · The site has a favicon search results can show · medium
+> Checked **19 Nov 2026** against Google's favicon documentation (formats listed since 28 Aug 2026).
+- **Check:** crawler, on the home page: its icon links (`icon`, `shortcut icon`, `apple-touch-icon`, `apple-touch-icon-precomposed`), then `/favicon.ico`, read only on the crawled site. `favicon-missing` (medium) when none loads; `favicon-unsuitable` (low) when the ones that load are all under 48 px, not square, or SVG or WebP only. An icon on another host (a CDN) isn't fetched, so META-10 is then listed under Limits.
+- **Pass:** Google requires a square icon of at least 8×8 px and recommends one larger than 48×48 px, in BMP, GIF, ICO, PNG, JPEG, PPM or TIFF, at a stable URL that Googlebot-Image may crawl. Only one favicon per hostname.
+- **Fix:** `<link rel="icon" href="/icon-192.png" sizes="192x192">` in the root layout, next to any SVG icon, plus a `/favicon.ico` for older tools.

@@ -31,7 +31,7 @@
 - **Logs:** `log-scan.mjs` flags AI search bots mostly refused with 403/401 by a firewall or CDN (`ai-bots-blocked-in-practice`, needs-decision), which robots.txt doesn't show.
 
 ### MAP-07 · /llms.txt, optional · low
-- **Check:** crawler `llms-txt`.
+- **Check:** a missing llms.txt is a note in the crawl, not a finding, and MAP-07 isn't scored for it. A file that exists has its format checked (below).
 - **Fact:** Google Search ignores llms.txt and it doesn't affect ranking (clarified June 2026). No major AI crawler documents using it either. It's harmless; never present it as a ranking or AI-visibility fix.
 - **Pass (if kept):** Markdown with one line on what the site is, then each section with its key pages (name, URL, one sentence), generated so it can't drift from the real pages.
 - **Structure:** when llms.txt exists, the crawler checks it starts with a `# Site name` heading and contains Markdown links (`llms-structure`, low).

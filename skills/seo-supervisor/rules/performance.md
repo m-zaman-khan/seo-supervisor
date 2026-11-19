@@ -25,7 +25,7 @@
 - **Fix:** dynamic import per widget, with server rendering kept on for anything with text.
 
 ### PERF-03 · The LCP element loads first · medium
-- **Check:** crawler `lazy-lcp`. Code: hero components.
+- **Check:** crawler `lazy-lcp`, and `render-blocking` (low): a `<script src>` in the `<head>` without `async`, `defer` or `type="module"` (other script types, `nomodule` and scripts in comments don't count), or six or more stylesheets for every screen (no `media`, or `all`/`screen`). One or two stylesheets are normal and aren't flagged. Code: hero components.
 - **Pass:** the LCP is a real `<img>` (never a CSS background) or text. It's never lazy-loaded on any template, and gets `fetchpriority="high"` / framework `priority`. Exactly one preload per page. Fonts use `font-display: swap` and are self-hosted or preloaded.
 
 ### PERF-04 · Layout doesn't jump · medium

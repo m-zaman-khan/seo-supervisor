@@ -9,6 +9,8 @@ Can search engines reach the pages, and are they allowed to index the right ones
 
 ### CRAWL-02 · Pages meant to rank are not set to noindex · blocker
 - **Check:** crawler `home-noindex`, `noindex-in-sitemap`, `noindex-review`. Code: metadata robots values, `X-Robots-Tag` headers, middleware.
+- **How robots rules are read:** as Google reads them. `none` is `noindex, nofollow`. Only `<meta name="robots">` and `<meta name="googlebot">` count, not tags for other crawlers. In `X-Robots-Tag`, a crawler prefix holds for the rules after it (`otherbot: noindex, nofollow` is all for otherbot), and only unprefixed and `googlebot:` rules count.
+- **noindex with a canonical elsewhere:** `noindex-canonical` (medium) flags a noindex page whose canonical names a different page. The two signals contradict: keep the canonical for a duplicate, or the noindex with a self-canonical (or none) for a page that should stay hidden.
 - **Pass:** only page types the profile lists as hidden (search, filters, account, results, thin browse pages) are noindex.
 - **Pre-launch:** when the profile says the whole site is noindex until sign-off, that's expected, not a blocker. Crawl with `--ignore-noindex` so the other checks still run, and confirm CRAWL-03 will lift the noindex at launch.
 - **Fix:** drive every noindex rule from the page type, with one environment variable for "whole site hidden".

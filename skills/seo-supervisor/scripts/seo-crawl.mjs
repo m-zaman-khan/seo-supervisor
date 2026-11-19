@@ -82,6 +82,7 @@ const RULES = {
   "META-04": ["Open Graph tags for sharing", "Metadata"],
   "META-05": ["Page language declared", "Metadata"],
   "META-09": ["Each title matches what its page is about", "Metadata"],
+  "META-10": ["The site has a favicon search results can show", "Metadata"],
   "CONTENT-01": ["Exactly one H1 per page", "Headings & content"],
   "CONTENT-02": ["Heading levels are not skipped", "Headings & content"],
   "CONTENT-04": ["Templated pages have unique content", "Headings & content"],
@@ -94,6 +95,7 @@ const RULES = {
   "SCHEMA-04": ["Schema matches what the page visibly shows", "Structured data"],
   "SCHEMA-05": ["No deprecated schema types", "Structured data"],
   "SCHEMA-07": ["BreadcrumbList on pages below the home page", "Structured data"],
+  "LOCAL-05": ["Name, address and phone are identical everywhere", "Structured data"],
   "MAP-01": ["XML sitemap exists and is referenced from robots.txt", "Sitemaps & robots"],
   "MAP-02": ["Sitemap lists only canonical, indexable URLs on the right host", "Sitemaps & robots"],
   "MAP-03": ["Indexable pages are in the sitemap", "Sitemaps & robots"],
@@ -264,6 +266,13 @@ const CHECKS = {
     "That tells Google to rank another URL instead. Right for variants, wrong for pages meant to rank.",
     "Check each against the profile. Pages meant to rank need a canonical to themselves, with the same trailing-slash style.",
   ],
+  "noindex-canonical": [
+    "CRAWL-02",
+    "medium",
+    n => `${n} noindex page(s) also name a different page as canonical`,
+    "The noindex says “leave this page out of search” while the canonical says “this is a copy of that page, rank that one instead”. Google has called the pair contradictory: it may ignore the canonical, or carry the noindex over to the page it points at.",
+    "Pick one per page. A duplicate of another page keeps the canonical and drops the noindex; a page that should stay out of search keeps the noindex and points its canonical at itself, or has none.",
+  ],
   "canonical-query": [
     "URL-04",
     "high",
@@ -382,6 +391,13 @@ const CHECKS = {
     n => `${n} page(s) get contradicting robots rules from the meta tag and the X-Robots-Tag header`,
     "When the two disagree, search engines follow the stricter one, so a page that says “index” in its HTML can still be dropped by a header nobody looks at.",
     "Set robots in one place. Remove the header rule (often a CDN or server config) or make the meta tag match it.",
+  ],
+  "page-nofollow": [
+    "META-06",
+    "medium",
+    n => `${n} indexable page(s) tell search engines not to follow any of their links (nofollow)`,
+    "A page-wide `nofollow` (or `none`) in the robots meta tag or the X-Robots-Tag header stops Google following every link on the page, so the pages it links to are found later and get nothing from it. It's usually a leftover staging setting or a plugin default.",
+    'Use `index, follow` (or no robots rule) on pages meant to rank. Put `rel="nofollow"` on the single links that need it instead.',
   ],
   "no-large-preview": [
     "MEDIA-03",
@@ -505,9 +521,23 @@ const CHECKS = {
   "lang-missing": [
     "META-05",
     "low",
-    () => "Pages don't declare a language",
+    n => `${n} page(s) don't declare a language`,
     "`<html lang>` helps search engines and screen readers.",
     "Set `lang` on the `<html>` element in the root layout.",
+  ],
+  "favicon-missing": [
+    "META-10",
+    "medium",
+    () => "The site has no favicon that loads",
+    "Google shows the site's favicon next to its name in search results. Without one that loads, results show a generic globe icon, which looks unfinished next to other sites' logos.",
+    'Add `<link rel="icon" href="/favicon.png">` to the home page\'s `<head>`, pointing at a square PNG or ICO of at least 48 × 48 px that returns 200. Keep its URL stable and don\'t block it in robots.txt.',
+  ],
+  "favicon-unsuitable": [
+    "META-10",
+    "low",
+    () => "The favicon is small, not square, or in a format Google Search doesn't list",
+    "Google needs a square favicon and recommends one larger than 48 × 48 px. It lists BMP, GIF, ICO, PNG, JPEG, PPM and TIFF as the formats it supports, so an SVG or WebP icon on its own may not show, and a 16 or 32 px icon looks blurred beside results.",
+    'Add a square PNG of at least 48 × 48 px (192 × 192 works everywhere), for example `<link rel="icon" href="/icon-192.png" sizes="192x192">`, next to any SVG icon.',
   ],
   "h1-count": [
     "CONTENT-01",
@@ -579,6 +609,13 @@ const CHECKS = {
     "Invalid JSON-LD is ignored completely.",
     "Generate JSON-LD with JSON.stringify from data, escape `<`, and validate templates in the Rich Results Test.",
   ],
+  "schema-not-jsonld": [
+    "SCHEMA-01",
+    "low",
+    n => `${n} page(s) mark up structured data only in Microdata or RDFa`,
+    "Google reads Microdata and RDFa too, so these pages aren't missing structured data. But Google recommends JSON-LD as the easiest to keep right, and this audit validates JSON-LD only, so the markup on these pages wasn't checked for errors or missing fields.",
+    "Move the markup to one JSON-LD block built from the page's data (keep the Microdata until the JSON-LD is live), or check these templates in Google's Rich Results Test.",
+  ],
   "org-missing": [
     "SCHEMA-02",
     "medium",
@@ -599,6 +636,13 @@ const CHECKS = {
     n => `${n} indexable page(s) have no structured data`,
     "Schema tells search and AI engines what each page is.",
     "Add the schema type the profile assigns to each page type.",
+  ],
+  "nap-not-shown": [
+    "LOCAL-05",
+    "medium",
+    n => `${n} page(s) give a phone number or street address in their business schema that visitors can't see`,
+    "Google checks structured data against the visible page, and local rankings lean on the name, address and phone reading the same in the schema, on the site and on the Google Business Profile. A number or address that is only in the schema, or differs from the one shown, weakens that match.",
+    "Show the same phone number and street address as the schema, on the page or in the site-wide footer, from one business-details setting that feeds both. With call tracking, keep the real number in the HTML and swap the tracking number in on the client.",
   ],
   "faq-not-visible": [
     "SCHEMA-04",
@@ -744,8 +788,8 @@ const CHECKS = {
     "MAP-06",
     "low",
     n => `robots.txt has ${n} invalid Content-Signal value(s)`,
-    "Content-Signal states how AI systems may use the content (search, ai-input, ai-train), each set to yes or no. Anything else is ignored, so the stated preference doesn't apply.",
-    "Use only `search`, `ai-input` and `ai-train`, each `yes` or `no`, for example `Content-Signal: search=yes, ai-train=no`.",
+    "Content-Signal states how AI systems may use the content (search, ai-input, ai-train), each set to yes or no, and Cloudflare is testing a fourth field, use (immediate, reference or full). Anything else is ignored, so the stated preference doesn't apply.",
+    "Use only `search`, `ai-input` and `ai-train`, each `yes` or `no`, and optionally `use=immediate`, `use=reference` or `use=full`, for example `Content-Signal: search=yes, ai-train=no`.",
   ],
   "markdown-no-vary": [
     "AI-05",
@@ -789,13 +833,6 @@ const CHECKS = {
     "Google checks structured data against the visible page; a price mismatch can remove the product's rich results or get the listing disapproved.",
     "Generate the schema price from the same data the page displays.",
   ],
-  "llms-txt": [
-    "MAP-07",
-    "low",
-    () => "No /llms.txt",
-    "llms.txt gives AI tools a short, clean map of the site.",
-    "Publish a Markdown llms.txt generated from the same data as the sitemap.",
-  ],
   "deep-page": [
     "LINK-01",
     "low",
@@ -837,6 +874,13 @@ const CHECKS = {
     n => `${n} page(s) lazy-load the first image`,
     "If the first image is the largest element, lazy-loading it delays LCP.",
     'Load the hero image eagerly with high priority (`priority` / `fetchpriority="high"`).',
+  ],
+  "render-blocking": [
+    "PERF-03",
+    "low",
+    n => `${n} page(s) hold up their first paint with scripts or many stylesheets in the <head>`,
+    "The browser stops drawing the page until each `<script src>` in the head without `async` or `defer` has downloaded and run, and until every stylesheet has loaded. That delays the first paint and the largest one (LCP), most on slow phones.",
+    'Add `defer` to head scripts (or move them to the end of the body); keep only scripts that must run first, such as a consent manager, blocking. Combine stylesheets, load page-specific CSS only where it\'s used, and load non-critical CSS with `media="print" onload="this.media=\'all\'"`.',
   ],
   "img-dimensions": [
     "PERF-04",
@@ -1019,9 +1063,20 @@ const textOf = h =>
   decode(h.replace(/<[^>]+>/g, " "))
     .replace(/\s+/g, " ")
     .trim();
+// Scripts written without spaces between words (Chinese, Japanese, Thai, Lao, Khmer, Burmese): Intl.Segmenter splits
+// them into words, and norm() sets them apart from Latin words next to them ("のBoilerの" holds the word "boiler").
+const NOSPACE_CHARS = String.raw`\p{scx=Han}\p{scx=Hira}\p{scx=Kana}\p{scx=Thai}\p{scx=Laoo}\p{scx=Khmr}\p{scx=Mymr}`;
+const NOSPACE = new RegExp(`[${NOSPACE_CHARS}]`, "u"),
+  NOSPACE_RUN = new RegExp(`[${NOSPACE_CHARS}]+`, "gu");
+const SEGMENTER = new Intl.Segmenter(undefined, { granularity: "word" });
+const wordsOf = t =>
+  NOSPACE.test(t)
+    ? [...SEGMENTER.segment(t)].filter(s => s.isWordLike).map(s => s.segment)
+    : t.split(" ").filter(w => /[\p{L}\p{N}]/u.test(w));
 const norm = s =>
   s
     .toLowerCase()
+    .replace(NOSPACE_RUN, " $& ")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
 // Words written in capitals (FAQ, SEO, HVAC; a plural's s dropped), lowercased: the acronyms a text shows.
@@ -1072,6 +1127,24 @@ function deepHas(obj, pred, depth = 0) {
 const ORG_RE =
   /(Organization|Corporation|Business|Store|Service|Contractor|Agency|Electrician|Plumber|Locksmith|Dentist|Physician|Attorney|Restaurant|Hotel|AutoRepair|School|NGO)$/;
 
+// Google's rules from one robots meta content or the X-Robots-Tag header, lowercased. A "<crawler>:" prefix holds for
+// the rules after it, and only unprefixed and googlebot rules count; VALUED names take a value after the colon, so
+// they aren't prefixes. "none" is noindex plus nofollow.
+// https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag
+// fetch joins repeated X-Robots-Tag headers with commas, so a plain header after a prefixed one reads as that bot's.
+// Reading the raw header lines would fix it.
+const VALUED = /^(max-snippet|max-image-preview|max-video-preview|unavailable_after|ai-grounding|ai-training)$/;
+function googleRobots(s) {
+  let agent = null;
+  const out = [];
+  for (let t of (s || "").toLowerCase().split(",")) {
+    const m = /^\s*([a-z][\w-]*)\s*:\s*(.*)$/.exec(t);
+    if (m && !VALUED.test(m[1])) [, agent, t] = m;
+    t = t.trim().replace(/\s*:\s*/, ":");
+    if (t && (!agent || agent === "googlebot")) out.push(...(t === "none" ? ["noindex", "nofollow"] : [t]));
+  }
+  return out;
+}
 function ctx(text, re) {
   const m = re.exec(text);
   if (!m) return null;
@@ -1086,7 +1159,7 @@ function analyze(url, html, headers) {
   const bodyRaw = bodyStart >= 0 ? html.slice(bodyStart) : html;
   const body = stripNonContent(bodyRaw);
   const text = textOf(body);
-  const words = text ? text.split(" ").filter(w => /[\p{L}\p{N}]/u.test(w)).length : 0;
+  const words = wordsOf(text).length;
   // Next.js 15.2+ can stream metadata into <body> for non-bot visitors, so metas in the body count too.
   const metas = [...tagsOf(head, "meta"), ...tagsOf(body, "meta")];
   const meta = n => metas.find(m => (m.name || m.property || "").toLowerCase() === n)?.content;
@@ -1094,15 +1167,53 @@ function analyze(url, html, headers) {
   const titleCount = (head.match(/<title\b/gi) || []).length;
   const PH =
     /\b[Ll]orem [Ii]psum\b|\bTODO\b|\bTBD\b|\{\{\s*[\w.]+\s*\}\}|\[(?:[A-Z][A-Z _]{2,29})\]|�|\b(?:We|You|They|It|Don|Can|Isn|Won|Doesn|Didn|That|There)\?(?:ve|re|s|t|ll|d)\b/;
-  const robotsMeta = tagsOf(html, "meta")
-    .filter(m => ["robots", "googlebot"].includes((m.name || "").toLowerCase()))
+  const robotsTags = tagsOf(html, "meta").filter(m => ["robots", "googlebot"].includes((m.name || "").toLowerCase())); // Google honours robots meta in <body> too
+  const robotsMeta = robotsTags
     .map(m => m.content || "")
     .join(",")
-    .toLowerCase(); // Google honours robots meta in <body> too
+    .toLowerCase();
   const xRobots = (headers.get("x-robots-tag") || "").toLowerCase();
+  const metaRules = robotsTags.flatMap(m => googleRobots(m.content)),
+    headerRules = googleRobots(xRobots),
+    directives = [...metaRules, ...headerRules];
   const hreflang = tagsOf(head, "link")
     .filter(l => (l.rel || "").toLowerCase().split(/\s+/).includes("alternate") && l.hreflang && l.href)
     .map(l => ({ lang: l.hreflang, href: l.href }));
+  // Render-blocking: head scripts without async, defer or type="module" (other types don't run, and browsers skip
+  // nomodule), and stylesheets for every screen. Comments are stripped, since they hide old IE shims.
+  const headOnly = (headEnd > 0 ? html.slice(0, headEnd) : bodyStart > 0 ? html.slice(0, bodyStart) : "").replace(
+    /<!--[\s\S]*?-->/g,
+    " ",
+  );
+  const blockingJs = tagsOf(headOnly, "script")
+    .filter(
+      s =>
+        s.src &&
+        !["async", "defer", "nomodule"].some(k => k in s) &&
+        /^((text|application)\/(x-)?(java|ecma)script)?$/i.test((s.type || "").trim()),
+    )
+    .map(s => s.src);
+  const blockingCss = tagsOf(headOnly, "link").filter(l => {
+    const rel = (l.rel || "").toLowerCase().split(/\s+/);
+    return (
+      rel.includes("stylesheet") &&
+      !rel.includes("alternate") &&
+      !("disabled" in l) &&
+      /^(all|screen)?$/i.test((l.media || "").trim())
+    );
+  }).length;
+  // The favicon links Google reads.
+  // https://developers.google.com/search/docs/appearance/favicon-in-search
+  const icons = tagsOf(head, "link")
+    .filter(
+      l =>
+        l.href &&
+        (l.rel || "")
+          .toLowerCase()
+          .split(/\s+/)
+          .some(r => ["icon", "apple-touch-icon", "apple-touch-icon-precomposed"].includes(r)),
+    )
+    .map(l => l.href);
   const canonIn = h =>
     tagsOf(h, "link")
       .filter(l => (l.rel || "").toLowerCase().split(/\s+/).includes("canonical"))
@@ -1119,6 +1230,18 @@ function analyze(url, html, headers) {
   const imgs = tagsOf(body, "img");
   const { nodes, errors } = jsonLdNodes(html);
   const types = [...new Set(nodes.flatMap(typesOf))];
+  // Microdata (itemtype) and RDFa (typeof) types: "https://schema.org/Product" and "schema:Product" read as Product.
+  const schemaOther = [
+    ...new Set(
+      [...stripNonContent(html).matchAll(/<[a-z][\w-]*\s[^>]*(?:itemtype|typeof)\s*=[^>]*>/gi)]
+        .flatMap(m => {
+          const a = attrs(m[0]);
+          return `${a.itemtype || ""} ${a.typeof || ""}`.trim().split(/\s+/);
+        })
+        .map(t => t.replace(/^.*[\/#:]/, ""))
+        .filter(Boolean),
+    ),
+  ];
   // Top-level field names per type, merged across blocks, so a later crawl can tell which fields went missing.
   const schemaProps = {};
   for (const n of nodes)
@@ -1148,16 +1271,32 @@ function analyze(url, html, headers) {
   const phMatch = text.match(PH);
   const mainM = body.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
   const mainHtml = mainM ? mainM[1] : body.replace(/<(header|nav|footer|aside)\b[\s\S]*?<\/\1>/gi, " ");
-  const mw = textOf(mainHtml)
-    .toLowerCase()
-    .split(" ")
-    .filter(w => /[\p{L}\p{N}]/u.test(w));
+  const mw = wordsOf(textOf(mainHtml).toLowerCase());
   const mainHrefs = [...mainHtml.matchAll(/<a\b([^>]*)>/gi)].map(m => attrs("<a " + m[1] + ">").href).filter(Boolean);
   let shingles = null;
   if (mw.length >= 50) {
     shingles = new Set();
     for (let i = 0; i + 5 <= mw.length; i++) shingles.add(mw.slice(i, i + 5).join(" "));
   }
+  // Phone and street address from local business schema (LOCAL-05). Organization and Corporation aren't local.
+  const nap = [
+    ...new Map(
+      nodes
+        .filter(n => typesOf(n).some(t => ORG_RE.test(t) && !/(Organization|Corporation|NGO|School)$/.test(t)))
+        .flatMap(n => [
+          ...[]
+            .concat(n.telephone || [])
+            .filter(t => typeof t === "string" && t.replace(/\D/g, "").length >= 7)
+            .map(value => ({ kind: "phone", value })),
+          ...[]
+            .concat(n.address || [])
+            .map(a => (typeof a === "string" ? a : a?.streetAddress))
+            .filter(s => typeof s === "string" && norm(s))
+            .map(value => ({ kind: "street address", value })),
+        ])
+        .map(f => [f.kind + f.value, f]),
+    ).values(),
+  ];
   // Merchant listing fields (SHOP-05).
   // https://developers.google.com/search/docs/appearance/structured-data/merchant-listing
   const products = nodes
@@ -1169,8 +1308,16 @@ function analyze(url, html, headers) {
         .map(o => o.price ?? o.lowPrice)
         .filter(v => v != null && !isNaN(parseFloat(v)))
         .map(v => Number(String(v).replace(/,/g, "")));
+      // Every offer needs its own shipping and returns, an AggregateOffer's listed offers included, unless the
+      // organization sets them once.
+      const each = offers.flatMap(o =>
+        typesOf(o).includes("AggregateOffer") && o.offers
+          ? [].concat(o.offers).filter(x => x && typeof x === "object")
+          : [o],
+      );
       return {
         name: n.name || "a product",
+        offers: each.length,
         singleAggregate: offers.some(
           o =>
             typesOf(o).includes("AggregateOffer") &&
@@ -1178,12 +1325,11 @@ function analyze(url, html, headers) {
               Number(o.offerCount) <= 1 ||
               (o.highPrice != null && Number(o.highPrice) === Number(o.lowPrice))),
         ),
-        noShipping: offers.length > 0 && !offers.some(o => o.shippingDetails) && !orgHas("hasShippingService"),
+        noShipping: orgHas("hasShippingService") ? 0 : each.filter(o => !o.shippingDetails).length,
         noReturns:
-          offers.length > 0 &&
-          !offers.some(o => o.hasMerchantReturnPolicy) &&
-          !n.hasMerchantReturnPolicy &&
-          !orgHas("hasMerchantReturnPolicy"),
+          n.hasMerchantReturnPolicy || orgHas("hasMerchantReturnPolicy")
+            ? 0
+            : each.filter(o => !o.hasMerchantReturnPolicy).length,
         prices, // every offer's price: the page may show any one variant
       };
     });
@@ -1275,6 +1421,8 @@ function analyze(url, html, headers) {
     ),
   ];
   return {
+    // Relative URLs resolve against the first <base href>, itself resolved against the page URL, as browsers do.
+    base: urlOr(tagsOf(head, "base").find(b => b.href)?.href ?? url, url)?.href ?? url,
     title: titleM ? textOf(titleM[1]) : null,
     description: meta("description") ?? null,
     ogTitle: meta("og:title") ?? null,
@@ -1290,12 +1438,16 @@ function analyze(url, html, headers) {
     robotsMeta,
     xRobots,
     lang: (html.match(/<html\b[^>]*\blang\s*=\s*["']?([\w-]+)/i) || [])[1] || null,
-    noindex: /noindex/.test(robotsMeta) || /noindex/.test(xRobots),
+    noindex: directives.includes("noindex"),
+    nofollow: directives.includes("nofollow"),
+    metaRules,
+    headerRules,
     canonicals: canon,
     hreflang,
     products,
     amounts,
-    nosnippet: /nosnippet|max-snippet\s*:\s*0\b/.test(robotsMeta + "," + xRobots),
+    nosnippet: directives.some(r => r === "nosnippet" || r === "max-snippet:0"),
+    largePreview: directives.includes("max-image-preview:large"),
     headings,
     h1Count: headings.filter(h => h.level === 1).length,
     words,
@@ -1303,7 +1455,12 @@ function analyze(url, html, headers) {
     caps: capsOf(text),
     anchors,
     imgs,
+    icons,
+    blockingJs,
+    blockingCss,
+    nap,
     types,
+    schemaOther,
     schemaProps,
     jsonldErrors: errors,
     faqQs,
@@ -1653,10 +1810,10 @@ async function crawlOne(u) {
     const a = analyze(r.finalUrl, r.body, r.headers);
     Object.assign(rec, a, { html: true });
     rec.links = [];
-    rec.mainLinks = new Set(a.mainHrefs.map(h => clean(h, r.finalUrl)).filter(Boolean));
+    rec.mainLinks = new Set(a.mainHrefs.map(h => clean(h, a.base)).filter(Boolean));
     for (const l of a.anchors) {
       if (!l.href || /^(mailto|tel|javascript|sms):/i.test(l.href)) continue;
-      const c = clean(l.href, r.finalUrl);
+      const c = clean(l.href, a.base);
       if (!c) continue;
       if (new URL(c).origin !== START_ORIGIN) continue;
       rec.links.push({ url: c, text: l.text });
@@ -1664,7 +1821,7 @@ async function crawlOne(u) {
     }
     for (const b of a.crumbs) enqueue(toCrawl(b), r.finalUrl);
     for (const c of a.canonicals.slice(0, 1)) {
-      const x = c && urlOr(c, r.finalUrl);
+      const x = c && urlOr(c, a.base);
       if (x) enqueue(toCrawl(x.href), r.finalUrl);
     }
   }
@@ -1740,8 +1897,9 @@ else {
       .split(",")
       .map(x => x.trim())
       .filter(Boolean)) {
+      // The Content Signals Policy's three keys, plus the use= field Cloudflare is testing in its managed robots.txt.
       const [k, v] = pair.split("=").map(x => (x || "").trim().toLowerCase());
-      if (!["search", "ai-input", "ai-train"].includes(k) || !["yes", "no"].includes(v))
+      if (!/^(?:(?:search|ai-input|ai-train)=(?:yes|no)|use=(?:immediate|reference|full))$/.test(`${k}=${v}`))
         add("content-signal-invalid", START_ORIGIN + "/robots.txt", pair);
     }
 }
@@ -1782,7 +1940,7 @@ await runQueue();
 const home = pages.get(START.href);
 if (!SITE_ORIGIN && home && home.canonicals && home.canonicals[0]) {
   try {
-    const o = new URL(home.canonicals[0], home.finalUrl).origin;
+    const o = new URL(home.canonicals[0], home.base).origin;
     if (o !== START_ORIGIN && !isLocal(o)) SITE_ORIGIN = o;
   } catch {}
 }
@@ -1863,7 +2021,7 @@ for (const [file, es] of bySitemap) {
 await runQueue();
 
 // Probes: soft 404, slash variants, well-known files and security headers.
-evalRules("CRAWL-05", "URL-02", "MAP-07", "TRUST-01", "TRUST-02");
+evalRules("CRAWL-05", "URL-02", "TRUST-01", "TRUST-02");
 const probe = await follow(`${START_ORIGIN}/seo-supervisor-404-probe-${Date.now().toString(36)}`);
 if (probe.status === 200)
   add(
@@ -1871,14 +2029,14 @@ if (probe.status === 200)
     probe.chain[0].url,
     probe.chain.length > 1 ? `redirected to ${probe.finalUrl} (200)` : "returned 200",
   );
+// llms.txt is optional (MAP-07), so a missing one is a note, not a finding; one that exists has its format checked.
 const llms = await get(START_ORIGIN + "/llms.txt", { manual: false });
 if (llms.status !== 200 || /<html/i.test(llms.body || ""))
-  add(
-    "llms-txt",
-    START_ORIGIN + "/llms.txt",
-    llms.status === 200 ? "returns an HTML page instead (soft 404)" : `status ${llms.status}`,
+  notes.push(
+    `No /llms.txt (${llms.status === 200 ? "it returns an HTML page" : `status ${llms.status}`}). It's optional: Google ignores it and no major AI crawler documents reading it, so it isn't scored.`,
   );
 else {
+  evalRules("MAP-07");
   const problems = [
     !/^# \S/.test(llms.body.replace(/^\uFEFF/, "").trimStart()) && "no # heading first",
     !/\[[^\]]+\]\([^)\s]+\)/.test(llms.body) && "no Markdown links",
@@ -1893,10 +2051,11 @@ try {
     signal: AbortSignal.timeout(15000),
   });
   if (/^text\/markdown/i.test(md.headers.get("content-type") || "")) evalRules("AI-05");
-  if (
-    /^text\/markdown/i.test(md.headers.get("content-type") || "") &&
-    !/\baccept\b/i.test(md.headers.get("vary") || "")
-  )
+  const vary = (md.headers.get("vary") || "")
+    .toLowerCase()
+    .split(",")
+    .map(v => v.trim()); // Accept-Encoding isn't Accept
+  if (/^text\/markdown/i.test(md.headers.get("content-type") || "") && !vary.includes("accept") && !vary.includes("*"))
     add("markdown-no-vary", START.href, `Vary: ${md.headers.get("vary") || "(none)"}`);
   await md.body?.cancel();
 } catch {}
@@ -2013,7 +2172,7 @@ else if (noindexShare > 0.5)
   );
 const canonicalFor = p => {
   const c = p.canonicals && p.canonicals[0];
-  return c ? (urlOr(c, p.finalUrl)?.href ?? null) : null;
+  return c ? (urlOr(c, p.base)?.href ?? null) : null;
 };
 const samePath = (a, b) => new URL(a).pathname === new URL(b).pathname;
 const indexable = p =>
@@ -2066,12 +2225,7 @@ const titleWords = t => [
   ...new Set(
     norm(t)
       .split(" ")
-      .filter(
-        w =>
-          /^\p{L}{4,}$/u.test(w) &&
-          !/[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Thai}\p{sc=Lao}\p{sc=Khmer}\p{sc=Myanmar}]/u.test(w) &&
-          !STOP.has(w),
-      ),
+      .filter(w => /^\p{L}{4,}$/u.test(w) && !NOSPACE.test(w) && !STOP.has(w)),
   ),
 ];
 const brandWords = (() => {
@@ -2099,6 +2253,12 @@ const acronyms = t => {
       );
   return out;
 };
+// A schema phone shows on a page when its last 7 digits are there in any grouping ("+44 113 496 0000" is shown by
+// "(0113) 496-0000"), a street address when it's there word for word.
+const shows = (p, f) =>
+  f.kind === "phone"
+    ? new RegExp(f.value.replace(/\D/g, "").slice(-7).split("").join(" ?") + "(?!\\d)").test(p.normText)
+    : ` ${p.normText} `.includes(` ${norm(f.value)} `);
 for (const p of htmlPages) {
   const u = p.finalUrl;
   if (!IGNORE_NOINDEX) {
@@ -2112,17 +2272,20 @@ for (const p of htmlPages) {
     p.clientOnly = true;
     continue;
   }
-  const says = s =>
-    /\bnoindex\b/.test(s) ? "noindex" : /(?:^|[\s,:])(?:index|all)(?:$|[\s,])/.test(s) ? "index" : null;
-  if (says(p.robotsMeta) && says(p.xRobots) && says(p.robotsMeta) !== says(p.xRobots))
+  const says = rs => (rs.includes("noindex") ? "noindex" : rs.some(r => r === "index" || r === "all") ? "index" : null);
+  if (says(p.metaRules) && says(p.headerRules) && says(p.metaRules) !== says(p.headerRules))
     add("robots-conflict", u, `meta: “${p.robotsMeta}” · header: “${p.xRobots}”`);
-  if (p.noindex && !IGNORE_NOINDEX) continue;
+  if (p.noindex && !IGNORE_NOINDEX) {
+    const c = canonicalFor(p);
+    if (c && !samePath(toCrawl(c), u)) add("noindex-canonical", u, `→ ${c}`);
+    continue;
+  }
 
   if (sitewide.canonical.has(p)) add("canonical-missing-sitewide", u);
   else if (!p.canonicals.length) add("canonical-missing", u);
   else {
     if (p.canonicals.length > 1) add("canonical-multiple", u, p.canonicals.join(" | "));
-    const c = urlOr(p.canonicals[0], u);
+    const c = urlOr(p.canonicals[0], p.base);
     if (!c) add("canonical-bad-target", u, `not a valid URL: ${p.canonicals[0]}`);
     else {
       if (c.search) add("canonical-query", u, c.href);
@@ -2143,6 +2306,7 @@ for (const p of htmlPages) {
   if (p.placeholder) add("placeholder-text", u, `“${p.placeholder}”`);
   if (p.hashLinks) add("href-hash", u, `${p.hashLinks} link(s)`);
   if (p.mixed) add("mixed-content", u);
+  if (!p.lang) add("lang-missing", u);
   if (sitewide.title.has(p)) add("title-missing-sitewide", u, p.title ? `“${p.title}”` : undefined);
   else if (!p.title) add("title-missing", u);
   else {
@@ -2173,7 +2337,7 @@ for (const p of htmlPages) {
     add("og-missing", u, [!p.ogTitle && "og:title", !p.ogImage && "og:image"].filter(Boolean).join(", "));
   if (p.ogImage) {
     if (!p.ogImageSized) add("og-image-no-size", u);
-    const src = urlOr(p.ogImage, u),
+    const src = urlOr(p.ogImage, p.base),
       c = src && clean(toCrawl(src.href));
     if (c && new URL(c).origin === START_ORIGIN && !shareImages.has(c)) shareImages.set(c, { src: src.href, page: u });
   }
@@ -2194,10 +2358,22 @@ for (const p of htmlPages) {
   ).length;
   if (noDim) add("img-dimensions", u, `${noDim} image(s)`);
   if (p.imgs[0] && (p.imgs[0].loading || "").toLowerCase() === "lazy") add("lazy-lcp", u, p.imgs[0].src || "");
+  // Counts stylesheets, not sizes: one or two are normal, six or more usually means plugin CSS loaded everywhere.
+  const blocking = [
+    p.blockingJs.length && `${p.blockingJs.length} script(s) without async or defer, e.g. ${p.blockingJs[0]}`,
+    p.blockingCss >= 6 && `${p.blockingCss} stylesheets`,
+  ].filter(Boolean);
+  if (blocking.length) add("render-blocking", u, blocking.join("; "));
   if (p.bytes > 2 * 1024 * 1024) add("html-over-2mb", u, `${Math.round(p.bytes / 1024)} KB`);
   else if (p.bytes > 500 * 1024) add("html-size", u, `${Math.round(p.bytes / 1024)} KB`);
   if (p.elements > 1400) add("dom-size", u, `${p.elements.toLocaleString("en")} elements`);
   if (p.nosnippet) add("nosnippet", u);
+  if (p.nofollow && !p.noindex)
+    add(
+      "page-nofollow",
+      u,
+      [p.robotsMeta && `meta: “${p.robotsMeta}”`, p.xRobots && `header: “${p.xRobots}”`].filter(Boolean).join(" · "),
+    );
   const basics = [!p.doctype && "no doctype", !p.charset && "no charset", !p.viewport && "no mobile viewport"].filter(
     Boolean,
   );
@@ -2209,16 +2385,18 @@ for (const p of htmlPages) {
   if (p.noStore) add("bfcache-no-store", u, `Cache-Control: ${p.headers.get("cache-control")}`);
   if (p.unload) add("bfcache-unload", u, p.unload);
   if (p.ogUrl && p.canonicals.length) {
-    const og = urlOr(p.ogUrl, u)?.href,
-      c = urlOr(p.canonicals[0], u)?.href;
+    const og = urlOr(p.ogUrl, p.base)?.href,
+      c = urlOr(p.canonicals[0], p.base)?.href;
     if (c && og !== c)
       add("og-url-mismatch", u, og ? `og:url ${og} · canonical ${c}` : `og:url isn't a valid URL: ${p.ogUrl}`);
   }
   const prod = test => p.products.find(test);
   let pr;
   if ((pr = prod(x => x.singleAggregate))) add("product-aggregate-offer", u, pr.name);
-  if ((pr = prod(x => x.noShipping))) add("product-no-shipping", u, pr.name);
-  if ((pr = prod(x => x.noReturns))) add("product-no-returns", u, pr.name);
+  if ((pr = prod(x => x.noShipping)))
+    add("product-no-shipping", u, `${pr.name}: ${pr.noShipping} of ${pr.offers} offer(s)`);
+  if ((pr = prod(x => x.noReturns)))
+    add("product-no-returns", u, `${pr.name}: ${pr.noReturns} of ${pr.offers} offer(s)`);
   if (
     p.amounts.length &&
     (pr = prod(x => x.prices.length && !x.prices.some(v => p.amounts.some(a => Math.abs(a - v) < 0.005))))
@@ -2228,18 +2406,28 @@ for (const p of htmlPages) {
       u,
       `schema ${pr.prices.join(" / ")} · page shows ${p.amounts.slice(0, 3).join(", ")}`,
     );
-  if (!/max-image-preview\s*:\s*large/.test(p.robotsMeta + "," + p.xRobots)) add("no-large-preview", u);
+  if (!p.largePreview) add("no-large-preview", u);
   for (const i of p.imgs) {
     try {
-      const src = new URL(i.src, u);
+      const src = new URL(i.src, p.base);
       if (src.origin === new URL(u).origin && !images.has(src.href)) images.set(src.href, u);
     } catch {}
   }
   if (p.jsonldErrors.length) add("jsonld-invalid", u, p.jsonldErrors[0]);
-  if (!p.types.length) add("jsonld-none", u);
-  if (!isHome(p) && !p.types.includes("BreadcrumbList")) add("breadcrumb-missing", u);
+  const allTypes = [...p.types, ...p.schemaOther]; // Google reads Microdata and RDFa too; only JSON-LD is validated here
+  if (!allTypes.length) add("jsonld-none", u);
+  else if (!p.types.length) add("schema-not-jsonld", u, p.schemaOther.join(", "));
+  if (!isHome(p) && !allTypes.includes("BreadcrumbList")) add("breadcrumb-missing", u);
   if (p.deprecated.length) add("deprecated-schema", u, p.deprecated.join(", "));
   if (p.hasRating) add("rating-review", u);
+  if (p.nap.length) evalRules("LOCAL-05");
+  const napGone = p.nap.filter(f => ![p, home?.html && home].some(r => r && shows(r, f)));
+  if (napGone.length)
+    add(
+      "nap-not-shown",
+      u,
+      `${napGone.map(f => `${f.kind} “${f.value}”`).join(" and ")} ${napGone.length > 1 ? "aren't" : "isn't"} shown on this page or the home page`,
+    );
   const missingQ = p.faqQs.filter(q => !p.normText.includes(norm(q)));
   if (missingQ.length)
     add("faq-not-visible", u, `${missingQ.length} of ${p.faqQs.length}: “${missingQ[0].slice(0, 60)}”`);
@@ -2286,6 +2474,7 @@ const PER_PAGE_RULES = [
   "META-01",
   "META-02",
   "META-04",
+  "META-05",
   "CONTENT-01",
   "CONTENT-02",
   "CONTENT-04",
@@ -2384,9 +2573,55 @@ if (shareImages.size && !shareRead)
 if (shareImages.size > 20)
   notes.push(`Share image size was checked for the first 20 of ${shareImages.size} og:images.`);
 if (home && home.html) {
-  if (!home.lang) add("lang-missing", home.finalUrl);
-  if (!home.types.some(t => ORG_RE.test(t))) add("org-missing", home.finalUrl);
-  if (!home.types.includes("WebSite")) add("website-missing", home.finalUrl);
+  if (![...home.types, ...home.schemaOther].some(t => ORG_RE.test(t))) add("org-missing", home.finalUrl);
+  if (![...home.types, ...home.schemaOther].includes("WebSite")) add("website-missing", home.finalUrl);
+}
+// Favicon (META-10): the home page's icon links, then /favicon.ico, read only on the crawled site. Google wants a
+// square favicon of 48 px or more in BMP, GIF, ICO, PNG, JPEG, PPM or TIFF; a type whose size can't be read (BMP,
+// TIFF) passes.
+// https://developers.google.com/search/docs/appearance/favicon-in-search
+if (home && home.html) {
+  const onSite = c => !!c && new URL(c).origin === START_ORIGIN;
+  const declared = [...new Set(home.icons.map(h => urlOr(h, home.base)?.href).filter(Boolean))],
+    away = declared.some(d => !onSite(clean(toCrawl(d))));
+  const tried = await Promise.all(
+    [...new Set([...declared.map(d => clean(toCrawl(d))).filter(onSite), START_ORIGIN + "/favicon.ico"])]
+      .slice(0, 5)
+      .map(async c => ({ path: new URL(c).pathname, r: await firstBytes(c) })),
+  );
+  const loaded = tried.filter(
+    t => t.r && (t.r.status === 200 || t.r.status === 206) && t.r.bytes.length && !/html/i.test(t.r.type),
+  );
+  const svg = t => /svg/i.test(t.r.type) || /^\s*(<\?xml|<svg)/i.test(t.r.bytes.toString("latin1", 0, 100)),
+    size = t => imageSize(t.r.bytes);
+  const good = t => {
+    const s = size(t);
+    return s ? s.type !== "webp" && s.width === s.height && s.width >= 48 : !svg(t) && /^image\//i.test(t.r.type);
+  };
+  const say = t => {
+    const s = size(t);
+    return `${t.path}: ${s ? `${s.width}×${s.height} px${s.type === "webp" ? ", WebP" : ""}` : svg(t) ? "SVG" : t.r.type || "unknown type"}`;
+  };
+  const status = t =>
+    !t.r ? "redirects off the site" : t.r.status === 200 ? "an HTML page" : t.r.status || `no response (${t.r.error})`;
+  if (loaded.some(good)) evalRules("META-10");
+  else if (away)
+    notChecked.push({
+      rule: "META-10",
+      area: `META-10 ${RULES["META-10"][0]}`,
+      reason: "The home page's icon is on another host (often a CDN), and only the crawled site is fetched.",
+    });
+  else {
+    evalRules("META-10");
+    if (loaded.length) add("favicon-unsuitable", home.finalUrl, loaded.map(say).join("; "));
+    else
+      add(
+        "favicon-missing",
+        home.finalUrl,
+        (declared.length ? "" : "no icon link on the home page, and ") +
+          tried.map(t => `${t.path} → ${status(t)}`).join("; "),
+      );
+  }
 }
 // Next-page preloading: one site-wide suggestion, only when there's a next page to load. A single-page app's server
 // HTML shows neither its links nor the router that loads them, so it can't be judged.
@@ -2854,6 +3089,7 @@ const report = {
     words: p.words,
     h1: p.h1Count,
     schema: p.types,
+    schemaOther: p.schemaOther,
     schemaProps: p.schemaProps,
     linksOut: p.links.length,
     linksIn: inbound.get(p.finalUrl) || 0,

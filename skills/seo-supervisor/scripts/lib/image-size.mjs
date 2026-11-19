@@ -1,4 +1,4 @@
-// Pixel size from the first bytes of a PNG, JPEG, GIF or WebP file: { type, width, height }, or null when the
+// Pixel size from the first bytes of a PNG, JPEG, GIF, WebP or ICO file: { type, width, height }, or null when the
 // bytes aren't one of those formats or the header is cut off. Headers only, so the first 64 KB is plenty.
 export function imageSize(b) {
   const at = (s, i) => b.length >= i + s.length && b.toString("latin1", i, i + s.length) === s;
@@ -6,6 +6,13 @@ export function imageSize(b) {
   if (at("\x89PNG\r\n\x1a\n", 0) && at("IHDR", 12) && b.length >= 24)
     return size("png", b.readUInt32BE(16), b.readUInt32BE(20));
   if ((at("GIF87a", 0) || at("GIF89a", 0)) && b.length >= 10) return size("gif", b.readUInt16LE(6), b.readUInt16LE(8));
+  // ICO: a directory of 16-byte entries, width and height one byte each (0 is 256); the largest entry counts.
+  if (at("\0\0\x01\0", 0) && b.length >= 22 && b.length >= 6 + 16 * b.readUInt16LE(4)) {
+    const e = Array.from({ length: b.readUInt16LE(4) }, (_, i) => [b[6 + 16 * i] || 256, b[7 + 16 * i] || 256]).sort(
+      (x, y) => y[0] - x[0],
+    )[0];
+    return e ? size("ico", e[0], e[1]) : null;
+  }
   if (at("RIFF", 0) && at("WEBP", 8)) {
     if (at("VP8X", 12) && b.length >= 30) return size("webp", 1 + b.readUIntLE(24, 3), 1 + b.readUIntLE(27, 3));
     if (at("VP8 ", 12) && b.length >= 30 && b[23] === 0x9d && b[24] === 0x01 && b[25] === 0x2a)
