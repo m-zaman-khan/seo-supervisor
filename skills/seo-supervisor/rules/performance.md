@@ -7,11 +7,13 @@
 ### PERF-07 · Popups don't block content or crawlers · high
 - **Check:** code: modals, consent walls, age gates, app banners.
 - **Pass:** no popup covers the whole page on arrival. Users aren't redirected to a separate consent or input page (Googlebot would see only that page). Required gates (age, legal) overlay the content instead of replacing it.
+- **Crawler:** with outside checks on, `mobile-interstitial` flags a fixed or sticky layer covering half the phone screen or more about a second after load. Small cookie bars don't count. Popups shown later or on scroll still need a manual look.
 
 ### PERF-01 · Core Web Vitals pass on mobile · high
 - **Check:** field data (Search Console CWV report, PageSpeed Insights or CrUX) when the site is live; lab data (Lighthouse) before launch. The crawler can't measure CWV, so list it under `notChecked` unless you ran one of these.
 - **Fix:** send real-user metrics to analytics with the `web-vitals` library, and fix the worst template first.
 - **Data source:** with outside checks on, the crawler (`--outside`) fetches field data from PageSpeed Insights for the home page and one URL per section, up to 10, and flags a section whose 75th-percentile LCP, INP or CLS fails (`cwv-fail`). It needs a free PageSpeed Insights API key in `PSI_API_KEY`: Google refuses almost all keyless requests. Without the key, without outside checks, or before launch, PERF-01 stays under Limits.
+- **Lab speed:** with outside checks on and Chrome or Edge installed, each sample page is also loaded once on a phone with 4× CPU slowdown and slow 4G. LCP, CLS and an approximate TBT go into the crawl as `labSpeed` and one Overview line labelled indicative. They aren't Lighthouse numbers and raise no findings; use them before launch, when there's no real-user data.
 
 ### PERF-02 · Each page loads only its own code · medium
 - **Check:** code: shared bundles importing every widget or heavy library; client components wrapping whole pages.

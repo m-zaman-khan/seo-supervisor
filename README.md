@@ -8,7 +8,7 @@
   <a href="https://github.com/m-zaman-khan/seo-supervisor/actions/workflows/ci.yml"><img alt="Tests" src="https://github.com/m-zaman-khan/seo-supervisor/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://www.npmjs.com/package/seo-supervisor"><img alt="npm" src="https://img.shields.io/npm/v/seo-supervisor?color=2459c9"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-238a52"></a>
-  <img alt="Node 20+" src="https://img.shields.io/badge/node-20%2B-3a4757">
+  <img alt="Node 22+" src="https://img.shields.io/badge/node-22%2B-3a4757">
   <img alt="Zero dependencies" src="https://img.shields.io/badge/dependencies-0-3a4757">
 </p>
 
@@ -97,7 +97,7 @@ npx seo-supervisor --uninstall                                  # remove it agai
 
 `npx seo-supervisor --help` lists every agent key. Using an agent that isn't on the list? `npx skills add m-zaman-khan/seo-supervisor` covers 40+ more.
 
-Needs Node 20 or newer. There's nothing else to install. The only key it can use is an optional PageSpeed Insights key for real-user speed data.
+Needs Node 22 or newer. There's nothing else to install. The only key it can use is an optional PageSpeed Insights key for real-user speed data.
 
 ## Commands
 
@@ -152,7 +152,7 @@ One HTML file that works offline. It opens in dark mode and has a light-mode swi
 | Check | What leaves your machine |
 | --- | --- |
 | Real-user speed (Core Web Vitals) | Up to 10 public page URLs, sent to Google PageSpeed Insights (needs `PSI_API_KEY`) |
-| What your JavaScript changes | Nothing is sent, but up to 10 pages run in a headless Chrome or Edge, so their own scripts (analytics included) run |
+| What your JavaScript changes, and how pages look on a phone | Nothing is sent by the skill, but up to 10 pages run in a headless Chrome or Edge, so their own scripts (analytics included) run. Screenshots are saved locally |
 | Search intent | Your pages' target phrases, sent to the agent's web search provider |
 
 To switch them on for one run, say so: `/seo-audit with outside checks`. Real-user speed needs a free PageSpeed Insights API key from Google Cloud in `PSI_API_KEY`: Google refuses almost all requests without one. The render and intent checks need no key. Add `CRUX_API_KEY` too and the Overview shows whether real-user speed got better or worse over the last 25 weeks. With outside checks off, these three are listed under the report's Limits.
@@ -205,7 +205,7 @@ There are also framework guides for **Next.js**, **Rails** and **React/Vite SPAs
 
 ## Tested
 
-- **On every change, CI runs the whole toolchain on Node 20, 22 and 24.** It crawls a small fixture site that has one planted problem per checked rule and scans templated sample content. It also renders the report and checks it is fully offline, and installs and uninstalls the skill in a scratch home folder.
+- **On every change, CI runs the whole toolchain on Node 22, 24 and 26.** It crawls a small fixture site that has one planted problem per checked rule and scans templated sample content. It also renders the report and checks it is fully offline, and installs and uninstalls the skill in a scratch home folder.
 - **Network features are tested against local stand-ins, never the real services:** a fake PageSpeed server (including a check that nothing is sent when outside checks are off), a local HTTPS server with a certificate made at test time, and sample Search Console exports with the quirks real ones have.
 - **Field-tested on a real Next.js + Sanity site before release:**
   - `/seo-review` caught **6 of 6** SEO mistakes planted in a pull request. 2 of those had no test in the project, so they would have shipped. It correctly ignored a harmless change.

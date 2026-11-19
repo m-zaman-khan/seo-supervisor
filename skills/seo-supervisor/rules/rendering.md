@@ -33,6 +33,7 @@ Google renders JavaScript, but later and not always. Most AI crawlers (GPTBot, C
 ### REND-07 · Mobile shows the same content as desktop · blocker
 - **Check:** compare a mobile and a desktop render of key templates (Google indexes mobile-first, fully since 2024).
 - **Pass:** same main content, headings, structured data, titles, descriptions, alt text and robots meta on mobile. Primary content isn't hidden behind interaction-only lazy loading.
+- **Crawler:** with outside checks on and Chrome or Edge installed, the render sample is also loaded at desktop (1366×768) and phone size (390×844, touch, mobile user agent), with screenshots in `seo-audit/screenshots/`. `mobile-content-missing` flags a page whose visible main text on a phone is under 70% of desktop's, or whose desktop H1 isn't shown on a phone. Without outside checks REND-07 stays under Limits.
 
 ### REND-08 · HTML stays under Googlebot's 2 MB limit · high
 - **Check:** crawler `html-size` (flags anything over 500 KB; over 2 MB is high).
@@ -46,3 +47,4 @@ Google renders JavaScript, but later and not always. Most AI crawlers (GPTBot, C
 - **Check:** the crawler: `<!doctype html>` first, a charset (meta tag or Content-Type header) and `<meta name="viewport" content="width=device-width, …">`.
 - **Pass:** every page has all three, from the shared layout.
 - **Fix:** add them to the root layout. Without a doctype browsers use quirks mode; without a viewport phones show a zoomed-out desktop page, and Google indexes the mobile version.
+- **Crawler (outside checks):** on the phone load, `mobile-overflow` flags a page wider than the screen (sideways scrolling) and `mobile-small-text` flags body text under 12 px. Pages without a mobile viewport are left to `doc-basics`.

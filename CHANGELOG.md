@@ -19,6 +19,8 @@ Deeper checks, optional real-world data and search intent. Everything still work
 - **Server log scan.** `log-scan.mjs` reads the site's own access logs locally: how search, AI search and AI training bots treat the site, the status codes they get, and visits referred by AI assistants. Findings: crawler 5xx errors, URLs that keep returning 404 to search crawlers, and AI search bots blocked by a firewall or CDN.
 - **Structured data checker.** `schema-check.mjs` checks JSON-LD offline against schema.org 30.1 and Google's rich-result requirements, with line and column for errors. Opt-in triggers in `examples/hooks/`: pre-commit, GitHub Actions, and Claude Code, Codex, Cursor and Copilot hooks.
 - **More checks:** sitemap lastmod dates in the future or not in W3C format, and priority/changefreq tags Google ignores (MAP-04). "Since last audit" also compares descriptions, Open Graph tags and big word-count changes.
+- **Phone and desktop checks.** Outside checks now load the sample pages at desktop and phone size in headless Chrome or Edge, driven over the DevTools pipe with no dependencies. They save screenshots to `seo-audit/screenshots/`, flag content missing on phones (REND-07), sideways scrolling and tiny text (REND-09) and full-screen popups (PERF-07), and add an indicative lab-speed line for sites that aren't live yet.
+- **Node 22 or newer** is now required (Node 20 reached end of life on 30 April 2026). CI runs on Node 22, 24 and 26.
 - **Off-site presence for AI answers:** with outside checks on, the agent looks the brand up on Wikipedia, Reddit, YouTube, LinkedIn and directories, and reports gaps as owner decisions.
 - The schema checker's vocabulary comes from Schema.org (CC BY-SA 3.0); see `NOTICE`.
 
