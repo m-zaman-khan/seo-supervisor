@@ -157,6 +157,12 @@ One HTML file that works offline. It opens in dark mode and has a light-mode swi
 
 To switch them on for one run, say so: `/seo-audit with outside checks`. Real-user speed needs a free PageSpeed Insights API key from Google Cloud in `PSI_API_KEY`: Google refuses almost all requests without one. The render and intent checks need no key. Add `CRUX_API_KEY` too and the Overview shows whether real-user speed got better or worse over the last 25 weeks. With outside checks off, these three are listed under the report's Limits.
 
+**Connect your accounts (optional).** In `/seo-setup` and `/seo-fix` the agent offers each connection once, and you can say no:
+- **Google Search Console and Analytics:** "Sign in with Google" in your browser, or set up your own Google client in a few guided steps. Read-only. It adds your real queries and clicks, "is this page in Google" for key pages, sitemap errors and organic visits. Remove access any time at myaccount.google.com/connections, or with `google.mjs disconnect`.
+- **Bing Webmaster Tools, Open PageRank and Ahrefs' free Domain Rating:** paste a free API key. They add Bing data, the pages other sites link to, and authority scores next to your competitors'.
+
+Logins and keys stay in `~/.seo-supervisor/` on your computer, never in your project. Anything you skip is listed under Limits and doesn't lower your score.
+
 **Search Console data stays local.** Export Performance → Pages (and Queries) from Search Console, unzip it into `seo-audit/`, and run `/seo-audit`. For pages competing for one query, also export each important page's queries (filter by page, then export) into its own folder under `seo-audit/page-queries/`.
 
 ## What it checks

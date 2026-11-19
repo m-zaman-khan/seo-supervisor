@@ -80,6 +80,10 @@ node <skill-dir>/scripts/gsc-import.mjs --pages seo-audit/Pages.csv --queries se
 ```
 Merge its `traffic` and `period` into `seo-audit.json` as `traffic` and `trafficPeriod`, and its findings into `findings`. Findings and plan rows then show their clicks.
 
+**Connections: offer each once per project, in setup and fix mode.** Record every answer in `seo-audit/settings.json` under `"connections"` and don't ask again. A skipped or failed connection goes under Limits with its reason and never changes the score. Logins and keys live in `~/.seo-supervisor/`, never in the project; never repeat a key in chat, the report or a commit.
+- **Google Search Console and Analytics:** ask "Connect Google Search Console and Analytics? Sign in with Google, set it up yourself, or skip." To sign in, run `node <skill-dir>/scripts/google.mjs connect` and give the owner the printed link (the browser may not open for you; it waits 5 minutes). If shared sign-in isn't available yet, or the owner prefers, show `google.mjs guide` and run `connect --client-file <file>` or `connect --service-account <key.json>`. Once connected, after the crawl run `node <skill-dir>/scripts/google.mjs fetch --site <live origin> --out seo-audit/google.json` and merge it like `gsc-import.mjs`'s output, plus its findings: key pages Google hasn't indexed (CRAWL-02), a different Google-chosen canonical (URL-04) and sitemap errors (MAP-01). Tell the owner its notes. Access is read-only; `google.mjs status` shows it and `google.mjs disconnect` withdraws it at Google.
+- **Key-only services:** Bing Webmaster Tools (Bing clicks and impressions, the pages other sites link to, Bing's crawl problems), Open PageRank and Ahrefs' free Domain Rating (authority for the site and competitors the owner names). Say what each adds; `node <skill-dir>/scripts/connect-keys.mjs guide <bing|openpagerank|ahrefs>` prints where to get the key, and the owner runs `connect-keys.mjs set <service> <key>`. Then `node <skill-dir>/scripts/connect-keys.mjs fetch --site <origin> --competitors <a.com,b.com> --out seo-audit/keys.json` prints a dry run; add `--yes` once the owner agrees, since the site and domain names go to those services. Merge its findings and `notChecked`, and copy `bing`, `authority` and `attribution` as they are. Ahrefs numbers always show "Domain Rating by Ahrefs" with its link (the report does this).
+
 ### 3. Inspect the code
 
 Work through `rules/` in order, then the site-type files. For every rule, find the code that implements it and record pass or fail with `file:line`; rules that don't apply go in `notChecked` with the reason. Run the project's own SEO validators if it has them.
@@ -125,7 +129,7 @@ In chat, give: the score and band, and while blockers are open, the score fixing
 
 ### 5. Fix (fix mode only)
 
-1. Start from the latest `seo-audit.json`. Work blocker → high → medium → low, or only the IDs the user picked. Within each severity, pages with more Search Console clicks (`traffic`) go first.
+1. Start from the latest `seo-audit.json`. Work blocker → high → medium → low, or only the IDs the user picked. Within each severity, pages with more Search Console clicks (`traffic`) go first. If the connections (step 2) haven't been offered on this project yet, offer them once before you re-audit.
 2. Fix the cause once, in the shared place: metadata helper, layout, sitemap generator, link helper, content data. Not page by page. Copy-ready code is in `frameworks/*.md` and `examples/snippets.md`.
 3. **Never do these without the owner's go-ahead in this conversation:**
    - editing or publishing content in a CMS or content database (Sanity, WordPress, Contentful, Shopify, Strapi and the like)
@@ -164,7 +168,7 @@ For a site with no SEO yet. Follow `planning.md` exactly.
 4. Draft the content the owner must approve.
 5. Verify with an audit.
 
-Each risky item on the "Needs your yes" list gets its own yes. Re-running setup continues from `plan.status`.
+Each risky item on the "Needs your yes" list gets its own yes. Re-running setup continues from `plan.status`. After the plan is approved, offer the connections once (step 2): with Search Console, target phrases can come from real queries.
 
 ### 9. Brief mode
 

@@ -325,7 +325,22 @@ function speedText() {
       : "";
   return `Real-user speed (${s.strategy || "mobile"}): ${[now, trend].filter(Boolean).join(" · ")}`;
 }
-// The crawler's throttled phone load: the home page, else the first page.
+// Ahrefs' licence requires its credit beside the numbers.
+function authorityText() {
+  const a = Array.isArray(raw.authority) ? raw.authority : [];
+  if (!a.length) return "";
+  const [site, ...rivals] = a,
+    f = (v, d) => (v == null ? "–" : Number(v).toFixed(d));
+  const own = [
+    site.openPageRank != null && `Open PageRank ${f(site.openPageRank, 1)}`,
+    site.ahrefsDR != null && `Domain Rating ${f(site.ahrefsDR, 0)}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return `Authority: ${own}${rivals.length ? ` · ${rivals.map(r => `${r.domain}: ${f(r.openPageRank, 1)} / ${f(r.ahrefsDR, 0)}`).join(" · ")}` : ""}`;
+}
+const ahrefsCredit = () =>
+  raw.attribution && (raw.authority || []).some(x => x.ahrefsDR != null) ? raw.attribution : null;
 function labSpeedText() {
   const l = (raw.labSpeed || []).filter(x => x.lcp != null),
     x = l.find(x => new URL(x.url).pathname === "/") || l[0];
@@ -384,7 +399,7 @@ function overviewHtml() {
         <p class="quiet"><span class="key k-fail" aria-hidden="true"></span>${num(overall.rules - overall.passing)} failing${notChecked.length ? ` · ${num(notChecked.length)} not checked` : ""}</p>
       </div>
     </section>
-    ${speedText() ? `<p class="quiet">${esc(speedText())}</p>` : ""}${labSpeedText() ? `\n    <p class="quiet">${esc(labSpeedText())}</p>` : ""}
+    ${speedText() ? `<p class="quiet">${esc(speedText())}</p>` : ""}${labSpeedText() ? `\n    <p class="quiet">${esc(labSpeedText())}</p>` : ""}${authorityText() ? `\n    <p class="quiet">${esc(authorityText())}${ahrefsCredit() ? ` · <a href="${esc(ahrefsCredit().url)}" rel="noopener">${esc(ahrefsCredit().text)}</a>` : ""}</p>` : ""}
     </div>
     <div class="ov-right">
     <section class="panel factors" aria-labelledby="h-factors">
@@ -961,6 +976,8 @@ function markdown() {
   if (areas.length) {
     if (speedText()) L.push(speedText(), "");
     if (labSpeedText()) L.push(labSpeedText(), "");
+    if (authorityText())
+      L.push(`${authorityText()}${ahrefsCredit() ? ` · [${ahrefsCredit().text}](${ahrefsCredit().url})` : ""}`, "");
     L.push("## Area scores", "", "| Area | Score | Open findings | Top issue |", "| --- | ---: | ---: | --- |");
     for (const a of areas)
       L.push(`| ${mdEsc(a.name)} | ${a.value} | ${a.top.length} | ${mdEsc(a.top[0]?.title || "All checks pass")} |`);

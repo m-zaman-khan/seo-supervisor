@@ -96,3 +96,20 @@ test("printing opens every plan row so the planned titles and drafts are on pape
   const { html } = await renderWithPlan({ status: "proposed", pages: twoRows });
   assert.match(html, /addEventListener\('beforeprint',function\(\)\{[^}]*\.prow[^}]*open=true/);
 });
+
+test("authority scores show on the Overview, with Ahrefs' required credit next to its numbers", async () => {
+  const dir = tmp(),
+    data = JSON.parse(readFileSync(SAMPLE, "utf8"));
+  data.authority = [
+    { domain: "security.example", openPageRank: 3.62, ahrefsDR: 21 },
+    { domain: "rival.example", openPageRank: 5.1, ahrefsDR: 40 },
+  ];
+  data.attribution = { text: "Domain Rating by Ahrefs", url: "https://ahrefs.com/" };
+  writeFileSync(join(dir, "a.json"), JSON.stringify(data));
+  await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "r.html")]);
+  const html = readFileSync(join(dir, "r.html"), "utf8"),
+    md = readFileSync(join(dir, "r.md"), "utf8");
+  assert.match(html, /Authority: Open PageRank 3\.6 · Domain Rating 21 · rival\.example: 5\.1 \/ 40/);
+  assert.match(html, /<a href="https:\/\/ahrefs\.com\/"[^>]*>Domain Rating by Ahrefs<\/a>/);
+  assert.match(md, /Domain Rating by Ahrefs/);
+});
