@@ -173,20 +173,81 @@ test("checkLighthouse runs up to five pages, home first, and notes the ones that
   );
 });
 
+test("checkLighthouse with all runs every page up to the cap, estimates the time first and notes the cut", async () => {
+  const lh = fakeLighthouse(),
+    o = "http://127.0.0.1:1",
+    logged = [];
+  const urls = [`${o}/a/`, `${o}/b/`, `${o}/`, `${o}/c/`, `${o}/d/`];
+  const r = await checkLighthouse(lh.bin, urls, { all: true, max: 4, log: m => logged.push([m, lh.calls().length]) });
+  assert.deepEqual(
+    lh.calls().map(c => new URL(c.args[0]).pathname),
+    ["/", "/a/", "/b/", "/c/"],
+    "home first, then in crawl order",
+  );
+  assert.equal(logged.length, 1);
+  assert.match(logged[0][0], /^Lighthouse: 4 pages, about 1 minute \(roughly 20 seconds a page\)/);
+  assert.equal(logged[0][1], 0, "printed before the first run");
+  assert.ok(
+    r.notes.some(n => /Lighthouse ran on 4 of 4 page/.test(n) && !/sample/.test(n)),
+    r.notes.join("\n"),
+  );
+  assert.ok(
+    r.notes.some(n => /stopped at 4 pages/.test(n) && /1 more page/.test(n)),
+    r.notes.join("\n"),
+  );
+});
+
+test("checkLighthouse with all stops at 200 pages unless told otherwise, and lists only the first few failures", async () => {
+  const lh = fakeLighthouse(),
+    o = "http://127.0.0.1:1",
+    logged = [];
+  const urls = [`${o}/`, ...Array.from({ length: 7 }, (_, i) => `${o}/broken/${i}/`)];
+  const r = await checkLighthouse(lh.bin, urls, { all: true, log: m => logged.push(m) });
+  assert.equal(lh.calls().length, 8);
+  assert.match(logged[0], /8 pages, about 3 minutes/);
+  assert.ok(!r.notes.some(n => /stopped at/.test(n)), "no cut under the cap");
+  assert.ok(
+    r.notes.some(n => /\/broken\/4\/.*and 2 more/.test(n) && !/\/broken\/5\//.test(n)),
+    r.notes.join("\n"),
+  );
+});
+
 // The crawler, with the fake for Lighthouse and node standing in for the browser (so no real Chrome starts), and a
 // closed local port standing in for PageSpeed (fixture-site's public origin would otherwise send it to Google).
-async function crawl(extra, env) {
-  const site = await serve(join(ROOT, "test", "fixture-zero"));
+async function crawl(extra, env, fixture = "fixture-zero") {
+  const site = await serve(join(ROOT, "test", fixture));
   const out = join(tmp(), "crawl.json");
+  let stdout;
   try {
-    await node([join(SCRIPTS, "seo-crawl.mjs"), "--url", site.url, "--out", out, ...extra], {
+    ({ stdout } = await node([join(SCRIPTS, "seo-crawl.mjs"), "--url", site.url, "--out", out, ...extra], {
       env: { ...process.env, CHROME_PATH: process.execPath, PSI_API_KEY: "", CRUX_API_KEY: "", ...env },
-    });
+    }));
   } finally {
     await site.close();
   }
-  return JSON.parse(readFileSync(out, "utf8"));
+  return Object.assign(JSON.parse(readFileSync(out, "utf8")), { stdout });
 }
+
+test("the crawler with --lighthouse all runs every indexable page, not just the sample, and prints the estimate", async () => {
+  const lh = fakeLighthouse();
+  const r = await crawl(["--outside", "--lighthouse", "all"], { LIGHTHOUSE_PATH: lh.bin }, "fixture-site");
+  const ran = lh.calls().map(c => new URL(c.args[0]).pathname);
+  // The render sample takes one page per top-level folder; all mode takes both tools pages.
+  for (const p of ["/", "/tools/dmarc-checker/", "/tools/ssl-checker/"]) assert.ok(ran.includes(p), `${p} in ${ran}`);
+  assert.ok(!ran.includes("/noindexed/"), "noindex pages aren't meant to rank, so they're left out");
+  assert.equal(r.lighthouse.length, ran.length);
+  assert.match(
+    r.stdout,
+    new RegExp(`Lighthouse: ${ran.length} pages, about \\d+ minutes? \\(roughly 20 seconds a page\\)`),
+  );
+  // --lighthouse=all works too (the argument parser reads it as a key of its own).
+  const lh2 = fakeLighthouse(),
+    r2 = await crawl(["--outside", "--lighthouse=all"], { LIGHTHOUSE_PATH: lh2.bin });
+  assert.ok(
+    lh2.calls().length && r2.notes.some(n => /^Lighthouse ran on \d+ of \d+ page/.test(n)),
+    r2.notes.join("\n"),
+  );
+});
 
 test("the crawler with --outside --lighthouse runs it on the render sample and records the results", async () => {
   const lh = fakeLighthouse();
@@ -244,6 +305,37 @@ test("the overview shows one Lighthouse line for the home page", async () => {
   writeFileSync(join(dir, "a.json"), JSON.stringify(data));
   await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "r.html")]);
   const line = /Lighthouse \(mobile, home page\): Performance 72 · SEO 92 · Accessibility 88 · Best practices 96/;
+  assert.ok(line.test(readFileSync(join(dir, "r.html"), "utf8")), "HTML overview");
+  assert.ok(line.test(readFileSync(join(dir, "r.md"), "utf8")), "Markdown overview");
+  assert.doesNotMatch(
+    readFileSync(join(dir, "r.md"), "utf8"),
+    /Lowest performance/,
+    "two pages: no list of the slowest",
+  );
+});
+
+test("with more than five Lighthouse pages, the line adds the three with the lowest performance score", async () => {
+  const dir = tmp(),
+    data = JSON.parse(readFileSync(join(SKILL, "examples", "sample-audit.json"), "utf8"));
+  const run = (path, p) => ({
+    url: `https://example.com${path}`,
+    scores: { performance: p, seo: 92, accessibility: 88, bestPractices: 96 },
+    metrics: {},
+    failed: [],
+  });
+  data.lighthouse = [
+    run("/", 72),
+    run("/a/", 90),
+    run("/blog/", 31),
+    run("/b/", 64),
+    run("/shop/", 38),
+    run("/c/", null),
+    run("/about/", 45),
+  ];
+  writeFileSync(join(dir, "a.json"), JSON.stringify(data));
+  await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "r.html")]);
+  const line =
+    /Lighthouse \(mobile, home page\): Performance 72 · SEO 92 · Accessibility 88 · Best practices 96\. Lowest performance of 7 pages: \/blog\/ 31 · \/shop\/ 38 · \/about\/ 45/;
   assert.ok(line.test(readFileSync(join(dir, "r.html"), "utf8")), "HTML overview");
   assert.ok(line.test(readFileSync(join(dir, "r.md"), "utf8")), "Markdown overview");
 });

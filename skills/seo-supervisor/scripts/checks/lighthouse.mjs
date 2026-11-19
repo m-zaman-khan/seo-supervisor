@@ -100,10 +100,24 @@ export function runLighthouse(bin, url, { chromePath, timeoutMs = 90000 } = {}) 
   );
 }
 
-/** Up to 5 sample pages, home first. One at a time, since parallel runs skew each other's timings. */
-export async function checkLighthouse(bin, urls, { chromePath, max = 5 } = {}) {
+// A run takes about 15–25 s a page on a laptop, longer for heavy pages (the timeout is 90 s). ALL_CAP keeps an
+// all-pages run near an hour.
+export const SECONDS_PER_PAGE = 20,
+  ALL_CAP = 200;
+
+/** Up to 5 sample pages, or with `all` every page up to max, home first. One at a time, since parallel runs skew each
+ * other's timings. log gets the time estimate before the first run. */
+export async function checkLighthouse(
+  bin,
+  urls,
+  { chromePath, all = false, max = all ? ALL_CAP : 5, log = () => {} } = {},
+) {
   const home = u => new URL(u).pathname === "/";
   const sample = [...urls].sort((a, b) => home(b) - home(a)).slice(0, max);
+  const minutes = Math.max(1, Math.round((sample.length * SECONDS_PER_PAGE) / 60));
+  log(
+    `Lighthouse: ${sample.length} page${sample.length === 1 ? "" : "s"}, about ${minutes} minute${minutes === 1 ? "" : "s"} (roughly ${SECONDS_PER_PAGE} seconds a page), one at a time.`,
+  );
   const results = [],
     failures = [];
   for (const url of sample) {
@@ -115,8 +129,15 @@ export async function checkLighthouse(bin, urls, { chromePath, max = 5 } = {}) {
     }
   }
   const tried = results.length + failures.length;
+  const failed = failures.length
+    ? ` Failed: ${failures.slice(0, 5).join("; ")}${failures.length > 5 ? ` and ${failures.length - 5} more` : ""}`
+    : "";
   const notes = [
-    `Lighthouse ran on ${results.length} of ${tried} sample page(s) (mobile, simulated throttling).${failures.length ? ` Failed: ${failures.join("; ")}` : ""}`,
+    `Lighthouse ran on ${results.length} of ${tried} ${all ? "" : "sample "}page(s) (mobile, simulated throttling).${failed}`,
   ];
+  if (all && urls.length > max)
+    notes.push(
+      `Lighthouse stopped at ${max} pages, its cap for a run on every page; ${urls.length - max} more page(s) weren't run.`,
+    );
   return { results, notes };
 }

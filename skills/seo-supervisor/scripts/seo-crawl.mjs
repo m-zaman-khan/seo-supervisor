@@ -50,8 +50,9 @@ const SLASH = ["always", "never"].includes(args["trailing-slash"]) ? args["trail
 const BRAND = typeof args.brand === "string" ? args.brand : "";
 const INCLUDE_QUERY = !!args["include-query"];
 const CHECK_LIVE = !!args["check-live"];
-const OUTSIDE = !!args.outside; // --lighthouse all, or --lighthouse=all
-const LIGHTHOUSE = !!args.lighthouse;
+const OUTSIDE = !!args.outside; // nothing leaves the machine without it
+const LIGHTHOUSE_ALL = args.lighthouse === "all" || !!args["lighthouse=all"]; // --lighthouse all, or --lighthouse=all
+const LIGHTHOUSE = !!args.lighthouse || LIGHTHOUSE_ALL;
 const OUT = resolve(typeof args.out === "string" ? args.out : "seo-audit/seo-crawl.json");
 let SITE_ORIGIN = typeof args["site-origin"] === "string" ? new URL(args["site-origin"]).origin : "";
 const notes = [];
@@ -2189,7 +2190,13 @@ else if (LIGHTHOUSE && !lighthouseBin)
     "Lighthouse isn't installed, so it didn't run. Add it with `npx seo-supervisor --with-lighthouse` (about 170 MB, outside the project), or `npm i -g lighthouse`.",
   );
 else if (lighthouseBin) {
-  const r = await checkLighthouse(lighthouseBin, renderSample, { chromePath: browser });
+  // all: every page meant to rank, without the sample's one-per-folder pick; the estimate prints before the runs.
+  const every = [...new Set(htmlPages.filter(p => indexable(p) && !p.refreshTo).map(p => p.finalUrl))];
+  const r = await checkLighthouse(lighthouseBin, LIGHTHOUSE_ALL ? every : renderSample, {
+    chromePath: browser,
+    all: LIGHTHOUSE_ALL,
+    log: console.log,
+  });
   if (r.results.length) lighthouse = r.results;
   notes.push(...r.notes);
 }

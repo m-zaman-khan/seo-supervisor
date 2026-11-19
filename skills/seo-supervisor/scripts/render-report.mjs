@@ -403,7 +403,7 @@ function labSpeedText() {
     ? `Lab speed, slow mobile (indicative): ${fmtCwv(x)} · TBT ${Math.round(x.tbt || 0)} ms on ${new URL(x.url).pathname === "/" ? "the home page" : new URL(x.url).pathname}`
     : "";
 }
-// Lighthouse is an optional add-on, not a check.
+// More than the default 5 pages (--lighthouse all) adds the three lowest performance scores.
 function lighthouseText() {
   const l = raw.lighthouse || [],
     x = l.find(x => new URL(x.url).pathname === "/") || l[0],
@@ -414,9 +414,51 @@ function lighthouseText() {
     ["Accessibility", s.accessibility],
     ["Best practices", s.bestPractices],
   ].filter(([, v]) => v != null);
-  return parts.length
-    ? `Lighthouse (mobile, ${new URL(x.url).pathname === "/" ? "home page" : new URL(x.url).pathname}): ${parts.map(([k, v]) => `${k} ${v}`).join(" · ")}`
+  const slow =
+    l.length > 5
+      ? l
+          .filter(y => y.scores?.performance != null)
+          .sort((a, b) => a.scores.performance - b.scores.performance)
+          .slice(0, 3)
+      : [];
+  const slowest = slow.length
+    ? `. Lowest performance of ${l.length} pages: ${slow.map(y => `${new URL(y.url).pathname} ${y.scores.performance}`).join(" · ")}`
     : "";
+  return parts.length
+    ? `Lighthouse (mobile, ${new URL(x.url).pathname === "/" ? "home page" : new URL(x.url).pathname}): ${parts.map(([k, v]) => `${k} ${v}`).join(" · ")}${slowest}`
+    : "";
+}
+// Names and dates only: the line never says an update caused anything.
+function googleUpdatesText(html = false) {
+  const g = obj(raw.googleUpdates),
+    isDay = s => /^\d{4}-\d{2}-\d{2}$/.test(s);
+  if (!g || !Array.isArray(g.updates)) return "";
+  const day = (d, year) =>
+    new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      ...(year && { year: "numeric" }),
+      timeZone: "UTC",
+    });
+  const span = (a, b) =>
+    !isDay(b)
+      ? `${day(a)}, still rolling out`
+      : a === b
+        ? day(a)
+        : a.slice(0, 7) === b.slice(0, 7)
+          ? `${+a.slice(8)}–${day(b)}`
+          : `${day(a)} – ${day(b)}`;
+  const text = html ? esc : s => String(s).replace(/[\\`*_[\]<>]/g, "\\$&"); // feed text: escaped for HTML or Markdown
+  const name = u =>
+    html && /^https?:\/\//i.test(u.url) ? `<a href="${esc(u.url)}" rel="noopener">${esc(u.name)}</a>` : text(u.name);
+  const list = g.updates
+    .filter(u => obj(u) && u.name && isDay(u.start))
+    .map(u => `${name(u)} (${span(u.start, u.end)})`);
+  const none =
+    isDay(g.from) && isDay(g.to)
+      ? `none were announced between ${day(g.from, g.from.slice(0, 4) !== g.to.slice(0, 4))} and ${day(g.to, true)}`
+      : "none were announced";
+  return `Google ranking updates in this period: ${list.length ? list.join(" · ") : none}${g.note ? `. ${text(g.note)}` : ""}`;
 }
 function overviewHtml() {
   if (!overall)
@@ -470,7 +512,7 @@ function overviewHtml() {
       </div>
     </section>
     ${speedText() ? `<p class="quiet">${esc(speedText())}</p>` : ""}${labSpeedText() ? `\n    <p class="quiet">${esc(labSpeedText())}</p>` : ""}${lighthouseText() ? `\n    <p class="quiet">${esc(lighthouseText())}</p>` : ""}${authorityText() ? `\n    <p class="quiet">${esc(authorityText())}${ahrefsCredit() ? ` · <a href="${esc(ahrefsCredit().url)}" rel="noopener">${esc(ahrefsCredit().text)}</a>` : ""}</p>` : ""}
-    </div>
+    ${googleUpdatesText() ? `<p class="quiet">${googleUpdatesText(true)}</p>\n    ` : ""}</div>
     <div class="ov-right">
     <section class="panel factors" aria-labelledby="h-factors">
       <div class="ph"><h2 id="h-factors">What's moving your score</h2><span class="sub">Points lost, biggest first</span></div>
@@ -702,7 +744,7 @@ const sameFields = d => {
   return `${f.slice(0, -1).join(", ")} and ${f.at(-1)}`;
 };
 const diffHtml = () => `<div class="limits">
-  <p class="quiet">Compared with the crawl of ${esc(fmtDate(diff.since))}. Pages are matched by path.</p>
+  <p class="quiet">Compared with the crawl of ${esc(fmtDate(diff.since))}. Pages are matched by path.</p>${googleUpdatesText() ? `\n  <p class="quiet">${googleUpdatesText(true)}</p>` : ""}
   ${diffSections(diff)
     .map(
       ([h, list]) =>
@@ -1083,6 +1125,7 @@ function markdown() {
     if (lighthouseText()) L.push(lighthouseText(), "");
     if (authorityText())
       L.push(`${authorityText()}${ahrefsCredit() ? ` · [${ahrefsCredit().text}](${ahrefsCredit().url})` : ""}`, "");
+    if (googleUpdatesText()) L.push(googleUpdatesText(), "");
     for (const t of searchLines()) L.push(t, "");
     L.push("## Area scores", "", "| Area | Score | Open findings | Top issue |", "| --- | ---: | ---: | --- |");
     for (const a of areas)
@@ -1120,6 +1163,7 @@ function markdown() {
   if (plan) L.push(...planMarkdown(plan));
   if (diff) {
     L.push("## Since last audit", "", `Compared with the crawl of ${fmtDate(diff.since)}.`, "");
+    if (googleUpdatesText()) L.push(googleUpdatesText(), "");
     for (const [h, list] of diffSections(diff))
       L.push(`### ${h}`, "", ...list.map(c => `- \`${c.path}\` ${diffText(c)}`), "");
     for (const [h, l] of [
