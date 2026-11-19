@@ -68,7 +68,7 @@ Deeper checks, optional real-world data and search intent. Everything still work
   - favicon for search results (META-10)
   - render-blocking scripts in the head (PERF-03)
   - a local business's phone and address shown on the page (LOCAL-05)
-  - what Googlebot gets compared with what a visitor gets (CRAWL-09)
+  - what Googlebot gets compared with what a visitor gets (CRAWL-09). A firewall that blocks requests only claiming to be Googlebot is a decision for the owner, not a finding, since that is the right setup when it verifies Google by IP.
   - product images under Google's 50,000-pixel minimum (SHOP-05)
 - **Local, shop and links guidance:**
   - Business Profile category and completeness (LOCAL-11, LOCAL-12)
@@ -79,6 +79,7 @@ Deeper checks, optional real-world data and search intent. Everything still work
   - earning links honestly (LINK-10)
   - what to check when security warnings appear (LAUNCH-05)
 - **No word-count targets:** thin-page is a page to look at, not a word goal, and posts and city intros carry no word counts. LAUNCH-08 no longer lists update dates from memory.
+- **Fixed:** a page reached through a redirect (a link or canonical to an old address) was counted twice, which doubled its findings and could make it look like a duplicate of itself.
 - **Effort on each fix.** Findings can carry `effort` (`quick`, `hours`, `half-day`), shown on each card.
 - Setup and fix offer each connection once; a skip is listed under Limits and never changes the score. Keys are typed at a hidden prompt in the owner's own terminal, never in chat; Google sign-in prints its link for agents (`--print-url`, `~/.seo-supervisor/pending-signin.txt`). Search Console findings flag only pages Google really excluded; pages Google doesn't know yet are notes.
 - **Fewer false findings:** the log scan needs 5 server errors and 1% before a finding, and repeated 404s become findings only for pages the site links to; sitemap priority/changefreq tags are a note; IndexNow refuses a key file that redirects to another host.
