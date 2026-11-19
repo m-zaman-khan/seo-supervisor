@@ -619,11 +619,14 @@ export async function fetchKeys({ site, competitors = [], keys = activeKeys(), e
     posthog = null;
   const run = async (id, fn) => {
     const s = SERVICES[id];
+    // Analytics services (those with fields) go under Limits only when the site uses one, which SKILL.md decides.
+    // Optional extras never do.
     if (!keys[id]) {
-      notChecked.push({
-        area: `${s.name}: ${s.adds}`,
-        reason: `No key set. To connect it: node connect-keys.mjs guide ${id}`,
-      });
+      if (!s.fields)
+        notChecked.push({
+          area: `${s.name}: ${s.adds}`,
+          reason: `No key set. To connect it: node connect-keys.mjs guide ${id}`,
+        });
       return;
     }
     try {

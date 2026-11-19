@@ -486,7 +486,7 @@ test("a 401 says the key is wrong and where to get a new one", async () => {
   }
 });
 
-test("fetch without any key set writes an empty result that lists every service under Limits", async () => {
+test("fetch without any key set lists Bing, Open PageRank and Ahrefs under Limits, but not analytics tools the site may not use", async () => {
   const home = tmp(),
     srv = await fake();
   try {
@@ -494,8 +494,12 @@ test("fetch without any key set writes an empty result that lists every service 
     assert.equal(srv.hits.length, 0);
     const o = output(home);
     assert.equal(o.bing, null);
-    assert.equal(o.notChecked.length, 5);
+    assert.equal(o.notChecked.length, 3);
     assert.ok(o.notChecked.every(n => /connect-keys\.mjs guide/.test(n.reason)));
+    assert.ok(
+      !o.notChecked.some(n => /Matomo|PostHog/.test(n.area)),
+      "Matomo and PostHog are listed only when the agent finds them in the site (SKILL.md)",
+    );
   } finally {
     await srv.close();
   }
