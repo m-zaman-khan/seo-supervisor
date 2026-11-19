@@ -7,7 +7,7 @@
 ### PERF-07 · Popups don't block content or crawlers · high
 - **Check:** code: modals, consent walls, age gates, app banners.
 - **Pass:** no popup covers the whole page on arrival. Users aren't redirected to a separate consent or input page (Googlebot would see only that page). Required gates (age, legal) overlay the content instead of replacing it.
-- **Crawler:** with outside checks on, `mobile-interstitial` flags a fixed or sticky layer covering half the phone screen or more about a second after load. Small cookie bars don't count. Popups shown later or on scroll still need a manual look.
+- **Crawler:** with outside checks on, `mobile-interstitial` flags a fixed layer covering half the phone screen or more about a second after load. Sticky elements, app shells (layers holding `<main>` or the H1) and small cookie bars don't count, and a consent tool's layer is a note, since legally required notices are exempt. Popups shown later or on scroll still need a manual look.
 
 ### PERF-01 · Core Web Vitals pass on mobile · high
 - **Check:** field data (Search Console CWV report, PageSpeed Insights or CrUX) when the site is live; lab data (Lighthouse) before launch. The crawler can't measure CWV, so list it under `notChecked` unless you ran one of these.
