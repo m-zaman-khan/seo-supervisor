@@ -19,18 +19,34 @@ test("two crawls are compared page by page, by path", () => {
     "/f/ schema-removed",
     "/h/ status-error",
     "/j/ title-changed",
+    "/m/ description-changed",
+    "/n/ og-removed",
+    "/p/ content-shrunk",
   ]);
   assert.deepEqual(kinds(d.improvements), [
     "/b/ noindex-removed",
     "/e/ h1-added",
     "/g/ schema-added",
     "/i/ status-fixed",
+    "/o/ og-added",
   ]);
-  assert.deepEqual(kinds(d.changed), ["/k/ title-changed"], "a new non-empty title is neutral");
+  assert.deepEqual(
+    kinds(d.changed),
+    ["/k/ title-changed", "/l/ description-changed", "/q/ content-grew"],
+    "a new non-empty title or description and more content are neutral",
+  );
   assert.deepEqual(d.added, ["/new/"]);
   assert.deepEqual(d.removed, ["/gone/"], "/about/ moved from a local to the public origin and is the same page");
   const c = d.regressions.find(x => x.kind === "canonical-changed");
   assert.deepEqual([c.before, c.after], ["https://example.com/c/", "https://example.com/a/"]);
+  const at = kind => {
+    const x = [...d.regressions, ...d.improvements, ...d.changed].find(y => y.kind === kind);
+    return [x.before, x.after];
+  };
+  assert.deepEqual(at("og-removed"), ["og:title, og:image", "og:title"]);
+  assert.deepEqual(at("og-added"), [null, "og:title, og:image"]);
+  assert.deepEqual(at("content-shrunk"), [800, 120]);
+  assert.ok(![...d.regressions, ...d.changed].some(x => x.path === "/r/"), "300 → 180 words is less than half gone");
 });
 
 test("the CLI writes the diff with the old crawl's date", async () => {
@@ -38,7 +54,7 @@ test("the CLI writes the diff with the old crawl's date", async () => {
   await node([join(SCRIPTS, "seo-diff.mjs"), OLD, NEW, "--out", out]);
   const d = read(out);
   assert.equal(d.since, "2026-10-01T09:00:00.000Z");
-  assert.equal(d.regressions.length, 6);
+  assert.equal(d.regressions.length, 9);
 });
 
 const render = async diff => {
@@ -53,8 +69,16 @@ const render = async diff => {
 
 test("the report shows a Since last audit tab with the regression count", async () => {
   const { html, md } = await render({ since: "2026-10-01T09:00:00.000Z", ...diffCrawls(read(OLD), read(NEW)) });
-  assert.match(html, /id="t-diff"[^>]*>Since last audit<span class="cnt">6<\/span>/);
+  assert.match(html, /id="t-diff"[^>]*>Since last audit<span class="cnt">9<\/span>/);
   assert.match(html, /Now noindex/);
+  for (const label of [
+    "Description changed",
+    "Open Graph tags removed",
+    "Open Graph tags added",
+    "Word count fell",
+    "Word count grew",
+  ])
+    assert.match(html, new RegExp(label));
   assert.match(md, /## Since last audit/);
 });
 
@@ -84,4 +108,28 @@ test("pages are keyed by path and query, a lost self-canonical is a regression, 
   assert.deepEqual(d.changed, [], "?page=2 isn't confused with /blog");
   assert.deepEqual(kinds(d.regressions), ["/a/ canonical-changed", "/x/ status-error"]);
   assert.deepEqual(d.removed, [], "a page that now errors isn't 'gone'");
+});
+
+test("descriptions, share tags and word counts are compared only when both crawls recorded them", () => {
+  const P = (extra = {}) => ({
+    url: "https://e.com/a/",
+    status: 200,
+    noindex: false,
+    canonical: "https://e.com/a/",
+    title: "A",
+    h1: 1,
+    schema: [],
+    ...extra,
+  });
+  const none = diffCrawls(
+    { pages: [P()] },
+    { pages: [P({ description: "New", ogTitle: "A", ogImage: "/a.png", words: 900 })] },
+  );
+  assert.deepEqual(
+    [...none.regressions, ...none.improvements, ...none.changed],
+    [],
+    "a crawl from an older version has none of these fields",
+  );
+  const d = diffCrawls({ pages: [P({ words: 150 })] }, { pages: [P({ words: 60 })] });
+  assert.deepEqual(d.regressions, [], "more than half gone, but fewer than 100 words");
 });

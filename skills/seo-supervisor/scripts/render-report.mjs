@@ -548,6 +548,11 @@ const DIFF_KIND = {
   "schema-added": ["Schema added", "SCHEMA-03"],
   "status-error": ["Now an error", "CRAWL-05"],
   "status-fixed": ["Error fixed", "CRAWL-05"],
+  "description-changed": ["Description changed", "META-02"],
+  "og-removed": ["Open Graph tags removed", "META-04"],
+  "og-added": ["Open Graph tags added", "META-04"],
+  "content-shrunk": ["Word count fell", "CONTENT-05"],
+  "content-grew": ["Word count grew", "CONTENT-05"],
 };
 const diffSections = d =>
   [
@@ -592,7 +597,7 @@ const diffHtml = () => `<div class="limits">
         `<section class="panel"><h2>${h}<span class="mono quiet"> ${l.length}</span></h2><ul class="lim">${l.map(p => `<li><span><code>${esc(p)}</code></span></li>`).join("")}</ul></section>`,
     )
     .join("")}
-  ${!diffSections(diff).length && !(diff.added || []).length && !(diff.removed || []).length ? `<section class="panel empty-state"><h2>Nothing changed</h2><p>Every page has the same status, indexing, canonical, title, H1 and schema as last time.</p></section>` : ""}
+  ${!diffSections(diff).length && !(diff.added || []).length && !(diff.removed || []).length ? `<section class="panel empty-state"><h2>Nothing changed</h2><p>Every page has the same status, indexing, canonical, title, description, share tags, H1, schema and length as last time.</p></section>` : ""}
 </div>`; // adds the result files beside the audit
 const plan = raw.plan && typeof raw.plan === "object" ? raw.plan : null;
 const tabs = [

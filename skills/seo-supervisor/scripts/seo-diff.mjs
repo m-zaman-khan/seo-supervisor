@@ -56,6 +56,19 @@ export function diffCrawls(oldReport, newReport) {
     if (gone.length) change(regressions, "schema-removed", gone.join(", "), [...ns].join(", ") || "none");
     if (added.length) change(improvements, "schema-added", [...os].join(", ") || "none", added.join(", "));
     if ((o.title || "") !== (n.title || "")) change(n.title ? changed : regressions, "title-changed", o.title, n.title);
+    // Fields older crawls didn't record are compared only when both crawls have them.
+    const both = k => k in o && k in n;
+    if (both("description") && (o.description || "") !== (n.description || ""))
+      change(n.description ? changed : regressions, "description-changed", o.description, n.description);
+    if (both("ogTitle") && both("ogImage")) {
+      const tags = r => [r.ogTitle && "og:title", r.ogImage && "og:image"].filter(Boolean).join(", ") || null;
+      if ((o.ogTitle && !n.ogTitle) || (o.ogImage && !n.ogImage)) change(regressions, "og-removed", tags(o), tags(n));
+      if ((!o.ogTitle && n.ogTitle) || (!o.ogImage && n.ogImage)) change(improvements, "og-added", tags(o), tags(n));
+    }
+    if (both("words") && o.words - n.words >= 100 && n.words < o.words / 2)
+      change(regressions, "content-shrunk", o.words, n.words);
+    if (both("words") && n.words - o.words >= 100 && n.words > o.words * 2)
+      change(changed, "content-grew", o.words, n.words);
   }
   return {
     regressions,

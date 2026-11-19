@@ -124,6 +124,81 @@
       "title": "Gone",
       "h1": 1,
       "schema": []
+    },
+    {
+      "url": "https://example.com/l/",
+      "status": 200,
+      "noindex": false,
+      "canonical": "https://example.com/l/",
+      "title": "L",
+      "h1": 1,
+      "schema": [],
+      "description": "What the L page offers."
+    },
+    {
+      "url": "https://example.com/m/",
+      "status": 200,
+      "noindex": false,
+      "canonical": "https://example.com/m/",
+      "title": "M",
+      "h1": 1,
+      "schema": [],
+      "description": "What the M page offers."
+    },
+    {
+      "url": "https://example.com/n/",
+      "status": 200,
+      "noindex": false,
+      "canonical": "https://example.com/n/",
+      "title": "N",
+      "h1": 1,
+      "schema": [],
+      "ogTitle": "N",
+      "ogImage": "https://example.com/n.png"
+    },
+    {
+      "url": "https://example.com/o/",
+      "status": 200,
+      "noindex": false,
+      "canonical": "https://example.com/o/",
+      "title": "O",
+      "h1": 1,
+      "schema": [],
+      "ogTitle": null,
+      "ogImage": null
+    },
+    {
+      "url": "https://example.com/p/",
+      "status": 200,
+      "noindex": false,
+      "canonical": "https://example.com/p/",
+      "title": "P",
+      "h1": 1,
+      "schema": [],
+      "words": 800
+    },
+    {
+      "url": "https://example.com/q/",
+      "status": 200,
+      "noindex": false,
+      "canonical": "https://example.com/q/",
+      "title": "Q",
+      "h1": 1,
+      "schema": [],
+      "words": 120
+    },
+    {
+      "url": "https://example.com/r/",
+      "status": 200,
+      "noindex": false,
+      "canonical": "https://example.com/r/",
+      "title": "R",
+      "h1": 1,
+      "schema": [],
+      "words": 300,
+      "description": "Same.",
+      "ogTitle": "R",
+      "ogImage": "https://example.com/r.png"
     }
   ],
   "errors": [
