@@ -2,12 +2,13 @@
 // Search Console and GA4 data for the audit, read-only.
 // The sign-in is saved in the home folder, never in the project.
 // Each Google address can be overridden with SEO_GOOGLE_<NAME>_URL, e.g. SEO_GOOGLE_SEARCH_CONSOLE_URL.
+// SEO_GOOGLE_SHARED_CLIENT_ID and SEO_GOOGLE_SHARED_CLIENT_SECRET override the shared client; empty means none.
 import { createHash, randomBytes, sign } from "node:crypto";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 import { SHARED_CLIENT } from "./lib/google-client.mjs";
 import { addTraffic, gscFindings } from "./gsc-import.mjs";
@@ -53,6 +54,7 @@ export function pkce() {
 
 // ---------- the saved sign-in ----------
 const tokenFile = (home = homedir()) => join(home, ".seo-supervisor", "google.json");
+const pendingFile = () => join(homedir(), ".seo-supervisor", "pending-signin.txt");
 const load = file => {
   try {
     return JSON.parse(readFileSync(file, "utf8"));
@@ -60,11 +62,15 @@ const load = file => {
     return null;
   }
 };
+// Renamed over the old file, so a crash never leaves half a sign-in.
+// Readable by this user only where the system has file modes.
 function save(file, data) {
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
   chmodSync(dirname(file), 0o700); // Windows ignores modes; the file is in the user's own profile there
-  writeFileSync(file, JSON.stringify(data, null, 2), { mode: 0o600 });
-  chmodSync(file, 0o600);
+  const t = `${file}.${process.pid}.tmp`;
+  writeFileSync(t, typeof data === "string" ? data : JSON.stringify(data, null, 2), { mode: 0o600 });
+  chmodSync(t, 0o600);
+  renameSync(t, file);
 }
 const readJson = f => {
   let t;
@@ -82,13 +88,10 @@ const readJson = f => {
 
 async function tokenRequest(E, params) {
   let r;
+  // A missing value (a client with no secret) is left out, never sent as "undefined".
+  const body = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== ""));
   try {
-    r = await fetch(E.token, {
-      method: "POST",
-      headers: FORM,
-      body: new URLSearchParams(params),
-      signal: AbortSignal.timeout(30000),
-    });
+    r = await fetch(E.token, { method: "POST", headers: FORM, body, signal: AbortSignal.timeout(30000) });
   } catch (e) {
     fail(
       `google: couldn't reach Google's sign-in server (${e.cause?.code || e.message}). Check the internet connection and try again.`,
@@ -288,6 +291,10 @@ export async function fetchGoogle({ site, days = 90, ga4Property, crawl, pageSiz
       rows.push(...got);
       if (got.length < rowLimit) break;
     }
+    if (rows.length >= 25000)
+      notes.push(
+        `Search Console has 25,000 or more ${{ page: "pages", query: "queries" }[dimensions.join()] || "page and query pairs"} for this period; only the top 25,000 were read, so the least-searched ones are left out.`,
+      );
     return rows;
   };
   const traffic = {},
@@ -378,7 +385,7 @@ export async function fetchGoogle({ site, days = 90, ga4Property, crawl, pageSiz
       );
   });
 
-  // GA4: --ga4-property, else the only property, else the one whose web stream is this site.
+  // GA4: --ga4-property, else the one property whose web stream is this site (even when it's the only one).
   const analytics = {};
   let gaProp = ga4Property ? String(ga4Property).replace(/^properties\//, "") : null;
   if (!scope.includes(GA))
@@ -391,14 +398,12 @@ export async function fetchGoogle({ site, days = 90, ga4Property, crawl, pageSiz
         const props = (
           (await g.call(`${E.analyticsAdmin}/accountSummaries?pageSize=200`)).accountSummaries || []
         ).flatMap(a => (a.propertySummaries || []).map(p => ({ id: p.property.split("/")[1], name: p.displayName })));
-        if (props.length <= 1) {
-          gaProp = props[0]?.id ?? null;
-          if (!gaProp)
-            notes.push(
-              "The connected account can't see any Google Analytics 4 property, so there's no visit data. Add it under " +
-                ADMIN_API.where +
-                ".",
-            );
+        if (!props.length) {
+          notes.push(
+            "The connected account can't see any Google Analytics 4 property, so there's no visit data. Add it under " +
+              ADMIN_API.where +
+              ".",
+          );
           return;
         }
         // Only the first 50 properties' web streams are checked; accounts with more pass --ga4-property.
@@ -409,7 +414,8 @@ export async function fetchGoogle({ site, days = 90, ga4Property, crawl, pageSiz
             return null;
           }
         };
-        const matches = [];
+        const matches = [],
+          name = p => `${p.name} (${p.id})`;
         for (const p of props.slice(0, 50))
           if (
             ((await g.call(`${E.analyticsAdmin}/properties/${p.id}/dataStreams`)).dataStreams || []).some(
@@ -418,15 +424,13 @@ export async function fetchGoogle({ site, days = 90, ga4Property, crawl, pageSiz
           )
             matches.push(p);
         if (matches.length === 1) gaProp = matches[0].id;
+        else if (props.length === 1)
+          notes.push(
+            `The only Google Analytics 4 property this account can see, ${name(props[0])}, has no web stream for ${h}, so its visits weren't used. If it is this site's property, run fetch again with --ga4-property ${props[0].id}.`,
+          );
         else
           notes.push(
-            `${matches.length ? "Several" : "None of the"} Google Analytics 4 properties ${matches.length ? "match" : "matches"} ${h}. Pick one with --ga4-property <id>: ${(matches.length
-              ? matches
-              : props
-            )
-              .slice(0, 10)
-              .map(p => `${p.name} (${p.id})`)
-              .join(", ")}.`,
+            `${matches.length ? "Several" : "None of the"} Google Analytics 4 properties ${matches.length ? "match" : "matches"} ${h}. Pick one with --ga4-property <id>: ${(matches.length ? matches : props).slice(0, 10).map(name).join(", ")}.`,
           );
       });
     if (gaProp)
@@ -472,11 +476,26 @@ export async function fetchGoogle({ site, days = 90, ga4Property, crawl, pageSiz
       status: "open",
     });
   };
-  const notIndexed = inspection
-    .filter(i => i.verdict === "FAIL" || i.verdict === "NEUTRAL")
+  // Only states where Google left the page out are findings. Others are notes: "URL is unknown to Google" is often a
+  // page that isn't live yet, "Page with redirect" a redirect doing its job.
+  const EXCLUDED =
+    /currently not indexed|noindex|blocked by robots\.txt|duplicate|soft 404|not found|server error|redirect error|blocked due to/i;
+  const outOfIndex = inspection.filter(i => i.verdict === "FAIL" || i.verdict === "NEUTRAL"),
+    other = outOfIndex.filter(i => !EXCLUDED.test(i.coverageState || ""));
+  if (other.length)
+    notes.push(
+      `URL Inspection: ${other.length} inspected page(s) aren't in Google's index for a reason that usually isn't a problem: ${other
+        .slice(0, 10)
+        .map(i => `${i.url} (${i.coverageState || "no reason given"})`)
+        .join(
+          ", ",
+        )}. "URL is unknown to Google" means Google hasn't found the page yet: if it's live, link to it and list it in the sitemap. "Page with redirect" means Google indexes the redirect's target instead.`,
+    );
+  const notIndexed = outOfIndex
+    .filter(i => !other.includes(i))
     .map(i => ({
       url: i.url,
-      detail: `${i.coverageState || "not indexed"}${i.lastCrawlTime ? `, last crawled ${i.lastCrawlTime.slice(0, 10)}` : ""}`,
+      detail: `${i.coverageState}${i.lastCrawlTime ? `, last crawled ${i.lastCrawlTime.slice(0, 10)}` : ""}`,
     }));
   finding(
     "gsc-not-indexed",
@@ -571,13 +590,18 @@ const waitForCode = (server, state) =>
       5 * 60000,
     );
     server.on("request", (req, res) => {
-      const q = new URL(req.url, "http://127.0.0.1").searchParams;
       const page = (status, text) =>
         res
           .writeHead(status, { "content-type": "text/html; charset=utf-8", connection: "close" })
           .end(
             `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>SEO Supervisor</title><body style="font:18px/1.5 system-ui,sans-serif;max-width:32em;margin:15vh auto;padding:0 16px"><p>${text}</p>`,
           );
+      let q;
+      try {
+        q = new URL(req.url, "http://127.0.0.1").searchParams;
+      } catch {
+        return page(400, "That address isn't valid.");
+      }
       if (!q.has("code") && !q.has("error")) return page(404, "Nothing here.");
       if (q.get("state") !== state)
         return page(
@@ -599,10 +623,44 @@ const waitForCode = (server, state) =>
     });
   });
 
+const revoke = async (E, s) => {
+  const r = await fetch(E.revoke, {
+    method: "POST",
+    headers: FORM,
+    body: new URLSearchParams({ token: s.refresh_token || s.access_token }),
+    signal: AbortSignal.timeout(30000),
+  });
+  await r.text();
+  return r;
+};
+// Withdraws the sign-in being replaced, best effort. Not when it used the same client: Google withdraws the whole
+// grant for that client and account, which would cancel the sign-in just made.
+async function revokeReplaced(E, old, clientId) {
+  if (
+    !old ||
+    old.method === "service-account" ||
+    !(old.refresh_token || old.access_token) ||
+    old.client?.id === clientId
+  )
+    return;
+  try {
+    await revoke(E, old);
+  } catch {}
+}
+
+// A key or client file inside the project could end up committed, and connect has already copied what it needs.
+function leftInProject(f) {
+  const rel = relative(process.cwd(), resolve(f));
+  return rel && !isAbsolute(rel) && !/^\.\.([\\/]|$)/.test(rel)
+    ? `\nWarning: ${f} is inside this project and is no longer needed (its contents are saved in ~/.seo-supervisor). Delete it, and never commit it.`
+    : "";
+}
+
 async function connect(args) {
   const E = endpointsFrom(),
     file = tokenFile(),
-    now = new Date().toISOString();
+    now = new Date().toISOString(),
+    old = load(file);
   const keyFile = str(args["service-account"]),
     clientFile = str(args["client-file"]);
   const json = keyFile || clientFile ? readJson(keyFile || clientFile) : null;
@@ -622,8 +680,9 @@ async function connect(args) {
       ...t,
       connected_at: now,
     });
+    await revokeReplaced(E, old);
     console.log(
-      `google: connected as the service account ${json.client_email}.\nIt sees the Search Console and GA4 properties where this email was added as a user.\nSaved to ${file} (only your user account can read it).`,
+      `google: connected as the service account ${json.client_email}.\nIt sees the Search Console and GA4 properties where this email was added as a user.\nSaved to ${file} (only your user account can read it).${leftInProject(keyFile || clientFile)}`,
     );
     return 0;
   }
@@ -640,11 +699,21 @@ async function connect(args) {
           ? `google: ${clientFile} is a "Web application" client. Signing in from the terminal needs a "Desktop app" client: create one (node google.mjs guide) and download its JSON.`
           : `google: ${clientFile} isn't a Google sign-in (OAuth client) file. Download it from your Desktop app client's page in Google Cloud.`,
       );
+    // Google's sign-in for Desktop app clients needs the secret, so stop before the browser opens.
+    if (!c.client_secret)
+      fail(
+        `google: ${clientFile} has no client secret, so Google would refuse the sign-in. Download it again from Google Cloud (Clients → your Desktop app client). If that download has no secret either, click Add secret on the same page and download the JSON straight away.`,
+      );
     client = { id: c.client_id, secret: c.client_secret, file: resolve(clientFile) };
     method = "own-client";
   } else {
-    if (!SHARED_CLIENT.id) fail(SHARED_MISSING);
-    client = { id: SHARED_CLIENT.id, secret: SHARED_CLIENT.secret };
+    // The env vars override the shared client; empty means none.
+    const env = process.env;
+    client = {
+      id: env.SEO_GOOGLE_SHARED_CLIENT_ID ?? SHARED_CLIENT.id,
+      secret: env.SEO_GOOGLE_SHARED_CLIENT_SECRET ?? SHARED_CLIENT.secret,
+    };
+    if (!client.id || !client.secret) fail(SHARED_MISSING);
     method = "shared";
   }
 
@@ -654,14 +723,17 @@ async function connect(args) {
   await new Promise((ok, no) => server.once("error", no).listen(0, "127.0.0.1", ok));
   const redirect_uri = `http://127.0.0.1:${server.address().port}`;
   const url = `${E.auth}?${new URLSearchParams({ client_id: client.id, redirect_uri, response_type: "code", scope: SCOPES.join(" "), code_challenge: challenge, code_challenge_method: "S256", state, access_type: "offline", prompt: "consent" })}`;
-  console.log(
-    `google: opening Google's sign-in page in your browser. If it doesn't open, copy this link into your browser:\n\n  ${url}\n\nWaiting for you to finish signing in (up to 5 minutes)...`,
-  );
-  if (args["no-browser"] !== true) openBrowser(url);
+  // The link also goes to a file, for a caller running this in the background that can't see its output yet.
+  const pending = pendingFile();
   let code;
   try {
+    save(pending, url + "\n");
+    const text = `${args["print-url"] === true ? url + "\n" : ""}google: opening Google's sign-in page in your browser. If it doesn't open, copy this link into your browser:\n\n  ${url}\n\nThe link is also in ${pending} until signing in is done.\nWaiting for you to finish signing in (up to 5 minutes)...\n`;
+    await new Promise(ok => process.stdout.write(text, ok)); // flushed before the wait, also into a pipe
+    if (args["no-browser"] !== true) openBrowser(url);
     code = await waitForCode(server, state);
   } finally {
+    rmSync(pending, { force: true });
     server.close();
     setTimeout(() => server.closeAllConnections(), 1000).unref();
   }
@@ -676,8 +748,9 @@ async function connect(args) {
   });
   const scope = t.scope || SCOPES.join(" ");
   save(file, { method, client, ...t, scope, connected_at: now });
+  await revokeReplaced(E, old, client.id);
   console.log(
-    `google: connected. Search Console: ${scope.includes(SC) ? "yes" : "no (not allowed)"} · Google Analytics: ${scope.includes(GA) ? "yes" : "no (not allowed)"}.\nSaved to ${file} (only your user account can read it).${t.refresh_token ? "" : "\nGoogle didn't send a long-lived sign-in, so you'll need to connect again in about an hour."}\nNext: node google.mjs fetch --site https://your-site`,
+    `google: connected. Search Console: ${scope.includes(SC) ? "yes" : "no (not allowed)"} · Google Analytics: ${scope.includes(GA) ? "yes" : "no (not allowed)"}.\nSaved to ${file} (only your user account can read it).${t.refresh_token ? "" : "\nGoogle didn't send a long-lived sign-in, so you'll need to connect again in about an hour."}${clientFile ? leftInProject(clientFile) : ""}\nNext: node google.mjs fetch --site https://your-site`,
   );
   return 0;
 }
@@ -733,6 +806,13 @@ async function status() {
 async function disconnect() {
   const file = tokenFile(),
     s = load(file);
+  if (!s && existsSync(file)) {
+    rmSync(file, { force: true });
+    console.log(
+      `google: the saved sign-in (${file}) couldn't be read, so it was deleted. To withdraw access at Google too, open https://myaccount.google.com/connections.`,
+    );
+    return 0;
+  }
   if (!s) {
     console.log("google: not connected, nothing to remove.");
     return 0;
@@ -740,13 +820,7 @@ async function disconnect() {
   let revoked = "";
   if (s.method !== "service-account") {
     try {
-      const r = await fetch(endpointsFrom().revoke, {
-        method: "POST",
-        headers: FORM,
-        body: new URLSearchParams({ token: s.refresh_token || s.access_token }),
-        signal: AbortSignal.timeout(30000),
-      });
-      await r.text();
+      const r = await revoke(endpointsFrom(), s);
       revoked = r.ok
         ? "Google has withdrawn SEO Supervisor's access."
         : `Google didn't confirm withdrawing access (${r.status}); it may have been withdrawn already.`;
@@ -778,7 +852,9 @@ A. Your own sign-in (best for most people)
      "Google Search Console API", "Google Analytics Data API" and "Google Analytics Admin API".
   4. On the client's page, click "Download JSON". Keep the file private.
   5. Run: node google.mjs connect --client-file <the downloaded file>
-     Your browser opens. Sign in and allow read-only access.
+     Your browser opens. Sign in and allow read-only access. Then delete the downloaded file: connect keeps what it needs.
+  If you made the client through the regular Google Cloud setup instead of the personal page in step 1, also open
+  Google Auth Platform → Audience → Publish app, so sign-ins don't expire after 7 days.
 
 B. A service account (for servers and CI; no browser)
   1. In Google Cloud, open IAM & Admin → Service accounts and create one. Then open it → Keys → Add key → JSON. Keep the file private.
@@ -814,7 +890,7 @@ async function fetchCli(args) {
 }
 
 const str = v => (typeof v === "string" ? v : null);
-const USAGE = `usage: node google.mjs connect [--client-file client_secret.json | --service-account key.json] [--no-browser]
+const USAGE = `usage: node google.mjs connect [--client-file client_secret.json | --service-account key.json] [--no-browser] [--print-url]
        node google.mjs guide | status | disconnect
        node google.mjs fetch --site https://www.example.com [--days 90] [--ga4-property <id>] [--crawl seo-audit/seo-crawl.json] [--out seo-audit/google.json]`;
 // Exit codes as in connect-keys.mjs: 1 when Google refuses or can't be reached, or status finds nothing connected;

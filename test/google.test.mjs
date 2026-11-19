@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, generateKeyPairSync, verify } from "node:crypto";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { connect } from "node:net";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SCRIPTS, node, tmp } from "./helpers.mjs";
 import { challengeFor, pkce, fetchGoogle } from "../skills/seo-supervisor/scripts/google.mjs";
@@ -96,6 +97,50 @@ function store(home, extra = {}) {
   );
 }
 const tokenRoute = { "POST /token": () => [200, { access_token: "fresh", expires_in: 3599, token_type: "Bearer" }] };
+// No shared client unless a test sets one, whatever lib/google-client.mjs holds.
+const noShared = { SEO_GOOGLE_SHARED_CLIENT_ID: "", SEO_GOOGLE_SHARED_CLIENT_SECRET: "" };
+const pendingPath = home => join(home, ".seo-supervisor", "pending-signin.txt");
+const ownClientFile = (
+  dir,
+  installed = {
+    client_id: "own-id.apps.googleusercontent.com",
+    client_secret: "own-secret",
+    redirect_uris: ["http://localhost"],
+  },
+) => {
+  const f = join(dir, "client_secret_123.json");
+  writeFileSync(f, JSON.stringify({ installed }));
+  return f;
+};
+
+// Starts `google.mjs connect` (or opts.cmd) and resolves the sign-in link it prints (as a URL) once it appears.
+function startConnect(g, home, args, opts = {}) {
+  const child = spawn(process.execPath, [CLI, "connect", ...args, "--no-browser"], {
+    env: { ...homeEnv(home), ...noShared, ...g.env, ...opts.env },
+    cwd: opts.cwd,
+  });
+  const c = { child, out: "", err: "" };
+  child.stderr.on("data", d => {
+    c.err += d;
+  });
+  c.exited = new Promise(ok => child.on("exit", ok));
+  c.authUrl = new Promise((ok, no) => {
+    child.stdout.on("data", d => {
+      c.out += d;
+      const m = c.out.match(new RegExp(g.endpoints.auth.replace(/[.?]/g, "\\$&") + "\\?\\S+"));
+      if (m) ok(new URL(m[0]));
+    });
+    child.on("exit", () => no(new Error("connect exited early: " + c.out + c.err)));
+  });
+  c.authUrl.catch(() => {}); // a test that expects an early exit never awaits the link
+  c.finish = async () => {
+    const q = Object.fromEntries((await c.authUrl).searchParams);
+    const page = await fetch(`${q.redirect_uri}/?code=the-code&state=${encodeURIComponent(q.state)}`);
+    await page.text();
+    return [await c.exited, q];
+  };
+  return c;
+}
 
 test("PKCE: the S256 challenge is the base64url SHA-256 of the verifier (RFC 7636 appendix B)", () => {
   assert.equal(
@@ -110,13 +155,16 @@ test("PKCE: the S256 challenge is the base64url SHA-256 of the verifier (RFC 763
 
 test("sign in without the shared client explains it isn't set up yet and points to the do-it-yourself option", async () => {
   const home = tmp();
-  await assert.rejects(node([CLI, "connect", "--no-browser"], { env: homeEnv(home) }), e => {
-    assert.equal(e.code, 2);
-    assert.match(e.stderr, /isn't set up yet/);
-    assert.match(e.stderr, /node google\.mjs guide/);
-    assert.match(e.stderr, /--client-file/);
-    return true;
-  });
+  await assert.rejects(
+    node([CLI, "connect", "--no-browser"], { env: { ...homeEnv(home), ...noShared }, timeout: 20000 }),
+    e => {
+      assert.equal(e.code, 2);
+      assert.match(e.stderr, /isn't set up yet/);
+      assert.match(e.stderr, /node google\.mjs guide/);
+      assert.match(e.stderr, /--client-file/);
+      return true;
+    },
+  );
   assert.equal(existsSync(tokenPath(home)), false);
 });
 
@@ -129,6 +177,116 @@ test("guide prints numbered steps for a Desktop client and for a service account
   assert.match(stdout, /service account/i);
   assert.match(stdout, /--client-file/);
   assert.match(stdout, /--service-account/);
+  assert.match(stdout, /Audience → Publish app/);
+  assert.match(stdout, /7 days/);
+});
+
+test("sign in with the shared client (SEO_GOOGLE_SHARED_CLIENT_ID/_SECRET override the built-in one) and withdraw the login it replaces", async () => {
+  const g = await fakeGoogle({
+    "POST /token": () => [200, { access_token: "at2", refresh_token: "rt2", expires_in: 3599, scope: `${SC} ${GA}` }],
+    "POST /revoke": () => [200, {}],
+  });
+  const home = tmp();
+  store(home); // an earlier login with another client, refresh token r1
+  const c = startConnect(g, home, [], {
+    env: { SEO_GOOGLE_SHARED_CLIENT_ID: "shared-id", SEO_GOOGLE_SHARED_CLIENT_SECRET: "shared-secret" },
+  });
+  try {
+    const [code, q] = await c.finish();
+    assert.equal(code, 0, c.err);
+    assert.equal(q.client_id, "shared-id");
+    const ex = g.hits.find(h => h.path === "/token").body;
+    assert.equal(ex.client_secret, "shared-secret");
+    assert.equal(stored(home).method, "shared");
+    assert.equal(stored(home).refresh_token, "rt2");
+    assert.deepEqual(
+      g.hits.filter(h => h.path === "/revoke").map(h => h.body.token),
+      ["r1"],
+      "the replaced login is withdrawn at Google",
+    );
+  } finally {
+    c.child.kill();
+    await g.close();
+  }
+});
+
+test("connect --print-url: the link is the first line, and sits in ~/.seo-supervisor/pending-signin.txt until signing in is done", async () => {
+  const g = await fakeGoogle({
+    "POST /token": () => [200, { access_token: "at1", refresh_token: "rt1", expires_in: 3599, scope: `${SC} ${GA}` }],
+  });
+  const home = tmp(),
+    c = startConnect(g, home, ["--client-file", ownClientFile(tmp()), "--print-url"]);
+  try {
+    const url = await c.authUrl;
+    assert.equal(c.out.split("\n")[0].trim(), url.href, "the first line is the link alone");
+    assert.equal(
+      readFileSync(pendingPath(home), "utf8").trim(),
+      url.href,
+      "an agent running connect in the background can read the link",
+    );
+    const [code] = await c.finish();
+    assert.equal(code, 0, c.err);
+    assert.equal(existsSync(pendingPath(home)), false, "removed once signing in is done");
+    assert.doesNotMatch(c.out, /never commit/i, "the client file isn't in the project, so no warning");
+  } finally {
+    c.child.kill();
+    await g.close();
+  }
+});
+
+test("a malformed request to the sign-in listener gets a 400, and signing in still works", async () => {
+  const g = await fakeGoogle({
+    "POST /token": () => [200, { access_token: "at1", refresh_token: "rt1", expires_in: 3599 }],
+  });
+  const home = tmp(),
+    c = startConnect(g, home, ["--client-file", ownClientFile(tmp())]);
+  try {
+    const port = new URL((await c.authUrl).searchParams.get("redirect_uri")).port;
+    const reply = await new Promise((ok, no) => {
+      let got = "";
+      const s = connect(Number(port), "127.0.0.1", () => s.write("GET //[ HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"));
+      s.on("data", d => {
+        got += d;
+      })
+        .on("end", () => ok(got))
+        .on("close", () => ok(got))
+        .on("error", no);
+    });
+    assert.match(reply, /^HTTP\/1\.1 400/);
+    const [code] = await c.finish();
+    assert.equal(code, 0, c.err);
+  } finally {
+    c.child.kill();
+    await g.close();
+  }
+});
+
+test("a client file with no secret stops before the browser opens, with what to do", async () => {
+  const g = await fakeGoogle();
+  const home = tmp(),
+    c = startConnect(g, home, [
+      "--client-file",
+      ownClientFile(tmp(), { client_id: "own-id.apps.googleusercontent.com" }),
+    ]);
+  try {
+    assert.equal(await c.exited, 2);
+    assert.match(c.err, /has no (client )?secret/);
+    assert.match(c.err, /download it again from Google Cloud/i);
+    assert.doesNotMatch(c.out, /oauth|\/auth\?/i, "no sign-in link");
+    assert.equal(g.hits.length, 0);
+  } finally {
+    c.child.kill();
+    await g.close();
+  }
+});
+
+test("disconnect removes a saved sign-in that can't be read", async () => {
+  const home = tmp();
+  mkdirSync(join(home, ".seo-supervisor"), { recursive: true });
+  writeFileSync(tokenPath(home), "{ broken");
+  const { stdout } = await node([CLI, "disconnect"], { env: homeEnv(home) });
+  assert.equal(existsSync(tokenPath(home)), false);
+  assert.match(stdout, /myaccount\.google\.com\/connections/);
 });
 
 test("connect with your own Desktop client: loopback redirect, PKCE, state check, code exchange, private token file", async () => {
@@ -232,10 +390,17 @@ test("connect with a service-account key signs an RS256 JWT for both scopes and 
     }),
   );
   try {
-    const { stdout } = await node([CLI, "connect", "--service-account", keyFile], {
+    const { stdout } = await node([CLI, "connect", "--service-account", "key.json"], {
       env: { ...homeEnv(home), ...g.env },
+      cwd: dir,
     });
     assert.match(stdout, /seo@proj\.iam\.gserviceaccount\.com/);
+    assert.match(
+      stdout,
+      /key\.json is inside this project[^\n]*no longer needed[^\n]*delete it/i,
+      "a key file left in the project is flagged",
+    );
+    assert.match(stdout, /never commit it/i);
     const { body } = g.hits.find(h => h.path === "/token");
     assert.equal(body.grant_type, "urn:ietf:params:oauth:grant-type:jwt-bearer");
     const [h, c, sig] = body.assertion.split(".");
@@ -549,6 +714,7 @@ test("fetch: an expired token is refreshed first and saved; a 401 refreshes once
   try {
     const home = tmp();
     store(home, { access_token: "old", expires_at: Date.now() - 1000 });
+    const ino = statSync(tokenPath(home), { bigint: true }).ino;
     await fetchWith(g, home, { ga4Property: "222" });
     assert.equal(g.hits[0].path, "/token", "refreshed before the first call");
     assert.deepEqual(g.hits[0].body, {
@@ -557,6 +723,12 @@ test("fetch: an expired token is refreshed first and saved; a 401 refreshes once
       client_id: "own-id",
       client_secret: "own-secret",
     });
+    assert.notEqual(
+      statSync(tokenPath(home), { bigint: true }).ino,
+      ino,
+      "saved as a new file renamed over the old one",
+    );
+    assert.deepEqual(readdirSync(join(home, ".seo-supervisor")), ["google.json"], "no temp file left behind");
     assert.equal(stored(home).access_token, "fresh");
     assert.equal(stored(home).refresh_token, "r1", "the refresh token is kept");
     assert.ok(stored(home).expires_at > Date.now());
@@ -569,6 +741,123 @@ test("fetch: an expired token is refreshed first and saved; a 401 refreshes once
       g.hits.slice(0, 3).map(h => h.path),
       ["/webmasters/v3/sites", "/token", "/webmasters/v3/sites"],
     );
+
+    g.hits.length = 0;
+    const home3 = tmp();
+    store(home3, { client: { id: "own-id" }, access_token: "old", expires_at: Date.now() - 1000 });
+    await fetchWith(g, home3, { ga4Property: "222" });
+    assert.deepEqual(
+      g.hits[0].body,
+      { grant_type: "refresh_token", refresh_token: "r1", client_id: "own-id" },
+      "no client_secret=undefined when the client has no secret",
+    );
+  } finally {
+    await g.close();
+  }
+});
+
+test("fetch: the only GA4 property is used only when its web stream is this site", async () => {
+  const g = await fakeGoogle(
+    apiRoutes({
+      "GET /admin/v1beta/accountSummaries": () => [
+        200,
+        {
+          accountSummaries: [
+            {
+              account: "accounts/1",
+              displayName: "Acme",
+              propertySummaries: [{ property: "properties/111", displayName: "Old app" }],
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  const home = tmp();
+  store(home);
+  try {
+    const r = await fetchWith(g, home);
+    assert.equal(r.properties.analytics, null);
+    assert.deepEqual(r.analytics, {});
+    assert.equal(
+      g.hits.some(h => h.path.endsWith(":runReport")),
+      false,
+      "another site's visits aren't read",
+    );
+    assert.ok(
+      r.notes.some(n => /Old app \(111\)/.test(n) && /www\.example\.com/.test(n) && /--ga4-property/.test(n)),
+      r.notes.join("\n"),
+    );
+  } finally {
+    await g.close();
+  }
+});
+
+test("fetch: only real exclusions are not-indexed findings; unknown-to-Google and redirecting pages are notes", async () => {
+  const base = apiRoutes()["POST /v1/urlInspection/index:inspect"];
+  const g = await fakeGoogle(
+    apiRoutes({
+      "POST /v1/urlInspection/index:inspect": hit => {
+        const p = new URL(hit.body.inspectionUrl).pathname,
+          state = { "/docs/": "URL is unknown to Google", "/a/": "Page with redirect" }[p];
+        return state
+          ? [200, { inspectionResult: { indexStatusResult: { verdict: "NEUTRAL", coverageState: state } } }]
+          : base(hit);
+      },
+    }),
+  );
+  const home = tmp();
+  store(home);
+  try {
+    const r = await fetchWith(g, home, {
+      crawl: { pages: [{ url: "http://localhost:3000/docs/", status: 200, depth: 1 }] },
+    });
+    const f = r.findings.find(x => x.check === "gsc-not-indexed");
+    assert.deepEqual(
+      f.evidence.map(e => e.url),
+      ["https://www.example.com/b/"],
+    );
+    assert.match(f.title, /^1 key page/);
+    assert.ok(
+      r.notes.some(n => /unknown to Google/.test(n) && n.includes("https://www.example.com/docs/")),
+      r.notes.join("\n"),
+    );
+    assert.ok(
+      r.notes.some(n => /Page with redirect/.test(n) && n.includes("https://www.example.com/a/")),
+      r.notes.join("\n"),
+    );
+  } finally {
+    await g.close();
+  }
+});
+
+test("fetch: a note says when Search Console rows hit the 25,000-row cap", async () => {
+  const SITE = "/webmasters/v3/sites/sc-domain:example.com";
+  const many = Array.from({ length: 25000 }, (_, i) => ({
+    keys: ["q" + i],
+    clicks: 0,
+    impressions: 1,
+    ctr: 0,
+    position: 50,
+  }));
+  const g = await fakeGoogle(
+    apiRoutes({
+      [`POST ${SITE}/searchAnalytics/query`]: ({ body }) => [
+        200,
+        { rows: body.dimensions.join() === "query" ? many.slice(body.startRow, body.startRow + body.rowLimit) : [] },
+      ],
+    }),
+  );
+  const home = tmp();
+  store(home);
+  try {
+    const r = await fetchWith(g, home, { pageSize: 25000, ga4Property: "222" });
+    assert.equal(r.queries.length, 25000);
+    assert.ok(
+      r.notes.some(n => /25,000/.test(n) && /quer/.test(n)),
+      r.notes.join("\n"),
+    );
+    assert.ok(!r.notes.some(n => /25,000/.test(n) && /pages/.test(n)), "only the capped list is named");
   } finally {
     await g.close();
   }
