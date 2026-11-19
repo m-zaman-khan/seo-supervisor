@@ -3,7 +3,7 @@
 Can search engines reach the pages, and are they allowed to index the right ones? Every rule lists how to check it: **crawler** (a check name in `seo-crawl.json`) and/or **code** (what to inspect).
 
 ### CRAWL-01 · robots.txt lets search engines crawl the site · blocker
-- **Check:** crawler `robots-blocks-all`, `sitemap-url-disallowed`. Code: the robots file or route and its environment switch.
+- **Check:** crawler `robots-blocks-all`, `sitemap-url-disallowed`, and `robots-server-error` (high). That one fires when robots.txt answers 5xx, 429 or nothing: Google then stops crawling the whole site for 12 hours and uses its last copy for up to 30 days. Code: the robots file or route and its environment switch.
 - **Pass:** production allows `/` for `User-agent: *`, and no URL in the sitemap is disallowed.
 - **Fix:** allow crawling in production. Disallow only junk (see MAP-05). Use noindex, not `Disallow`, for pages that shouldn't rank: Google must crawl a page to see its noindex.
 
@@ -58,7 +58,11 @@ Can search engines reach the pages, and are they allowed to index the right ones
 
 ### CRAWL-10 · Parameter, filter, search and result pages stay out of the index · medium
 - **Check:** crawler with `--include-query` on a sample. Code: how list filters, sorting, internal search and shareable results build URLs.
-- **Pass:** these pages send `noindex, follow` and a canonical to the clean URL (or none, for results). They're not in the sitemap and not blocked in robots.txt.
+- **Pass:** each page type sends one signal, not both:
+  - Filter and sort versions of a list send a canonical to the clean URL.
+  - Internal search and shareable results send `noindex, follow` and no canonical to another page.
+  
+  Noindex together with a canonical elsewhere gives Google mixed signals (crawler `noindex-canonical`). None of these pages is in the sitemap or blocked in robots.txt.
 - **Fix:** add the robots rule per page type in the metadata helper. Expire shareable result links.
 
 ### CRAWL-12 · Crawl budget, only for large sites · low (high on large sites)
