@@ -15,6 +15,7 @@ import {
   CRUX_HISTORY_ENDPOINT,
 } from "./checks/speed.mjs";
 import { CHECKS as RENDER_CHECKS, findBrowser, renderPage, compareRendered } from "./checks/render.mjs";
+import { imageSize } from "./lib/image-size.mjs";
 
 const VERSION = "2.0.0";
 const UA = "seo-supervisor-crawler/" + VERSION;
@@ -433,6 +434,27 @@ const CHECKS = {
     "Shared links on Slack, LinkedIn and X show a bare URL instead of a card.",
     "Emit Open Graph and Twitter tags from the metadata helper, with a default image and per-page images for key pages.",
   ],
+  "og-image-broken": [
+    "META-04",
+    "medium",
+    n => `${n} share image(s) don't load`,
+    "The og:image URL doesn't return an image, so shared links show no picture and Google can't use it as the page's thumbnail.",
+    "Point og:image at an absolute URL on the public site that returns the image with status 200. A moved file or the wrong host in the metadata helper is the usual cause.",
+  ],
+  "og-image-no-size": [
+    "META-04",
+    "low",
+    n => `${n} page(s) don't declare their share image's size`,
+    "Without og:image:width and og:image:height, Facebook and LinkedIn have to download the image before they can lay out the card, so the first share of a page often shows no image.",
+    "Emit `og:image:width` and `og:image:height` next to og:image in the metadata helper.",
+  ],
+  "og-image-small": [
+    "MEDIA-03",
+    "low",
+    n => `${n} share image(s) are narrower than 1200 px`,
+    "Google Discover and the large link cards on X, LinkedIn and Facebook need images at least 1200 px wide. Smaller ones show as a small thumbnail or not at all.",
+    "Use share images of at least 1200 × 630 px (1.91:1), as a sitewide default and for each key page.",
+  ],
   "lang-missing": [
     "META-05",
     "low",
@@ -600,6 +622,27 @@ const CHECKS = {
     () => "Every sitemap lastmod has the same date",
     "Identical dates usually mean the build time was used. Google learns to ignore lastmod that isn't accurate.",
     "Use each record's real last-updated date.",
+  ],
+  "sitemap-lastmod-future": [
+    "MAP-04",
+    "low",
+    n => `${n} sitemap(s) have lastmod dates in the future`,
+    "A page can't have changed after today. Google uses lastmod only on sites where it proves accurate, so impossible dates teach it to ignore the sitemap's dates.",
+    "Use each record's real last-updated date, never a scheduled or generated one.",
+  ],
+  "sitemap-lastmod-invalid": [
+    "MAP-04",
+    "low",
+    n => `${n} sitemap(s) have lastmod values that aren't W3C dates`,
+    "Search engines read lastmod only in W3C Datetime format (`2026-11-17` or `2026-11-17T10:30:00+00:00`) and ignore anything else.",
+    "Write lastmod as `YYYY-MM-DD` or a full datetime with a timezone (for example with `toISOString()`).",
+  ],
+  "sitemap-priority-changefreq": [
+    "MAP-04",
+    "low",
+    n => `${n} sitemap(s) use priority or changefreq tags`,
+    "Google and Bing ignore `<priority>` and `<changefreq>`. They add weight to the file and suggest a control that doesn't exist.",
+    "Leave them out when the sitemap code is next touched. An accurate lastmod is the signal that counts.",
   ],
   "robots-missing": [
     "MAP-05",
@@ -803,6 +846,37 @@ async function follow(url) {
     return { ...r, chain, finalUrl: cur };
   }
   return { status: 0, error: "too many redirects", chain, finalUrl: cur, headers: new Headers(), ct: "", body: "" };
+}
+// The start of an own-site file by Range request, read no further if the range is ignored. A redirect off the site
+// returns null, so no third party is contacted.
+async function firstBytes(url, max = 65536) {
+  try {
+    for (let hop = 0; hop < 5; hop++) {
+      const r = await fetch(url, {
+        redirect: "manual",
+        headers: { "user-agent": UA, range: `bytes=0-${max - 1}`, accept: "image/avif,image/webp,image/*,*/*;q=0.8" },
+        signal: AbortSignal.timeout(15000),
+      });
+      const loc = r.headers.get("location");
+      if (r.status >= 300 && r.status < 400 && loc) {
+        await r.body?.cancel();
+        url = clean(toCrawl(new URL(loc, url).href));
+        if (!url || new URL(url).origin !== START_ORIGIN) return null;
+        continue;
+      }
+      const chunks = [];
+      let n = 0;
+      if (r.body)
+        for await (const c of r.body) {
+          chunks.push(c);
+          if ((n += c.length) >= max) break;
+        }
+      return { status: r.status, type: r.headers.get("content-type") || "", bytes: Buffer.concat(chunks) };
+    }
+    return { status: 0, error: "too many redirects" };
+  } catch (e) {
+    return { status: 0, error: String(e.message || e) };
+  }
 }
 
 // ---------- HTML helpers ----------
@@ -1018,6 +1092,7 @@ function analyze(url, html, headers) {
     ogTitle: meta("og:title") ?? null,
     ogImage: meta("og:image") ?? null,
     ogUrl: meta("og:url") ?? null,
+    ogImageSized: !!(meta("og:image:width") && meta("og:image:height")),
     doctype: /^\s*(?:<!--[\s\S]*?-->\s*)*<!doctype html/i.test(html.replace(/^\uFEFF/, "")),
     charset:
       metas.some(m => m.charset || /charset=/i.test(m.content || "")) ||
@@ -1132,7 +1207,13 @@ async function readSitemaps(urls) {
     for (const m of r.body.matchAll(/<url\b[^>]*>([\s\S]*?)<\/url>/gi)) {
       const loc = (m[1].match(/<loc>\s*([\s\S]*?)\s*<\/loc>/i) || [])[1];
       const lastmod = (m[1].match(/<lastmod>\s*([\s\S]*?)\s*<\/lastmod>/i) || [])[1];
-      if (loc) entries.push({ loc: decode(loc.trim()), lastmod: lastmod ? lastmod.trim() : null });
+      if (loc)
+        entries.push({
+          loc: decode(loc.trim()),
+          lastmod: lastmod ? lastmod.trim() : null,
+          sitemap: u,
+          hints: /<(priority|changefreq)>/i.test(m[1]),
+        });
     }
   }
   return { entries, files };
@@ -1356,6 +1437,21 @@ for (const e of sm.entries) {
 const lm = sm.entries.map(e => (e.lastmod || "").slice(0, 10)).filter(Boolean);
 if (lm.length >= 5 && new Set(lm).size === 1)
   add("sitemap-lastmod-same", firstSm, `all ${lm.length} entries: ${lm[0]}`);
+// Per sitemap file: lastmod after tomorrow (a day of slack for time zones) or not a W3C date, and tags Google ignores.
+const W3C_DATE =
+  /^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01])(T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d+)?)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d))?)?)?$/;
+const bySitemap = new Map();
+for (const e of sm.entries) (bySitemap.get(e.sitemap) || bySitemap.set(e.sitemap, []).get(e.sitemap)).push(e);
+for (const [file, es] of bySitemap) {
+  const dated = es.filter(e => e.lastmod),
+    eg = list => `${list.length} of ${es.length} entries, e.g. ${list[0].loc}: ${list[0].lastmod}`;
+  const invalid = dated.filter(e => !W3C_DATE.test(e.lastmod)),
+    future = dated.filter(e => W3C_DATE.test(e.lastmod) && Date.parse(e.lastmod) > Date.now() + 864e5);
+  if (future.length) add("sitemap-lastmod-future", file, eg(future));
+  if (invalid.length) add("sitemap-lastmod-invalid", file, eg(invalid));
+  const hinted = es.filter(e => e.hints).length;
+  if (hinted) add("sitemap-priority-changefreq", file, `${hinted} of ${es.length} entries`);
+}
 await runQueue();
 
 // Probes: soft 404, slash variants, well-known files and security headers.
@@ -1496,6 +1592,7 @@ const titleMap = new Map(),
   faqMap = new Map();
 let checkedPages = 0;
 const images = new Map(); // same-origin image URL -> first indexable page using it
+const shareImages = new Map(); // og:image on the crawled site (crawl URL) -> { src, page }
 const notChecked = [];
 const noindexShare = htmlPages.length ? htmlPages.filter(p => p.noindex).length / htmlPages.length : 0;
 if (IGNORE_NOINDEX)
@@ -1603,6 +1700,12 @@ for (const p of htmlPages) {
   }
   if (!p.ogTitle || !p.ogImage)
     add("og-missing", u, [!p.ogTitle && "og:title", !p.ogImage && "og:image"].filter(Boolean).join(", "));
+  if (p.ogImage) {
+    if (!p.ogImageSized) add("og-image-no-size", u);
+    const src = urlOr(p.ogImage, u),
+      c = src && clean(toCrawl(src.href));
+    if (c && new URL(c).origin === START_ORIGIN && !shareImages.has(c)) shareImages.set(c, { src: src.href, page: u });
+  }
   if (sitewide.h1.has(p)) add("h1-missing-sitewide", u);
   else if (p.h1Count !== 1) add("h1-count", u, `${p.h1Count} H1s`);
   const skips = [];
@@ -1767,6 +1870,29 @@ for (let i = 0; i < imageList.length; i += CONC)
   );
 if (weighed) evalRules("PERF-08");
 if (images.size > 50) notes.push(`Image weight was checked for the first 50 of ${images.size} images.`);
+// Share images: the first 64 KB of up to 20 on-site og:images, enough for the pixel size.
+const shareList = [...shareImages].slice(0, 20);
+let shareRead = 0;
+for (let i = 0; i < shareList.length; i += CONC)
+  await Promise.all(
+    shareList.slice(i, i + CONC).map(async ([crawlSrc, { src, page }]) => {
+      const r = await firstBytes(crawlSrc);
+      if (!r) return; // a redirect off the site, which isn't fetched
+      if (r.status !== 200 && r.status !== 206)
+        return add("og-image-broken", page, `${src} → ${r.status || `no response (${r.error})`}`);
+      const size = imageSize(r.bytes);
+      if (!size) {
+        if (/html/.test(r.type)) add("og-image-broken", page, `${src} → an HTML page, not an image`);
+        return;
+      } // SVG, AVIF: size unknown
+      shareRead++;
+      if (size.width < 1200) add("og-image-small", page, `${src} · ${size.width}×${size.height} px`);
+    }),
+  );
+if (shareImages.size && !shareRead)
+  notes.push("No share image (og:image) could be read, so share image sizes weren't checked.");
+if (shareImages.size > 20)
+  notes.push(`Share image size was checked for the first 20 of ${shareImages.size} og:images.`);
 if (home && home.html) {
   if (!home.lang) add("lang-missing", home.finalUrl);
   if (!home.types.some(t => ORG_RE.test(t))) add("org-missing", home.finalUrl);
@@ -2130,6 +2256,8 @@ const report = {
     canonical: canonicalFor(p),
     title: p.title,
     description: p.description,
+    ogTitle: p.ogTitle,
+    ogImage: p.ogImage,
     h1Text: p.headings.find(h => h.level === 1)?.text ?? null,
     words: p.words,
     h1: p.h1Count,
