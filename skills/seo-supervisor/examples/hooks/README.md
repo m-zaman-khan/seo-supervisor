@@ -6,7 +6,7 @@ Each one stays silent when the JSON-LD passes and only looks at `.html`, `.htm`,
 
 The paths assume a project install (`npx seo-supervisor --scope project`): `.claude/skills/seo-supervisor/` for Claude Code, `.agents/skills/seo-supervisor/` for the other agents. For a user install, point them at the copy in your home folder. The pre-commit hook and CI only see a project install that's committed.
 
-Agent hooks only see the files the agent edits. A framework page (`.tsx`, `.vue`, `.astro`, `.erb`) builds its JSON-LD at runtime, so it can't be checked from source. Check the built output instead, with the CI step or `node schema-check.mjs out/`, or check the running dev server: `node schema-check.mjs http://localhost:3000/`.
+Agent hooks only see the files the agent edits. A framework page (`.tsx`, `.vue`, `.astro`, `.erb`) builds its JSON-LD at runtime, so it can't be checked from source. Neither can a template `.html` file (Hugo, Jekyll, Django/Jinja, Eleventy, Liquid, ERB) whose JSON-LD holds template tags (`{{`, `{%`, `{#`, `<%`): the checker reports that block as a note, "templated; check the built output", and never fails on it. Check the built output instead, with the CI step or `node schema-check.mjs out/`, or check the running dev server: `node schema-check.mjs http://localhost:3000/`.
 
 Hook formats checked against each vendor's docs on 19 Nov 2026.
 

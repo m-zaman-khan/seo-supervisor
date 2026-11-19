@@ -5,12 +5,13 @@
 CHECK=.agents/skills/seo-supervisor/scripts/schema-check.mjs
 [ -f "$CHECK" ] || CHECK=.claude/skills/seo-supervisor/scripts/schema-check.mjs
 
-staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.html' '*.htm' '*.json' '*.jsonld')
-files=$(printf '%s\n' "$staged" | while IFS= read -r f; do
-  case "$f" in
-    *.jsonld) printf '%s\n' "$f" ;;
-    *) grep -qs -e 'application/ld+json' -e '"@context"' -- "$f" && printf '%s\n' "$f" ;;
-  esac
-done)
-[ -n "$files" ] || exit 0
-printf '%s\n' "$files" | tr '\n' '\0' | xargs -0 node "$CHECK" --quiet
+# NUL-separated names (-z), so names with spaces or non-ASCII letters arrive unquoted.
+git diff --cached --name-only -z --diff-filter=ACMR -- '*.html' '*.htm' '*.json' '*.jsonld' |
+  xargs -0 sh -c 'for f do
+    case "$f" in
+      *.jsonld) ;;
+      *) grep -qs -e "application/ld+json" -e "\"@context\"" -- "$f" || continue ;;
+    esac
+    printf "%s\0" "$f"
+  done' sh |
+  xargs -0 sh -c '[ $# -eq 0 ] || exec node "$0" --quiet "$@"' "$CHECK"

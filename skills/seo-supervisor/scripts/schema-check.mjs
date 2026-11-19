@@ -5,19 +5,27 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 
 const VOCAB = JSON.parse(readFileSync(new URL("./data/schema-vocab.json", import.meta.url), "utf8"));
-const { types: TYPES, props: PROPS } = VOCAB;
+// Null-prototype maps, so "toString" or "__proto__" in a page is just an unknown name.
+const bare = o => Object.assign(Object.create(null), o);
+const TYPES = bare(VOCAB.types),
+  PROPS = bare(VOCAB.props);
 
 // Google's rich-result requirements; each rule's doc is its source. A rule covers its type and every subtype. A
 // missing required property is an error, a missing recommended one a warning; a nested list means "one of these".
 // except: a subtype it doesn't cover; under: only when nested in that type; top: only when not nested; standalone:
-// also required when not nested; lastMayOmit: the last item of its list may leave that one out.
+// also required when not nested, or nested as the rule's `via` property; lastMayOmit: the last item of its list may
+// leave that one out; alsoOn: { prop: key }, the prop may sit on the object in that key instead (a breadcrumb's name
+// on its item).
 const G = "https://developers.google.com/search/docs/appearance/structured-data/";
 const RULES = [
   {
     type: "Product",
+    except: "ProductGroup",
     for: "Google product snippets",
     doc: G + "product-snippet",
-    required: ["name", ["offers", "review", "aggregateRating"]],
+    required: ["name"],
+    standalone: [["offers", "review", "aggregateRating"]],
+    via: "hasVariant",
     recommended: ["image", "description"],
   },
   {
@@ -78,6 +86,7 @@ const RULES = [
     doc: G + "breadcrumb",
     required: ["position", "name", "item"],
     lastMayOmit: "item",
+    alsoOn: { name: "item" },
   },
   {
     type: "Organization",
@@ -157,12 +166,12 @@ const cache = new Map();
 const ancestors = t =>
   cache.get(t) || cache.set(t, new Set([t, ...(TYPES[t] || []).flatMap(p => [...ancestors(p)])])).get(t);
 const isA = (t, base) => ancestors(t).has(base);
-const byDomain = {};
+const byDomain = Object.create(null);
 for (const [p, [domains]] of Object.entries(PROPS)) for (const d of domains) (byDomain[d] ||= []).push(p);
 const allowedCache = new Map();
 const allowed = t =>
   allowedCache.get(t) || allowedCache.set(t, new Set([...ancestors(t)].flatMap(a => byDomain[a] || []))).get(t);
-const lowerMap = o => Object.fromEntries(Object.keys(o).map(k => [k.toLowerCase(), k]));
+const lowerMap = o => bare(Object.fromEntries(Object.keys(o).map(k => [k.toLowerCase(), k])));
 const TYPE_LC = lowerMap(TYPES),
   PROP_LC = lowerMap(PROPS);
 const hint = (lc, t) =>
@@ -252,7 +261,7 @@ export function checkJsonLd(text) {
       );
   }
 
-  function google(v, path, known, parent, last) {
+  function google(v, path, known, parent, last, via) {
     const seen = new Set();
     for (const r of RULES) {
       if (
@@ -261,7 +270,12 @@ export function checkJsonLd(text) {
         (r.top && parent)
       )
         continue;
-      const need = [...r.required, ...(parent ? [] : r.standalone || [])].filter(x => !(last && x === r.lastMayOmit));
+      const need = [...r.required, ...(parent && via !== r.via ? [] : r.standalone || [])].filter(
+        x => !(last && x === r.lastMayOmit),
+      );
+      const present = k =>
+        has(v, k) ||
+        (r.alsoOn?.[k] && [].concat(v[r.alsoOn[k]] ?? []).some(o => o && typeof o === "object" && has(o, k)));
       for (const [list, severity, verb] of [
         [need, "error", "required"],
         [r.recommended || [], "warning", "recommended"],
@@ -271,7 +285,7 @@ export function checkJsonLd(text) {
             .concat(x)
             .map(k => `"${k}"`)
             .join(" or ");
-          if ([].concat(x).some(k => has(v, k)) || seen.has(label)) continue;
+          if ([].concat(x).some(present) || seen.has(label)) continue;
           seen.add(label);
           add(
             severity,
@@ -285,8 +299,8 @@ export function checkJsonLd(text) {
     }
   }
 
-  function walk(v, path, parent, last) {
-    if (Array.isArray(v)) return v.forEach((x, i) => walk(x, `${path}[${i}]`, parent, i === v.length - 1));
+  function walk(v, path, parent, last, via) {
+    if (Array.isArray(v)) return v.forEach((x, i) => walk(x, `${path}[${i}]`, parent, i === v.length - 1, via));
     if (!v || typeof v !== "object") return;
     const types = []
       .concat(v["@type"] ?? [])
@@ -320,9 +334,9 @@ export function checkJsonLd(text) {
           );
         } else for (const x of [].concat(val)) shape(key, k, x, path, known);
       }
-      walk(val, `${path}.${key}`, known.length ? known : parent, true);
+      walk(val, `${path}.${key}`, known.length ? known : parent, true, k);
     }
-    if (known.length) google(v, path, known, parent, last);
+    if (known.length) google(v, path, known, parent, last, via);
   }
 
   for (const [root, path] of Array.isArray(data) ? data.map((d, i) => [d, `$[${i}]`]) : [[data, "$"]]) {
@@ -342,24 +356,42 @@ const blocksOf = html =>
     .filter(m => /\btype\s*=\s*["']?application\/ld\+json/i.test(m[1]))
     .map(m => ({ body: m[2], start: m.index + m[1].length }));
 
+// Hugo, Jekyll, Liquid, Eleventy, Django/Jinja ({{ }}, {% %}, {# #}) and ERB/EJS (<% %>): the JSON-LD only exists
+// once built.
+const TEMPLATED = /\{\{|\{%|\{#|<%/;
+
 /** Checks one file's text: JSON-LD (json = true) or HTML. Returns null when a .json file isn't JSON-LD. */
 function checkText(name, text, json) {
   if (json && !/\.jsonld$/i.test(name) && !/"@(context|type|graph)"/.test(text)) return null; // package.json, manifest.json…
   const blocks = json ? [{ body: text, start: 0 }] : blocksOf(text);
   const issues = blocks.flatMap((b, n) =>
-    checkJsonLd(b.body).map(({ pos, ...i }) => {
-      const at = b.start + pos,
-        line = lineAt(text, at);
-      return {
-        file: name,
-        line,
-        block: n + 1,
-        ...i,
-        ...(i.check === "json-invalid" && {
-          message: `${i.message} (line ${line}, column ${at - text.lastIndexOf("\n", at - 1)})`,
+    TEMPLATED.test(b.body)
+      ? [
+          {
+            file: name,
+            line: lineAt(text, b.start + b.body.length - b.body.trimStart().length),
+            block: n + 1,
+            severity: "note",
+            check: "templated",
+            rule: "SCHEMA-08",
+            path: "$",
+            type: "",
+            message: "templated; check the built output",
+          },
+        ]
+      : checkJsonLd(b.body).map(({ pos, ...i }) => {
+          const at = b.start + pos,
+            line = lineAt(text, at);
+          return {
+            file: name,
+            line,
+            block: n + 1,
+            ...i,
+            ...(i.check === "json-invalid" && {
+              message: `${i.message} (line ${line}, column ${at - text.lastIndexOf("\n", at - 1)})`,
+            }),
+          };
         }),
-      };
-    }),
   );
   return { items: blocks.length, issues };
 }
@@ -435,21 +467,24 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const format = i =>
   `  ${i.file}:${i.line}  ${i.severity}  ${i.path}${i.type ? ` (${i.type})` : ""}: ${i.message}${i.doc ? ` · ${i.doc}` : ""}`;
 
-// Edited paths in any hook payload: file_path, path and filePath keys at any depth (Claude Code, Cursor, Copilot's
-// toolArgs, which may be a JSON string) and the file headers of a Codex apply_patch command.
-function pathsIn(v, out = new Set()) {
-  if (typeof v === "string") {
-    if (/^\s*[{[]/.test(v))
+// Paths come from the tool-input fields only, never from the text written: Cursor's file_path, Claude Code's
+// tool_input, Copilot's toolArgs (maybe a JSON string), and the file headers of a Codex apply_patch.
+function pathsIn(payload) {
+  const obj = v => {
+    if (typeof v === "string")
       try {
-        return pathsIn(JSON.parse(v), out);
+        v = JSON.parse(v);
       } catch {}
-    for (const m of v.matchAll(/^\*\*\* (?:Add File|Update File|Move to): (.+)$/gm)) out.add(m[1].trim());
-  } else if (Array.isArray(v)) v.forEach(x => pathsIn(x, out));
-  else if (v && typeof v === "object")
-    for (const [k, x] of Object.entries(v)) {
-      if (/^(file_path|filePath|path)$/.test(k) && typeof x === "string") out.add(x);
-      else pathsIn(x, out);
-    }
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  };
+  const input = obj(payload?.tool_input),
+    out = new Set();
+  if (typeof payload?.file_path === "string") out.add(payload.file_path);
+  for (const src of [input, obj(payload?.toolArgs)])
+    for (const k of ["file_path", "filePath", "path"]) if (typeof src[k] === "string") out.add(src[k]);
+  for (const c of [].concat(input.command ?? []))
+    if (typeof c === "string")
+      for (const m of c.matchAll(/^\*\*\* (?:Add File|Update File|Move to): (.+)$/gm)) out.add(m[1].trim());
   return out;
 }
 
@@ -501,8 +536,10 @@ if (isMain(import.meta.url)) {
   else {
     if (!inputs.length) usage();
     const r = await checkInputs(inputs, opts);
-    const errors = r.issues.filter(i => i.severity === "error").length,
-      warnings = r.issues.length - errors;
+    const count = s => r.issues.filter(i => i.severity === s).length,
+      errors = count("error"),
+      warnings = count("warning"),
+      notes = count("note");
     if (opts.json) {
       mkdirSync(dirname(resolve(opts.json)), { recursive: true });
       writeFileSync(
@@ -515,6 +552,7 @@ if (isMain(import.meta.url)) {
             items: r.items,
             errors,
             warnings,
+            notes,
             issues: r.issues,
           },
           null,
@@ -524,7 +562,7 @@ if (isMain(import.meta.url)) {
     }
     if (!opts.quiet || errors) {
       console.log(
-        `schema-check: ${plural(r.files, "file")}, ${plural(r.items, "item")}, ${plural(errors, "error")}, ${plural(warnings, "warning")} · schema.org ${VOCAB.version}`,
+        `schema-check: ${plural(r.files, "file")}, ${plural(r.items, "item")}, ${plural(errors, "error")}, ${plural(warnings, "warning")}${notes ? `, ${plural(notes, "note")}` : ""} · schema.org ${VOCAB.version}`,
       );
       for (const i of r.issues) if (!opts.quiet || i.severity === "error") console.log(format(i));
     }

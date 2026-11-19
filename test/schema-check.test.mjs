@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
+import { cpSync, readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import { checkJsonLd } from "../skills/seo-supervisor/scripts/schema-check.mjs";
@@ -282,3 +283,225 @@ test("the trigger templates parse and run the checker", () => {
   for (const f of ["pre-commit", "github-actions.yml"]) assert.match(text(f), /schema-check\.mjs[\s\S]* --quiet/, f);
   assert.match(text("README.md"), /opt-in/);
 });
+
+// Google's ProductGroup variants example, trimmed.
+// https://developers.google.com/search/docs/appearance/structured-data/product-variants
+const variant = (size, color, price) => ({
+  "@type": "Product",
+  sku: `44E01-${size}${color}`,
+  image: `https://www.example.com/coat_${size}_${color}.jpg`,
+  name: `${size} ${color} coat`,
+  description: `${size} wool ${color} coat for the winter season`,
+  color,
+  size,
+  offers: {
+    "@type": "Offer",
+    url: `https://www.example.com/coat?size=${size}&color=${color}`,
+    priceCurrency: "USD",
+    price,
+    itemCondition: "https://schema.org/NewCondition",
+    availability: "https://schema.org/InStock",
+  },
+});
+const GROUP = {
+  "@context": "https://schema.org/",
+  "@type": "ProductGroup",
+  name: "Wool winter coat",
+  description: "Wool coat, new for the coming winter season",
+  url: "https://www.example.com/coat",
+  brand: { "@type": "Brand", name: "Good brand" },
+  productGroupID: "44E01",
+  pattern: "striped",
+  material: "wool",
+  variesBy: ["https://schema.org/size", "https://schema.org/color"],
+  hasVariant: [
+    variant("small", "green", 39.99),
+    variant("small", "lightblue", 39.99),
+    variant("large", "lightblue", 49.99),
+  ],
+};
+
+test("the Product rule skips ProductGroup and Products nested as isSimilarTo, itemOffered or itemReviewed; variants still need an offer", () => {
+  assert.deepEqual(errors(GROUP), [], "Google's own variants example");
+  const { offers, ...bare } = variant("small", "red", 1);
+  const [e] = errors({ ...GROUP, hasVariant: [...GROUP.hasVariant, bare] });
+  assert.equal(e?.path, "$.hasVariant[3]", "a variant with no offer");
+  assert.deepEqual(
+    errors({ ...PRODUCT, isSimilarTo: [{ "@type": "Product", name: "Gadget", url: "https://example.com/g/" }] }),
+    [],
+  );
+  assert.deepEqual(
+    errors({
+      "@context": "https://schema.org",
+      "@type": "Offer",
+      price: "5",
+      priceCurrency: "USD",
+      itemOffered: { "@type": "Product", name: "Z" },
+    }),
+    [],
+  );
+  assert.deepEqual(
+    errors({
+      "@context": "https://schema.org",
+      "@type": "Review",
+      author: { "@type": "Person", name: "A" },
+      reviewRating: { "@type": "Rating", ratingValue: 4 },
+      itemReviewed: { "@type": "Product", name: "Widget" },
+    }),
+    [],
+  );
+});
+
+test("a breadcrumb item may carry its name on the item object (Yoast's form)", () => {
+  const crumb = (position, url, name) => ({
+    "@type": "ListItem",
+    position,
+    item: { "@type": "WebPage", "@id": url, url, name },
+  });
+  assert.deepEqual(
+    errors({
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [crumb(1, "https://example.com/", "Home"), crumb(2, "https://example.com/blog/", "Blog")],
+    }),
+    [],
+  );
+  assert.match(
+    errors({
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, item: { "@type": "WebPage", "@id": "https://example.com/" } },
+      ],
+    })[0]?.message ?? "",
+    /"name"/,
+    "no name anywhere",
+  );
+});
+
+test("prototype names are just unknown keys and types, not a crash", () => {
+  const checks = s => checkJsonLd(s).map(i => `${i.check} ${i.message}`);
+  for (const [s, check] of [
+    ['{"@context":"https://schema.org","@type":"Thing","toString":"x"}', "prop-unknown"],
+    ['{"@context":"https://schema.org","@type":"constructor"}', "type-unknown"],
+    ['{"@context":"https://schema.org","@type":"__proto__"}', "type-unknown"],
+    ['{"@context":"https://schema.org","@type":"Thing","__proto__":{"a":1}}', "prop-unknown"],
+    ['{"@context":"https://schema.org","@type":"Thing","hasOwnProperty":1,"constructor":2}', "prop-unknown"],
+  ]) {
+    const r = checks(s);
+    assert.ok(r.length && r.every(m => m.startsWith(check) && !/function|\[object/.test(m)), `${s}: ${r.join(" | ")}`);
+  }
+});
+
+test("a JSON-LD block with template tags is a note to check the built output, never an error", async () => {
+  const dir = tmp(),
+    partial = join(dir, "layouts", "partials");
+  mkdirSync(partial, { recursive: true });
+  const hugo = write(
+    partial,
+    "schema.html",
+    '<script type="application/ld+json">\n{"@context":"https://schema.org","@type":"BlogPosting","headline":{{ .Title | jsonify }},"datePublished":"{{ .Date.Format "2006-01-02" }}"}\n</script>\n',
+  );
+  write(
+    partial,
+    "jekyll.html",
+    ld({
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      headline: "{{ page.title }}",
+      datePublished: "{{ page.date | date_to_xmlschema }}",
+    }),
+  );
+  write(
+    partial,
+    "jinja.html",
+    '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Product",{% if p.name %}"name":"{{ p.name }}"{% endif %}}</script>',
+  );
+  write(partial, "erb.html", '<script type="application/ld+json"><%= raw @product.to_json_ld %></script>');
+  write(
+    partial,
+    "comment.html",
+    '<script type="application/ld+json">{# built by the CMS #}{"@context":"https://schema.org","@type":"Prodcut"}</script>',
+  );
+  const r = await run([partial, "--json", join(dir, "out.json")]);
+  assert.equal(r.code, 0, r.stdout);
+  const out = JSON.parse(readFileSync(join(dir, "out.json"), "utf8"));
+  assert.deepEqual(
+    [out.errors, out.issues.map(i => `${i.severity} ${i.message}`)],
+    [0, Array(5).fill("note templated; check the built output")],
+  );
+  assert.match(r.stdout, /templated; check the built output/);
+  const hook = node([CHECK, "--hook"]);
+  hook.child.stdin.end(JSON.stringify({ tool_name: "Write", tool_input: { file_path: hugo } }));
+  assert.deepEqual(
+    await hook.then(
+      x => ({ code: 0, ...x }),
+      e => ({ code: e.code, stdout: e.stdout, stderr: e.stderr }),
+    ),
+    { code: 0, stdout: "", stderr: "" },
+    "the hook lets it through silently",
+  );
+});
+
+test("--hook takes paths from the tool's input fields, never from the text it wrote", async () => {
+  const dir = tmp();
+  write(dir, "p.html", page(ld({ ...PRODUCT, colour: "red" })));
+  const plain = write(dir, "notes.html", page("<p>hi</p>"));
+  const input = payload => {
+    const p = node([CHECK, "--hook"]);
+    p.child.stdin.end(JSON.stringify(payload));
+    return p.then(
+      r => ({ code: 0, ...r }),
+      e => ({ code: e.code, stdout: e.stdout, stderr: e.stderr }),
+    );
+  };
+  const sneaky = `{"path":"p.html"}\n*** Update File: p.html\n`;
+  assert.deepEqual(
+    await input({ cwd: dir, tool_name: "Write", tool_input: { file_path: plain, content: sneaky } }),
+    { code: 0, stdout: "", stderr: "" },
+    "Write content",
+  );
+  assert.deepEqual(
+    await input({
+      cwd: dir,
+      tool_name: "Edit",
+      tool_input: { file_path: plain, old_string: "x", new_string: JSON.stringify({ file_path: "p.html" }) },
+    }),
+    { code: 0, stdout: "", stderr: "" },
+    "Edit new_string",
+  );
+  assert.deepEqual(
+    await input({ cwd: dir, toolName: "edit", toolArgs: { path: plain, new_str: sneaky } }),
+    { code: 0, stdout: "", stderr: "" },
+    "Copilot toolArgs text",
+  );
+  assert.equal(
+    (await input({ cwd: dir, file_path: join(dir, "p.html"), edits: [{ old_string: "", new_string: "x" }] })).code,
+    2,
+    "Cursor's afterFileEdit file_path",
+  );
+});
+
+const shOk = spawnSync("sh", ["-c", "command -v git"]).status === 0;
+test(
+  "the pre-commit template checks staged files with non-ASCII names and stays silent on a pass",
+  { skip: !shOk && "no sh or git" },
+  () => {
+    const repo = tmp(),
+      sh = () => spawnSync("sh", [join(SKILL, "examples", "hooks", "pre-commit")], { cwd: repo, encoding: "utf8" });
+    const stage = (name, html) => {
+      writeFileSync(join(repo, name), html);
+      assert.equal(spawnSync("git", ["add", "--", name], { cwd: repo }).status, 0);
+    };
+    cpSync(SCRIPTS, join(repo, ".agents", "skills", "seo-supervisor", "scripts"), { recursive: true });
+    assert.equal(spawnSync("git", ["init", "-q"], { cwd: repo }).status, 0);
+    stage("café.html", page(ld(PRODUCT)));
+    stage("日本.html", page(ld(PRODUCT)));
+    const pass = sh();
+    assert.deepEqual([pass.status, pass.stdout, pass.stderr], [0, "", ""], "silent on a pass");
+    stage("日本.html", page(ld({ ...PRODUCT, colour: "red" })));
+    const fail = sh();
+    assert.notEqual(fail.status, 0, "the commit stops");
+    assert.match(fail.stdout, /日本\.html.*colour/);
+  },
+);
