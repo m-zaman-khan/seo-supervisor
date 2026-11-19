@@ -2,7 +2,7 @@
 // Checks JSON-LD structured data offline, against the schema.org vocabulary and Google's rich-result requirements.
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { isMain } from "./lib/is-main.mjs";
 
 const VOCAB = JSON.parse(readFileSync(new URL("./data/schema-vocab.json", import.meta.url), "utf8"));
 const { types: TYPES, props: PROPS } = VOCAB;
@@ -476,7 +476,7 @@ async function hook(mode) {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isMain(import.meta.url)) {
   const usage = () => {
     console.error(
       "usage: node schema-check.mjs <file|folder|url ...> [--json out.json] [--quiet] [--allow-remote]\n       node schema-check.mjs --hook [copilot]   (reads an agent hook payload on stdin)",

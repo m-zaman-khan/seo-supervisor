@@ -6,7 +6,7 @@
 import { readFileSync, writeFileSync, mkdirSync, chmodSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { isMain } from "./lib/is-main.mjs";
 
 export const SERVICES = {
   bing: {
@@ -478,7 +478,7 @@ async function main(argv) {
 }
 
 // Not process.exit(): exiting while fetch's sockets close crashes Node on Windows.
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isMain(import.meta.url)) {
   process.exitCode = await main(process.argv.slice(2)).then(null, e => {
     if (!(e instanceof Fail)) throw e;
     console.error(e.message);

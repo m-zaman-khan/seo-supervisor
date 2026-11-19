@@ -2,7 +2,7 @@
 // Reports what changed between two crawls. Pages are matched by path, so a local crawl compares with the public site.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { isMain } from "./lib/is-main.mjs";
 
 const pathOf = u => {
   try {
@@ -88,7 +88,7 @@ export function diffCrawls(oldReport, newReport) {
   };
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isMain(import.meta.url)) {
   const args = process.argv.slice(2);
   const files = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--out");
   const outAt = args.indexOf("--out");

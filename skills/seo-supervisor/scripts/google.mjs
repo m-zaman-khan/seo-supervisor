@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { isMain } from "./lib/is-main.mjs";
 import { SHARED_CLIENT } from "./lib/google-client.mjs";
 import { addTraffic, gscFindings } from "./gsc-import.mjs";
 
@@ -817,8 +817,9 @@ const str = v => (typeof v === "string" ? v : null);
 const USAGE = `usage: node google.mjs connect [--client-file client_secret.json | --service-account key.json] [--no-browser]
        node google.mjs guide | status | disconnect
        node google.mjs fetch --site https://www.example.com [--days 90] [--ga4-property <id>] [--crawl seo-audit/seo-crawl.json] [--out seo-audit/google.json]`;
-
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+// Exit codes as in connect-keys.mjs: 1 when Google refuses or can't be reached, or status finds nothing connected;
+// 2 on bad input or no usable sign-in.
+if (isMain(import.meta.url)) {
   const cmd = process.argv[2],
     args = {};
   for (let i = 3; i < process.argv.length; i++) {

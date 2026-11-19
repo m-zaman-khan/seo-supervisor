@@ -3,7 +3,7 @@
 // google.mjs builds the same output from the API and reuses addTraffic() and gscFindings().
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { isMain } from "./lib/is-main.mjs";
 import { parseCsv } from "./lib/csv.mjs";
 
 // http/https and www variants of a page add up; position is weighted by impressions.
@@ -119,7 +119,7 @@ export function gscFindings(traffic, pageQueries, urls) {
   return findings;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isMain(import.meta.url)) {
   const args = {};
   for (let i = 2; i < process.argv.length; i++) {
     const k = process.argv[i].replace(/^--/, "");

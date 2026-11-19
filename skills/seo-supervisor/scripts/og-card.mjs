@@ -5,6 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { isMain } from "./lib/is-main.mjs";
 import { findBrowser } from "./checks/render.mjs";
 
 const W = 1200,
@@ -164,7 +165,7 @@ const fileOf = slug =>
     .replace(/[^\w-]+/g, "-")
     .replace(/^-+|-+$/g, "") || "home") + ".png";
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isMain(import.meta.url)) {
   const args = {};
   for (let i = 2; i < process.argv.length; i++) {
     const k = process.argv[i].replace(/^--/, "");
