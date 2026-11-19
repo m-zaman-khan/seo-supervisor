@@ -6,15 +6,16 @@
 - **Fix:** follow the profile's URL map. When a slug must change, 301 the old one (URL-07).
 
 ### URL-02 · One trailing-slash style, with the other variant redirecting · high
-- **Check:** crawler `trailing-slash-mixed`, `slash-variant-no-redirect`, `link-to-redirect`. Code: framework config (`trailingSlash` in Next.js), link helpers, canonical and sitemap builders.
+- **Check:** crawler `trailing-slash-mixed`, `slash-variant-no-redirect`, `slash-redirect-temporary`, `link-to-redirect`. Code: framework config (`trailingSlash` in Next.js), link helpers, canonical and sitemap builders.
 - **Pass:** the profile names the style. Every page uses it, the other variant 301/308-redirects, and every internal link, canonical, sitemap `<loc>` and JSON-LD URL matches. Files keep no slash (`/sitemap.xml`, `/robots.txt`, `/llms.txt`).
 - **Fix:** set it once in the framework, then fix the URL builders. Don't hand-edit links.
+- **Temporary redirect:** `slash-redirect-temporary` (medium) flags the other variant redirecting with a 302, 303 or 307 on a staging or live server. Against a local dev server it's a note instead: dev servers often add the slash with a 302 (http-server does) where production doesn't.
 
 ### URL-03 · One host, HTTPS only · high
 - **Check:** code: server/CDN config. Probe `http://` and the other `www` variant against production when you're allowed to.
 - **Pass:** `http` and the non-preferred host 301 to `https://` plus the preferred host in one hop. Retired staging hosts redirect or sit behind auth.
 - **Fix:** add the redirects at the edge (nginx, CDN or host settings).
-- **Live check:** `--check-live` follows `http://` on the production host and flags no redirect (high) or more than one hop to HTTPS (medium). Before launch it's listed under Limits.
+- **Live check:** `--check-live` follows `http://` on the production host and flags no redirect (high) or more than one hop to HTTPS (medium). It also asks the other host (with or without `www`) for its `http://` and `https://` home page and one deeper page: `host-not-redirected` (high) when it shows the site itself, so every page exists twice; `host-redirect-hops` (medium) for more than one hop (an `http://` to `https://` step on the same host first is allowed, as HSTS preloading requires); `host-redirect-drops-path` (medium) when the deeper page lands on the home page. `redirect-temporary` (medium) flags a 302, 303 or 307 on any of these redirects, the http→https one included. An other host that doesn't resolve or answer is fine: the site has one host. Before launch it's listed under Limits, and so it is while the production host doesn't resolve.
 
 ### URL-04 · Every indexable page has a self-referencing, absolute canonical · high
 - **Check:** crawler `canonical-missing`, `canonical-multiple`, `canonical-not-self`, `canonical-query`, `canonical-origin`, `canonical-bad-target`. Code: the metadata helper.
@@ -36,6 +37,7 @@
 - **Check:** code: redirect source. Look for a `redirectFrom` (or similar) field on content and a build check that fails when a slug changes without a redirect.
 - **Pass:** redirects are generated from data, go to the final URL in one hop, and every target resolves.
 - **Fix:** add the field and the build check. Never change the URL of a page that already gets search impressions unless the owner agrees.
+- **Crawler:** with `--urls` (old site URLs) or `--next-manifest`, each old URL is tested with and without its trailing slash: `redirect-broken` (high) when it ends in an error, `redirect-chain` (CRAWL-08) for more than one hop, and `old-url-temporary` (medium) for a 302, 303 or 307. A hop that only adds or drops the trailing slash is left to URL-02.
 
 ### URL-08 · Pagination is crawlable and self-canonical · medium
 - **Check:** crawler pages with `?page=` or `/page/N/`. Code: list components.

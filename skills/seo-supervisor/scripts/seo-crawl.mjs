@@ -67,6 +67,7 @@ const RULES = {
   "CRAWL-06": ["Sitemap URLs return 200", "Crawling & indexing"],
   "CRAWL-07": ["No internal links to broken pages", "Crawling & indexing"],
   "CRAWL-08": ["Redirects take one hop and internal links skip them", "Crawling & indexing"],
+  "CRAWL-09": ["Bot protection doesn't block real search crawlers", "Crawling & indexing"],
   "URL-01": ["Clean, lowercase, hyphenated URLs", "URLs & canonicals"],
   "URL-02": ["One trailing-slash style, the other variant redirects", "URLs & canonicals"],
   "URL-04": ["Self-referencing, absolute canonical on every indexable page", "URLs & canonicals"],
@@ -217,6 +218,20 @@ const CHECKS = {
     "Linking to a redirecting URL costs a hop on every click and crawl.",
     "Update the links to the final URL (often a missing or extra trailing slash).",
   ],
+  "googlebot-blocked": [
+    "CRAWL-09",
+    "high",
+    n => `${n} page(s) give Googlebot an error or a noindex that visitors don't get`,
+    "Asked with Googlebot's user agent, these pages returned an error or a noindex, while the same request as a visitor got the page. A bot blocker, a firewall rule or a failing prerender service for bots usually does this, and Google drops such pages. A real Googlebot comes from Google's IP addresses, so a firewall that checks IPs can treat it differently than this test shows: some block anything that claims to be Googlebot from other addresses, which is right.",
+    "Check the CDN, firewall and bot-protection settings and any prerender service for rules on Googlebot, and let verified Googlebot through. Then run the live test in Search Console's URL Inspection, which uses the real Googlebot.",
+  ],
+  "googlebot-differs": [
+    "CRAWL-09",
+    "medium",
+    n => `${n} page(s) show Googlebot something different from what visitors get`,
+    "Asked with Googlebot's user agent, these pages redirected elsewhere or gave a different canonical, title or much less text than a visitor gets. A prerender service serving stale or broken pages, or code that switches content for bots, does this; showing search engines something other than what visitors see is cloaking under Google's spam policies. A real Googlebot comes from Google's IP addresses, so a firewall that checks IPs can treat it differently than this test shows.",
+    "Serve Googlebot the same HTML as visitors: fix or remove the prerender service or bot-specific code, and render pages on the server for everyone. Confirm with the live test in Search Console's URL Inspection.",
+  ],
   "link-http": [
     "CRAWL-08",
     "medium",
@@ -244,6 +259,13 @@ const CHECKS = {
     n => `${n} page(s) answer 200 on both the slash and no-slash URL`,
     "Both versions return the page, so every page exists twice.",
     "Redirect the non-preferred variant with a 301/308 (in Next.js: `trailingSlash`).",
+  ],
+  "slash-redirect-temporary": [
+    "URL-02",
+    "medium",
+    n => `${n} page(s) redirect the other trailing-slash form temporarily (302, 303 or 307)`,
+    "A temporary redirect tells search engines the other form may come back, so they can keep both URLs and split the page's signals between them.",
+    "Make the trailing-slash redirect permanent (301 or 308) in the framework or server config. Hand-written redirects are the usual cause: `res.redirect()` in Express and `redirect_to` in Rails send a 302 unless told otherwise.",
   ],
   "canonical-missing": [
     "URL-04",
@@ -588,6 +610,13 @@ const CHECKS = {
     "Old URLs carry backlinks, bookmarks and printed links. If they end in a 404 or a loop, that traffic and authority is lost.",
     "Point each old URL at its closest live page with one 301/308, covering both trailing-slash forms.",
   ],
+  "old-url-temporary": [
+    "URL-07",
+    "medium",
+    n => `${n} old URL(s) redirect temporarily (302, 303 or 307)`,
+    "A temporary redirect tells search engines the old URL may come back, so they keep it in results and are slow to pass its links and ranking on to the new page.",
+    "For a move that's for good, use a 301 or 308 (in Next.js `permanent: true`; in Express `res.redirect(301, …)`).",
+  ],
   "thin-page": [
     "CONTENT-05",
     "medium",
@@ -826,6 +855,13 @@ const CHECKS = {
     "The return policy can show in merchant listings and helps shoppers choose.",
     "Add `hasMerchantReturnPolicy` to each Offer, or once on the Organization.",
   ],
+  "product-image-small": [
+    "SHOP-05",
+    "low",
+    n => `${n} product image(s) are under 50,000 pixels`,
+    "Google recommends Product images of at least 50,000 pixels (width × height, such as 250 × 200) for merchant listings. Smaller ones make a weak listing in shopping results and may not be shown.",
+    "Use product photos of at least 50,000 pixels, ideally several high-resolution ones in 16:9, 4:3 and 1:1, and list them in the Product schema's `image`.",
+  ],
   "product-price-mismatch": [
     "SHOP-05",
     "high",
@@ -968,12 +1004,21 @@ const evalRules = (...ids) => ids.forEach(r => evaluated.add(r));
 
 // ---------- fetch helpers ----------
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-async function get(url, { manual = true, text = true } = {}) {
+const TEMPORARY = new Set([302, 303, 307]); // redirects that tell search engines the old URL may come back
+// A redirect between URLs that differ only by a trailing slash counts under URL-02.
+const slashOnly = (a, b) => {
+  const x = new URL(a),
+    y = new URL(b);
+  return (
+    x.origin === y.origin && x.search === y.search && x.pathname.replace(/\/$/, "") === y.pathname.replace(/\/$/, "")
+  );
+};
+async function get(url, { manual = true, text = true, ua = UA } = {}) {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const res = await fetch(url, {
         redirect: manual ? "manual" : "follow",
-        headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
+        headers: { "user-agent": ua, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
         signal: AbortSignal.timeout(20000),
       });
       const ct = res.headers.get("content-type") || "";
@@ -987,11 +1032,11 @@ async function get(url, { manual = true, text = true } = {}) {
     }
   }
 }
-async function follow(url) {
+async function follow(url, ua) {
   const chain = [];
   let cur = url;
   for (let i = 0; i < 6; i++) {
-    const r = await get(cur);
+    const r = await get(cur, { ua });
     chain.push({ url: cur, status: r.status });
     if (r.status >= 300 && r.status < 400 && r.location) {
       cur = new URL(r.location, cur).href;
@@ -1795,6 +1840,13 @@ function enqueue(u, from) {
   seen.add(c);
   queue.push(c);
 }
+// Product schema images, for the pixel size Google recommends (SHOP-05).
+const productImages = html =>
+  jsonLdNodes(html)
+    .nodes.filter(n => typesOf(n).includes("Product"))
+    .flatMap(n => [].concat(n.image || []))
+    .map(i => (typeof i === "string" ? i : i?.contentUrl || i?.url))
+    .filter(i => typeof i === "string");
 async function crawlOne(u) {
   const r = await follow(u);
   const rec = {
@@ -1808,7 +1860,7 @@ async function crawlOne(u) {
   pages.set(u, rec);
   if (r.status === 200 && /html/.test(r.ct) && r.body) {
     const a = analyze(r.finalUrl, r.body, r.headers);
-    Object.assign(rec, a, { html: true });
+    Object.assign(rec, a, { html: true, productImages: productImages(r.body) });
     rec.links = [];
     rec.mainLinks = new Set(a.mainHrefs.map(h => clean(h, a.base)).filter(Boolean));
     for (const l of a.anchors) {
@@ -2572,6 +2624,42 @@ if (shareImages.size && !shareRead)
   notes.push("No share image (og:image) could be read, so share image sizes weren't checked.");
 if (shareImages.size > 20)
   notes.push(`Share image size was checked for the first 20 of ${shareImages.size} og:images.`);
+// Product schema images: the first 64 KB of up to 20 on-site ones. Google recommends at least 50,000 pixels (width ×
+// height) for merchant listing images; only a size actually read counts.
+// https://developers.google.com/search/docs/appearance/structured-data/merchant-listing
+const productImgs = new Map(); // crawl URL -> { src, page }
+for (const p of htmlPages)
+  if (indexable(p))
+    for (const s of p.productImages || []) {
+      const src = urlOr(s, p.finalUrl),
+        c = src && clean(toCrawl(src.href));
+      if (c && new URL(c).origin === START_ORIGIN && !productImgs.has(c))
+        productImgs.set(c, { src: src.href, page: p.finalUrl });
+    }
+const productList = [...productImgs].slice(0, 20);
+let productRead = 0;
+for (let i = 0; i < productList.length; i += CONC)
+  await Promise.all(
+    productList.slice(i, i + CONC).map(async ([crawlSrc, { src, page }]) => {
+      const r = await firstBytes(crawlSrc),
+        size = r && (r.status === 200 || r.status === 206) ? imageSize(r.bytes) : null;
+      if (!size) return; // off the site, broken, SVG or AVIF: not measured
+      productRead++;
+      const px = size.width * size.height;
+      if (px < 50000)
+        add(
+          "product-image-small",
+          page,
+          `${src} · ${size.width}×${size.height} px (${px.toLocaleString("en")} pixels)`,
+        );
+    }),
+  );
+if (htmlPages.some(p => indexable(p) && p.productImages?.length) && !productRead)
+  notes.push(
+    "No Product schema image on the crawled site could be read (they're on another host, missing, or SVG or AVIF), so product image sizes weren't checked.",
+  );
+if (productImgs.size > 20)
+  notes.push(`Product image size was checked for the first 20 of ${productImgs.size} Product schema images.`);
 if (home && home.html) {
   if (![...home.types, ...home.schemaOther].some(t => ORG_RE.test(t))) add("org-missing", home.finalUrl);
   if (![...home.types, ...home.schemaOther].includes("WebSite")) add("website-missing", home.finalUrl);
@@ -2709,12 +2797,61 @@ if (SLASH !== "auto" || (withS.length && withoutS.length))
       p.finalUrl,
       `expected ${style === "always" ? "a trailing slash" : "no trailing slash"}`,
     );
+const slashTemp = [];
 for (const p of styled.slice(0, 5)) {
   const x = new URL(p.finalUrl);
   x.pathname = x.pathname.endsWith("/") ? x.pathname.slice(0, -1) : x.pathname + "/";
   const r = await get(x.href);
   if (r.status === 200) add("slash-variant-no-redirect", x.href, `and ${p.finalUrl} both return 200`);
+  else if (TEMPORARY.has(r.status) && urlOr(r.location || "", x.href)?.pathname === new URL(p.finalUrl).pathname)
+    slashTemp.push([x.href, `${r.status} → ${p.finalUrl}`]);
 }
+// Dev servers often add the slash with a 302 (http-server does) where production doesn't, so locally it's a note.
+if (slashTemp.length && isLocal(START_ORIGIN))
+  notes.push(
+    `The local server adds or drops the trailing slash with a temporary redirect (${slashTemp[0][0]}: ${slashTemp[0][1]}). Development servers often do; check that production uses a 301 or 308.`,
+  );
+else for (const [u, detail] of slashTemp) add("slash-redirect-temporary", u, detail);
+
+// ---------- what Googlebot gets ----------
+// The home page and up to 9 sample pages, asked again as Googlebot. Only the crawled site is asked. A local build shows
+// the app's own bot switches (prerender middleware, bot detection); a CDN or firewall shows up only when the live site
+// is crawled. Each page is asked at the same time by the same phone without the Googlebot token, so a site that serves
+// phones differently, a rate limit or an outage hits both alike.
+// Google's smartphone Googlebot, with a current Chrome version.
+// https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers
+const GOOGLEBOT_UA =
+  "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.8103.79 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
+const PHONE_UA = GOOGLEBOT_UA.replace(/ \(compatible; Googlebot.*$/, "");
+const pageOf = r => (r.status === 200 && /html/.test(r.ct) && r.body ? analyze(r.finalUrl, r.body, r.headers) : null);
+const canonOf = (p, base) => (p.canonicals[0] ? (urlOr(p.canonicals[0], base)?.href ?? p.canonicals[0]) : "none");
+const botSample = sampleUrls(htmlPages.map(p => p.url));
+let botCompared = 0;
+for (let i = 0; i < botSample.length; i += CONC)
+  await Promise.all(
+    botSample.slice(i, i + CONC).map(async u => {
+      const [vr, gr] = await Promise.all([follow(u, PHONE_UA), follow(u, GOOGLEBOT_UA)]),
+        v = pageOf(vr),
+        g = pageOf(gr),
+        at = vr.finalUrl;
+      if (!v) return; // a visitor doesn't get the page now either: nothing to compare
+      botCompared++;
+      if (gr.status >= 400 || gr.status === 0)
+        return add("googlebot-blocked", at, `Googlebot got ${gr.status || `no answer (${gr.error})`}, a visitor 200`);
+      if (g?.noindex && !v.noindex)
+        return add("googlebot-blocked", at, "Googlebot gets a noindex that a visitor doesn't");
+      const diffs = !g
+        ? [`Googlebot got ${gr.status} ${gr.ct || "with no content type"} instead of the page`]
+        : [
+            gr.finalUrl !== at && `Googlebot is sent to ${gr.finalUrl}`,
+            v.noindex && !g.noindex && "only a visitor gets noindex",
+            canonOf(g, gr.finalUrl) !== canonOf(v, at) && `canonical: ${canonOf(v, at)} → ${canonOf(g, gr.finalUrl)}`,
+            (g.title ?? "") !== (v.title ?? "") && `title: “${v.title ?? "none"}” → “${g.title ?? "none"}”`,
+            v.words >= 50 && g.words < v.words / 2 && `${g.words} words for Googlebot, ${v.words} for a visitor`,
+          ].filter(Boolean);
+      if (diffs.length) add("googlebot-differs", at, diffs.join("; "));
+    }),
+  );
 
 // ---------- old URLs / redirect sources ----------
 const redirectSources = [];
@@ -2770,7 +2907,11 @@ if (redirectSources.length) {
     const r = await follow(u);
     const trail = r.chain.map(c => c.status).join(" → ") + ` → ${r.finalUrl}`;
     if (r.status >= 400 || r.status === 0) add("redirect-broken", u, trail + (r.error ? ` (${r.error})` : ""));
-    else if (r.chain.length > 2) add("redirect-chain", u, trail);
+    else {
+      if (r.chain.length > 2) add("redirect-chain", u, trail);
+      if (r.chain.some((c, i) => TEMPORARY.has(c.status) && !slashOnly(c.url, r.chain[i + 1]?.url ?? r.finalUrl)))
+        add("old-url-temporary", u, trail);
+    }
   }
   notes.push(`Tested ${Math.min(list.length, 2000)} old/redirect URLs, each with and without a trailing slash.`);
 }
@@ -2964,12 +3105,19 @@ const labLcp = speed?.lcpBreakdown
 if (labLcp) speed = { ...(speed || { strategy: "mobile", samples: [] }), lcpBreakdown: labLcp };
 
 // ---------- what the crawler cannot check ----------
+// CRAWL-09 never passes here: a real Googlebot comes from Google's IP addresses, which no request from here can.
 const NOT_CRAWLABLE = [
-  [
-    "CRAWL-09",
-    "Bot protection and firewall",
-    "A local crawl can't see CDN or WAF behaviour toward Googlebot; check the CDN settings and URL Inspection after launch.",
-  ],
+  ...(findings.has("googlebot-blocked") || findings.has("googlebot-differs")
+    ? []
+    : [
+        [
+          "CRAWL-09",
+          "Bot protection and firewall",
+          botCompared
+            ? `A Googlebot user agent got the same status, robots tag, canonical, title and text as a visitor on ${botCompared} page(s)${isLocal(START_ORIGIN) ? " of the local build, where no CDN or firewall sits in between; crawl the live site to include them" : ""}. A real Googlebot comes from Google's IP addresses, which a firewall can treat differently; confirm with the live test in Search Console's URL Inspection.`
+            : "A local crawl can't see CDN or WAF behaviour toward Googlebot; check the CDN settings and URL Inspection after launch.",
+        ],
+      ]),
   [
     "CRAWL-11",
     "Drafts and publish flags",

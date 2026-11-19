@@ -1151,3 +1151,216 @@ test("a local business's schema phone and street address must show on the page o
   assert.equal(d["/services/"], "street address “12 Park Row” isn't shown on this page or the home page");
   assert.equal(d["/wrong/"], "phone “+44 113 496 9999” isn't shown on this page or the home page");
 });
+
+test("old URLs that redirect temporarily are flagged; permanent ones and a dev server's temporary slash redirect aren't", async () => {
+  const list = join(tmp(), "old-urls.txt");
+  writeFileSync(list, "/old-temp\n/old-perm\n/about\n");
+  // Like http-server, this local server adds the trailing slash with a 302.
+  const r = await crawlSite(
+    two(),
+    {
+      before(req, res) {
+        const path = new URL(req.url, "http://x").pathname;
+        const to = {
+          "/old-temp": [302, "/about/"],
+          "/old-temp/": [307, "/about/"],
+          "/old-perm": [301, "/about/"],
+          "/old-perm/": [308, "/about/"],
+          "/about": [302, "/about/"],
+        }[path];
+        if (!to) return false;
+        res.writeHead(to[0], { Location: to[1] }).end();
+        return true;
+      },
+    },
+    undefined,
+    { args: ["--urls", list] },
+  );
+  const f = findingOf(r, "old-url-temporary");
+  assert.deepEqual(pathsOf(r, "old-url-temporary"), ["/old-temp", "/old-temp/"]);
+  assert.deepEqual([f.rule, f.severity], ["URL-07", "medium"]);
+  assert.match(f.evidence[0].detail, /^30[27] → 200 → http:\/\/127\.0\.0\.1:\d+\/about\/$/);
+  assert.ok(!findingOf(r, "slash-redirect-temporary"), "a local server's slash redirect may not be production's");
+  assert.ok(
+    r.notes.some(n => /temporary/.test(n) && /trailing slash/.test(n) && /production/.test(n)),
+    r.notes.join("\n"),
+  );
+});
+
+// The two-page site on 127.0.0.2, which the crawler doesn't take for a local dev server; a folder without its slash
+// redirects with `slashStatus`, and before(req, res) returns true when it has answered the request itself.
+async function crawlNotLocal(t, slashStatus) {
+  const { createServer } = await import("node:http"),
+    pages = two(),
+    out = join(tmp(), "crawl.json");
+  const server = createServer((req, res) => {
+    const path = new URL(req.url, "http://x").pathname;
+    if (pages[path]) res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(pages[path]);
+    else if (pages[path + "/"]) res.writeHead(slashStatus, { Location: path + "/" }).end();
+    else
+      res
+        .writeHead(404, { "Content-Type": "text/html; charset=utf-8" })
+        .end("<!doctype html><title>Not found</title><h1>Not found</h1>");
+  });
+  try {
+    await new Promise((ok, fail) => server.once("error", fail).listen(0, "127.0.0.2", ok));
+  } catch {
+    t.skip("127.0.0.2 isn't available here");
+    return null;
+  }
+  try {
+    await node([
+      join(SCRIPTS, "seo-crawl.mjs"),
+      "--url",
+      `http://127.0.0.2:${server.address().port}`,
+      "--site-origin",
+      "https://site.example",
+      "--out",
+      out,
+    ]);
+  } finally {
+    await new Promise(ok => server.close(ok));
+  }
+  return JSON.parse(readFileSync(out, "utf8"));
+}
+
+test("a temporary trailing-slash redirect on a staging or live server is flagged; a permanent one isn't", async t => {
+  const temp = await crawlNotLocal(t, 302);
+  if (!temp) return;
+  const f = findingOf(temp, "slash-redirect-temporary");
+  assert.deepEqual([f?.rule, f?.severity], ["URL-02", "medium"]);
+  assert.deepEqual(pathsOf(temp, "slash-redirect-temporary"), ["/about"]);
+  assert.match(f.evidence[0].detail, /^302 → http:\/\/127\.0\.0\.2:\d+\/about\/$/);
+  const perm = await crawlNotLocal(t, 301);
+  for (const key of ["slash-redirect-temporary", "slash-variant-no-redirect"]) assert.ok(!findingOf(perm, key), key);
+});
+
+test("pages that give Googlebot an error, a noindex or a different page are flagged; the same page for both isn't", async () => {
+  const lead =
+    "<p>" +
+    "Our engineers fix boilers, radiators and hot water faults across Leeds every day of the week. ".repeat(10) +
+    "</p>";
+  const pages = {
+    "/": plumber(
+      "Boiler Repairs and Servicing in Leeds",
+      "Boiler repairs in Leeds",
+      ["blocked", "noindexed", "thin", "fine", "down", "phones"]
+        .map(p => `<a href="/${p}/">The ${p} page</a>`)
+        .join(" "),
+    ),
+    "/phones/": plumber("Gas Safety Checks | Northwind Plumbing", "Gas safety checks", lead),
+    "/blocked/": plumber("Boiler Servicing Plans | Northwind Plumbing", "Boiler servicing plans", lead),
+    "/noindexed/": plumber("Radiator Repairs | Northwind Plumbing", "Radiator repairs", lead),
+    "/thin/": plumber("Hot Water Faults | Northwind Plumbing", "Hot water faults", lead),
+    "/fine/": plumber("Leak Detection | Northwind Plumbing", "Leak detection", lead),
+    "/down/": plumber("Power Flushing | Northwind Plumbing", "Power flushing", lead),
+  };
+  const asked = [];
+  let downSeen = 0;
+  const r = await crawlSite(pages, {
+    before(req, res) {
+      const ua = req.headers["user-agent"] || "",
+        path = new URL(req.url, "http://x").pathname;
+      // /down/ fails for everyone after the crawl's own fetch: an outage, not a Googlebot block.
+      if (path === "/down/" && ++downSeen > 1) {
+        if (/Googlebot/.test(ua)) asked.push({ ua, path });
+        res.writeHead(503).end();
+        return true;
+      }
+      // /phones/ serves every phone a short page of its own, Googlebot's smartphone included: not a Googlebot difference.
+      if (path === "/phones/" && /Android/.test(ua)) {
+        if (/Googlebot/.test(ua)) asked.push({ ua, path });
+        res
+          .writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
+          .end("<!doctype html><html><head><title>Gas safety</title></head><body><p>Call us</p></body></html>");
+        return true;
+      }
+      if (!/Googlebot/.test(ua)) return false;
+      asked.push({ ua, path });
+      const html = {
+        "/noindexed/": pages[path]?.replace("<head>", '<head><meta name="robots" content="noindex">'),
+        "/thin/": "<!doctype html><html><head><title>Please wait</title></head><body><p>Loading</p></body></html>",
+      }[path];
+      if (path === "/blocked/") res.writeHead(403, { "Content-Type": "text/html" }).end("<h1>Access denied</h1>");
+      else if (html) res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(html);
+      else return false;
+      return true;
+    },
+  });
+  // Google's smartphone Googlebot user agent.
+  // https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers
+  for (const { ua } of asked)
+    assert.match(
+      ua,
+      /^Mozilla\/5\.0 \(Linux; Android 6\.0\.1; Nexus 5X Build\/MMB29P\) AppleWebKit\/537\.36 \(KHTML, like Gecko\) Chrome\/\d+\.\d+\.\d+\.\d+ Mobile Safari\/537\.36 \(compatible; Googlebot\/2\.1; \+http:\/\/www\.google\.com\/bot\.html\)$/,
+    );
+  assert.deepEqual(
+    asked.map(a => a.path).sort(),
+    ["/", "/blocked/", "/down/", "/fine/", "/noindexed/", "/phones/", "/thin/"],
+    "the home page and the sample pages, once each",
+  );
+  const blocked = findingOf(r, "googlebot-blocked"),
+    differs = findingOf(r, "googlebot-differs");
+  assert.deepEqual(
+    pathsOf(r, "googlebot-blocked"),
+    ["/blocked/", "/noindexed/"],
+    "a visitor asked again doesn't get /down/ either",
+  );
+  assert.deepEqual([blocked.rule, blocked.severity], ["CRAWL-09", "high"]);
+  assert.deepEqual(pathsOf(r, "googlebot-differs"), ["/thin/"]);
+  assert.deepEqual([differs.rule, differs.severity], ["CRAWL-09", "medium"]);
+  assert.match(
+    differs.evidence[0].detail,
+    /title: “Hot Water Faults \| Northwind Plumbing” → “Please wait”.*1 words? for Googlebot, \d+ for a visitor/,
+  );
+  for (const f of [blocked, differs]) assert.match(f.why, /Google's IP addresses/);
+  assert.ok(!r.notChecked.some(n => n.rule === "CRAWL-09"), "flagged, so not also listed as unchecked");
+  const clean = await crawlSite(two());
+  assert.ok(
+    !clean.findings.some(f => f.rule === "CRAWL-09") && !clean.passed.some(p => p.rule === "CRAWL-09"),
+    "a user-agent test can't vouch for a firewall that checks IPs",
+  );
+  assert.match(
+    clean.notChecked.find(n => n.rule === "CRAWL-09")?.reason || "",
+    /Googlebot user agent got the same .* on 2 page\(s\).*IP addresses/,
+  );
+});
+
+test("Product schema images under Google's 50,000-pixel minimum are flagged once measured; larger and unreadable ones aren't", async () => {
+  const product = (name, image) =>
+    plumber(
+      `${name} | Northwind Plumbing`,
+      name,
+      `<script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", "@type": "Product", name, image, offers: { "@type": "Offer", price: "49.00", priceCurrency: "GBP", shippingDetails: {}, hasMerchantReturnPolicy: {} } })}</script><p>Now £49.00</p>`,
+    );
+  const pages = {
+    "/": plumber(
+      "Boiler Spares Shop in Leeds",
+      "Boiler spares",
+      ["small", "big", "away"].map(p => `<a href="/shop/${p}/">The ${p} product</a>`).join(" "),
+    ),
+    "/shop/small/": product("Small Valve", "https://site.example/img/small.png"),
+    "/shop/big/": product("Big Pump", [
+      { "@type": "ImageObject", url: "https://site.example/img/edge.gif" },
+      "/img/wide.jpg",
+    ]),
+    "/shop/away/": product("Thermostat", "https://cdn.example.invalid/t.png"),
+  };
+  const files = {
+    "/img/small.png": { type: "image/png", body: png(200, 200) },
+    "/img/edge.gif": { type: "image/gif", body: gif(250, 200) },
+    "/img/wide.jpg": { type: "image/jpeg", body: jpeg(1200, 675) },
+  };
+  const r = await crawlSite(pages, { files }),
+    f = findingOf(r, "product-image-small");
+  assert.deepEqual(pathsOf(r, "product-image-small"), ["/shop/small/"], "250 × 200 is exactly 50,000 pixels");
+  assert.deepEqual([f.rule, f.severity, f.count], ["SHOP-05", "low", 1]);
+  assert.equal(f.evidence[0].detail, "https://site.example/img/small.png · 200×200 px (40,000 pixels)");
+  assert.doesNotMatch(JSON.stringify(r.findings), /cdn\.example\.invalid/, "images on another host aren't fetched");
+  const away = await crawlSite({ "/": product("Thermostat", "https://cdn.example.invalid/t.png") });
+  assert.ok(!findingOf(away, "product-image-small"));
+  assert.ok(
+    away.notes.some(n => /Product schema image/.test(n) && /weren't checked/.test(n)),
+    away.notes.join("\n"),
+  );
+});
