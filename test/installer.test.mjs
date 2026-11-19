@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { AGENTS, detectAgents, targetsFor } from "../bin/agents.mjs";
@@ -136,6 +136,69 @@ test("without a terminal it installs into the agents it detects", async () => {
   await node([BIN], { env: env(home), cwd: home });
   assert.ok(existsSync(join(home, ".cursor", "skills", "seo-supervisor", "SKILL.md")));
   assert.ok(!existsSync(join(home, ".claude")), "only the detected agent");
+});
+
+// A stand-in for npm: records its arguments and exits with the given code. Nothing is downloaded.
+function fakeNpm(exit = 0) {
+  const dir = tmp(),
+    bin = join(dir, "npm.mjs"),
+    log = join(dir, "args.json");
+  writeFileSync(
+    bin,
+    `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)));\nprocess.exit(${exit});\n`,
+  );
+  return { bin, args: () => (existsSync(log) ? JSON.parse(readFileSync(log, "utf8")) : null) };
+}
+const [major, minor] = process.versions.node.split(".").map(Number);
+const lighthouseNode = !(major > 22 || (major === 22 && minor >= 19)) && "Lighthouse 13 needs Node 22.19 or later";
+const tools = home => join(home, ".seo-supervisor", "tools");
+
+test(
+  "--with-lighthouse installs Lighthouse with npm into ~/.seo-supervisor/tools, not the project",
+  { skip: lighthouseNode },
+  async () => {
+    const home = tmp(),
+      npm = fakeNpm();
+    const r = await node([BIN, "--agent", "cursor", "--with-lighthouse"], {
+      env: { ...env(home), SEO_SUPERVISOR_NPM: npm.bin },
+      cwd: home,
+    });
+    assert.deepEqual(npm.args(), ["install", "--prefix", tools(home), "lighthouse@13", "--no-audit", "--no-fund"]);
+    assert.match(r.stdout, /Installing Lighthouse/);
+    assert.ok(existsSync(join(home, ".cursor", "skills", "seo-supervisor", "SKILL.md")), "the skill is installed too");
+  },
+);
+
+test("without a terminal, with --yes or with --no-lighthouse, Lighthouse isn't installed", async () => {
+  for (const extra of [[], ["--yes"], ["--no-lighthouse"]]) {
+    const home = tmp(),
+      npm = fakeNpm();
+    await node([BIN, "--agent", "cursor", ...extra], { env: { ...env(home), SEO_SUPERVISOR_NPM: npm.bin }, cwd: home });
+    assert.equal(npm.args(), null, `npm wasn't called (${extra.join(" ") || "no flags"})`);
+  }
+});
+
+test("a failed Lighthouse install says so and the skill install still succeeds", { skip: lighthouseNode }, async () => {
+  const home = tmp(),
+    npm = fakeNpm(1);
+  const r = await node([BIN, "--agent", "cursor", "--with-lighthouse"], {
+    env: { ...env(home), SEO_SUPERVISOR_NPM: npm.bin },
+    cwd: home,
+  });
+  assert.ok(npm.args(), "npm was called");
+  assert.match(r.stdout + r.stderr, /Lighthouse wasn't installed/);
+  assert.match(r.stdout + r.stderr, /works without it/);
+  assert.match(r.stdout, /installed for Cursor/);
+  assert.ok(existsSync(join(home, ".cursor", "skills", "seo-supervisor", "SKILL.md")));
+});
+
+test("--uninstall leaves the Lighthouse tools folder alone and says how to remove it", async () => {
+  const home = tmp();
+  mkdirSync(join(tools(home), "node_modules"), { recursive: true });
+  const r = await node([BIN, "--uninstall"], { env: env(home), cwd: home });
+  assert.ok(existsSync(tools(home)));
+  assert.match(r.stdout, /Lighthouse/);
+  assert.match(r.stdout, /~\/\.seo-supervisor\/tools/);
 });
 
 test("an unknown agent key fails with the list of valid keys", async () => {

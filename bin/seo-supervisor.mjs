@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Installs the skill into the chosen coding agents (bin/agents.mjs), with its /seo-* commands for Claude Code.
 // No dependencies.
+import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -24,6 +25,8 @@ With no options it asks where to install and for which agents.
   --yes, -y         No questions: the agents it finds (Claude Code if none), user scope
   --uninstall       Remove what this installer added, in the chosen scope (user by default)
   --force           Replace a skill folder or command file that isn't SEO Supervisor's
+  --with-lighthouse Also install the optional Lighthouse add-on (about 170 MB, in ~/.seo-supervisor/tools, not your project)
+  --no-lighthouse   Don't ask about Lighthouse
   --version         Print the version
 
 Agent keys: ${AGENTS.map(a => a.key).join(", ")}
@@ -36,6 +39,10 @@ for (let n = 0; n < argv.length; n++) {
   const a = argv[n];
   if (a === "--agent" || a === "--scope") {
     opts[a.slice(2)] = argv[++n];
+    continue;
+  }
+  if (a === "--with-lighthouse" || a === "--no-lighthouse") {
+    opts.lighthouse = a === "--with-lighthouse";
     continue;
   }
   const flag = {
@@ -67,6 +74,7 @@ if (opts.version) {
 
 const c = { home: homedir(), cwd: process.cwd(), env: process.env };
 const show = p => (p.startsWith(c.home) ? "~" + p.slice(c.home.length) : p).replace(/\\/g, "/");
+const TOOLS = join(c.home, ".seo-supervisor", "tools"); // the optional Lighthouse add-on, outside the package and the project
 let scope = opts.scope || (opts.project ? "project" : null);
 if (scope && !["user", "project"].includes(scope)) {
   console.error(`Unknown scope: ${scope}. Use "user" or "project".`);
@@ -129,6 +137,10 @@ if (opts.uninstall) {
     }
   }
   console.log(removed ? "\nSEO Supervisor uninstalled." : `\nNothing to remove in the ${scope} scope.`);
+  if (existsSync(TOOLS))
+    console.log(
+      `Lighthouse stays in ${show(TOOLS)} (about 170 MB), shared by every install. To remove it too, delete that folder: ${TOOLS}`,
+    );
   process.exit(0);
 }
 
@@ -164,6 +176,15 @@ try {
       });
     } else keys = opts.agents ? [...fallback, "other"] : fallback;
   } else if (opts.agents && !keys.includes("other")) keys.push("other");
+  if (opts.lighthouse === undefined && interactive && !existsSync(join(TOOLS, "node_modules", "lighthouse"))) {
+    opts.lighthouse = await select({
+      message: `Add Lighthouse for speed and quality scores? It's optional, about 170 MB, installed in ${show(TOOLS)} (not your project).`,
+      items: [
+        { value: false, label: "No" },
+        { value: true, label: "Yes, install it" },
+      ],
+    });
+  }
 } catch (e) {
   if (e.code === "CANCELLED") {
     console.log("\nCancelled. Nothing was installed.");
@@ -204,6 +225,32 @@ for (const t of targetsFor(keys, scope, c)) {
     added.push("/" + f.slice(0, -3));
   }
   if (added.length) console.log(`commands ${added.join(" ")}  (${show(t.commands)})`);
+}
+
+// ---- optional Lighthouse add-on in TOOLS: a failure never fails the install, since the skill works without it ----
+if (opts.lighthouse) {
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  if (major < 22 || (major === 22 && minor < 19))
+    console.error(
+      `\nLighthouse wasn't installed: Lighthouse 13 needs Node 22.19 or later, this is ${process.versions.node}. The skill works without it.`,
+    );
+  else {
+    console.log(`\nInstalling Lighthouse into ${show(TOOLS)} (about 170 MB, usually a minute or two)...`);
+    const npm = c.env.SEO_SUPERVISOR_NPM || "npm",
+      args = ["install", "--prefix", TOOLS, "lighthouse@13", "--no-audit", "--no-fund"];
+    // A .js bin runs with this Node. On Windows npm is npm.cmd, which only starts through a shell. Only parts with spaces
+    // are quoted: cmd gives a quoted batch name found on PATH the wrong %~dp0, and npm.cmd then can't find npm.
+    const r = /\.[cm]?js$/i.test(npm)
+      ? spawnSync(process.execPath, [npm, ...args], { stdio: "inherit" })
+      : process.platform === "win32"
+        ? spawnSync([npm, ...args].map(a => (/\s/.test(a) ? `"${a}"` : a)).join(" "), { stdio: "inherit", shell: true })
+        : spawnSync(npm, args, { stdio: "inherit" });
+    if (r.status === 0) console.log(`lighthouse ${show(TOOLS)}  (the crawler runs it with --outside --lighthouse)`);
+    else
+      console.error(
+        `Lighthouse wasn't installed (${r.error ? r.error.message : `npm exited with code ${r.status}`}). The skill works without it; try again later with npx seo-supervisor --with-lighthouse, or npm i -g lighthouse.`,
+      );
+  }
 }
 
 const usesClaude = keys.includes("claude-code");
