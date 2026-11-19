@@ -151,7 +151,7 @@ test("the crawler finds every planted problem on the fixture site", async () => 
   for (const key of ["doc-basics", "robots-conflict"])
     assert.ok(!paths(key).includes("/"), `the home page is fine for ${key}`);
   assert.deepEqual(paths("robots-conflict"), ["/conflict/"]);
-  for (const rule of ["PERF-01", "REND-06"])
+  for (const rule of ["PERF-01", "REND-06", "REND-07", "PERF-07"])
     assert.match(
       report.notChecked.find(n => n.rule === rule)?.reason || "",
       /Outside checks are off/,

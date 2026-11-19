@@ -1,7 +1,7 @@
 // The render diff without Chrome; the Chrome tests are in test/browser/render-diff.test.mjs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { compareRendered, findBrowser, renderPage } from "../skills/seo-supervisor/scripts/checks/render.mjs";
 import { serve } from "./serve.mjs";
@@ -98,11 +98,12 @@ test(
 );
 
 test(
-  "pages that redirect with a meta refresh aren't rendered (the browser would show the target page)",
-  { skip: !browser && "Chrome not installed" },
+  "pages that redirect with a meta refresh aren't rendered (the browser would show the target page); the same sample gets the phone checks",
+  { skip: !browser && "Chrome not installed", timeout: 240000 },
   async () => {
     const site = await serve(join(ROOT, "test", "fixture-site"));
-    const out = join(tmp(), "crawl.json");
+    const dir = tmp(),
+      out = join(dir, "crawl.json");
     try {
       // CHROME_PATH points at something that isn't a browser, so every render fails.
       await node([
@@ -125,6 +126,19 @@ test(
       .filter(f => f.check.startsWith("render-"))
       .flatMap(f => f.evidence.map(e => new URL(e.url).pathname));
     assert.ok(!rendered.includes("/legacy/"), "/legacy/ refreshes to /about/");
+    for (const rule of ["REND-07", "PERF-07"])
+      assert.ok(
+        !r.notChecked.some(n => n.rule === rule),
+        `${rule} is checked: ${r.notChecked.find(n => n.rule === rule)?.reason}`,
+      );
+    assert.ok(r.passed.some(p => p.rule === "REND-07") || r.findings.some(f => f.rule === "REND-07"));
+    assert.ok(
+      r.labSpeed.length && r.labSpeed.every(l => l.url && "lcp" in l && "cls" in l && "tbt" in l),
+      "lab speed is in the crawl output",
+    );
+    const shots = readdirSync(join(dir, "screenshots"));
+    assert.ok(shots.includes("home-desktop.png") && shots.includes("home-mobile.png"), "screenshots sit next to --out");
+    assert.ok(!shots.some(s => s.startsWith("legacy-")));
   },
 );
 
@@ -154,4 +168,6 @@ test("when every render fails, REND-06 is listed as not checked instead of passi
   const r = JSON.parse(readFileSync(out, "utf8"));
   assert.ok(!r.passed.some(p => p.rule === "REND-06"));
   assert.match(r.notChecked.find(n => n.rule === "REND-06")?.reason || "", /couldn't render/);
+  for (const rule of ["REND-07", "PERF-07"])
+    assert.match(r.notChecked.find(n => n.rule === rule)?.reason || "", /couldn't load/);
 });

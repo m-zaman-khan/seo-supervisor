@@ -325,6 +325,14 @@ function speedText() {
       : "";
   return `Real-user speed (${s.strategy || "mobile"}): ${[now, trend].filter(Boolean).join(" · ")}`;
 }
+// The crawler's throttled phone load: the home page, else the first page.
+function labSpeedText() {
+  const l = (raw.labSpeed || []).filter(x => x.lcp != null),
+    x = l.find(x => new URL(x.url).pathname === "/") || l[0];
+  return x
+    ? `Lab speed, slow mobile (indicative): ${fmtCwv(x)} · TBT ${Math.round(x.tbt || 0)} ms on ${new URL(x.url).pathname === "/" ? "the home page" : new URL(x.url).pathname}`
+    : "";
+}
 function overviewHtml() {
   if (!overall)
     return `<section class="panel empty-state"><h2>Nothing to score</h2><p>This file has no findings or passed rules. Run the audit to fill it.</p></section>`;
@@ -376,7 +384,7 @@ function overviewHtml() {
         <p class="quiet"><span class="key k-fail" aria-hidden="true"></span>${num(overall.rules - overall.passing)} failing${notChecked.length ? ` · ${num(notChecked.length)} not checked` : ""}</p>
       </div>
     </section>
-    ${speedText() ? `<p class="quiet">${esc(speedText())}</p>` : ""}
+    ${speedText() ? `<p class="quiet">${esc(speedText())}</p>` : ""}${labSpeedText() ? `\n    <p class="quiet">${esc(labSpeedText())}</p>` : ""}
     </div>
     <div class="ov-right">
     <section class="panel factors" aria-labelledby="h-factors">
@@ -952,6 +960,7 @@ function markdown() {
   );
   if (areas.length) {
     if (speedText()) L.push(speedText(), "");
+    if (labSpeedText()) L.push(labSpeedText(), "");
     L.push("## Area scores", "", "| Area | Score | Open findings | Top issue |", "| --- | ---: | ---: | --- |");
     for (const a of areas)
       L.push(`| ${mdEsc(a.name)} | ${a.value} | ${a.top.length} | ${mdEsc(a.top[0]?.title || "All checks pass")} |`);

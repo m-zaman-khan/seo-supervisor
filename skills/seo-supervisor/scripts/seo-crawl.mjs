@@ -15,6 +15,7 @@ import {
   CRUX_HISTORY_ENDPOINT,
 } from "./checks/speed.mjs";
 import { CHECKS as RENDER_CHECKS, findBrowser, renderPage, compareRendered } from "./checks/render.mjs";
+import { CHECKS as VISUAL_CHECKS, checkVisual } from "./checks/visual.mjs";
 import { imageSize } from "./lib/image-size.mjs";
 
 const VERSION = "2.0.0";
@@ -109,6 +110,8 @@ const RULES = {
   "AI-01": ["Pages are eligible for snippets and AI answers", "AI search"],
   "AI-05": ["Pages work for AI agents that browse", "AI search"],
   "REND-06": ["JavaScript doesn't fight the HTML", "Rendering"],
+  "REND-07": ["Mobile shows the same content as desktop", "Rendering"],
+  "PERF-07": ["Popups don't block content or crawlers", "Performance"],
   "REND-08": ["HTML stays under Googlebot's 2 MB limit", "Rendering"],
   "META-08": ["hreflang only when there are real language or region versions", "Metadata"],
   "REND-09": ["Pages declare a doctype, a charset and a mobile viewport", "Rendering"],
@@ -800,7 +803,7 @@ const CHECKS = {
   ],
 };
 
-Object.assign(CHECKS, HREFLANG_CHECKS, TLS_CHECKS, SPEED_CHECKS, RENDER_CHECKS);
+Object.assign(CHECKS, HREFLANG_CHECKS, TLS_CHECKS, SPEED_CHECKS, RENDER_CHECKS, VISUAL_CHECKS);
 const findings = new Map(); // key -> {evidence:[], count}
 function add(key, url, detail) {
   if (!CHECKS[key]) throw new Error("unknown check " + key);
@@ -2092,11 +2095,11 @@ if (OUTSIDE && isPublic(EXPECT_ORIGIN) && CRUX_KEY) {
 
 // ---------- outside checks: what JavaScript changes ----------
 const browser = OUTSIDE ? findBrowser() : null;
+const renderSample = sampleUrls(htmlPages.filter(p => indexable(p) && !p.refreshTo).map(p => p.finalUrl)); // a meta refresh would render its target
 let renderFailure = null;
 if (browser) {
-  const urls = sampleUrls(htmlPages.filter(p => indexable(p) && !p.refreshTo).map(p => p.finalUrl)); // a meta refresh would render its target
   let rendered = 0;
-  for (const u of urls) {
+  for (const u of renderSample) {
     try {
       const [rawRes, dom] = await Promise.all([get(u, { manual: false }), renderPage(browser, u)]);
       if (rawRes.status !== 200 || !rawRes.body) {
@@ -2117,7 +2120,7 @@ if (browser) {
   if (rendered) {
     evalRules("REND-06");
     notes.push(
-      `Rendered ${rendered} of ${urls.length} sample page(s) in headless ${/edge/i.test(browser) ? "Edge" : "Chrome"} and compared them with the raw HTML.${renderFailure ? ` Some failed: ${renderFailure}` : ""}`,
+      `Rendered ${rendered} of ${renderSample.length} sample page(s) in headless ${/edge/i.test(browser) ? "Edge" : "Chrome"} and compared them with the raw HTML.${renderFailure ? ` Some failed: ${renderFailure}` : ""}`,
     );
   } else
     notChecked.push({
@@ -2133,6 +2136,32 @@ if (browser) {
       ? "Chrome or Edge isn't installed (or set CHROME_PATH), so rendered pages couldn't be compared with the raw HTML."
       : "Outside checks are off. With the owner's go-ahead, --outside renders sample pages in headless Chrome (running the site's own scripts) and compares them with the raw HTML.",
   });
+
+// ---------- outside checks: phone and desktop loads, screenshots, lab speed ----------
+let labSpeed,
+  visualReason = OUTSIDE
+    ? "Chrome or Edge isn't installed (or set CHROME_PATH), so pages couldn't be loaded at phone size."
+    : "Outside checks are off. With the owner's go-ahead, --outside loads sample pages in headless Chrome at desktop and phone size (running the site's own scripts) and saves screenshots.";
+if (browser) {
+  const v = await checkVisual(browser, renderSample, {
+    add,
+    screenshotDir: resolve(dirname(OUT), "screenshots"),
+  }).catch(e => ({
+    checked: 0,
+    lab: [],
+    notes: [`the browser didn't start: ${String(e.message).split("\n")[0].slice(0, 160)}`],
+  }));
+  if (v.lab.length) labSpeed = v.lab;
+  if (v.checked) {
+    evalRules("REND-07", "PERF-07");
+    visualReason = null;
+    notes.push(...v.notes);
+  } else
+    visualReason = `The browser at ${browser} couldn't load the sample pages (${v.notes[0] || "no pages to load"}).`;
+}
+if (visualReason)
+  for (const rule of ["REND-07", "PERF-07"])
+    notChecked.push({ rule, area: `${rule} ${RULES[rule][0]}`, reason: visualReason });
 
 // ---------- what the crawler cannot check ----------
 const NOT_CRAWLABLE = [
@@ -2155,8 +2184,6 @@ const NOT_CRAWLABLE = [
     "Spam policies (scaled content, doorways, site reputation, back-button hijacking)",
     "Needs a read of content strategy and scripts; the near-duplicate check covers part of it.",
   ],
-  ["REND-07", "Mobile/desktop parity", "Compare a mobile and desktop render of key templates."],
-  ["PERF-07", "Popups and interstitials", "Needs a browser look at first load on mobile."],
   [
     "AI-02",
     "AI crawler access through the CDN/WAF",
@@ -2246,6 +2273,7 @@ const report = {
   passed,
   notChecked,
   ...(speed ? { speed } : {}),
+  ...(labSpeed ? { labSpeed } : {}),
   errors: all.filter(p => !p.html && (p.status >= 400 || p.status === 0)).map(p => ({ url: p.url, status: p.status })),
   pages: htmlPages.map(p => ({
     url: p.finalUrl,
