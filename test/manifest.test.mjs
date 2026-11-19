@@ -80,6 +80,7 @@ test("every rule ID a check reports is defined in a rule file", () => {
     "seo-crawl.mjs",
     "content-scan.mjs",
     "gsc-import.mjs",
+    "google.mjs",
     ...readdirSync(join(S, "checks")).map(f => join("checks", f)),
   ];
   const used = new Set(
