@@ -2775,18 +2775,27 @@ if (redirectSources.length) {
   notes.push(`Tested ${Math.min(list.length, 2000)} old/redirect URLs, each with and without a trailing slash.`);
 }
 
-// ---------- live origin: certificate, http→https, HSTS ----------
-if (CHECK_LIVE && EXPECT_ORIGIN.startsWith("https:") && isPublic(EXPECT_ORIGIN)) {
-  evalRules("TRUST-07", "URL-03");
-  notes.push(...(await checkLive(EXPECT_ORIGIN, { add })).notes);
-} else
+// ---------- live origin: certificate, http→https and other-host redirects, HSTS ----------
+// One deeper page tests whether the other host's redirect keeps the path.
+const live =
+  CHECK_LIVE && EXPECT_ORIGIN.startsWith("https:") && isPublic(EXPECT_ORIGIN)
+    ? await checkLive(EXPECT_ORIGIN, {
+        add,
+        path: (p => p && new URL(p.finalUrl).pathname)(htmlPages.find(p => !isHome(p) && indexable(p))),
+      })
+    : null;
+if (live) notes.push(...live.notes);
+if (live && !live.unresolved) evalRules("TRUST-07", "URL-03");
+else
   for (const rule of ["TRUST-07", "URL-03"])
     notChecked.push({
       rule,
       area: `${rule} ${RULES[rule][0]}`,
-      reason: CHECK_LIVE
-        ? "--check-live needs a public https:// origin; pass --site-origin."
-        : "Pass --check-live once the site is live.",
+      reason: live
+        ? `${new URL(EXPECT_ORIGIN).hostname} doesn't resolve in DNS yet; run --check-live once the site is live.`
+        : CHECK_LIVE
+          ? "--check-live needs a public https:// origin; pass --site-origin."
+          : "Pass --check-live once the site is live.",
     });
 
 // ---------- outside checks: real-user speed ----------

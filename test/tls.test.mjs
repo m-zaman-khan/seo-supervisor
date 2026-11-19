@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:https";
 import { join } from "node:path";
-import { checkLive, tlsCert } from "../skills/seo-supervisor/scripts/checks/tls.mjs";
+import { CHECKS, checkLive, tlsCert } from "../skills/seo-supervisor/scripts/checks/tls.mjs";
 import { tmp } from "./helpers.mjs";
 
 const DAY = 864e5,
@@ -16,11 +16,22 @@ const cert = ({ lifetime = 90, left = 60, san = "DNS:example.com, DNS:www.exampl
   valid_to: new Date(NOW + left * DAY).toUTCString(),
   subjectaltname: san,
 });
-// http:// answers with these redirects in turn; the https origin answers 200 with these headers.
+// http:// answers with these redirects (with this status) in turn; the https origin answers 200 with these headers.
+// www.example.com answers with `www(url)`, by default one 301 to the same path on https://example.com; null means it
+// doesn't resolve.
+const redirect = (location, status = 301) => new Response("", { status, headers: { location } });
+const toApex = u => redirect(`https://example.com${u.pathname}`);
 const fakeFetch =
-  ({ hops = ["https://example.com/"], hsts = true } = {}) =>
+  ({ hops = ["https://example.com/"], status = 301, hsts = true, www = toApex } = {}) =>
   async url => {
     const u = new URL(url);
+    if (u.hostname === "www.example.com") {
+      if (!www)
+        throw new TypeError("fetch failed", {
+          cause: Object.assign(new Error("getaddrinfo ENOTFOUND www.example.com"), { code: "ENOTFOUND" }),
+        });
+      return www(u);
+    }
     if (u.protocol === "https:")
       return new Response("", {
         status: 200,
@@ -28,18 +39,21 @@ const fakeFetch =
       });
     const i = Number(u.searchParams.get("hop") || 0);
     if (i >= hops.length) return new Response("plain http page", { status: 200 });
-    return new Response("", { status: 301, headers: { location: hops[i] } });
+    return redirect(hops[i], status);
   };
-async function run(c, fetchOpts) {
+// The keys raised (with `all`, "key url detail"), plus the notes and whether the host resolved.
+async function check(c, fetchOpts, { path, connect = async () => c, all } = {}) {
   const found = [];
-  await checkLive("https://example.com", {
-    add: (key, url, detail) => found.push(key),
+  const r = await checkLive("https://example.com", {
+    add: (key, url, detail) => found.push(all ? `${key} ${url} ${detail ?? ""}`.trim() : key),
     now: NOW,
-    connect: async () => c,
+    connect,
     fetchFn: fakeFetch(fetchOpts),
+    path,
   });
-  return found.sort();
+  return { found: found.sort(), notes: r.notes, unresolved: !!r.unresolved };
 }
+const run = async (...a) => (await check(...a)).found;
 
 test("a healthy certificate, one https hop and HSTS raise nothing", async () => {
   assert.deepEqual(await run(cert()), []);
@@ -70,6 +84,108 @@ test("http that takes two hops to https, or stays on http, is flagged", async ()
 
 test("a missing HSTS header is flagged", async () => {
   assert.deepEqual(await run(cert(), { hsts: false }), ["no-hsts"]);
+});
+
+test("the other host redirecting in one permanent hop with the path kept raises nothing; an http→https upgrade on it first is fine", async () => {
+  assert.deepEqual(await run(cert(), {}, { path: "/pricing/" }), []);
+  // hstspreload.org wants http://www. to go to https://www. first, then on to the apex. https://hstspreload.org
+  const upgradeFirst = u => (u.protocol === "http:" ? redirect(`https://www.example.com${u.pathname}`) : toApex(u));
+  assert.deepEqual(await run(cert(), { www: upgradeFirst }, { path: "/pricing/" }), []);
+  const noWww = async h => {
+    if (h === "www.example.com")
+      throw Object.assign(new Error("getaddrinfo ENOTFOUND www.example.com"), { code: "ENOTFOUND" });
+    return cert();
+  };
+  assert.deepEqual(
+    await run(cert(), { www: null }, { path: "/pricing/", connect: noWww }),
+    [],
+    "an other host that doesn't resolve is fine: the site has one host",
+  );
+});
+
+test("the other host serving pages itself is flagged: the site exists twice", async () => {
+  const f = await run(
+    cert(),
+    { www: () => new Response("<h1>Home</h1>", { status: 200 }) },
+    { path: "/pricing/", all: true },
+  );
+  assert.deepEqual(
+    f,
+    [
+      "http://www.example.com/",
+      "http://www.example.com/pricing/",
+      "https://www.example.com/",
+      "https://www.example.com/pricing/",
+    ].map(u => `host-not-redirected ${u} answers 200 itself`),
+  );
+  assert.deepEqual(CHECKS["host-not-redirected"].slice(0, 2), ["URL-03", "high"]);
+});
+
+test("a temporary redirect from http:// or from the other host is flagged", async () => {
+  assert.deepEqual(await run(cert(), { status: 302 }, { all: true }), [
+    "redirect-temporary http://example.com/ 302 → https://example.com/",
+  ]);
+  const f = await run(
+    cert(),
+    { www: u => redirect(`https://example.com${u.pathname}`, 307) },
+    { path: "/pricing/", all: true },
+  );
+  assert.equal(f.length, 4, f.join("\n"));
+  assert.ok(
+    f.every(x => x.startsWith("redirect-temporary ")),
+    f.join("\n"),
+  );
+  assert.ok(f.includes("redirect-temporary https://www.example.com/pricing/ 307 → https://example.com/pricing/"));
+  assert.deepEqual(CHECKS["redirect-temporary"].slice(0, 2), ["URL-03", "medium"]);
+});
+
+test("a chain from the other host, or a deeper page landing on the home page, is flagged", async () => {
+  // www → www again → apex is two hops, from both http:// and https://.
+  const twice = u =>
+    u.searchParams.has("again") ? toApex(u) : redirect(`https://www.example.com${u.pathname}?again=1`);
+  assert.deepEqual(await run(cert(), { www: twice }), ["host-redirect-hops", "host-redirect-hops"]);
+  const home = () => redirect("https://example.com/");
+  assert.deepEqual(
+    await run(cert(), { www: home }, { path: "/pricing/", all: true }),
+    ["http", "https"].map(s => `host-redirect-drops-path ${s}://www.example.com/pricing/ → https://example.com/`),
+  );
+  for (const key of ["host-redirect-hops", "host-redirect-drops-path"])
+    assert.deepEqual(CHECKS[key].slice(0, 2), ["URL-03", "medium"]);
+});
+
+const failing =
+  (code, message = `connect ${code} 93.184.215.14:443`) =>
+  async () => {
+    throw Object.assign(new Error(message), { code });
+  };
+test("an HTTPS connection that fails is a high finding: refused or timed out, or no HTTPS at all", async () => {
+  for (const code of ["ECONNREFUSED", "ETIMEDOUT", "ECONNRESET"])
+    assert.deepEqual(
+      await run(null, {}, { connect: failing(code) }),
+      ["https-unreachable"],
+      `${code}, while http:// redirects to https://`,
+    );
+  assert.deepEqual(
+    await run(null, { hops: [] }, { connect: failing("ECONNREFUSED") }),
+    ["http-not-redirected", "https-missing"],
+    "http:// serves the site and nothing answers on https://",
+  );
+  assert.deepEqual(
+    await run(null, {}, { connect: failing("ERR_SSL_WRONG_VERSION_NUMBER", "wrong version number") }),
+    ["https-missing"],
+    "port 443 answers without TLS",
+  );
+  for (const key of ["https-unreachable", "https-missing"])
+    assert.deepEqual(CHECKS[key].slice(0, 2), ["TRUST-07", "high"]);
+  assert.notEqual(CHECKS["https-unreachable"][2](1), CHECKS["https-missing"][2](1));
+});
+
+test("a host name that doesn't resolve is a note, not a finding, and leaves the live checks unmeasured", async () => {
+  const r = await check(null, {}, { connect: failing("ENOTFOUND", "getaddrinfo ENOTFOUND example.com") });
+  assert.deepEqual(r.found, []);
+  assert.equal(r.unresolved, true);
+  assert.match(r.notes.join(" "), /doesn't resolve/);
+  assert.equal((await check(cert())).unresolved, false);
 });
 
 // The real TLS reader against a local HTTPS server with a self-signed certificate made at run time (needs openssl).

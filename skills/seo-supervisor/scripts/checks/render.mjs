@@ -53,6 +53,21 @@ export function findBrowser(env = process.env, platform = process.platform, exis
   return [env.CHROME_PATH, ...candidates].find(p => p && exists(p)) || null;
 }
 
+// Why Chrome showed something other than the site's page, or null. Compared as is, an error page would read as a
+// JavaScript title change. Newer Chrome prints "Page load failed" and dumps nothing; older ones dump an error page.
+// The markers are tag attributes, which page text can't fake: the dump escapes text's "<" as "&lt;".
+export function chromeError(dom, stderr = "") {
+  const failed = stderr.match(/Page load failed: (net::ERR_\w+)/);
+  if (failed) return failed[1];
+  if (
+    /<[a-z][^>]*="chrome-error:\/\/|<div\b[^>]*\bid="main-frame-error"|<body\b[^>]*\bclass="[^"]*\bneterror\b/i.test(
+      dom,
+    )
+  )
+    return dom.match(/\b(?:net::)?ERR_[A-Z_]+\b/)?.[0] || "Chrome's error page";
+  return dom.trim() ? null : "an empty page";
+}
+
 // The DOM after scripts ran, from a throwaway profile so a running browser isn't touched.
 export function renderPage(browser, url, { timeoutMs = 20000 } = {}) {
   const profile = mkdtempSync(join(tmpdir(), "seo-supervisor-render-"));
@@ -72,10 +87,12 @@ export function renderPage(browser, url, { timeoutMs = 20000 } = {}) {
       try {
         rmSync(profile, { recursive: true, force: true });
       } catch {}
+      const why = err ? null : chromeError(stdout, stderr);
       if (err) {
         err.stderr = stderr;
         fail(err);
-      } else ok(stdout);
+      } else if (why) fail(Object.assign(new Error(`Chrome couldn't load ${url}: ${why}`), { stderr }));
+      else ok(stdout);
     }),
   );
 }
