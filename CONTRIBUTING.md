@@ -7,7 +7,7 @@ Thanks for helping. The most valuable contributions are rule updates when search
 ```bash
 git clone https://github.com/m-zaman-khan/seo-supervisor
 cd seo-supervisor
-npm test            # Node 20+, no dependencies to install
+npm test            # Node 22+, no dependencies to install
 ```
 
 The tests crawl a small fixture site (`test/fixture-site/`) that has one planted problem per checked rule. They also scan sample content, render the report and run the installer in a temporary home folder.
@@ -35,4 +35,4 @@ Run `npm run demo` afterwards. It refreshes `docs/index.html` (the live demo) an
 ## Pull requests
 
 - Keep each one focused, and add a line to `CHANGELOG.md`.
-- `npm test` must pass. CI runs it on Node 20, 22 and 24.
+- `npm test` must pass. CI runs it on Node 22, 24 and 26.
