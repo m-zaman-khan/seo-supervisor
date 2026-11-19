@@ -283,6 +283,14 @@ const sum = (map, k) => Object.values(obj(map) || {}).reduce((s, t) => s + (Numb
 const linked = Array.isArray(bing?.backlinks?.pages) ? bing.backlinks.pages.filter(obj) : [];
 const topLinked = [...linked].sort((a, b) => (Number(b.count) || 0) - (Number(a.count) || 0)).slice(0, 10);
 const linkSample = (Array.isArray(bing?.backlinks?.sample) ? bing.backlinks.sample.filter(obj) : []).slice(0, 5);
+const bingLinks = topLinked.length || linkSample.length;
+// backlinks.mjs: whether known links from other sites are still there. Third-party URLs, escaped where shown.
+const linkCheck = obj(raw.backlinks),
+  checkedLinks = Number(linkCheck?.checked) || 0;
+const goneLinks = Array.isArray(linkCheck?.gone) ? linkCheck.gone.filter(obj) : [];
+const linkCheckLine = checkedLinks
+  ? `${num(Number(linkCheck.live) || 0)} of ${num(checkedLinks)} known ${checkedLinks === 1 ? "link is" : "links are"} still there; ${num(goneLinks.length)} gone; ${num(Array.isArray(linkCheck.unreachable) ? linkCheck.unreachable.filter(obj).length : 0)} couldn't be checked`
+  : "";
 function searchLines() {
   const pages = Object.keys(obj(bing?.traffic) || {}).length,
     ga = Object.keys(analytics || {}).length;
@@ -495,9 +503,20 @@ function overviewHtml() {
     </section>${searchLines()
       .map(t => `\n    <p class="quiet">${esc(t)}</p>`)
       .join("")}${
-      topLinked.length || linkSample.length
+      bingLinks || linkCheckLine
         ? `
-    <details class="how links"><summary>Links from other sites (Bing)</summary>${topLinked.length ? `<p>The pages with the most links from other sites:</p><ul class="lim">${topLinked.map(p => `<li><b><code>${esc(p.url)}</code></b><span>${linkCount(p)}</span></li>`).join("")}</ul>` : ""}${linkSample.length ? `<p>Some of the links to the home page:</p><ul class="lim">${linkSample.map(s => `<li><b><code>${esc(s.url)}</code></b><span>${esc(s.anchorText || "")}</span></li>`).join("")}</ul>` : ""}</details>`
+    <details class="how links"><summary>Links from other sites${bingLinks ? " (Bing)" : ""}</summary>${
+      linkCheckLine
+        ? `<p>${esc(linkCheckLine)}</p>${
+            goneLinks.length
+              ? `<ul class="lim">${goneLinks
+                  .slice(0, 10)
+                  .map(g => `<li><b><code>${esc(g.url)}</code></b><span>${esc(g.reason)}</span></li>`)
+                  .join("")}</ul>`
+              : ""
+          }`
+        : ""
+    }${topLinked.length ? `<p>The pages with the most links from other sites:</p><ul class="lim">${topLinked.map(p => `<li><b><code>${esc(p.url)}</code></b><span>${linkCount(p)}</span></li>`).join("")}</ul>` : ""}${linkSample.length ? `<p>Some of the links to the home page:</p><ul class="lim">${linkSample.map(s => `<li><b><code>${esc(s.url)}</code></b><span>${esc(s.anchorText || "")}</span></li>`).join("")}</ul>` : ""}</details>`
         : ""
     }
     </div>
@@ -1075,7 +1094,14 @@ function markdown() {
       String(s ?? "")
         .replace(/\s+/g, " ")
         .replace(/[\\`*_[\]<>]/g, "\\$&");
-    if (topLinked.length || linkSample.length) L.push("## Links from other sites (Bing)", "");
+    if (bingLinks || linkCheckLine) L.push(`## Links from other sites${bingLinks ? " (Bing)" : ""}`, "");
+    if (linkCheckLine)
+      L.push(
+        linkCheckLine,
+        "",
+        ...goneLinks.slice(0, 10).map(g => `- ${mdCode(g.url)} ${mdText(g.reason)}`),
+        ...(goneLinks.length ? [""] : []),
+      );
     if (topLinked.length)
       L.push(
         "The pages with the most links from other sites:",
