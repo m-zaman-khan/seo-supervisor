@@ -20,3 +20,18 @@ Platform or feature pages go live only when the feature works. Until then they r
 
 ### SVC-07 · Navigation · medium
 Mega-menu column headings are real links, panels stay under about 600 px tall, long lists end with an "All … →" link, there's no hidden duplicate mobile menu in the DOM, and programmatic pages (service × city) stay out of the nav.
+
+### SVC-08 · How to build "X vs Y" and "alternatives to X" pages · medium
+Build them only for competitors the owner names and comparisons people actually search for ("X vs Y", "X alternatives", "best X for [use case]"). Every competitor fact comes from the competitor's own public pages, linked, with the date it was checked. Until the owner confirms a fact, it's `needs-decision` and the page stays unpublished.
+- **"X vs Y":**
+  - Open with a short verdict ("Choose X if…, choose Y if…").
+  - Then a table of the criteria a buyer weighs: price as of a date, main features, limits, support, who each suits.
+  - Then a section per criterion that says plainly where the competitor wins. Pages that only praise their author read as ads and don't get cited.
+  - End with notes on switching between the two, and FAQs.
+- **"Alternatives to X":**
+  - Start with why people look for alternatives, from reviews or forums the owner points to.
+  - Then each option with who it's best for, its price as of a date, and one honest drawback. Yours is labelled as yours (SVC-05).
+- **Titles:** a year goes in the title only if someone updates the page every year. `dateModified` changes only when the content does. Re-check the facts every 3–6 months.
+- **Names and logos:** use competitors' names as plain words. Don't use their logos or anything else that suggests they endorse the page.
+- **Schema:** Article (or WebPage) plus an ItemList of the options. Don't add Product or AggregateRating for a competitor, or for yourself, unless real reviews are shown on that page.
+- **Links:** link the page from the matching service and pricing pages, and give it a next step into the matching service (SVC-04).

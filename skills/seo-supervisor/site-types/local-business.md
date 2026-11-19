@@ -26,3 +26,13 @@ A sticky bottom call/quote bar on mobile, the phone number and CTA inside the mo
 
 ### LOCAL-09 · Google Business Profile practice · medium
 Review requests go to every customer (no gating), every review gets a reply, the GBP website link carries UTM tags, a second GBP exists only for a real staffed location, and there's no engagement manipulation. These are owner actions: report them as decisions or notes.
+
+### LOCAL-10 · No links to retired Business Profile features · medium
+The site mustn't send people to Business Profile features Google has switched off. A button or link that leads nowhere loses the customer at the moment they want to get in touch.
+- **Chat:** no "Message us on Google" buttons and no Business Messages chat widgets. Business Profile chat and call history ended on 31 July 2024.
+- **Old profile websites:** no links to a `*.business.site` address, in the footer, in schema `sameAs` or anywhere else. Those sites were turned off in March 2024, and their redirect to the profile stopped in June 2024.
+- **Questions on the listing:** no "ask your question on our Google listing" wording. Google began removing Q&A from Business Profiles in December 2025 and answers questions with AI in Maps instead. Put common customer questions in an FAQ on the site and in the profile description, which those answers draw on.
+
+**Check:** grep the code and content for `business.site`, "message us on google", "business messages" and Q&A wording.
+
+**Fix:** point the button or link at the site's own contact page, the phone number, or the Maps profile link (`sameAs`).
