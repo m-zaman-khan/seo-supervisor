@@ -1,6 +1,6 @@
 // Chrome or Edge over the DevTools protocol, with no dependencies. --remote-debugging-pipe: fd 3 carries commands,
 // fd 4 the replies, each JSON message ending in a NUL byte. Each launch gets a throwaway profile, removed on close;
-// the browser is killed on any failure and when this process exits.
+// the browser is killed on any failure and when this process exits or gets SIGINT or SIGTERM.
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,7 +21,8 @@ export async function launchChrome(browserPath, { headless = true, timeoutMs = 3
     "about:blank",
   ].filter(Boolean);
   const proc = spawn(browserPath, args, { stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"] });
-  const pending = new Map();
+  const pending = new Map(),
+    listeners = new Set();
   let nextId = 0,
     buf = "",
     stderr = "",
@@ -46,7 +47,21 @@ export async function launchChrome(browserPath, { headless = true, timeoutMs = 3
       rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     } catch {}
   };
+  // Ctrl+C or a kill: close as usual, then let the signal end the process as it would have, unless the caller handles
+  // it. A second Ctrl+C meanwhile exits at once, and the exit handler still cleans up.
+  const onSignal = sig => {
+    unhookSignals();
+    close().then(() => {
+      if (!process.listenerCount(sig)) process.kill(process.pid, sig);
+    });
+  };
+  const unhookSignals = () => {
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
+  };
   process.once("exit", onExit); // the caller crashed or forgot close()
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
   proc.once("error", die);
   proc.once("exit", code =>
     die(
@@ -57,11 +72,16 @@ export async function launchChrome(browserPath, { headless = true, timeoutMs = 3
     stderr = (stderr + d).slice(-2000);
   });
   proc.stdio[3].on("error", () => {}); // EPIPE once the browser is gone; die() reports it
+  proc.stdio[4].setEncoding("utf8"); // a multi-byte character can straddle two reads
   proc.stdio[4].on("data", d => {
     buf += d;
     for (let k; (k = buf.indexOf("\0")) >= 0; buf = buf.slice(k + 1)) {
       const msg = JSON.parse(buf.slice(0, k)),
         p = pending.get(msg.id);
+      if (msg.method) {
+        for (const l of listeners) l(msg);
+        continue;
+      }
       if (!p) continue; // replies that already timed out
       pending.delete(msg.id);
       if (msg.error) p.fail(new Error(`${p.method}: ${msg.error.message}`));
@@ -97,6 +117,7 @@ export async function launchChrome(browserPath, { headless = true, timeoutMs = 3
       await exited;
     }
     process.off("exit", onExit);
+    unhookSignals();
     try {
       rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     } catch {} // Windows keeps files locked for a moment
@@ -114,14 +135,24 @@ export async function launchChrome(browserPath, { headless = true, timeoutMs = 3
     profile,
     send,
     close,
-    // A new tab on a flat session, its commands tagged with the session id over the same pipe.
+    // A new tab on a flat session, its commands tagged with the session id over the same pipe. on(event, fn) gets the
+    // tab's events until it closes.
     async newPage() {
       const { targetId } = await send("Target.createTarget", { url: "about:blank" });
       const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
+      const mine = new Set();
       return {
         sessionId,
         send: (method, params) => send(method, params, sessionId),
-        close: () => send("Target.closeTarget", { targetId }),
+        on: (method, fn) => {
+          const l = m => m.sessionId === sessionId && m.method === method && fn(m.params);
+          listeners.add(l);
+          mine.add(l);
+        },
+        close: () => {
+          for (const l of mine) listeners.delete(l);
+          return send("Target.closeTarget", { targetId });
+        },
       };
     },
   };
