@@ -81,7 +81,23 @@ test("visits referred by AI assistants are counted per source, with their landin
 });
 
 test("crawler errors, repeated 404s and AI search bots blocked by the server become findings", async () => {
-  const r = await scan(FIXTURES, ["--site-origin", "https://www.example.com"]);
+  const dir = tmp(),
+    crawl = join(dir, "seo-crawl.json"),
+    errLog = join(dir, "errors.log");
+  writeFileSync(
+    crawl,
+    JSON.stringify({
+      pages: [{ url: "http://localhost:3000/", status: 200 }],
+      errors: [{ url: "http://localhost:3000/old-page/", status: 404 }],
+    }),
+  );
+  writeFileSync(
+    errLog,
+    Array.from({ length: 100 }, (_, i) =>
+      line(UA.google, i < 6 ? "/search-page/" : `/p${i}/`, i < 6 ? 500 : 200, i),
+    ).join("\n") + "\n",
+  );
+  const r = await scan([...FIXTURES, "--log", errLog], ["--site-origin", "https://www.example.com", "--crawl", crawl]);
   for (const f of r.findings) {
     for (const k of [
       "check",
@@ -109,7 +125,7 @@ test("crawler errors, repeated 404s and AI search bots blocked by the server bec
   assert.equal(err.severity, "high");
   assert.equal(err.count, 1);
   assert.equal(err.evidence[0].url, "https://www.example.com/search-page/");
-  assert.match(err.evidence[0].detail, /Googlebot.*1 of 10/);
+  assert.match(err.evidence[0].detail, /Googlebot.*7 of 110/);
   const nf = byCheck(r, "bot-404s");
   assert.equal(nf.rule, "CRAWL-07");
   assert.equal(nf.severity, "medium");
@@ -146,11 +162,146 @@ test("below the thresholds there are no findings, and no AI search visits is a n
   assert.ok(!b.notes.some(n => /no requests claiming to be an AI search/i.test(n)));
 });
 
+const logFile = (dir, name, lines) => {
+  const f = join(dir, name);
+  writeFileSync(f, lines.join("\n") + "\n");
+  return f;
+};
+const scanLines = (lines, extra) => scan(["--log", logFile(tmp(), "a.log", lines)], extra);
+// `total` requests from one bot, the first `errors` of them answered with `status`.
+const hits = (ua, total, errors, status = 500) =>
+  Array.from({ length: total }, (_, i) => line(ua, `/p${i % 50}/`, i < errors ? status : 200, i));
+UA.chatgpt =
+  "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot";
+
+test("bot-errors needs 5 server errors and 1% of the bot's requests, and is high only from 5% or 50 errors", async () => {
+  assert.equal(
+    byCheck(await scanLines(hits(UA.google, 10, 1)), "bot-errors"),
+    undefined,
+    "one 5xx in 10 requests isn't a pattern",
+  );
+  assert.equal(
+    byCheck(await scanLines(hits(UA.google, 100, 4)), "bot-errors"),
+    undefined,
+    "4 errors is too few, even at 4%",
+  );
+  assert.equal(
+    byCheck(await scanLines(hits(UA.google, 1000, 9)), "bot-errors"),
+    undefined,
+    "9 errors in 1,000 is under 1%",
+  );
+  const medium = byCheck(await scanLines(hits(UA.google, 200, 5)), "bot-errors");
+  assert.equal(medium.severity, "medium", "5 errors, 2.5%");
+  assert.match(medium.fix, /503 with a Retry-After/, "planned maintenance is fine");
+  assert.equal(byCheck(await scanLines(hits(UA.google, 100, 5)), "bot-errors").severity, "high", "5%");
+  assert.equal(byCheck(await scanLines(hits(UA.google, 4000, 50)), "bot-errors").severity, "high", "50 errors, 1.25%");
+});
+
+test("bot-errors names search crawlers and AI answer bots separately", async () => {
+  const ai = byCheck(await scanLines(hits(UA.chatgpt, 200, 5)), "bot-errors");
+  assert.doesNotMatch(ai.title, /search crawler/, "ChatGPT-User isn't a search crawler");
+  assert.match(ai.title, /^1 AI search or answer bot\(s\) got server errors/);
+  const both = byCheck(
+    await scanLines([...hits(UA.google, 200, 5), ...hits(UA.bing, 200, 5), ...hits(UA.chatgpt, 200, 5, 503)]),
+    "bot-errors",
+  );
+  assert.match(both.title, /^2 search crawler\(s\) and 1 AI search or answer bot\(s\) got server errors/);
+  assert.equal(both.count, 3);
+});
+
+test("repeated 404s are a list and a note; with --crawl, the ones the site links to become a finding; probe paths are left out", async () => {
+  const dir = tmp(),
+    lines = [];
+  for (const p of [
+    "/old-page/",
+    "/linked-gone/",
+    "/.env",
+    "/.env.local",
+    "/wp-login.php",
+    "/wp-admin/",
+    "/xmlrpc.php",
+    "/.git/config",
+  ])
+    for (let i = 0; i < 6; i++) lines.push(line(UA.google, p, 404, i));
+  const log = logFile(dir, "a.log", lines);
+  const plain = await scan(["--log", log]);
+  assert.equal(byCheck(plain, "bot-404s"), undefined, "without --crawl a 404 may be the right answer");
+  assert.deepEqual(
+    plain.repeated404s.map(x => x.path).sort(),
+    ["/linked-gone/", "/old-page/"],
+    "probe paths aren't listed",
+  );
+  assert.deepEqual(
+    plain.repeated404s.find(x => x.path === "/old-page/"),
+    { path: "/old-page/", requests: 6, bots: ["Googlebot"] },
+  );
+  assert.ok(plain.notes.some(n => /pass --crawl/.test(n) && /linked from the site/.test(n)));
+
+  const crawl = join(dir, "seo-crawl.json");
+  writeFileSync(
+    crawl,
+    JSON.stringify({
+      pages: [{ url: "http://localhost:3000/", status: 200 }],
+      errors: [{ url: "http://localhost:3000/linked-gone/", status: 404 }],
+    }),
+  );
+  const r = await scan(["--log", log], ["--crawl", crawl]);
+  const nf = byCheck(r, "bot-404s");
+  assert.equal(nf.rule, "CRAWL-07");
+  assert.deepEqual(
+    nf.evidence.map(e => e.url),
+    ["/linked-gone/"],
+  );
+  assert.deepEqual(
+    r.repeated404s.map(x => x.path),
+    ["/old-page/"],
+    "the unlinked one stays informational",
+  );
+  assert.ok(!r.notes.some(n => /pass --crawl/.test(n)));
+
+  writeFileSync(join(dir, "bad.json"), "{nope");
+  await assert.rejects(
+    scan(["--log", log], ["--crawl", join(dir, "bad.json")]),
+    e => e.code === 2 && /seo-crawl\.json/.test(e.stderr),
+  );
+});
+
+test("logs without user agents say so instead of reporting no AI search visits", async () => {
+  const r = await scan(["--log", join(L, "common.log")]);
+  assert.ok(r.notes.some(n => /don't record user agents, so bots can't be told apart/.test(n)));
+  assert.ok(!r.notes.some(n => /no requests claiming to be an AI search/i.test(n)));
+});
+
+test("AI referrals count only 2xx responses, so a redirect hop isn't a second visit", async () => {
+  const ref = (path, status) =>
+    `203.0.113.5 - - [12/Nov/2026:15:00:00 +0000] "GET ${path} HTTP/1.1" ${status} 0 "https://chatgpt.com/" "Mozilla/5.0 Chrome/141.0.0.0"`;
+  const r = await scanLines([ref("/pricing", 301), ref("/pricing/", 200), ref("/missing/", 404)]);
+  assert.deepEqual(r.aiReferrals["chatgpt.com"], { visits: 1, topPages: [{ path: "/pricing/", visits: 1 }] });
+});
+
+test("a corrupt .gz in a folder is a note and the scan goes on; on its own it fails", async () => {
+  const dir = tmp();
+  writeFileSync(join(dir, "old.log.gz"), "not gzip at all");
+  copyFileSync(join(L, "access.log"), join(dir, "access.log"));
+  const r = await scan(["--log", dir]);
+  assert.equal(r.bots.Googlebot.requests, 10);
+  assert.ok(r.notes.some(n => /old\.log\.gz/.test(n)));
+  await assert.rejects(scan(["--log", join(dir, "old.log.gz")]), e => e.code === 2 && /old\.log\.gz/.test(e.stderr));
+});
+
 test("--since drops older lines", async () => {
   const r = await scan(FIXTURES, ["--since", "2026-11-01"]);
   assert.equal(r.bots.Googlebot.requests, 9);
   assert.equal(r.stats.beforeSince, 1);
   assert.equal(r.since, "2026-11-01");
+});
+
+test("with --since, lines without a readable time are left out and counted", async () => {
+  const lines = [line(UA.google, "/a/", 200), JSON.stringify({ path: "/b/", status: 200, ua: UA.google })];
+  assert.equal((await scanLines(lines)).bots.Googlebot.requests, 2);
+  const r = await scanLines(lines, ["--since", "2026-11-01"]);
+  assert.equal(r.bots.Googlebot.requests, 1);
+  assert.equal(r.stats.undated, 1);
 });
 
 test("bad input fails with a clear message and exit code 2", async () => {

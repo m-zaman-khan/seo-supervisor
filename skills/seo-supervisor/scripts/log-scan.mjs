@@ -2,7 +2,7 @@
 // Reads the site's own access logs to show how search and AI crawlers actually treat the site.
 // Detected per line: Apache/Nginx combined and common format (anything may precede [time], so vhost_combined works),
 // or JSON lines, Cloudflare Logpush field names included.
-import { createReadStream, existsSync, statSync, readdirSync, mkdirSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, statSync, readdirSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { pipeline } from "node:stream";
 import { createGunzip } from "node:zlib";
 import { createInterface } from "node:readline";
@@ -21,7 +21,7 @@ const fail = msg => {
 };
 if (!args.log.length || args.log.some(v => typeof v !== "string")) {
   console.error(
-    "usage: node log-scan.mjs --log access.log [--log logs/] [--since YYYY-MM-DD] [--site-origin https://x] [--out seo-audit/log-scan.json]",
+    "usage: node log-scan.mjs --log access.log [--log logs/] [--since YYYY-MM-DD] [--site-origin https://x] [--crawl seo-audit/seo-crawl.json] [--out seo-audit/log-scan.json]",
   );
   process.exit(2);
 }
@@ -137,6 +137,16 @@ const hostOf = s => {
     return "";
   }
 };
+// Paths the crawl reached, which it only does through internal links, the sitemap or the start URL.
+let CRAWLED = null;
+if (args.crawl !== undefined) {
+  try {
+    const c = JSON.parse(readFileSync(args.crawl, "utf8"));
+    CRAWLED = new Set([...c.pages, ...(c.errors || [])].map(p => pathOf(p.url)));
+  } catch {
+    fail(`--crawl takes the crawler's seo-audit/seo-crawl.json, and ${args.crawl} isn't one.`);
+  }
+}
 
 // ---------- reading ----------
 const files = [];
@@ -156,8 +166,10 @@ if (!files.length) fail(`no files in ${args.log.join(", ")}.`);
 // One Map entry per distinct path per bot, held in memory: fine for a few million paths. Stream to disk past that.
 const bots = {},
   referrals = {},
-  period = { from: null, to: null };
-const stats = { files: files.length, lines: 0, parsed: 0, unparsed: 0, beforeSince: 0 };
+  period = { from: null, to: null },
+  notes = [];
+const stats = { files: files.length, lines: 0, parsed: 0, unparsed: 0, beforeSince: 0, undated: 0 };
+let sawUa = false;
 const iso = d => d && d.toISOString();
 const handle = raw => {
   const line = raw.replace(/^﻿/, "").trim();
@@ -170,11 +182,16 @@ const handle = raw => {
     return;
   }
   const time = r.time && !isNaN(r.time) ? r.time : null;
-  if (time && SINCE !== null && time < SINCE) {
+  if (SINCE !== null && !time) {
+    stats.undated++;
+    return;
+  }
+  if (SINCE !== null && time < SINCE) {
     stats.beforeSince++;
     return;
   }
   stats.parsed++;
+  if (r.ua != null) sawUa = true;
   if (time) {
     if (!period.from || time < period.from) period.from = time;
     if (!period.to || time > period.to) period.to = time;
@@ -208,6 +225,7 @@ const handle = raw => {
     }
     return;
   }
+  if (r.status < 200 || r.status >= 300) return; // a redirect and the page it leads to would be two visits
   const host = hostOf(r.referer),
     source =
       AI_REFERRERS.find(d => host === d || host.endsWith("." + d)) ||
@@ -223,12 +241,13 @@ for (const f of files) {
   try {
     for await (const line of createInterface({ input, crlfDelay: Infinity })) handle(line);
   } catch (e) {
-    fail(`couldn't read ${f}: ${e.message}`);
+    if (files.length === 1) fail(`couldn't read ${f}: ${e.message}`);
+    notes.push(`Couldn't read ${f} (${e.message}), so it was skipped from there on.`);
   }
 }
 const named = files.length === 1 ? files[0] : `${files.length} files in ${args.log.join(", ")}`;
 if (!stats.lines) fail(`${named} has no log lines.`);
-if (!stats.parsed && !stats.beforeSince)
+if (!stats.parsed && !stats.beforeSince && !stats.undated)
   fail(
     `${named} isn't an access log: none of its ${stats.lines} line(s) is Apache/Nginx combined or common log format, or JSON lines with a time, path or url, status and user agent.`,
   );
@@ -294,49 +313,68 @@ const finding = (check, rule, severity, category, title, why, fix, evidence, cou
 };
 const crawlers = Object.values(bots).filter(b => b.requests >= 5);
 
-const errors = crawlers
-  .filter(b => b.bot.group !== "ai-training" && b.status["5xx"] / b.requests >= 0.01)
-  .map(b => {
-    const failing = top(b.paths, v => v.s5xx, 3).map(([p, v]) => [p, v.s5xx]);
-    return {
-      url: url(failing[0][0]),
-      detail: `${b.bot.name}: ${b.status["5xx"]} of ${b.requests} requests (${pct(b.status["5xx"] / b.requests)}) got a server error, most on ${list(failing)}`,
-    };
-  });
+// A few server errors are noise; a pattern is at least 5 errors and 1% of the bot's requests.
+const failingBots = Object.values(bots).filter(
+  b => b.bot.group !== "ai-training" && b.status["5xx"] >= 5 && b.status["5xx"] / b.requests >= 0.01,
+);
+const errors = failingBots.map(b => {
+  const failing = top(b.paths, v => v.s5xx, 3).map(([p, v]) => [p, v.s5xx]);
+  return {
+    url: url(failing[0][0]),
+    detail: `${b.bot.name}: ${b.status["5xx"]} of ${b.requests} requests (${pct(b.status["5xx"] / b.requests)}) got a server error, most on ${list(failing)}`,
+  };
+});
+const inGroup = g => failingBots.filter(b => b.bot.group === g).length;
+const who = [
+  inGroup("search") && `${inGroup("search")} search crawler(s)`,
+  inGroup("ai-search") && `${inGroup("ai-search")} AI search or answer bot(s)`,
+]
+  .filter(Boolean)
+  .join(" and ");
 finding(
   "bot-errors",
   "CRAWL-05",
-  "high",
+  failingBots.some(b => b.status["5xx"] >= 50 || b.status["5xx"] / b.requests >= 0.05) ? "high" : "medium",
   "Crawling & indexing",
-  n => `${n} search crawler(s) got server errors (5xx) on 1% or more of their requests`,
-  "Requests claiming to be these search crawlers got 5xx responses. Crawlers slow down on a site that keeps failing, and pages that fail again and again drop out of the index and out of AI answers.",
-  "Look up the failing routes in the server's error log at those times and fix them; a page must not fail because a slow API or database is down. Use 503 with Retry-After for planned maintenance.",
+  () => `${who} got server errors (5xx) on 1% or more of their requests`,
+  "Requests claiming to be these crawlers got 5xx responses. Crawlers slow down on a site that keeps failing, and pages that fail again and again drop out of the index and out of AI answers.",
+  "Look up the failing routes in the server's error log at those times and fix them; a page must not fail because a slow API or database is down. Planned maintenance that answers 503 with a Retry-After header is fine and needs no fix.",
   errors,
 );
 
+// Bots and scanners probe for these on every site; a 404 is the right answer, so they're left out.
+const PROBE = /^\/(\.env|wp-|xmlrpc\.php|\.git(\/|$))/i;
 const notFound = new Map();
 for (const b of Object.values(bots))
   if (b.bot.group === "search")
     for (const [p, v] of b.paths)
-      if (v.s404) {
+      if (v.s404 && !PROBE.test(p)) {
         const x = notFound.get(p) || notFound.set(p, { n: 0, bots: new Set() }).get(p);
         x.n += v.s404;
         x.bots.add(b.bot.name);
       }
-const repeated404 = top(notFound, v => (v.n >= 5 ? v.n : 0), Infinity);
+const repeated = top(notFound, v => (v.n >= 5 ? v.n : 0), Infinity);
+// A 404 is right for a removed page, so only the ones the site itself still links to (per --crawl) are findings.
+const linked = ([p]) => !!CRAWLED?.has(p),
+  linked404 = repeated.filter(linked);
+const repeated404s = repeated.filter(r => !linked(r)).map(([path, v]) => ({ path, requests: v.n, bots: [...v.bots] }));
 finding(
   "bot-404s",
   "CRAWL-07",
   "medium",
   "Crawling & indexing",
-  n => `${n} URL(s) keep returning 404 to search crawlers`,
-  "Search crawlers keep asking for these URLs and get a 404. Repeat requests usually come from internal links, the sitemap, or old URLs that other sites still link to, so visitors hit the same dead ends.",
-  "If the page moved, 301 the old URL to its new home. If it's gone for good, keep the 404 or return 410; Google rechecks removed URLs for a while, which is harmless. Remove any internal links or sitemap entries that still point at it (the crawler's broken-internal-link check finds them).",
-  repeated404
+  n => `${n} URL(s) the site links to keep returning 404 to search crawlers`,
+  "Search crawlers keep asking for these URLs and get a 404, and the site's own links or sitemap still point at them, so visitors hit the same dead ends.",
+  "If the page moved, 301 the old URL to its new home and update the links. If it's gone for good, keep the 404 or return 410 and remove the internal links and sitemap entries that still point at it (the crawler's broken-internal-link check lists them).",
+  linked404
     .slice(0, 20)
     .map(([p, v]) => ({ url: url(p), detail: `404 for ${v.n} requests from ${[...v.bots].join(", ")}` })),
-  repeated404.length,
+  linked404.length,
 );
+if (repeated404s.length)
+  notes.push(
+    `${repeated404s.length} URL(s) keep returning 404 to search crawlers (listed under repeated404s)${CRAWLED ? " and the site doesn't link to them" : ""}. A 404 is the right answer for a removed page; if one moved, 301 it to its new home${CRAWLED ? "." : ", and pass --crawl seo-audit/seo-crawl.json to see which are linked from the site."}`,
+  );
 
 const refused = crawlers
   .filter(b => b.bot.group === "ai-search" && b.refused / b.requests > 0.5)
@@ -358,10 +396,14 @@ findings.forEach((f, i) => {
   f.id = "L-" + String(i + 1).padStart(3, "0");
 });
 
-const notes = [
+notes.unshift(
   "User agents can be spoofed, so every count here is requests claiming to be that bot. Before acting on one bot's numbers, check its IPs with a reverse DNS lookup or against the vendor's published IP list.",
-];
-if (!Object.values(bots).some(b => b.bot.group === "ai-search"))
+);
+if (stats.parsed && !sawUa)
+  notes.push(
+    "These logs don't record user agents, so bots can't be told apart. Log in the combined format (or JSON with the user agent) to see crawler activity.",
+  );
+else if (!Object.values(bots).some(b => b.bot.group === "ai-search"))
   notes.push(
     `No requests claiming to be an AI search or answer bot (${BOTS.filter(b => b.group === "ai-search")
       .map(b => b.name)
@@ -385,6 +427,7 @@ writeFileSync(
       stats,
       bots: botsOut,
       aiReferrals,
+      repeated404s,
       notes,
       findings,
     },
