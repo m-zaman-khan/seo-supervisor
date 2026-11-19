@@ -33,6 +33,13 @@ export const CHECKS = {
     "Visitors from search see the popup instead of the page they came for. Google's page-experience guidance calls this an intrusive interstitial, and many visitors leave instead of closing it.",
     "Use a small banner instead, or show the popup later (after the visitor interacts). Required age or legal notices should cover only part of the screen.",
   ],
+  "bfcache-blocked": [
+    "PERF-10",
+    "medium",
+    n => `${n} page(s) load again instead of showing instantly when a visitor goes Back (Chrome's own test)`,
+    "Chrome opened the page, went on to another page of the site and pressed Back, and had to load the page again instead of restoring it from memory (the back/forward cache). One in five page views on phones comes from Back or Forward, and a restored page counts as an instant load in Core Web Vitals.",
+    "Remove what Chrome names for each page. The usual causes are an `unload` handler (use `pagehide`), `Cache-Control: no-store` on an ordinary page (use `no-cache`), and connections left open (close WebSockets on `pagehide`). Chrome DevTools > Application > Back/forward cache runs the same test.",
+  ],
 };
 
 const DESKTOP = { width: 1366, height: 768, deviceScaleFactor: 1, mobile: false };
@@ -147,6 +154,39 @@ async function visit(chrome, url, { device, userAgent, lab = false, settleMs, de
   }
 }
 
+// Chrome's own back/forward cache test, as DevTools runs it: from the loaded page go on to `next`, then press Back.
+// Resolves to Chrome's reasons for not restoring the page ([] when it did), or null when Chrome didn't say in time.
+async function goBack(page, next) {
+  const told = new Promise(ok => {
+    page.on("Page.backForwardCacheNotUsed", p => ok(p.notRestoredExplanations || []));
+    page.on("Page.frameNavigated", p => {
+      if (p.type === "BackForwardCacheRestore" && !p.frame.parentId) ok([]);
+    });
+    setTimeout(ok, 10000, null).unref();
+  });
+  const nav = await page.send("Page.navigate", { url: next });
+  if (nav.errorText) throw new Error(nav.errorText);
+  await evaluate(page, LOADED).catch(() => sleep(1000));
+  const { currentIndex, entries } = await page.send("Page.getNavigationHistory");
+  await page.send("Page.navigateToHistoryEntry", { entryId: entries[currentIndex - 1].id });
+  return told;
+}
+// Plain words for the common reasons, Chrome's names for the rest; "Circumstantial" ones aren't the page's fault.
+const REASONS = [
+  [/^UnloadHandler.*SubFrame/, "an unload handler in an embedded frame"],
+  [/^UnloadHandler/, "an unload handler"],
+  [/NoStore.*Cookie/i, "Cache-Control: no-store on a page whose cookies changed"],
+  [/NoStore/i, "Cache-Control: no-store"],
+  [/^WebSocket/, "an open WebSocket connection"],
+];
+const blockersOf = explanations => [
+  ...new Set(
+    explanations
+      .filter(e => e.type !== "Circumstantial")
+      .map(e => REASONS.find(([re]) => re.test(e.reason))?.[1] ?? e.reason),
+  ),
+];
+
 const slugOf = (url, used) => {
   const base =
     new URL(url).pathname
@@ -166,14 +206,16 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
     lab = [],
     used = new Set();
   const why = e => String(e.message).split("\n")[0].slice(0, 120);
-  let checked = 0;
+  let checked = 0,
+    bfTested = 0;
   if (screenshotDir) mkdirSync(screenshotDir, { recursive: true });
   const chrome = await launchChrome(browser);
   try {
     const { userAgent: ua } = await chrome.send("Browser.getVersion");
     const desktopUa = ua.replace("HeadlessChrome/", "Chrome/");
     const phoneUa = `Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${ua.match(/Chrome\/(\d+)/)?.[1] || "130"}.0.0.0 Mobile Safari/537.36`;
-    for (const url of urls.slice(0, 10)) {
+    const list = urls.slice(0, 10);
+    for (const [i, url] of list.entries()) {
       const slug = slugOf(url, used),
         deadline = Date.now() + pageBudgetMs;
       const shoot = (page, name) =>
@@ -248,13 +290,30 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
       } catch (e) {
         notes.push(`Couldn't measure lab speed for ${url} (${why(e)}).`);
       }
+      if (list.length > 1)
+        try {
+          // Back needs a page to come back from: the next one in the sample
+          const reasons = await visit(
+            chrome,
+            url,
+            { device: DESKTOP, userAgent: desktopUa, settleMs: 200, deadline },
+            p => goBack(p, list[(i + 1) % list.length]),
+          );
+          if (reasons) {
+            bfTested++;
+            const blockers = blockersOf(reasons);
+            if (blockers.length) add("bfcache-blocked", url, `Chrome names: ${blockers.join("; ")}`);
+          }
+        } catch (e) {
+          notes.push(`Couldn't run the back/forward cache test on ${url} (${why(e)}).`);
+        }
     }
   } finally {
     await chrome.close();
   }
   if (checked)
     notes.push(
-      `Loaded ${checked} sample page(s) at desktop (1366×768) and phone (390×844) size${screenshotDir ? ", with screenshots" : ""}. Lab speed comes from one phone load with 4× CPU slowdown on slow 4G: indicative only, it won't match Lighthouse.`,
+      `Loaded ${checked} sample page(s) at desktop (1366×768) and phone (390×844) size${screenshotDir ? ", with screenshots" : ""}${bfTested ? `, and ran Chrome's back/forward cache test on ${bfTested} of them` : ""}. Lab speed comes from one phone load with 4× CPU slowdown on slow 4G: indicative only, it won't match Lighthouse.`,
     );
   return { checked, lab, notes };
 }

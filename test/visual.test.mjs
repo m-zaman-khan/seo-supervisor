@@ -214,6 +214,53 @@ test(
   },
 );
 
+test(
+  "Chrome's own back/forward cache test names what kept a page from being restored",
+  { skip, timeout: 120000 },
+  async () => {
+    const dir = tmp(),
+      pages = {
+        // Chrome's back/forward cache keeps no-store pages, but not once a cookie has changed.
+        nostore: doc(
+          `<main><h1>No store</h1><p>${words(100)}</p></main><script>document.cookie = "visit=" + Date.now()</script>`,
+        ),
+        plain: doc(`<main><h1>Plain</h1><p>${words(100)}</p></main>`),
+      };
+    for (const [name, html] of Object.entries(pages)) {
+      mkdirSync(join(dir, name));
+      writeFileSync(join(dir, name, "index.html"), html);
+    }
+    const site = await serve(dir, { headers: { "/nostore/": { "Cache-Control": "no-store" } } }),
+      found = [];
+    let r;
+    try {
+      r = await checkVisual(
+        browser,
+        Object.keys(pages).map(n => `${site.url}/${n}/`),
+        { add: (key, url, detail) => found.push([key, new URL(url).pathname, detail]) },
+      );
+    } finally {
+      await site.close();
+    }
+    const blocked = found.filter(([key]) => key === "bfcache-blocked");
+    assert.deepEqual(
+      blocked.map(b => b[1]),
+      ["/nostore/"],
+      JSON.stringify(found),
+    );
+    assert.match(blocked[0][2], /no-store/i);
+    assert.deepEqual(
+      CHECKS["bfcache-blocked"].slice(0, 2),
+      ["PERF-10", "medium"],
+      "a failed real test outranks the crawler's hints",
+    );
+    assert.ok(
+      r.notes.some(t => /back\/forward cache test on 2 of them/.test(t)),
+      r.notes.join(" "),
+    );
+  },
+);
+
 // Chrome escapes non-ASCII as \uXXXX in protocol JSON, so this guards the decoding rather than reproducing a split.
 test("the DevTools helper round-trips multi-byte text longer than one pipe read", { skip }, async () => {
   const chrome = await launchChrome(browser);

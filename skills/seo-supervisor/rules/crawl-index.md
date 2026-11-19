@@ -47,6 +47,7 @@ Can search engines reach the pages, and are they allowed to index the right ones
 - **Pass:** every old URL goes straight to its final destination. Internal links already point at final URLs, usually with the right trailing slash.
 - **Fix:** collapse the chains. Watch frameworks whose trailing-slash redirect runs before custom redirects: put legacy redirects at the edge so they cover both slash forms in one hop.
 - **Crawler:** also flags meta refresh redirects (`meta-refresh`, medium); replace them with a server-side 301/308.
+- **http:// links:** on an HTTPS site, `link-http` (medium) flags pages linking to the site's own host (with or without `www`) as `http://`: each click and crawl takes a redirect hop first. Use `https://` or relative paths. Insecure resources on HTTPS pages are TRUST-01's `mixed-content`.
 
 ### CRAWL-09 · Bot protection doesn't block real search crawlers · high
 - **Check:** code and CDN config: WAF, bot-fight modes, captchas, rate limits.

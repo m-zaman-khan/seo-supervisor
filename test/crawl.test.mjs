@@ -1,7 +1,7 @@
 // The Chrome tests are in test/browser/crawl.test.mjs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { serve } from "./serve.mjs";
 import { ROOT, SCRIPTS, node, tmp } from "./helpers.mjs";
@@ -284,4 +284,232 @@ test("an og:image the local server redirects to the public origin is unreadable 
     JSON.stringify(r.findings.find(f => f.check === "og-image-broken")?.evidence),
   );
   assert.ok(r.notes.some(n => /share image/.test(n) && /redirect/.test(n)));
+});
+
+// Pages ({ "/path/": html }) in a temp folder, crawled as the site at `origin`; `args` and `env` go to the crawler.
+async function crawlSite(pages, serveOpts, origin = "https://site.example") {
+  const dir = tmp(),
+    out = join(tmp(), "crawl.json");
+  for (const [p, html] of Object.entries(pages)) {
+    mkdirSync(join(dir, p), { recursive: true });
+    writeFileSync(join(dir, p, "index.html"), html);
+  }
+  writeFileSync(join(dir, "robots.txt"), "User-agent: *\nAllow: /\n");
+  const site = await serve(dir, serveOpts);
+  try {
+    await node([join(SCRIPTS, "seo-crawl.mjs"), "--url", site.url, "--site-origin", origin, "--out", out]);
+  } finally {
+    await site.close();
+  }
+  return JSON.parse(readFileSync(out, "utf8"));
+}
+const findingOf = (r, check) => r.findings.find(f => f.check === check);
+const pathsOf = (r, check) => (findingOf(r, check)?.evidence || []).map(e => new URL(e.url).pathname).sort();
+
+// A plumber's site with one planted problem per page; every title ends in the brand, as most sites' titles do.
+const COPY =
+  "Our engineers fix leaks, radiators and hot water faults across the city every day of the week, with a clear written estimate before any work starts and a tidy finish afterwards. ".repeat(
+    2,
+  );
+const PRIVACY =
+  "We collect your name, email address and phone number when you contact us. We keep these details for two years and never sell them to anyone. You can ask us to delete your data at any time by writing to our office or emailing the team. ".repeat(
+    2,
+  );
+const plumber = (title, h1, body, { head = '<meta charset="utf-8">', bodyAttrs = "" } = {}) =>
+  `<!doctype html><html lang="en"><head>${head}<meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title></head><body${bodyAttrs}><main><h1>${h1}</h1><p>${COPY}</p>${body}</main></body></html>`;
+const PLUMBER = {
+  // Brand-heavy: the title is only the brand, which the page's own text never repeats.
+  "/": plumber(
+    "Welcome to Northwind Plumbing",
+    "Welcome",
+    `<script>addEventListener("beforeunload", () => {}); addEventListener("pagehide", () => {});</script>
+    ${["boilers", "privacy-notice", "nostore", "unload", "parts", "links", "latin", "alias", "old"].map(p => `<a href="/${p}/">Go to ${p}</a>`).join(" ")}`,
+  ),
+  "/boilers/": plumber("Emergency Boiler Repairs | Northwind Plumbing", "Emergency boiler repairs", ""),
+  // A privacy notice under a sales title. "IP" isn't read as "Installation Prices": two-letter initials are too common.
+  "/privacy-notice/": plumber(
+    "Kitchen Tap Installation Prices | Northwind Plumbing",
+    "How we handle your personal data",
+    `<p>${PRIVACY}</p>`,
+  ),
+  "/nostore/": plumber("Yearly Boiler Servicing | Northwind Plumbing", "Yearly boiler servicing", ""),
+  "/unload/": plumber(
+    "Leak Detection Services | Northwind Plumbing",
+    "Finding hidden leaks",
+    `<script>window.addEventListener('unload', function () { navigator.sendBeacon("/log"); });</script>`,
+  ),
+  "/parts/": plumber(
+    "Spare Parts Catalogue | Northwind Plumbing",
+    "Spare parts catalogue",
+    `<ul>${"<li>Valve</li>".repeat(1450)}</ul>`,
+  ),
+  "/links/": plumber(
+    "Useful Links and Contacts | Northwind Plumbing",
+    "Useful links and contacts",
+    `
+    <a href="/boilers/"></a> <a href="/boilers/"><img src="data:," alt=""></a>
+    <a href="/boilers/" aria-label="Boiler repairs"><svg viewBox="0 0 1 1"><path d="M0 0"/></svg></a> <a href="/boilers/"><svg><title>Boiler repairs</title></svg></a>
+    <a href="/boilers/"><img src="data:," alt="Boiler repairs"></a> <a href="/boilers/" title="Boiler repairs"><i class="icon"></i></a> <a href="/boilers/"><span class="visually-hidden">Boiler repairs</span></a> <a name="top"></a>
+    <a href="http://site.example/boilers/">Boilers over http</a> <a href="HTTP://www.site.example/">Home over http</a> <a href="https://site.example/boilers/">Boilers</a> <a href="http://elsewhere.example/">Another site</a>
+    <iframe src="about:blank" title="Map"></iframe> <font-awesome-icon icon="phone"></font-awesome-icon> <center-box>Call us</center-box>`,
+  ),
+  "/latin/": plumber("Water Heater Installation | Northwind Plumbing", "Water heater installation", ""),
+  // ISO-8859-1 and windows-1252 are the same encoding to browsers.
+  "/alias/": plumber("Shower Pump Fitting | Northwind Plumbing", "Shower pump fitting", "", {
+    head: '<meta http-equiv="Content-Type" content="text/html; charset=windows-1252">',
+  }),
+  "/old/": plumber(
+    "Our Company History | Northwind Plumbing",
+    "Our company history",
+    "<center>Since 1998</center> <font color=red>Call now</font> <marquee>Open today</marquee>",
+    { bodyAttrs: ' onunload="track()"' },
+  ),
+};
+let plumberRun;
+const plumberSite = () =>
+  (plumberRun ||= crawlSite(PLUMBER, {
+    headers: {
+      "/nostore/": { "Cache-Control": "no-store" },
+      "/latin/": { "Content-Type": "text/html; charset=iso-8859-1" },
+      "/alias/": { "Content-Type": "text/html; charset=ISO-8859-1" },
+    },
+  }));
+
+test("back/forward cache hints: pages sent with no-store, and inline unload handlers", async () => {
+  const r = await plumberSite();
+  assert.deepEqual(pathsOf(r, "bfcache-no-store"), ["/nostore/"]);
+  assert.deepEqual(pathsOf(r, "bfcache-unload"), ["/old/", "/unload/"], "beforeunload and pagehide are fine");
+  for (const key of ["bfcache-no-store", "bfcache-unload"])
+    assert.deepEqual([findingOf(r, key).rule, findingOf(r, key).severity], ["PERF-10", "low"], key);
+  assert.match(findingOf(r, "bfcache-no-store").why, /Chrome/, "says what Chrome does with no-store pages now");
+});
+
+test("speculation rules: one suggestion for a multi-page site with none; a rules script, the header or a client-side router counts", async () => {
+  const r = await plumberSite();
+  assert.deepEqual(pathsOf(r, "no-speculation-rules"), ["/"]);
+  assert.deepEqual(
+    [
+      findingOf(r, "no-speculation-rules").rule,
+      findingOf(r, "no-speculation-rules").severity,
+      findingOf(r, "no-speculation-rules").count,
+    ],
+    ["PERF-09", "low", 1],
+  );
+  const two = (head = "") => ({
+    "/": plumber(
+      "Boiler Repairs and Servicing in Leeds",
+      "Boiler repairs and servicing in Leeds",
+      '<a href="/about/">About the team</a>',
+      { head: `<meta charset="utf-8">${head}` },
+    ),
+    "/about/": plumber("About Our Leeds Engineers", "About our Leeds engineers", ""),
+  });
+  const runs = [
+    await crawlSite(
+      two(
+        `<script type="speculationrules">{"prefetch":[{"where":{"href_matches":"/*"},"eagerness":"moderate"}]}</script>`,
+      ),
+    ),
+    await crawlSite(two(), { headers: { "/": { "Speculation-Rules": '"/speculation.json"' } } }),
+    await crawlSite(two('<script src="/_next/static/chunks/main.js" async></script>')),
+  ];
+  for (const run of runs) {
+    assert.ok(
+      !findingOf(run, "no-speculation-rules"),
+      JSON.stringify(findingOf(run, "no-speculation-rules")?.evidence),
+    );
+    assert.ok(run.passed.some(p => p.rule === "PERF-09"));
+  }
+  for (const rule of ["PERF-10", "REND-10", "META-09"])
+    assert.ok(
+      runs[0].passed.some(p => p.rule === rule),
+      `${rule} passes on a clean site`,
+    );
+  const one = await crawlOnePage();
+  assert.ok(
+    !findingOf(one, "no-speculation-rules") && !one.passed.some(p => p.rule === "PERF-09"),
+    "a one-page site has no next page to load",
+  );
+});
+
+test("pages over Lighthouse's 1,400-element level are flagged", async () => {
+  const r = await plumberSite(),
+    f = findingOf(r, "dom-size");
+  assert.deepEqual(pathsOf(r, "dom-size"), ["/parts/"]);
+  assert.deepEqual([f.rule, f.severity], ["PERF-06", "low"]);
+  assert.match(f.evidence[0].detail, /^1,45\d elements/);
+});
+
+test("links with no text, label, title or image alt are flagged; labelled icon links aren't", async () => {
+  const r = await plumberSite(),
+    f = findingOf(r, "link-no-text");
+  assert.deepEqual(pathsOf(r, "link-no-text"), ["/links/"]);
+  assert.deepEqual([f.rule, f.severity], ["LINK-05", "medium"]);
+  assert.match(
+    f.evidence[0].detail,
+    /^2 link\(s\), e\.g\. \/boilers\/$/,
+    "an empty link and one around an image with empty alt",
+  );
+});
+
+test("links to the site's own pages over http:// on an HTTPS site are flagged, other sites' links aren't", async () => {
+  const r = await plumberSite(),
+    f = findingOf(r, "link-http");
+  assert.deepEqual(pathsOf(r, "link-http"), ["/links/"]);
+  assert.deepEqual([f.rule, f.severity], ["CRAWL-08", "medium"]);
+  assert.equal(
+    f.evidence[0].detail,
+    "2 link(s), e.g. http://site.example/boilers/",
+    "the www host counts as the same site",
+  );
+  const plain = await crawlSite(
+    { "/": plumber("Boiler Repairs in Leeds", "Boiler repairs", '<a href="http://site.example/">Home</a>') },
+    {},
+    "http://site.example",
+  );
+  assert.ok(!findingOf(plain, "link-http"), "a site that isn't on HTTPS yet has nothing to redirect to");
+});
+
+test("a title none of whose main words are on the page is flagged; normal and brand-only titles aren't", async () => {
+  const r = await plumberSite(),
+    f = findingOf(r, "title-mismatch");
+  // "Welcome to Northwind Plumbing" on / is all brand (in most titles) and a stopword, so there's nothing to compare.
+  // /faq/ shows "FAQ", /hvac/ "HVAC" (and/of/the are skipped), and /lpg/'s H1 shares "LPG" with its title.
+  assert.deepEqual(pathsOf(r, "title-mismatch"), ["/privacy-notice/"]);
+  assert.deepEqual([f.rule, f.severity], ["META-09", "low"]);
+  assert.equal(
+    f.evidence[0].detail,
+    "“Kitchen Tap Installation Prices | Northwind Plumbing”: kitchen, installation, prices aren't on the page",
+  );
+});
+
+test("a charset header that disagrees with the page's meta charset is flagged; names for the same encoding agree", async () => {
+  const r = await plumberSite(),
+    f = findingOf(r, "charset-mismatch");
+  assert.deepEqual(
+    pathsOf(r, "charset-mismatch"),
+    ["/latin/"],
+    "ISO-8859-1 and windows-1252 are one encoding to browsers",
+  );
+  assert.deepEqual([f.rule, f.severity], ["REND-09", "medium"]);
+  assert.equal(f.evidence[0].detail, "header: iso-8859-1 · meta: utf-8");
+});
+
+test("obsolete tags are flagged; iframes and custom elements named like them aren't", async () => {
+  const r = await plumberSite(),
+    f = findingOf(r, "obsolete-tags");
+  assert.deepEqual(
+    pathsOf(r, "obsolete-tags"),
+    ["/old/"],
+    "/links/ has an iframe, <font-awesome-icon> and <center-box>",
+  );
+  assert.deepEqual([f.rule, f.severity, f.evidence[0].detail], ["REND-10", "low", "<center>, <font>, <marquee>"]);
+  const frames = await crawlSite({
+    "/": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Framed Boiler Repairs Site</title></head><frameset cols="50%,50%"><frame src="/menu.html"><frame src="/main.html"></frameset></html>`,
+  });
+  assert.equal(
+    findingOf(frames, "obsolete-tags")?.evidence[0].detail,
+    "<frameset>, <frame>",
+    "a frameset page has no body",
+  );
 });

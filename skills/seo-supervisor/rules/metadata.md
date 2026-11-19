@@ -43,3 +43,9 @@
 - **Never:** auto-redirect by IP or `Accept-Language` (Googlebot usually crawls from the US with no `Accept-Language`). Use a banner suggesting the other version instead.
 - **Fix:** remove one-sided or self-only hreflang that serves no purpose, unless the site deliberately targets one region.
 - **Crawler:** checks return links, a self entry, `x-default`, valid ISO 639-1 language and ISO 3166-1 region codes (`en-uk` is invalid; it's `en-gb`), and targets that are 200, indexable and canonical. URLs are compared by path, so relative links and slash variants match.
+
+### META-09 · Each title matches what its page is about · low
+- **Check:** crawler `title-mismatch`: an indexable page none of whose title's main words appear in its visible text. Main words have 4+ letters and aren't stopwords or brand words (words in more than half of the site's titles, plus `--brand`). A word counts when its stem is on the page ("pricing" finds "prices").
+- **Conservative by design:** it needs at least two main words and 50 words of page text, and skips words in scripts written without spaces (Chinese, Japanese, Thai). META-09 counts as checked only when at least one page had enough to compare.
+- **Pass:** the title names what the page covers, in words its heading and text use.
+- **Fix:** rewrite the title from the page's H1 and main topic. A mismatch usually means a copied template, a title left over from an older page, or the wrong field mapped to the title.

@@ -80,6 +80,7 @@ const RULES = {
   "META-03": ["Brand appears once in titles", "Metadata"],
   "META-04": ["Open Graph tags for sharing", "Metadata"],
   "META-05": ["Page language declared", "Metadata"],
+  "META-09": ["Each title matches what its page is about", "Metadata"],
   "CONTENT-01": ["Exactly one H1 per page", "Headings & content"],
   "CONTENT-02": ["Heading levels are not skipped", "Headings & content"],
   "CONTENT-04": ["Templated pages have unique content", "Headings & content"],
@@ -106,6 +107,8 @@ const RULES = {
   "PERF-01": ["Core Web Vitals pass on mobile", "Performance"],
   "PERF-03": ["The first image is not lazy-loaded", "Performance"],
   "PERF-04": ["Images reserve their space (width and height)", "Performance"],
+  "PERF-09": ["The next page starts loading before the click (speculation rules)", "Performance"],
+  "PERF-10": ["Back and Forward are instant (back/forward cache)", "Performance"],
   "PERF-06": ["HTML documents stay lightweight", "Performance"],
   "TRUST-01": ["HTTPS security headers are set", "Trust & security"],
   "TRUST-02": ["security.txt published", "Trust & security"],
@@ -119,6 +122,7 @@ const RULES = {
   "REND-08": ["HTML stays under Googlebot's 2 MB limit", "Rendering"],
   "META-08": ["hreflang only when there are real language or region versions", "Metadata"],
   "REND-09": ["Pages declare a doctype, a charset and a mobile viewport", "Rendering"],
+  "REND-10": ["No obsolete HTML tags (frames, font, center, marquee)", "Rendering"],
   "META-06": ["Robots meta depends on page type, using the object form", "Metadata"],
   "MEDIA-03": ["Each page signals its preferred thumbnail", "Media"],
   "PERF-08": ["Images are a sensible weight and in a modern format", "Performance"],
@@ -202,6 +206,13 @@ const CHECKS = {
     n => `${n} internal link target(s) point at a redirect`,
     "Linking to a redirecting URL costs a hop on every click and crawl.",
     "Update the links to the final URL (often a missing or extra trailing slash).",
+  ],
+  "link-http": [
+    "CRAWL-08",
+    "medium",
+    n => `${n} page(s) link to the site's own pages over http://`,
+    "The site runs on HTTPS, so every http:// link to it goes through a redirect on each click and crawl before the page loads, and points search engines at an address that isn't the real one.",
+    "Use https:// or a relative path (such as `/pricing/`) in every internal link. Hard-coded http:// links usually sit in old content, menus or a base-URL setting.",
   ],
   "url-format": [
     "URL-01",
@@ -329,6 +340,20 @@ const CHECKS = {
     "Without a doctype browsers fall back to quirks mode; without a viewport the page renders as a zoomed-out desktop page on phones, and Google indexes the mobile version.",
     'Start every page with `<!doctype html>`, `<meta charset="utf-8">` and `<meta name="viewport" content="width=device-width, initial-scale=1">` in the shared layout.',
   ],
+  "charset-mismatch": [
+    "REND-09",
+    "medium",
+    n => `${n} page(s) name one character set in the server header and another in the HTML`,
+    "Browsers and search engines follow the server's Content-Type header over the page's own meta tag. If the page was saved in the encoding its meta tag names, accented letters, curly quotes and symbols turn into garbage on screen and in search snippets.",
+    'Save and serve pages as UTF-8, and make the header (`Content-Type: text/html; charset=utf-8`) and `<meta charset="utf-8">` agree. The header usually comes from the server or CDN settings.',
+  ],
+  "obsolete-tags": [
+    "REND-10",
+    "low",
+    n => `${n} page(s) use obsolete HTML tags`,
+    "Tags such as `<frameset>`, `<frame>`, `<marquee>`, `<blink>`, `<font>` and `<center>` were dropped from HTML years ago. Frames split a page into separate documents that search engines index on their own, and the others are old styling that makes a page look and behave dated.",
+    "Replace frames with ordinary pages (an `<iframe>` is fine for embeds), and move what `<font>`, `<center>`, `<marquee>` and `<blink>` do into CSS.",
+  ],
   "meta-refresh": [
     "CRAWL-08",
     "medium",
@@ -412,6 +437,13 @@ const CHECKS = {
     n => `${n} title(s) repeat the brand`,
     "A title template plus a title that already has the brand doubles it.",
     "Use an absolute title when the brand is already present, or drop it from the page title.",
+  ],
+  "title-mismatch": [
+    "META-09",
+    "low",
+    n => `${n} page(s) have a title that doesn't match their content`,
+    "None of the main words in the title appear anywhere on the page. Google often rewrites such titles in results, and visitors who click expecting one thing find another. It's usually a copied template or a title left over from an older page.",
+    "Rewrite the title to name what the page actually covers, using the words of its heading and text.",
   ],
   "desc-missing": [
     "META-02",
@@ -742,6 +774,13 @@ const CHECKS = {
     "Anchor text tells search engines what the target is about.",
     "Use descriptive anchors such as “check your DMARC record”.",
   ],
+  "link-no-text": [
+    "LINK-05",
+    "medium",
+    n => `${n} page(s) have links with no text`,
+    "A link with no text, label or image alt tells search engines nothing about the page it points to, and screen readers announce it only as “link”. Icon-only links (social icons, a logo, a cart) are the usual cause.",
+    'Give each link visible text, an `aria-label` for icon-only links (`<a href="/cart/" aria-label="Cart">`), or alt text on the image inside it.',
+  ],
   "too-many-links": [
     "LINK-06",
     "low",
@@ -763,6 +802,27 @@ const CHECKS = {
     "Images without dimensions shift the layout as they load (CLS).",
     "Set width and height (or an aspect-ratio box) on every image.",
   ],
+  "no-speculation-rules": [
+    "PERF-09",
+    "low",
+    () => "No page asks the browser to start loading the next page early (speculation rules)",
+    "Speculation rules let Chrome and Edge start loading a page as soon as a visitor shows they're about to open it (hovering over or pressing a link), so it appears almost at once. A few lines in the shared layout turn this on for the whole site; other browsers ignore them.",
+    'Add `<script type="speculationrules">{"prefetch":[{"where":{"href_matches":"/*"},"eagerness":"moderate"}]}</script>` to the shared layout, or send a `Speculation-Rules` header from the server or CDN. Leave out links that change something (log out, add to cart) with a `not` condition.',
+  ],
+  "bfcache-no-store": [
+    "PERF-10",
+    "low",
+    n => `${n} page(s) are sent with Cache-Control: no-store, which can make Back and Forward reload them`,
+    "Browsers keep recently visited pages in memory so Back and Forward show them instantly (the back/forward cache). Other browsers may leave out pages sent with `no-store`; Chrome now keeps them, but only for 3 minutes and not once a cookie changes, so visitors going back often wait for a full reload.",
+    "Keep `no-store` for pages with private data (account, checkout). For pages that must always be fresh, send `Cache-Control: no-cache` or `max-age=0` instead: browsers still check for updates, and the page can be kept for Back and Forward.",
+  ],
+  "bfcache-unload": [
+    "PERF-10",
+    "low",
+    n => `${n} page(s) have an unload handler, which keeps them out of the back/forward cache`,
+    "Browsers keep recently visited pages in memory so Back and Forward show them instantly. Firefox leaves out any page with an `unload` handler, and so does Chrome wherever it still runs them; Chrome is phasing `unload` out, so the code may not run at all.",
+    "Replace `unload` with `pagehide`, or with `visibilitychange` for sending analytics and saving state. Only inline code was read: with outside checks on, Chrome's own test also catches handlers that third-party scripts add.",
+  ],
   "nosnippet": [
     "AI-01",
     "high",
@@ -783,6 +843,13 @@ const CHECKS = {
     n => `${n} page(s) send more than 500 KB of HTML`,
     "Very large HTML slows the first render and often means inlined data that isn't needed.",
     "Move bulky data out of the HTML and paginate long lists.",
+  ],
+  "dom-size": [
+    "PERF-06",
+    "low",
+    n => `${n} page(s) have more than 1,400 HTML elements`,
+    "Every element costs memory and makes each style and layout change slower, so very large pages react late to taps and clicks on phones. Lighthouse flagged pages over about 1,400 elements until version 13. This is counted from the HTML the server sends, so scripts may add more.",
+    "Trim repeated markup: paginate or load long lists in parts, drop wrapper `<div>`s, keep inline SVG icons lean, and build menus and pop-ups only when they open.",
   ],
   "sec-headers": [
     "TRUST-01",
@@ -914,6 +981,9 @@ const norm = s =>
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
+// Frameworks whose router loads the next page itself, without a new document, so speculation rules add little.
+const CLIENT_ROUTER =
+  /\/_next\/static\/|\/_nuxt\/|id=["']?___gatsby\b|data-sveltekit-|__remixContext|data-astro-prefetch/;
 const FILE_EXT =
   /\.(pdf|png|jpe?g|gif|webp|avif|svg|ico|css|js|mjs|json|xml|txt|zip|gz|mp4|webm|mp3|woff2?|ttf|otf|csv|xlsx?|docx?|pptx?)$/i;
 
@@ -1094,6 +1164,63 @@ function analyze(url, html, headers) {
     : [];
   const refresh = metas.find(m => (m["http-equiv"] || "").toLowerCase() === "refresh")?.content || "";
   const emptyRoot = /<div[^>]+id=["'](root|app|__next|__nuxt)["'][^>]*>\s*<\/div>/i.test(bodyRaw);
+  // An unload handler keeps the page out of the back/forward cache.
+  // https://web.dev/articles/bfcache
+  const inlineJs = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map(m => m[1]).join("\n");
+  const unload = /addEventListener\(\s*["'`]unload["'`]|\bonunload\s*=/.test(inlineJs)
+    ? "an unload listener in an inline script"
+    : /<[a-z][^>]*\sonunload\s*=/i.test(html)
+      ? "an onunload attribute"
+      : null;
+  // Links with no accessible name: no text (an SVG's <title> counts), aria-label, aria-labelledby, title, or alt or
+  // label inside.
+  const emptyLinks = [
+    ...bodyRaw
+      .replace(/<(script|style|template|noscript)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi, " ")
+      .matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi),
+  ]
+    .map(m => [attrs("<a " + m[1] + ">"), m[2]])
+    .filter(
+      ([a, inner]) =>
+        "href" in a &&
+        ![a["aria-label"], a["aria-labelledby"], a.title].some(v => v?.trim()) &&
+        !textOf(inner) &&
+        !/\s(alt|aria-label|aria-labelledby|title)\s*=\s*["']?\s*[^\s"'>]/i.test(inner),
+    )
+    .map(([a]) => a.href);
+  // The header's charset wins over the meta tag's; names are compared as browsers read them ("latin1" is windows-1252).
+  const label = s =>
+      (s || "")
+        .trim()
+        .replace(/^["']|["']$/g, "")
+        .toLowerCase() || null,
+    encoding = s => {
+      try {
+        return new TextDecoder(s).encoding;
+      } catch {
+        return s;
+      }
+    };
+  const headerCs = label((headers.get("content-type") || "").match(/charset=([^;\s]+)/i)?.[1]);
+  const metaCs = label(
+    metas
+      .map(
+        m =>
+          m.charset ||
+          (/^content-type$/i.test(m["http-equiv"] || "") && (m.content || "").match(/charset=([^;\s]+)/i)?.[1]),
+      )
+      .find(Boolean),
+  );
+  // Obsolete tags are looked for in the whole document, since a frameset takes the body's place.
+  const obsolete = [
+    ...new Set(
+      [
+        ...html
+          .replace(/<(script|style|template)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi, " ")
+          .matchAll(/<(frameset|frame|marquee|blink|font|center)(?=[\s>\/])/gi),
+      ].map(m => m[1].toLowerCase()),
+    ),
+  ];
   return {
     title: titleM ? textOf(titleM[1]) : null,
     description: meta("description") ?? null,
@@ -1140,6 +1267,23 @@ function analyze(url, html, headers) {
     mixed: url.startsWith("https:") && /\ssrc\s*=\s*["']http:\/\//i.test(bodyRaw),
     scripts: (html.match(/<script\b[^>]*\bsrc=/gi) || []).length,
     bytes: Buffer.byteLength(html),
+    noStore: /\bno-store\b/i.test(headers.get("cache-control") || ""),
+    unload,
+    emptyLinks,
+    obsolete,
+    charsetMismatch:
+      headerCs && metaCs && encoding(headerCs) !== encoding(metaCs) ? `header: ${headerCs} · meta: ${metaCs}` : null,
+    preloads:
+      /<script\b[^>]*\btype\s*=\s*["']?speculationrules/i.test(html) ||
+      headers.has("speculation-rules") ||
+      CLIENT_ROUTER.test(html),
+    // Body elements as Lighthouse counts them; what a script, style, noscript or template holds isn't in the DOM tree.
+    elements: (
+      bodyRaw
+        .replace(/<!--[\s\S]*?-->/g, "")
+        .replace(/<(script|style|noscript|template)\b[^>]*>[\s\S]*?<\/\1>/gi, "<$1>")
+        .match(/<[a-z][\w-]*/gi) || []
+    ).length,
   };
 }
 
@@ -1659,6 +1803,38 @@ const sitewide = (() => {
     canonical: hits(p => !p.canonicals.length),
   };
 })();
+// The site's own hosts, with or without www: on an HTTPS site an http:// link to them costs a redirect.
+const bareHost = h => h.replace(/^www\./, "");
+const ownHosts = new Set(
+  EXPECT_ORIGIN.startsWith("https:")
+    ? [EXPECT_ORIGIN, START_ORIGIN].filter(o => o.startsWith("https:")).map(o => bareHost(new URL(o).hostname))
+    : [],
+);
+// Title words worth looking for: 4+ letters, not a stopword, not a brand word (one in most titles). Words in scripts
+// written without spaces (Chinese, Japanese, Thai) can't be matched word by word, so they're left out.
+const STOP = new Set(
+  "about after also been before best does each free from have here home into just like many more most much near official online only over page site some such than that them then there these they this those very website welcome were what when where which while will with your".split(
+    " ",
+  ),
+);
+const titleWords = t => [
+  ...new Set(
+    norm(t)
+      .split(" ")
+      .filter(
+        w =>
+          /^\p{L}{4,}$/u.test(w) &&
+          !/[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Thai}\p{sc=Lao}\p{sc=Khmer}\p{sc=Myanmar}]/u.test(w) &&
+          !STOP.has(w),
+      ),
+  ),
+];
+const brandWords = (() => {
+  const sets = htmlPages.filter(p => p.title && indexable(p)).map(p => titleWords(p.title)),
+    n = new Map();
+  for (const s of sets) for (const w of s) n.set(w, (n.get(w) || 0) + 1);
+  return new Set([...[...n].filter(([, c]) => c > sets.length / 2).map(([w]) => w), ...titleWords(BRAND)]);
+})();
 for (const p of htmlPages) {
   const u = p.finalUrl;
   if (!IGNORE_NOINDEX) {
@@ -1711,6 +1887,15 @@ for (const p of htmlPages) {
     (titleMap.get(p.title) || titleMap.set(p.title, []).get(p.title)).push(u);
     if (BRAND && p.title.split(BRAND).length > 2) add("title-brand-twice", u, p.title);
   }
+  // Errs towards not flagging: it needs two title words and a page with real text, and a word counts when its stem is
+  // on the page ("pricing" finds "prices").
+  const tw = p.title ? titleWords(p.title).filter(w => !brandWords.has(w)) : [];
+  if (tw.length >= 2 && p.words >= 50) {
+    evalRules("META-09");
+    const onPage = " " + p.normText;
+    if (!tw.some(w => onPage.includes(" " + w.slice(0, Math.max(4, w.length - 3)))))
+      add("title-mismatch", u, `“${p.title}”: ${tw.join(", ")} aren't on the page`);
+  }
   if (!p.description) add("desc-missing", u);
   else {
     if (p.description.length < 120 || p.description.length > 160)
@@ -1744,12 +1929,18 @@ for (const p of htmlPages) {
   if (p.imgs[0] && (p.imgs[0].loading || "").toLowerCase() === "lazy") add("lazy-lcp", u, p.imgs[0].src || "");
   if (p.bytes > 2 * 1024 * 1024) add("html-over-2mb", u, `${Math.round(p.bytes / 1024)} KB`);
   else if (p.bytes > 500 * 1024) add("html-size", u, `${Math.round(p.bytes / 1024)} KB`);
+  if (p.elements > 1400) add("dom-size", u, `${p.elements.toLocaleString("en")} elements`);
   if (p.nosnippet) add("nosnippet", u);
   const basics = [!p.doctype && "no doctype", !p.charset && "no charset", !p.viewport && "no mobile viewport"].filter(
     Boolean,
   );
   if (basics.length) add("doc-basics", u, basics.join(", "));
+  if (p.charsetMismatch) add("charset-mismatch", u, p.charsetMismatch);
   if (p.refreshTo) add("meta-refresh", u, `→ ${p.refreshTo}`);
+  evalRules("PERF-10", "REND-10"); // only once a page was checked
+  if (p.obsolete.length) add("obsolete-tags", u, p.obsolete.map(t => `<${t}>`).join(", "));
+  if (p.noStore) add("bfcache-no-store", u, `Cache-Control: ${p.headers.get("cache-control")}`);
+  if (p.unload) add("bfcache-unload", u, p.unload);
   if (p.ogUrl && p.canonicals.length) {
     const og = urlOr(p.ogUrl, u)?.href,
       c = urlOr(p.canonicals[0], u)?.href;
@@ -1790,6 +1981,11 @@ for (const p of htmlPages) {
     /^(click here|here|read more|learn more|more|this|link|details)$/i.test(l.text.trim()),
   ).length;
   if (generic) add("generic-anchor", u, `${generic} link(s)`);
+  if (p.emptyLinks.length) add("link-no-text", u, `${p.emptyLinks.length} link(s), e.g. ${p.emptyLinks[0]}`);
+  const insecure = p.anchors
+    .map(l => l.href)
+    .filter(h => /^http:\/\//i.test(h || "") && ownHosts.has(bareHost(urlOr(h)?.hostname || "")));
+  if (insecure.length) add("link-http", u, `${insecure.length} link(s), e.g. ${insecure[0]}`);
   if (smSet.size && !smSet.has(p.url) && !smSet.has(u)) add("missing-from-sitemap", u);
   for (const b of p.crumbs.slice(0, -1)) {
     const t = pages.get(clean(toCrawl(b)));
@@ -1924,6 +2120,12 @@ if (home && home.html) {
   if (!home.lang) add("lang-missing", home.finalUrl);
   if (!home.types.some(t => ORG_RE.test(t))) add("org-missing", home.finalUrl);
   if (!home.types.includes("WebSite")) add("website-missing", home.finalUrl);
+}
+// Next-page preloading: one site-wide suggestion, only when there's a next page to load.
+if (htmlPages.length > 1) {
+  evalRules("PERF-09");
+  if (!htmlPages.some(p => p.preloads))
+    add("no-speculation-rules", (home?.html ? home : htmlPages[0]).finalUrl, `none of ${htmlPages.length} pages`);
 }
 // Links: broken, through redirects, inbound counts and depth.
 const inbound = new Map(),

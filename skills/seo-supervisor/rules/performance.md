@@ -32,10 +32,23 @@
 - **Fix:** debounce, move CPU work to a Web Worker, and show progress.
 
 ### PERF-06 · Documents and third parties stay light · low
-- **Check:** crawler `html-size` (over 500 KB). Code: third-party scripts and iframes (maps, chat, video).
+- **Check:** crawler `html-size` (over 500 KB) and `dom-size` (over 1,400 elements in the body of the server HTML; scripts may add more). Code: third-party scripts and iframes (maps, chat, video).
+- **DOM size:** 1,400 body elements is the level Lighthouse's "Avoid an excessive DOM size" audit flagged until Lighthouse 13 (October 2025). Its successor, the "Optimize DOM size" insight, flags slow style and layout work (over 40 ms) instead of a count, which is what large pages cause.
 - **Pass:** third-party domains kept to a minimum. Iframes load on interaction or below the fold and carry a descriptive `title`. Images are no more than about 2× their display size and use modern formats.
 
 ### PERF-08 · Images are a sensible weight and in a modern format · low
 - **Check:** the crawler sends a HEAD request for up to 50 same-origin images on indexable pages, with a browser's `Accept` header.
 - **Pass:** no image over 200 KB, and no JPEG or PNG over 100 KB where WebP or AVIF would serve. These are this skill's working thresholds, not Google's; Lighthouse's image audits measure the same thing as savings.
 - **Fix:** resize to the displayed size, compress, and serve WebP or AVIF through the framework's image component or the CDN.
+
+### PERF-09 · The next page starts loading before the click (speculation rules) · low
+- **Check:** crawler `no-speculation-rules`: one suggestion when a site with more than one page has no `<script type="speculationrules">` on any page and no `Speculation-Rules` response header. Sites whose router already loads the next page itself (Next.js, Nuxt, Gatsby, SvelteKit, Remix, Astro prefetch) aren't flagged: their links don't load a new document.
+- **Pass:** the shared layout prefetches same-site links once a visitor is about to open one (`"eagerness": "moderate"`: on hover or press), and leaves out links that change something (log out, add to cart). Prerendering is faster still but runs the next page's scripts and analytics early, so keep it to a few likely pages.
+- **Fix:** `<script type="speculationrules">{"prefetch":[{"where":{"and":[{"href_matches":"/*"},{"not":{"href_matches":"/logout"}}]},"eagerness":"moderate"}]}</script>` in the layout, or a `Speculation-Rules` header pointing at a JSON file of the same rules. WordPress 6.8 and later adds rules itself, and some CDNs send the header as a setting. Chrome and Edge use the rules; other browsers ignore them.
+
+### PERF-10 · Back and Forward are instant (back/forward cache) · low (medium when Chrome's own test fails)
+> Checked **19 Nov 2026** against web.dev/articles/bfcache and developer.chrome.com/docs/web-platform/bfcache-ccns. Chrome now keeps pages sent with `Cache-Control: no-store` (rolled out from Chrome 116, planned for all users by April 2025), but drops them when a cookie changes, after 3 minutes, or when they use WebSocket, WebTransport or WebRTC; other browsers may still refuse them. Firefox refuses pages with an `unload` handler; Chrome has deprecated `unload`, but headless Chrome 157 still refused such a page.
+- **Check:** on every indexable page the crawler flags `bfcache-no-store` (an HTML page sent with `Cache-Control: no-store`) and `bfcache-unload` (an `unload` listener in an inline script, `onunload =`, or an `onunload` attribute), both low. They're hints: external scripts aren't read, and browsers differ.
+- **Real test:** with outside checks on and Chrome or Edge installed, each page in the render sample gets Chrome's own test, as DevTools runs it: load the page, go to the next sample page, press Back. `bfcache-blocked` (medium) lists Chrome's reasons when the page had to load again; reasons Chrome marks circumstantial (memory, the test itself) are left out. When it ran, a failed real test is the stronger evidence and the hints are leads.
+- **Pass:** ordinary pages are sent with `no-cache` or `max-age=0`, keeping `no-store` for pages with private data. No `unload` handlers in the site's code or its third-party scripts: `pagehide`, or `visibilitychange` for analytics and saving state. Open connections (WebSocket, WebRTC) close on `pagehide` and reopen on `pageshow`.
+- **Fix:** Chrome DevTools > Application > Back/forward cache > Test names each blocker. In Chromium browsers `Permissions-Policy: unload=()` also stops third-party scripts from adding `unload` handlers.

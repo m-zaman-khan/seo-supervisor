@@ -47,4 +47,10 @@ Google renders JavaScript, but later and not always. Most AI crawlers (GPTBot, C
 - **Check:** the crawler: `<!doctype html>` first, a charset (meta tag or Content-Type header) and `<meta name="viewport" content="width=device-width, …">`.
 - **Pass:** every page has all three, from the shared layout.
 - **Fix:** add them to the root layout. Without a doctype browsers use quirks mode; without a viewport phones show a zoomed-out desktop page, and Google indexes the mobile version.
+- **Charset mismatch:** `charset-mismatch` (medium) flags a page whose Content-Type header and meta charset name different encodings. Names are compared as browsers read them, so `latin1`, `iso-8859-1` and `windows-1252` agree. The header wins, so text saved in the meta tag's encoding comes out garbled; serve and declare UTF-8 in both.
 - **Crawler (outside checks):** on the phone load, `mobile-overflow` flags a page wider than the screen (sideways scrolling; overflow clipped with `overflow-x: hidden` or `clip` on html or body isn't flagged) and `mobile-small-text` flags main text (the size most `p`, `li` and `td` text uses) under 12 px. Pages without a mobile viewport are left to `doc-basics`.
+
+### REND-10 · No obsolete HTML tags · low
+- **Check:** crawler `obsolete-tags`: `<frameset>`, `<frame>`, `<marquee>`, `<blink>`, `<font>` or `<center>` anywhere in the server HTML. `<iframe>` is fine, and so are custom elements such as `<font-awesome-icon>`.
+- **Pass:** content lives in ordinary pages, not frames, and styling lives in CSS.
+- **Fix:** replace a frameset with real pages, each with its own URL and links (search engines index each frame's document on its own, without the frame around it). Move what `<font>`, `<center>`, `<marquee>` and `<blink>` do into CSS. Old templates and text pasted from word processors are the usual source.

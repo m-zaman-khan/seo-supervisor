@@ -41,8 +41,8 @@ Inside each group, items chain into a loop. Across content types, each type poin
 - **Fix:** filter at render time, and add a build check that fails on links to unknown or unpublished slugs. Unreleased product or feature pages stay unlinked.
 
 ### LINK-05 · Anchor text says what the target is · low
-- **Check:** crawler `generic-anchor`. Content: anchor variety.
-- **Pass:** descriptive anchors ("check your DMARC record"). The same exact keyword isn't repeated on every link to a page; vary it naturally.
+- **Check:** crawler `generic-anchor`, and `link-no-text` (medium): an `<a href>` with no visible text, no `aria-label`, `aria-labelledby` or `title`, and no image alt, SVG `<title>` or label inside. Content: anchor variety.
+- **Pass:** descriptive anchors ("check your DMARC record"). The same exact keyword isn't repeated on every link to a page; vary it naturally. Icon-only links (social icons, logo, cart) carry an `aria-label`.
 
 ### LINK-06 · Link blocks stay focused · low
 - **Check:** crawler `too-many-links` (more than 150 per page).
