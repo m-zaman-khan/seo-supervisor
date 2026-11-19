@@ -97,7 +97,7 @@ npx seo-supervisor --uninstall                                  # remove it agai
 
 `npx seo-supervisor --help` lists every agent key. Using an agent that isn't on the list? `npx skills add m-zaman-khan/seo-supervisor` covers 40+ more.
 
-Needs Node 22 or newer. There's nothing else to install, and every key or account is optional: see [Optional: outside checks and Search Console](#optional-outside-checks-and-search-console).
+Needs Node 22 or newer. There's nothing else to install: zero dependencies, plus one optional add-on. The installer offers **Lighthouse** (about 170 MB, kept in `~/.seo-supervisor/tools`, never in your project) for real Performance, SEO, Accessibility and Best practices scores; add it later with `npx seo-supervisor --with-lighthouse`. Every key or account is optional too: see [Optional: outside checks and Search Console](#optional-outside-checks-and-search-console).
 
 ## Commands
 
@@ -152,6 +152,7 @@ One HTML file that works offline. It opens in dark mode and has a light-mode swi
 | Check | What leaves your machine |
 | --- | --- |
 | Real-user speed (Core Web Vitals) | Up to 10 public page URLs, sent to Google PageSpeed Insights (needs `PSI_API_KEY`) |
+| Lighthouse scores (only if you added Lighthouse) | Nothing is sent by the skill, but the sample pages load in your Chrome and run their own scripts |
 | What your JavaScript changes, and how pages look on a phone | Nothing is sent by the skill, but up to 10 pages run in a headless Chrome or Edge, so their own scripts (analytics included) run. Screenshots are saved locally |
 | Search intent | Your pages' target phrases, sent to the agent's web search provider |
 | Off-site brand presence | Your brand name, sent to the agent's web search provider |

@@ -69,10 +69,11 @@ node <skill-dir>/scripts/seo-crawl.mjs --url http://localhost:3000 \
 **Outside checks: ask once per project.** Four checks reach outside the machine or run the site's own scripts:
 - real-user speed from Google PageSpeed Insights (up to 10 public URLs go to Google)
 - a headless Chrome or Edge render of up to 10 pages (the site's scripts run, analytics included), loaded at desktop and phone size with screenshots in `seo-audit/screenshots/`: content missing on phones (REND-07), sideways scrolling and tiny text (REND-09), full-screen popups (PERF-07), and indicative lab speed
+- Lighthouse, when the optional add-on is installed and you pass `--lighthouse` too: real Lighthouse runs on up to 5 sample pages (the site's scripts run). Scores, lab metrics and the costliest failed audits go into the crawl as `lighthouse` and one Overview line; they raise no findings
 - search-intent lookups with your web search tool (target phrases go to your search provider)
 - off-site brand lookups with your web search tool (the brand name goes to your search provider; `rules/ai-search.md` AI-06)
 
-Ask the owner once, naming all four. Store the answer in `seo-audit/settings.json` as `{ "outsideChecks": true }` or `false`, and once the profile is in `docs/`, in its "Outside checks" line too. Pass `--outside` to the crawler only when it's on. Words in the command such as "with outside checks" turn it on for that run. When it's off, these checks are listed under Limits. Real-user speed needs a free PageSpeed Insights API key in `PSI_API_KEY`; without one Google refuses almost every request, and PERF-01 goes under Limits with that reason. Tell the owner once if it's missing. With `CRUX_API_KEY` (or a PSI key whose project has the Chrome UX Report API enabled), the speed line also shows the site's 25-week trend.
+Ask the owner once, naming each of them. Store the answer in `seo-audit/settings.json` as `{ "outsideChecks": true }` or `false`, and once the profile is in `docs/`, in its "Outside checks" line too. Pass `--outside` to the crawler only when it's on. Words in the command such as "with outside checks" turn it on for that run. When it's off, these checks are listed under Limits. Real-user speed needs a free PageSpeed Insights API key in `PSI_API_KEY`; without one Google refuses almost every request, and PERF-01 goes under Limits with that reason. Tell the owner once if it's missing. With `CRUX_API_KEY` (or a PSI key whose project has the Chrome UX Report API enabled), the speed line also shows the site's 25-week trend. If the crawl notes that Lighthouse isn't installed, offer it once: `npx seo-supervisor --with-lighthouse` puts it in `~/.seo-supervisor/tools` (about 170 MB, never in the project; Node 22.19 or later). A no is fine: everything else works without it.
 
 **Search Console data.** If `seo-audit/` holds Search Console's Performance export (`Pages.csv`, optionally `Queries.csv` and `Filters.csv`, and per-page exports unzipped into `seo-audit/page-queries/<name>/`), import it. It reads local files only:
 ```bash
@@ -105,7 +106,7 @@ node <skill-dir>/scripts/content-scan.mjs --in seo-audit/content.json --items pa
 
 ### 4. Write the report
 
-Write `seo-audit/seo-audit.json` exactly as `report-format.md` describes. Merge the crawler and content-scan findings into it, with one finding per root cause. Copy the crawl's `speed` and `labSpeed`, the `diff` and the Search Console `traffic` when you have them. Then render it:
+Write `seo-audit/seo-audit.json` exactly as `report-format.md` describes. Merge the crawler and content-scan findings into it, with one finding per root cause. Copy the crawl's `speed`, `labSpeed` and `lighthouse`, the `diff` and the Search Console `traffic` when you have them. Then render it:
 
 ```bash
 node <skill-dir>/scripts/render-report.mjs seo-audit/seo-audit.json

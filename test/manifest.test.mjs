@@ -176,7 +176,7 @@ test("every outside action is named before the owner says yes, and launch mode e
   const read = p => readFileSync(join(ROOT, p), "utf8");
   const skill = read("skills/seo-supervisor/SKILL.md"),
     readme = read("README.md");
-  assert.match(skill, /naming all four/);
+  assert.match(skill, /naming each of them/);
   assert.match(skill, /off-site brand lookups/);
   assert.match(skill, /Launch mode edits nothing/);
   assert.match(readme, /Saying yes allows four things/);
