@@ -20,7 +20,7 @@
   <img src="docs/images/report-overview-dark.png" alt="SEO Supervisor report: a 49/100 health score held down by two blockers, the 90 the site reaches once they are fixed, and the areas losing the most points" width="900">
 </p>
 
-SEO Supervisor is a skill for Claude Code and other coding agents. It crawls your site the way Google does and checks it against 163 current SEO rules. Then it gives you one clear report: a 0–100 score, every problem with its evidence, and what to do first.
+SEO Supervisor is a skill for Claude Code and other coding agents. It crawls your site the way Google does and checks it against 170 current SEO rules. Then it gives you one clear report: a 0–100 score, every problem with its evidence, and what to do first.
 
 Then it fixes what can safely be fixed in code, re-checks each fix, and tells you plainly what only you can fix.
 
@@ -54,6 +54,13 @@ npx seo-supervisor        # then, in Claude Code: /seo-audit
 - **A fairer score:** a site whose pages all share a default title, or have no H1 or canonical, now scores as Poor instead of Good.
 - **Speed you can act on:** which part of the main image's load is slow, with the fix for that part, and "Since last audit" says when a page got slower. Plus checks for next-page preloading, instant Back and Forward, and oversized pages.
 - **More connections and checks:** Matomo and PostHog visits, a check that your known backlinks still exist, Google ranking updates next to your numbers, Lighthouse on every page if you want it, and "Since last audit" now notices schema that lost fields.
+- **Search Console in more depth:** image, video, news and Discover clicks, clicks by device and country, the change from the period before with the pages that dropped most, and the rich-result errors Google reports. It also warns when a period overlaps a data problem Google has documented.
+- **Fewer blind spots:**
+  - Gzipped and plain-text sitemaps are read, and a broken sitemap is reported with its line.
+  - robots `none` counts as noindex.
+  - Tests the www/bare-domain redirect, and compares what Googlebot gets with what visitors get.
+  - Checks the favicon and your phone number and address on the page.
+  - Business Profile, Bing Places and Apple Business guidance for local businesses.
 
 ## Install
 
@@ -137,6 +144,7 @@ One HTML file that works offline. It opens in dark mode and has a light-mode swi
 - **"Fix the blockers and the score rises to 90."** A blocker caps the score, and the report shows what fixing it unlocks.
 - **"Needs you."** Anything only the owner can do (content, CMS edits, business decisions) is labelled, so it's clear what the agent will and won't change.
 - **Tabs for Findings, Decisions, Changes, Passed and Limits,** plus **Since last audit** from the second audit on. Every finding says what's wrong, why it matters, how to fix it, and gives the evidence: URLs, files and line numbers.
+- **How long each fix takes:** findings can say roughly whether a fix is quick, an hour or two, or half a day.
 - **Traffic and speed when you have them:** Search Console clicks on the findings and plan rows they concern, and one line of real-user speed on the Overview.
 
 <p align="center">
@@ -179,18 +187,18 @@ Logins and keys stay in `~/.seo-supervisor/` on your computer, never in your pro
 
 ## What it checks
 
-**119 core rules**, up to date as of November 2026:
+**121 core rules**, up to date as of November 2026:
 
 | Area | Rules | Examples |
 | --- | ---: | --- |
 | Crawling & indexing | 12 | robots.txt, noindex, soft 404s, status codes, redirect chains, AI crawlers |
 | URLs & canonicals | 9 | one URL per page, trailing slashes, canonicals on the right host, old URLs with 301s |
 | Rendering | 10 | content in the server HTML, not only in JavaScript; links crawlers can follow; doctype, charset and mobile viewport; obsolete tags |
-| Metadata | 9 | titles (and whether they match the page), descriptions, Open Graph, robots meta |
+| Metadata | 10 | titles (and whether they match the page), descriptions, Open Graph, robots meta, the favicon in results |
 | Headings & content | 12 | one H1, heading order, thin or templated pages, placeholder text, banned claims |
 | Structured data | 8 | valid JSON-LD that matches the page; which rich results still exist |
 | Sitemaps & robots | 8 | sitemap host and status, lastmod, llms.txt (and why Google ignores it) |
-| Internal linking | 9 | orphans, click depth, hubs and circular linking, anchor text |
+| Internal linking | 10 | orphans, click depth, hubs and circular linking, anchor text, earning links from other sites |
 | Performance | 10 | Core Web Vitals (LCP, INP, CLS) and what slows LCP, the first image, image weight and format, page size, next-page preloading, instant Back and Forward |
 | Trust & security | 7 | security headers, security.txt, who's behind the site, the HTTPS certificate |
 | AI search | 6 | being cited in ChatGPT, Perplexity and Google's AI answers, and what doesn't work |
@@ -198,7 +206,7 @@ Logins and keys stay in `~/.seo-supervisor/` on your computer, never in your pro
 | Launch & monitoring | 8 | the indexing switch, Search Console, post-deploy checks |
 | Search intent | 5 | the right kind of page for each phrase, one page per query, low click rates, pages almost on page one |
 
-**Plus 44 rules for your type of site:**
+**Plus 49 rules for your type of site:**
 - interactive tools
 - local businesses
 - blogs and content sites

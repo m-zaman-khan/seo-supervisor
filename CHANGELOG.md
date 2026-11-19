@@ -35,6 +35,51 @@ Deeper checks, optional real-world data and search intent. Everything still work
 - **Matomo and PostHog (optional).** `connect-keys.mjs` adds visits from search engines by landing page from either, in each page's traffic line and as Overview totals. Offered only when the site uses one; the token or key is typed at a hidden prompt and never goes in a URL (Matomo's in the request body, PostHog's in a header), and redirects aren't followed.
 - **Known backlinks.** `backlinks.mjs` revisits the pages that link to the site (from Bing, a Search Console links export or a list) and reports which still link, which are gone (LAUNCH-05) and which couldn't be checked. Dry run until the owner says yes.
 - **New guidance:** how to build fair "X vs Y" and "alternatives to X" pages (SVC-08), and no links to retired Google Business Profile features: chat, `business.site` websites and Q&A (LOCAL-10).
+- **More from Search Console.** `google.mjs fetch` adds:
+  - image, video, news and Discover results
+  - clicks by device and country
+  - the change from the period before, with the pages that dropped most
+  - rich-result errors from URL Inspection (SCHEMA-08)
+  - `--inspect`/`--inspect-urls` to choose the pages to inspect
+  - a note when the period overlaps a data anomaly on Google's own page
+- **Sitemaps.**
+  - Gzipped sitemaps and indexes are read (up to 50 MB uncompressed), and so are text sitemaps.
+  - New checks: sitemaps that aren't valid XML (`sitemap-invalid`, with line and column), files over 50,000 URLs or 50 MB (`sitemap-too-big`), and News sitemap rules.
+  - A robots.txt answering 5xx, 429 or nothing is `robots-server-error` (CRAWL-01, high), not "missing".
+- **Live checks.**
+  - The other host (www or bare domain) must redirect to the preferred one in one permanent hop with the path kept (URL-03).
+  - A failed HTTPS connection is a finding (TRUST-07).
+  - Temporary redirects are flagged where a permanent one belongs.
+  - Chrome's own error pages no longer raise false render findings.
+- **Crawler fixes:**
+  - robots `none` counts as noindex and nofollow.
+  - X-Robots-Tag rules for other bots no longer count for Google.
+  - `Vary: Accept` is matched exactly.
+  - Chinese, Japanese and Thai pages are counted in words.
+  - A missing llms.txt is a note, not a finding.
+  - `lang` and `<base href>` are read on every page.
+  - Every offer of a product is checked for shipping and returns.
+  - Cloudflare's `use=` Content-Signal key is accepted.
+  - Book Actions is no longer listed as retired.
+- **New crawler checks:**
+  - noindex with a canonical to another page (CRAWL-02)
+  - page-level nofollow (META-06)
+  - Microdata and RDFa recognised, with JSON-LD suggested (SCHEMA-01)
+  - favicon for search results (META-10)
+  - render-blocking scripts in the head (PERF-03)
+  - a local business's phone and address shown on the page (LOCAL-05)
+  - what Googlebot gets compared with what a visitor gets (CRAWL-09)
+  - product images under Google's 50,000-pixel minimum (SHOP-05)
+- **Local, shop and links guidance:**
+  - Business Profile category and completeness (LOCAL-11, LOCAL-12)
+  - Bing Places and Apple Business (LOCAL-13)
+  - trade directories (LOCAL-14)
+  - steady reviews (LOCAL-09)
+  - Merchant Center free listings (SHOP-08)
+  - earning links honestly (LINK-10)
+  - what to check when security warnings appear (LAUNCH-05)
+- **No word-count targets:** thin-page is a page to look at, not a word goal, and posts and city intros carry no word counts. LAUNCH-08 no longer lists update dates from memory.
+- **Effort on each fix.** Findings can carry `effort` (`quick`, `hours`, `half-day`), shown on each card.
 - Setup and fix offer each connection once; a skip is listed under Limits and never changes the score. Keys are typed at a hidden prompt in the owner's own terminal, never in chat; Google sign-in prints its link for agents (`--print-url`, `~/.seo-supervisor/pending-signin.txt`). Search Console findings flag only pages Google really excluded; pages Google doesn't know yet are notes.
 - **Fewer false findings:** the log scan needs 5 server errors and 1% before a finding, and repeated 404s become findings only for pages the site links to; sitemap priority/changefreq tags are a note; IndexNow refuses a key file that redirects to another host.
 - **Off-site presence for AI answers:** with outside checks on, the agent looks the brand up on Wikipedia, Reddit, YouTube, LinkedIn and directories, and reports gaps as owner decisions.
