@@ -431,6 +431,11 @@ test("a JSON-LD block with template tags is a note to check the built output, ne
     [0, Array(5).fill("note templated; check the built output")],
   );
   assert.match(r.stdout, /templated; check the built output/);
+  assert.deepEqual(
+    checkJsonLd('{"@context":"https://schema.org","@type":"BlogPosting","url":"{{ site.url }}"}').map(i => i.severity),
+    ["note"],
+    "the exported checker too",
+  );
   const hook = node([CHECK, "--hook"]);
   hook.child.stdin.end(JSON.stringify({ tool_name: "Write", tool_input: { file_path: hugo } }));
   assert.deepEqual(

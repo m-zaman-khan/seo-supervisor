@@ -185,6 +185,20 @@ const NUMERIC = new Set(["Number", "Integer", "Float"]);
 
 /** Checks one JSON-LD block. Returns issues; `pos` is the character offset in `text` they point at. */
 export function checkJsonLd(text) {
+  // Hugo, Jekyll, Liquid, Eleventy, Django/Jinja ({{ }}, {% %}, {# #}) and ERB/EJS (<% %>): the JSON-LD only exists
+  // once built.
+  if (/\{\{|\{%|\{#|<%/.test(text))
+    return [
+      {
+        severity: "note",
+        check: "templated",
+        rule: "SCHEMA-08",
+        path: "$",
+        type: "",
+        message: "templated; check the built output",
+        pos: text.length - text.trimStart().length,
+      },
+    ];
   let data;
   try {
     data = JSON.parse(text.replace(/^﻿/, ""));
@@ -356,42 +370,24 @@ const blocksOf = html =>
     .filter(m => /\btype\s*=\s*["']?application\/ld\+json/i.test(m[1]))
     .map(m => ({ body: m[2], start: m.index + m[1].length }));
 
-// Hugo, Jekyll, Liquid, Eleventy, Django/Jinja ({{ }}, {% %}, {# #}) and ERB/EJS (<% %>): the JSON-LD only exists
-// once built.
-const TEMPLATED = /\{\{|\{%|\{#|<%/;
-
 /** Checks one file's text: JSON-LD (json = true) or HTML. Returns null when a .json file isn't JSON-LD. */
 function checkText(name, text, json) {
   if (json && !/\.jsonld$/i.test(name) && !/"@(context|type|graph)"/.test(text)) return null; // package.json, manifest.json…
   const blocks = json ? [{ body: text, start: 0 }] : blocksOf(text);
   const issues = blocks.flatMap((b, n) =>
-    TEMPLATED.test(b.body)
-      ? [
-          {
-            file: name,
-            line: lineAt(text, b.start + b.body.length - b.body.trimStart().length),
-            block: n + 1,
-            severity: "note",
-            check: "templated",
-            rule: "SCHEMA-08",
-            path: "$",
-            type: "",
-            message: "templated; check the built output",
-          },
-        ]
-      : checkJsonLd(b.body).map(({ pos, ...i }) => {
-          const at = b.start + pos,
-            line = lineAt(text, at);
-          return {
-            file: name,
-            line,
-            block: n + 1,
-            ...i,
-            ...(i.check === "json-invalid" && {
-              message: `${i.message} (line ${line}, column ${at - text.lastIndexOf("\n", at - 1)})`,
-            }),
-          };
+    checkJsonLd(b.body).map(({ pos, ...i }) => {
+      const at = b.start + pos,
+        line = lineAt(text, at);
+      return {
+        file: name,
+        line,
+        block: n + 1,
+        ...i,
+        ...(i.check === "json-invalid" && {
+          message: `${i.message} (line ${line}, column ${at - text.lastIndexOf("\n", at - 1)})`,
         }),
+      };
+    }),
   );
   return { items: blocks.length, issues };
 }
