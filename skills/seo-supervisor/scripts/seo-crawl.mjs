@@ -640,13 +640,6 @@ const CHECKS = {
     "Search engines read lastmod only in W3C Datetime format (`2026-11-17` or `2026-11-17T10:30:00+00:00`) and ignore anything else.",
     "Write lastmod as `YYYY-MM-DD` or a full datetime with a timezone (for example with `toISOString()`).",
   ],
-  "sitemap-priority-changefreq": [
-    "MAP-04",
-    "low",
-    n => `${n} sitemap(s) use priority or changefreq tags`,
-    "Google and Bing ignore `<priority>` and `<changefreq>`. They add weight to the file and suggest a control that doesn't exist.",
-    "Leave them out when the sitemap code is next touched. An accurate lastmod is the signal that counts.",
-  ],
   "robots-missing": [
     "MAP-05",
     "medium",
@@ -851,7 +844,7 @@ async function follow(url) {
   return { status: 0, error: "too many redirects", chain, finalUrl: cur, headers: new Headers(), ct: "", body: "" };
 }
 // The start of an own-site file by Range request, read no further if the range is ignored. A redirect off the site
-// returns null, so no third party is contacted.
+// returns null, so no third party is contacted, as does one that maps back onto the same URL, which would loop.
 async function firstBytes(url, max = 65536) {
   try {
     for (let hop = 0; hop < 5; hop++) {
@@ -863,8 +856,9 @@ async function firstBytes(url, max = 65536) {
       const loc = r.headers.get("location");
       if (r.status >= 300 && r.status < 400 && loc) {
         await r.body?.cancel();
-        url = clean(toCrawl(new URL(loc, url).href));
-        if (!url || new URL(url).origin !== START_ORIGIN) return null;
+        const next = clean(toCrawl(new URL(loc, url).href));
+        if (!next || next === url || new URL(next).origin !== START_ORIGIN) return null;
+        url = next;
         continue;
       }
       const chunks = [];
@@ -1443,17 +1437,27 @@ if (lm.length >= 5 && new Set(lm).size === 1)
 // Per sitemap file: lastmod after tomorrow (a day of slack for time zones) or not a W3C date, and tags Google ignores.
 const W3C_DATE =
   /^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01])(T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d+)?)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d))?)?)?$/;
+// The regex allows 2026-02-30; a real day survives the round trip through Date.
+const realDay = s => {
+  const [y, m, d] = s.slice(0, 10).split("-").map(Number);
+  return !d || new Date(Date.UTC(y, m - 1, d)).getUTCDate() === d;
+};
+const validLastmod = s => W3C_DATE.test(s) && realDay(s);
 const bySitemap = new Map();
 for (const e of sm.entries) (bySitemap.get(e.sitemap) || bySitemap.set(e.sitemap, []).get(e.sitemap)).push(e);
 for (const [file, es] of bySitemap) {
   const dated = es.filter(e => e.lastmod),
     eg = list => `${list.length} of ${es.length} entries, e.g. ${list[0].loc}: ${list[0].lastmod}`;
-  const invalid = dated.filter(e => !W3C_DATE.test(e.lastmod)),
-    future = dated.filter(e => W3C_DATE.test(e.lastmod) && Date.parse(e.lastmod) > Date.now() + 864e5);
+  const invalid = dated.filter(e => !validLastmod(e.lastmod)),
+    future = dated.filter(e => validLastmod(e.lastmod) && Date.parse(e.lastmod) > Date.now() + 864e5);
   if (future.length) add("sitemap-lastmod-future", file, eg(future));
   if (invalid.length) add("sitemap-lastmod-invalid", file, eg(invalid));
+  // Ignored, not harmful, so a note rather than a finding.
   const hinted = es.filter(e => e.hints).length;
-  if (hinted) add("sitemap-priority-changefreq", file, `${hinted} of ${es.length} entries`);
+  if (hinted)
+    notes.push(
+      `${file}: ${hinted} of ${es.length} entries use <priority> or <changefreq>. Google and Bing ignore both, so they can go when the sitemap code is next touched; an accurate lastmod is the signal that counts.`,
+    );
 }
 await runQueue();
 
@@ -1875,12 +1879,16 @@ if (weighed) evalRules("PERF-08");
 if (images.size > 50) notes.push(`Image weight was checked for the first 50 of ${images.size} images.`);
 // Share images: the first 64 KB of up to 20 on-site og:images, enough for the pixel size.
 const shareList = [...shareImages].slice(0, 20);
-let shareRead = 0;
+let shareRead = 0,
+  shareAway = 0;
 for (let i = 0; i < shareList.length; i += CONC)
   await Promise.all(
     shareList.slice(i, i + CONC).map(async ([crawlSrc, { src, page }]) => {
       const r = await firstBytes(crawlSrc);
-      if (!r) return; // a redirect off the site, which isn't fetched
+      if (!r) {
+        shareAway++;
+        return;
+      } // a redirect off the crawled site, which isn't fetched
       if (r.status !== 200 && r.status !== 206)
         return add("og-image-broken", page, `${src} → ${r.status || `no response (${r.error})`}`);
       const size = imageSize(r.bytes);
@@ -1891,6 +1899,10 @@ for (let i = 0; i < shareList.length; i += CONC)
       shareRead++;
       if (size.width < 1200) add("og-image-small", page, `${src} · ${size.width}×${size.height} px`);
     }),
+  );
+if (shareAway)
+  notes.push(
+    `${shareAway} share image(s) (og:image) redirect away from the crawled site (often to the public origin), so they couldn't be read and their size wasn't checked.`,
   );
 if (shareImages.size && !shareRead)
   notes.push("No share image (og:image) could be read, so share image sizes weren't checked.");

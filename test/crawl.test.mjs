@@ -1,7 +1,7 @@
 // The Chrome tests are in test/browser/crawl.test.mjs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { serve } from "./serve.mjs";
 import { ROOT, SCRIPTS, node, tmp } from "./helpers.mjs";
@@ -141,7 +141,6 @@ test("the crawler finds every planted problem on the fixture site", async () => 
     "product-price-mismatch": "schema price 19.99 while the page shows $24.99 (/shop/widget/)",
     "sitemap-lastmod-future": "a lastmod in 2099 (/tools/)",
     "sitemap-lastmod-invalid": "a lastmod written 17/11/2026 (/orphan/)",
-    "sitemap-priority-changefreq": "<priority> and <changefreq> in the sitemap",
     "og-image-small": "a 600 px wide share image (/og.png)",
     "og-image-broken": "an og:image that returns 404 (/about/)",
     "og-image-no-size": "og:image without og:image:width and og:image:height",
@@ -173,7 +172,12 @@ test("the crawler finds every planted problem on the fixture site", async () => 
     report.findings.some(f => f.rule === "REND-01" && f.severity === "blocker"),
     "a JS-only page is a blocker",
   );
-  for (const key of ["sitemap-lastmod-future", "sitemap-lastmod-invalid", "sitemap-priority-changefreq"]) {
+  assert.ok(
+    !byCheck.has("sitemap-priority-changefreq"),
+    "<priority> and <changefreq> are ignored by search engines, so they're a note",
+  );
+  assert.ok(report.notes.some(n => /sitemap\.xml/.test(n) && /<priority> or <changefreq>/.test(n)));
+  for (const key of ["sitemap-lastmod-future", "sitemap-lastmod-invalid"]) {
     assert.equal(byCheck.get(key).count, 1, `${key} is counted once per sitemap`);
     assert.equal(byCheck.get(key).evidence[0].url, "https://example-security.com/sitemap.xml");
   }
@@ -218,4 +222,66 @@ test("the crawler finds every planted problem on the fixture site", async () => 
   assert.equal(home.ogImage, "https://example-security.com/og-home.png");
   assert.equal(home.ogTitle, "Free Security Testing Tools | Brand");
   assert.ok(home.words > 100);
+});
+
+// A one-page site with its public origin at https://example.com; each test passes its own sitemap, or its own sitemap
+// files ({ path: { type, body } }, each listed in robots.txt), headers by path, and robots.txt (null for none).
+async function crawlOnePage({ lastmod = "2026-11-17", extra = "", before } = {}) {
+  const dir = tmp(),
+    out = join(tmp(), "crawl.json");
+  writeFileSync(
+    join(dir, "index.html"),
+    `<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width"><title>Home</title><link rel="canonical" href="https://example.com/"><meta property="og:image" content="https://example.com/og-loop.png"></head><body><h1>Home</h1></body></html>`,
+  );
+  writeFileSync(join(dir, "robots.txt"), "User-agent: *\nAllow: /\nSitemap: https://example.com/sitemap.xml\n");
+  writeFileSync(
+    join(dir, "sitemap.xml"),
+    `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://example.com/</loc><lastmod>${lastmod}</lastmod>${extra}</url></urlset>`,
+  );
+  const site = await serve(dir, { before });
+  try {
+    await node([
+      join(SCRIPTS, "seo-crawl.mjs"),
+      "--url",
+      site.url,
+      "--site-origin",
+      "https://example.com",
+      "--out",
+      out,
+    ]);
+  } finally {
+    await site.close();
+  }
+  return JSON.parse(readFileSync(out, "utf8"));
+}
+
+test("<priority> and <changefreq> are a note and leave MAP-04 passing", async () => {
+  const r = await crawlOnePage({ extra: "<changefreq>daily</changefreq><priority>0.8</priority>" });
+  assert.ok(!r.findings.some(f => f.check === "sitemap-priority-changefreq"));
+  assert.ok(
+    r.passed.some(p => p.rule === "MAP-04"),
+    "an accurate lastmod is all MAP-04 asks for",
+  );
+  assert.ok(r.notes.some(n => /<priority> or <changefreq>/.test(n)));
+});
+
+test("a lastmod that isn't a real calendar date is invalid", async () => {
+  const r = await crawlOnePage({ lastmod: "2026-02-30" });
+  assert.match(r.findings.find(f => f.check === "sitemap-lastmod-invalid")?.evidence[0].detail || "", /2026-02-30/);
+});
+
+test("an og:image the local server redirects to the public origin is unreadable (a note), not broken", async () => {
+  // The public URL maps back onto the crawl URL, so following it would loop.
+  const r = await crawlOnePage({
+    before(req, res) {
+      if (req.url !== "/og-loop.png") return false;
+      res.writeHead(301, { Location: "https://example.com/og-loop.png" }).end();
+      return true;
+    },
+  });
+  assert.ok(
+    !r.findings.some(f => f.check === "og-image-broken"),
+    JSON.stringify(r.findings.find(f => f.check === "og-image-broken")?.evidence),
+  );
+  assert.ok(r.notes.some(n => /share image/.test(n) && /redirect/.test(n)));
 });
