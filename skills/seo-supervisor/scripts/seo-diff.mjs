@@ -21,7 +21,8 @@ export function diffCrawls(oldReport, newReport) {
     after = index(newReport);
   const regressions = [],
     improvements = [],
-    changed = [];
+    changed = [],
+    compared = new Set();
   for (const [path, o] of before) {
     const n = after.get(path);
     if (!n) continue;
@@ -58,6 +59,9 @@ export function diffCrawls(oldReport, newReport) {
     if ((o.title || "") !== (n.title || "")) change(n.title ? changed : regressions, "title-changed", o.title, n.title);
     // Fields older crawls didn't record are compared only when both crawls have them.
     const both = k => k in o && k in n;
+    if (both("description")) compared.add("description");
+    if (both("ogTitle") && both("ogImage")) compared.add("og");
+    if (both("words")) compared.add("words");
     if (both("description") && (o.description || "") !== (n.description || ""))
       change(n.description ? changed : regressions, "description-changed", o.description, n.description);
     if (both("ogTitle") && both("ogImage")) {
@@ -74,6 +78,7 @@ export function diffCrawls(oldReport, newReport) {
     regressions,
     improvements,
     changed,
+    compared: [...compared], // the optional fields both crawls recorded, so the report claims only those
     // Only new pages that load: a new URL in the error list is a broken link target, not an added page.
     added: [...after]
       .filter(([p, n]) => !before.has(p) && ok(n.status))

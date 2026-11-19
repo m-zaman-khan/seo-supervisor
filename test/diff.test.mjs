@@ -140,4 +140,28 @@ test("descriptions, share tags and word counts are compared only when both crawl
   );
   const d = diffCrawls({ pages: [P({ words: 150 })] }, { pages: [P({ words: 60 })] });
   assert.deepEqual(d.regressions, [], "more than half gone, but fewer than 100 words");
+  assert.deepEqual(none.compared, []);
+  const full = P({ description: "D", ogTitle: "A", ogImage: null, words: 300 });
+  assert.deepEqual(diffCrawls({ pages: [full] }, { pages: [full] }).compared, ["description", "og", "words"]);
+});
+
+test("Nothing changed names only the fields both crawls recorded", async () => {
+  const empty = {
+    since: "2026-10-01T09:00:00.000Z",
+    regressions: [],
+    improvements: [],
+    changed: [],
+    added: [],
+    removed: [],
+  };
+  const said = async diff => (await render(diff)).html.match(/<h2>Nothing changed<\/h2><p>([^<]*)<\/p>/)[1];
+  assert.equal(
+    await said(empty),
+    "Every page has the same status, indexing, canonical, title, H1 and schema as last time.",
+    "an older crawl had no descriptions, share tags or word counts",
+  );
+  assert.equal(
+    await said({ ...empty, compared: ["description", "og", "words"] }),
+    "Every page has the same status, indexing, canonical, title, description, share tags, H1, schema and length as last time.",
+  );
 });

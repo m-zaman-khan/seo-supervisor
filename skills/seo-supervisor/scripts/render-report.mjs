@@ -328,19 +328,25 @@ function speedText() {
 // Ahrefs' licence requires its credit beside the numbers.
 function authorityText() {
   const a = Array.isArray(raw.authority) ? raw.authority : [];
-  if (!a.length) return "";
+  const scores = x =>
+    [
+      x.openPageRank != null && `Open PageRank ${Number(x.openPageRank).toFixed(1)}`,
+      x.ahrefsDR != null && `Domain Rating ${Number(x.ahrefsDR).toFixed(0)}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   const [site, ...rivals] = a,
-    f = (v, d) => (v == null ? "–" : Number(v).toFixed(d));
-  const own = [
-    site.openPageRank != null && `Open PageRank ${f(site.openPageRank, 1)}`,
-    site.ahrefsDR != null && `Domain Rating ${f(site.ahrefsDR, 0)}`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  return `Authority: ${own}${rivals.length ? ` · ${rivals.map(r => `${r.domain}: ${f(r.openPageRank, 1)} / ${f(r.ahrefsDR, 0)}`).join(" · ")}` : ""}`;
+    parts = a.length
+      ? [scores(site), ...rivals.filter(r => scores(r)).map(r => `${r.domain}: ${scores(r)}`)].filter(Boolean)
+      : [];
+  return parts.length ? `Authority: ${parts.join("; ")}` : "";
 }
+// The credit goes wherever a Domain Rating shows, whether or not the file carries the attribution.
 const ahrefsCredit = () =>
-  raw.attribution && (raw.authority || []).some(x => x.ahrefsDR != null) ? raw.attribution : null;
+  (raw.authority || []).some(x => x.ahrefsDR != null)
+    ? raw.attribution || { text: "Domain Rating by Ahrefs", url: "https://ahrefs.com/" }
+    : null;
+// The crawler's throttled phone load: the home page, else the first page.
 function labSpeedText() {
   const l = (raw.labSpeed || []).filter(x => x.lcp != null),
     x = l.find(x => new URL(x.url).pathname === "/") || l[0];
@@ -597,6 +603,22 @@ const diffFinding = c =>
         }
       }),
   );
+// "Nothing changed" claims a field only when both crawls recorded it.
+const sameFields = d => {
+  const c = new Set(d.compared || []);
+  const f = [
+    "status",
+    "indexing",
+    "canonical",
+    "title",
+    c.has("description") && "description",
+    c.has("og") && "share tags",
+    "H1",
+    "schema",
+    c.has("words") && "length",
+  ].filter(Boolean);
+  return `${f.slice(0, -1).join(", ")} and ${f.at(-1)}`;
+};
 const diffHtml = () => `<div class="limits">
   <p class="quiet">Compared with the crawl of ${esc(fmtDate(diff.since))}. Pages are matched by path.</p>
   ${diffSections(diff)
@@ -620,7 +642,7 @@ const diffHtml = () => `<div class="limits">
         `<section class="panel"><h2>${h}<span class="mono quiet"> ${l.length}</span></h2><ul class="lim">${l.map(p => `<li><span><code>${esc(p)}</code></span></li>`).join("")}</ul></section>`,
     )
     .join("")}
-  ${!diffSections(diff).length && !(diff.added || []).length && !(diff.removed || []).length ? `<section class="panel empty-state"><h2>Nothing changed</h2><p>Every page has the same status, indexing, canonical, title, description, share tags, H1, schema and length as last time.</p></section>` : ""}
+  ${!diffSections(diff).length && !(diff.added || []).length && !(diff.removed || []).length ? `<section class="panel empty-state"><h2>Nothing changed</h2><p>Every page has the same ${sameFields(diff)} as last time.</p></section>` : ""}
 </div>`; // adds the result files beside the audit
 const plan = raw.plan && typeof raw.plan === "object" ? raw.plan : null;
 const tabs = [

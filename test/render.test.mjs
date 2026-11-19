@@ -97,19 +97,58 @@ test("printing opens every plan row so the planned titles and drafts are on pape
   assert.match(html, /addEventListener\('beforeprint',function\(\)\{[^}]*\.prow[^}]*open=true/);
 });
 
-test("authority scores show on the Overview, with Ahrefs' required credit next to its numbers", async () => {
+const renderAuthority = async (authority, attribution) => {
   const dir = tmp(),
     data = JSON.parse(readFileSync(SAMPLE, "utf8"));
-  data.authority = [
-    { domain: "security.example", openPageRank: 3.62, ahrefsDR: 21 },
-    { domain: "rival.example", openPageRank: 5.1, ahrefsDR: 40 },
-  ];
-  data.attribution = { text: "Domain Rating by Ahrefs", url: "https://ahrefs.com/" };
+  data.authority = authority;
+  if (attribution) data.attribution = attribution;
+  else delete data.attribution;
   writeFileSync(join(dir, "a.json"), JSON.stringify(data));
   await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "r.html")]);
-  const html = readFileSync(join(dir, "r.html"), "utf8"),
-    md = readFileSync(join(dir, "r.md"), "utf8");
-  assert.match(html, /Authority: Open PageRank 3\.6 · Domain Rating 21 · rival\.example: 5\.1 \/ 40/);
-  assert.match(html, /<a href="https:\/\/ahrefs\.com\/"[^>]*>Domain Rating by Ahrefs<\/a>/);
-  assert.match(md, /Domain Rating by Ahrefs/);
+  return { html: readFileSync(join(dir, "r.html"), "utf8"), md: readFileSync(join(dir, "r.md"), "utf8") };
+};
+const AHREFS_LINK = /<a href="https:\/\/ahrefs\.com\/"[^>]*>Domain Rating by Ahrefs<\/a>/;
+
+test("authority scores show on the Overview, with Ahrefs' required credit next to its numbers", async () => {
+  const { html, md } = await renderAuthority(
+    [
+      { domain: "security.example", openPageRank: 3.62, ahrefsDR: 21 },
+      { domain: "rival.example", openPageRank: 5.1, ahrefsDR: 40 },
+    ],
+    { text: "Domain Rating by Ahrefs", url: "https://ahrefs.com/" },
+  );
+  assert.match(
+    html,
+    /Authority: Open PageRank 3\.6 · Domain Rating 21; rival\.example: Open PageRank 5\.1 · Domain Rating 40/,
+    "each rival's scores are labelled",
+  );
+  assert.match(html, AHREFS_LINK);
+  assert.match(md, /\[Domain Rating by Ahrefs\]\(https:\/\/ahrefs\.com\/\)/);
+});
+
+test("the Ahrefs credit shows whenever a Domain Rating does, even without the attribution field", async () => {
+  const { html, md } = await renderAuthority([
+    { domain: "security.example", openPageRank: null, ahrefsDR: null },
+    { domain: "rival.example", openPageRank: null, ahrefsDR: 40 },
+  ]);
+  assert.match(html, /Authority: rival\.example: Domain Rating 40/);
+  assert.match(html, AHREFS_LINK);
+  assert.match(md, /\[Domain Rating by Ahrefs\]\(https:\/\/ahrefs\.com\/\)/);
+});
+
+test("the authority line is hidden when every score is empty, and Open PageRank alone needs no Ahrefs credit", async () => {
+  const empty = await renderAuthority([
+    { domain: "security.example", openPageRank: null, ahrefsDR: null },
+    { domain: "rival.example", openPageRank: null, ahrefsDR: null },
+  ]);
+  assert.doesNotMatch(empty.html + empty.md, /Authority:/);
+  const opr = await renderAuthority(
+    [
+      { domain: "security.example", openPageRank: 3.62, ahrefsDR: null },
+      { domain: "rival.example", openPageRank: null, ahrefsDR: null },
+    ],
+    { text: "Domain Rating by Ahrefs", url: "https://ahrefs.com/" },
+  );
+  assert.match(opr.html, /Authority: Open PageRank 3\.6</, "a rival without scores is left out");
+  assert.doesNotMatch(opr.html, AHREFS_LINK);
 });
