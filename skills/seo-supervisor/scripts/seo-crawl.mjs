@@ -49,6 +49,8 @@ const sitemapHreflang = u =>
 
 import { estSaving } from "./images.mjs";
 
+import { renderAll } from "./checks/render.mjs";
+
 import { createHash } from "node:crypto";
 
 const VERSION = "2.0.0";
@@ -85,6 +87,7 @@ const CHECK_LIVE = !!args["check-live"];
 const OUTSIDE = !!args.outside; // nothing leaves the machine without it
 const LIGHTHOUSE_ALL = args.lighthouse === "all" || !!args["lighthouse=all"]; // --lighthouse all, or --lighthouse=all
 const LIGHTHOUSE = !!args.lighthouse || LIGHTHOUSE_ALL;
+const RENDER_ALL = args.render === "all" || !!args["render=all"]; // with --outside: every indexable page, not the sample
 const DESKTOP = !!args.desktop; // a separate opt-in: it sends the sample URLs to Google a second time
 const OUT = resolve(typeof args.out === "string" ? args.out : "seo-audit/seo-crawl.json");
 let SITE_ORIGIN = typeof args["site-origin"] === "string" ? new URL(args["site-origin"]).origin : "";
@@ -3303,10 +3306,18 @@ else if (DESKTOP) {
 // ---------- outside checks: what JavaScript changes ----------
 const browser = OUTSIDE ? findBrowser() : null;
 const renderSample = sampleUrls(htmlPages.filter(p => indexable(p) && !p.refreshTo).map(p => p.finalUrl)); // a meta refresh would render its target
+// --render all: every page meant to rank (as Lighthouse's all mode takes them), capped, after the time estimate.
+const renderEvery =
+  browser && RENDER_ALL
+    ? renderAll([...new Set(htmlPages.filter(p => indexable(p) && !p.refreshTo).map(p => p.finalUrl))], {
+        log: console.log,
+      })
+    : null;
+const renderList = renderEvery?.urls || renderSample;
 let renderFailure = null;
 if (browser) {
   let rendered = 0;
-  for (const u of renderSample) {
+  for (const u of renderList) {
     try {
       const [rawRes, dom] = await Promise.all([get(u, { manual: false }), renderPage(browser, u)]);
       if (rawRes.status !== 200 || !rawRes.body) {
@@ -3327,7 +3338,7 @@ if (browser) {
   if (rendered) {
     evalRules("REND-06");
     notes.push(
-      `Rendered ${rendered} of ${renderSample.length} sample page(s) in headless ${/edge/i.test(browser) ? "Edge" : "Chrome"} and compared them with the raw HTML.${renderFailure ? ` Some failed: ${renderFailure}` : ""}`,
+      `Rendered ${rendered} of ${renderList.length} ${renderEvery ? "" : "sample "}page(s) in headless ${/edge/i.test(browser) ? "Edge" : "Chrome"} and compared them with the raw HTML.${renderFailure ? ` Some failed: ${renderFailure}` : ""}`,
     );
   } else
     notChecked.push({
@@ -3695,6 +3706,12 @@ extra.images = imageRows
   .sort((a, b) => b.bytes - a.bytes)
   .slice(0, 100)
   .map(x => ({ ...x, pages: [...new Set(usedOn.get(x.url))].slice(0, 10), estSaving: estSaving(x) }));
+
+if (RENDER_ALL && !OUTSIDE)
+  notes.push(
+    "--render all runs only with outside checks on (--outside): rendering runs each page's own scripts, analytics included. It didn't run.",
+  );
+if (renderEvery?.note) notes.push(renderEvery.note);
 
 // Kept for seo-diff.mjs. A redirect that never ends (a loop, or more than 10 hops) has no target.
 {

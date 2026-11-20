@@ -1,5 +1,5 @@
-// Renders sample pages in an installed Chrome or Edge and compares the result with the raw HTML. The page's own
-// scripts, analytics included, run.
+// Renders sample pages, or every page with --render all, in an installed Chrome or Edge and compares the result with
+// the raw HTML. The page's own scripts, analytics included, run.
 import { execFile } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -102,6 +102,28 @@ export function renderPage(browser, url, { timeoutMs = 20000 } = {}) {
       else ok(stdout);
     }),
   );
+}
+
+// A page takes a browser start and up to 5 s of virtual time, about 5 s on a typical site. The cap keeps a
+// --render all run near a quarter of an hour.
+export const RENDER_SECONDS_PER_PAGE = 5,
+  RENDER_ALL_CAP = 200;
+
+/** The pages for --render all, home first. note says how many the cap left out, or is null. */
+export function renderAll(urls, { max = RENDER_ALL_CAP, log = () => {} } = {}) {
+  const home = u => new URL(u).pathname === "/";
+  const list = [...urls].sort((a, b) => home(b) - home(a)).slice(0, max);
+  const minutes = Math.max(1, Math.round((list.length * RENDER_SECONDS_PER_PAGE) / 60));
+  log(
+    `Rendering ${list.length} page${list.length === 1 ? "" : "s"} in the browser, about ${minutes} minute${minutes === 1 ? "" : "s"} (roughly ${RENDER_SECONDS_PER_PAGE} seconds a page), one at a time.`,
+  );
+  return {
+    urls: list,
+    note:
+      urls.length > max
+        ? `Rendering stopped at ${max} pages, the cap for --render all; ${urls.length - max} more page(s) weren't rendered.`
+        : null,
+  };
 }
 
 // Chrome's DOM dump writes characters out literally, so both sides are fully decoded before comparing.
