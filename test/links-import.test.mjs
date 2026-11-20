@@ -229,6 +229,24 @@ test("a page other sites link to that now returns 404 is linked-page-broken; a l
   assert.deepEqual(live.findings, []);
 });
 
+test("the home page's other addresses redirecting to it aren't linked-page-broken", async () => {
+  const L = "http://127.0.0.1:3000",
+    aliases = ["/index.html", "/default.aspx", "/home", "/Home/", "/en/", "/en-us/", "/pt-BR"];
+  const crawl = {
+    pages: [{ url: `${L}/`, status: 200 }],
+    redirects: [...aliases, "/promo/", "/english/"].map(p => ({ from: L + p, to: `${L}/`, status: 301 })),
+  };
+  const csv =
+    "Target page,Incoming links\n" +
+    [...aliases, "/promo/", "/english/"].map(p => `https://www.acme.com${p},5`).join("\n") +
+    "\n";
+  const r = await importLinks({ "p.csv": csv }, { crawl });
+  assert.deepEqual(
+    r.findings[0].evidence.map(e => e.url),
+    ["https://www.acme.com/promo/", "https://www.acme.com/english/"],
+  );
+});
+
 // ---------- the report ----------
 const SAMPLE = join(SKILL, "examples", "sample-audit.json");
 const render = async edit => {

@@ -180,6 +180,9 @@ export function brokenLinked(linked, crawl, site) {
   const pages = byPath(crawl.pages),
     errors = byPath(crawl.errors),
     redirects = byPath(crawl.redirects);
+  // The home page's other addresses (index.html, default.aspx, /home, a bare language prefix like /en/ or /en-us/)
+  // belong there.
+  const homeAlias = p => /^\/((index|default)\.\w+|home\/?|[a-z]{2}([-_][a-z]{2})?\/?)$/i.test(p);
   const toHome = r => {
     const t = url(r.to),
       f = url(r.from);
@@ -189,6 +192,7 @@ export function brokenLinked(linked, crawl, site) {
       t.pathname === "/" &&
       !t.search &&
       pathOf(f) !== "/" &&
+      !homeAlias(f.pathname) &&
       (t.origin === f.origin || bare(t.hostname) === host)
     );
   };
