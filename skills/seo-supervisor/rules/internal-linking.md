@@ -61,10 +61,12 @@ Inside each group, items chain into a loop. Across content types, each type poin
 - **Pass:** items link to their browse page (breadcrumb plus a "More in …" block). Browse pages link to every item, paginated. Tag pages exist only once there's enough volume.
 
 ### LINK-10 · Links from other sites are earned, never bought · medium
-> Checked 19 Nov 2026 against developers.google.com/search/docs/essentials/spam-policies#link-spam.
+> Checked 19 Nov 2026 against developers.google.com/search/docs/essentials/spam-policies#link-spam; the link text and disavow notes on 20 Nov 2026 against support.google.com/webmasters/answer/2648487 (disavow) and developers.google.com/search/blog/2022/12/december-22-link-spam-update.
 
 Google uses links from other well-known sites as one sign of quality, and for local businesses, as part of how well known the business is. Links worth having come from giving people a reason to link.
-- **Check:** ask the owner how the site gets links. Search Console's Links report shows who links now.
+- **Check:** ask the owner how the site gets links. Search Console's Links report shows who links now; `links-import.mjs` reads its exports into the report.
+- **Link text from other sites:** the report shows its mix: your brand, your web address, generic words like "click here", and other words. A natural mix is mostly brand, address and words that say what the page is about, because other people choose it. Google's spam policies count "links with optimized anchor text in articles, guest posts, or press releases distributed on other sites" as link spam, so never ask for keyword-rich link text. The mix is information only. Google publishes no target shares, so there are none here.
+- **No "toxic links":** don't hunt for toxic links or disavow them. Google says that "in most cases, Google can assess which links to trust without additional guidance", and its SpamBrain systems neutralize unnatural links, so the credit they passed is simply lost. Disavow only when unnatural links (paid links or other link schemes) have caused a manual action, or likely will, and can't be removed. Google warns that a disavow done wrong "can potentially harm your site's performance in Google Search results".
 - **Pass:** links come from:
   - **Something worth citing:** original data, a free tool, or a guide that answers a question better than anything else (AI-04).
   - **Digital PR with real news:** a study, a launch or a local first, sent to the journalists who cover it.

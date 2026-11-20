@@ -661,11 +661,123 @@ const viewsMd = () => {
   ];
 };
 
-// Links from other sites (Search Console exports) and their change since the last audit.
-const linksHtml = () => "";
-const linksMd = () => [];
-const linksDiffHtml = () => "";
-const linksDiffMd = () => [];
+// Links from other sites and their change since the last audit, in one collapsed panel on the Overview (a section
+// in the Markdown): links-import.mjs's summary of the Search Console exports, then backlinks.mjs's check and Bing's
+// lists. Domains, URLs and counts come from other sites, so they're escaped where shown.
+const scLinks = obj(raw.links),
+  scRows = (k, f) =>
+    Array.isArray(scLinks?.[k]) ? scLinks[k].filter(x => obj(x) && typeof x[f] === "string" && x[f]) : [];
+const scSites = scRows("sites", "domain"),
+  scPages = scRows("pages", "url");
+const scMix = (m =>
+  m && ["brand", "address", "generic", "other"].every(k => Number.isFinite(m[k]) && m[k] >= 0 && m[k] <= 1) ? m : null)(
+  obj(raw.anchorMix),
+);
+const hasSc = !!(scSites.length || scPages.length || scMix),
+  linkSources = [hasSc && "Search Console", bingLinks && "Bing"].filter(Boolean).join(" and ");
+// Search Console's tables export at most 1,000 rows, so 1,000 may be more.
+// https://support.google.com/webmasters/answer/9049606
+const scUpTo = n => (n >= 1000 ? "1,000 or more" : num(n));
+const scLine = () => {
+  const parts = [
+    scSites.length && `${scUpTo(scSites.length)} site${scSites.length === 1 ? " links" : "s link"} to you`,
+    scPages.length && `${scUpTo(scPages.length)} of your pages ${scPages.length === 1 ? "has" : "have"} links`,
+  ].filter(Boolean);
+  return parts.length
+    ? `Search Console${Date.parse(scLinks.when) ? ` (export of ${fmtDate(scLinks.when)})` : ""}: ${parts.join(" · ")}`
+    : "";
+};
+const scPct = x => `${Math.round(x * 100)}%`;
+const scMixLine = () =>
+  `Link text: your brand ${scPct(scMix.brand)} · web address ${scPct(scMix.address)} · generic, like “click here”, ${scPct(scMix.generic)} · other ${scPct(scMix.other)}.`;
+const scInfoLine = () =>
+  `${scMix ? "A natural mix is mostly your brand, your web address and words that say what the page is about. " : ""}Information only: it doesn't change the score.`;
+const scCount = x => (Number.isFinite(x.links) ? plural(x.links, "link") : "");
+const scList = (list, f) =>
+  `<ul class="lim">${list
+    .slice(0, 5)
+    .map(x => `<li><b><code>${esc(x[f])}</code></b><span>${scCount(x)}</span></li>`)
+    .join("")}</ul>`;
+const linksHtml = () =>
+  hasSc || bingLinks || linkCheckLine
+    ? `
+    <details class="how links"><summary>Links from other sites${linkSources ? ` (${linkSources})` : ""}</summary>${scLine() ? `<p>${esc(scLine())}</p>` : ""}${scSites.length ? `<p>The sites with the most links to you:</p>${scList(scSites, "domain")}` : ""}${scPages.length ? `<p>Your most-linked pages in Search Console:</p>${scList(scPages, "url")}` : ""}${scMix ? `<p>${esc(scMixLine())}</p>` : ""}${hasSc ? `<p>${esc(scInfoLine())}</p>` : ""}${
+      linkCheckLine
+        ? `<p>${esc(linkCheckLine)}</p>${
+            goneLinks.length
+              ? `<ul class="lim">${goneLinks
+                  .slice(0, 10)
+                  .map(g => `<li><b><code>${esc(g.url)}</code></b><span>${esc(g.reason)}</span></li>`)
+                  .join("")}</ul>`
+              : ""
+          }`
+        : ""
+    }${topLinked.length ? `<p>${hasSc ? "Your most-linked pages in Bing:" : "The pages with the most links from other sites:"}</p><ul class="lim">${topLinked.map(p => `<li><b><code>${esc(p.url)}</code></b><span>${linkCount(p)}</span></li>`).join("")}</ul>` : ""}${linkSample.length ? `<p>${hasSc ? "Some of Bing's links to the home page:" : "Some of the links to the home page:"}</p><ul class="lim">${linkSample.map(s => `<li><b><code>${esc(s.url)}</code></b><span>${esc(s.anchorText || "")}</span></li>`).join("")}</ul>` : ""}</details>`
+    : "";
+const linksMd = () => {
+  if (!(hasSc || bingLinks || linkCheckLine)) return [];
+  // The same as markdown()'s mdCode and mdText: other sites' addresses as code, their text escaped.
+  const code = s => "`" + String(s ?? "").replace(/[`\r\n]/g, " ") + "`",
+    text = s =>
+      String(s ?? "")
+        .replace(/\s+/g, " ")
+        .replace(/[\\`*_[\]<>]/g, "\\$&");
+  const list = (l, f) => l.slice(0, 5).map(x => `- ${code(x[f])}${scCount(x) ? ` ${scCount(x)}` : ""}`);
+  return [
+    `## Links from other sites${linkSources ? ` (${linkSources})` : ""}`,
+    "",
+    ...(scLine() ? [scLine(), ""] : []),
+    ...(scSites.length ? ["The sites with the most links to you:", "", ...list(scSites, "domain"), ""] : []),
+    ...(scPages.length ? ["Your most-linked pages in Search Console:", "", ...list(scPages, "url"), ""] : []),
+    ...(scMix ? [scMixLine(), ""] : []),
+    ...(hasSc ? [scInfoLine(), ""] : []),
+    ...(linkCheckLine
+      ? [
+          linkCheckLine,
+          "",
+          ...goneLinks.slice(0, 10).map(g => `- ${code(g.url)} ${text(g.reason)}`),
+          ...(goneLinks.length ? [""] : []),
+        ]
+      : []),
+    ...(topLinked.length
+      ? [
+          hasSc ? "Your most-linked pages in Bing:" : "The pages with the most links from other sites:",
+          "",
+          ...topLinked.map(p => `- ${code(p.url)} ${linkCount(p)}`),
+          "",
+        ]
+      : []),
+    ...(linkSample.length
+      ? [
+          hasSc ? "Some of Bing's links to the home page:" : "Some of the links to the home page:",
+          "",
+          ...linkSample.map(s => `- ${code(s.url)}${s.anchorText ? ` ${text(s.anchorText)}` : ""}`),
+          "",
+        ]
+      : []),
+  ];
+};
+// links-import.mjs computes links-dropped, as only it has both audits' links.json summaries.
+const LINKS_DROP = {
+  sites: "Sites linking to you (Search Console)",
+  bingPages: "Your pages with links from other sites (Bing)",
+};
+const linksDrop = (c =>
+  c &&
+  c.kind === "links-dropped" &&
+  Object.hasOwn(LINKS_DROP, c.what) &&
+  [c.before, c.after].every(n => Number.isInteger(n) && n >= 0) &&
+  c.after < c.before
+    ? c
+    : null)(obj(raw.linksChange));
+const linksDropText = () =>
+  `${num(linksDrop.before)} → ${num(linksDrop.after)} (−${Math.round((100 * (linksDrop.before - linksDrop.after)) / linksDrop.before)}%) since the last audit. Information only: it doesn't change the score. To find which links went, run the backlink check (backlinks.mjs) on Search Console's Latest links export or Bing's sample: it lists the links that are gone.`;
+const linksDiffHtml = () =>
+  linksDrop
+    ? `\n  <section class="panel"><h2>Links dropped</h2><ul class="lim"><li><b>${LINKS_DROP[linksDrop.what]}</b><span>${esc(linksDropText())}</span></li></ul></section>`
+    : "";
+const linksDiffMd = () =>
+  linksDrop ? ["### Links dropped", "", `- ${LINKS_DROP[linksDrop.what]}: ${linksDropText()}`, ""] : [];
 
 const agentsHtml = () => "";
 const agentsMd = () => [];
@@ -760,23 +872,7 @@ function overviewHtml() {
       })()}</ol>
     </section>${viewsHtml()}${searchLines()
       .map(t => `\n    <p class="quiet">${esc(t)}</p>`)
-      .join("")}${
-      bingLinks || linkCheckLine
-        ? `
-    <details class="how links"><summary>Links from other sites${bingLinks ? " (Bing)" : ""}</summary>${
-      linkCheckLine
-        ? `<p>${esc(linkCheckLine)}</p>${
-            goneLinks.length
-              ? `<ul class="lim">${goneLinks
-                  .slice(0, 10)
-                  .map(g => `<li><b><code>${esc(g.url)}</code></b><span>${esc(g.reason)}</span></li>`)
-                  .join("")}</ul>`
-              : ""
-          }`
-        : ""
-    }${topLinked.length ? `<p>The pages with the most links from other sites:</p><ul class="lim">${topLinked.map(p => `<li><b><code>${esc(p.url)}</code></b><span>${linkCount(p)}</span></li>`).join("")}</ul>` : ""}${linkSample.length ? `<p>Some of the links to the home page:</p><ul class="lim">${linkSample.map(s => `<li><b><code>${esc(s.url)}</code></b><span>${esc(s.anchorText || "")}</span></li>`).join("")}</ul>` : ""}</details>`
-        : ""
-    }${linksHtml()}${agentsHtml()}${writingHtml()}
+      .join("")}${linksHtml()}${agentsHtml()}${writingHtml()}
     </div>
   </div>
   ${
@@ -1384,28 +1480,6 @@ function markdown() {
       );
     L.push("");
     L.push(...viewsMd());
-    if (bingLinks || linkCheckLine) L.push(`## Links from other sites${bingLinks ? " (Bing)" : ""}`, "");
-    if (linkCheckLine)
-      L.push(
-        linkCheckLine,
-        "",
-        ...goneLinks.slice(0, 10).map(g => `- ${mdCode(g.url)} ${mdText(g.reason)}`),
-        ...(goneLinks.length ? [""] : []),
-      );
-    if (topLinked.length)
-      L.push(
-        "The pages with the most links from other sites:",
-        "",
-        ...topLinked.map(p => `- ${mdCode(p.url)} ${linkCount(p)}`),
-        "",
-      );
-    if (linkSample.length)
-      L.push(
-        "Some of the links to the home page:",
-        "",
-        ...linkSample.map(s => `- ${mdCode(s.url)}${s.anchorText ? ` ${mdText(s.anchorText)}` : ""}`),
-        "",
-      );
     L.push(...linksMd(), ...agentsMd(), ...writingMd());
   }
   if (plan) L.push(...planMarkdown(plan));
