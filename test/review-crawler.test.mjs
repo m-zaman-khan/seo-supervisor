@@ -4,10 +4,19 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import tls from "node:tls";
 import { compareRendered } from "../skills/seo-supervisor/scripts/checks/render.mjs";
 import { checkLive } from "../skills/seo-supervisor/scripts/checks/tls.mjs";
 import { serve } from "./serve.mjs";
 import { SCRIPTS, node, tmp } from "./helpers.mjs";
+
+// No test here may open a TLS connection off this machine: checkLive's probes are stubbed (connect, oldTls, fetchFn).
+const tlsConnect = tls.connect;
+tls.connect = (opts, ...rest) => {
+  if (opts?.host && !/^(localhost|127\.0\.0\.1|::1)$/.test(opts.host))
+    throw new Error(`a test opened a TLS connection to ${opts.host}:${opts.port}`);
+  return tlsConnect.call(tls, opts, ...rest);
+};
 
 const words =
   "This page has enough ordinary words in it to count as a real page with real content, not a thin placeholder, so the other checks can do their work on it without tripping over the length of the copy at all.";
@@ -185,11 +194,13 @@ test("live checks: subdomain sites aren't probed for www, and an expired certifi
   });
   const ok = async () =>
     new Response("", { status: 301, headers: { location: "https://x/", "strict-transport-security": "max-age=1" } });
-  const found = [];
+  const found = [],
+    oldTls = async () => [];
   await checkLive("https://user.github.io", {
     add: k => found.push(k),
     now: NOW,
     connect: async h => (calls.push(h), cert(60, true, "DNS:*.github.io, DNS:github.io")),
+    oldTls,
     fetchFn: ok,
   });
   assert.deepEqual(calls, ["user.github.io"], "www.user.github.io isn't a real host to check");
@@ -199,6 +210,7 @@ test("live checks: subdomain sites aren't probed for www, and an expired certifi
     add: k => expired.push(k),
     now: NOW,
     connect: async () => cert(-1, false, "DNS:example.com, DNS:www.example.com"),
+    oldTls,
     fetchFn: ok,
   });
   assert.deepEqual(
