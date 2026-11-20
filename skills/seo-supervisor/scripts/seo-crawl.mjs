@@ -1643,6 +1643,7 @@ function analyze(url, html, headers, xRobotsLines) {
     .slice(10)
     .filter(i => realSrc(i) && !("loading" in i) && !i["data-src"] && !(parseInt(i.width) < 100))
     .map(i => i.src);
+
   rec.dupHead = ["description", "robots", "viewport", "og:title"]
     .map(n => [n, metas.filter(m => (m.name || m.property || "").toLowerCase() === n).length])
     .filter(([, c]) => c > 1)

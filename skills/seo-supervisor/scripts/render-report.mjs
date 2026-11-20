@@ -901,6 +901,17 @@ const positionsText = () => {
   return `Search Console queries by average position: ${pct("top3")} in the top 3 · ${pct("top10")} in the top 10 · ${pct("beyond")} beyond, of ${plural(p.queries, "query", "queries")}${raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : ""}`;
 };
 
+// Images ranked by what converting or resizing them would save.
+const imagesHtml = () => "";
+const imagesMd = () => [];
+
+// Lighthouse detail per page: failed audits with the files behind them.
+const lighthouseDetailHtml = () => "";
+const lighthouseDetailMd = () => [];
+
+// Matomo and PostHog device and country lines.
+const analyticsSplitLines = () => [];
+
 function overviewHtml() {
   if (!overall)
     return `<section class="panel empty-state"><h2>Nothing to score</h2><p>This file has no findings or passed rules. Run the audit to fill it.</p></section>`;
@@ -952,7 +963,9 @@ function overviewHtml() {
         <p class="quiet"><span class="key k-fail" aria-hidden="true"></span>${num(overall.rules - overall.passing)} failing${notChecked.length ? ` · ${num(notChecked.length)} not checked` : ""}</p>
       </div>
     </section>
-    ${speedText() ? `<p class="quiet">${esc(speedText())}</p>` : ""}${labSpeedText() ? `\n    <p class="quiet">${esc(labSpeedText())}</p>` : ""}${lcpText() ? `\n    <p class="quiet">${esc(lcpText())}</p>` : ""}${lighthouseText() ? `\n    <p class="quiet">${esc(lighthouseText())}</p>` : ""}${authorityText() ? `\n    <p class="quiet">${esc(authorityText())}${ahrefsCredit() ? ` · <a href="${esc(ahrefsCredit().url)}" rel="noopener">${esc(ahrefsCredit().text)}</a>` : ""}</p>` : ""}${desktopSpeedText() ? `\n    <p class="quiet">${esc(desktopSpeedText())}</p>` : ""}${positionsText() ? `\n    <p class="quiet">${esc(positionsText())}</p>` : ""}
+    ${speedText() ? `<p class="quiet">${esc(speedText())}</p>` : ""}${labSpeedText() ? `\n    <p class="quiet">${esc(labSpeedText())}</p>` : ""}${lcpText() ? `\n    <p class="quiet">${esc(lcpText())}</p>` : ""}${lighthouseText() ? `\n    <p class="quiet">${esc(lighthouseText())}</p>` : ""}${authorityText() ? `\n    <p class="quiet">${esc(authorityText())}${ahrefsCredit() ? ` · <a href="${esc(ahrefsCredit().url)}" rel="noopener">${esc(ahrefsCredit().text)}</a>` : ""}</p>` : ""}${desktopSpeedText() ? `\n    <p class="quiet">${esc(desktopSpeedText())}</p>` : ""}${positionsText() ? `\n    <p class="quiet">${esc(positionsText())}</p>` : ""}${analyticsSplitLines()
+      .map(t => `\n    <p class="quiet">${esc(t)}</p>`)
+      .join("")}
     ${googleUpdatesText() ? `<p class="quiet">${googleUpdatesText(true)}</p>\n    ` : ""}</div>
     <div class="ov-right">
     <section class="panel factors" aria-labelledby="h-factors">
@@ -985,7 +998,7 @@ function overviewHtml() {
       })()}</ol>
     </section>${viewsHtml()}${searchLines()
       .map(t => `\n    <p class="quiet">${esc(t)}</p>`)
-      .join("")}${linksHtml()}${agentsHtml()}${writingHtml()}
+      .join("")}${linksHtml()}${agentsHtml()}${writingHtml()}${imagesHtml()}${lighthouseDetailHtml()}
     </div>
   </div>
   ${
@@ -1584,6 +1597,7 @@ function markdown() {
       L.push(`${authorityText()}${ahrefsCredit() ? ` · [${ahrefsCredit().text}](${ahrefsCredit().url})` : ""}`, "");
     if (desktopSpeedText()) L.push(mdText(desktopSpeedText()), "");
     if (positionsText()) L.push(mdText(positionsText()), "");
+    for (const t of analyticsSplitLines()) L.push(mdText(t), "");
     if (googleUpdatesText()) L.push(googleUpdatesText(), "");
     for (const t of searchLines()) L.push(mdText(t), ""); // paths from Search Console, escaped
     L.push("## Area scores", "", "| Area | Score | Open findings | Top issue |", "| --- | ---: | ---: | --- |");
@@ -1593,7 +1607,7 @@ function markdown() {
       );
     L.push("");
     L.push(...viewsMd());
-    L.push(...linksMd(), ...agentsMd(), ...writingMd());
+    L.push(...linksMd(), ...agentsMd(), ...writingMd(), ...imagesMd(), ...lighthouseDetailMd());
   }
   if (plan) L.push(...planMarkdown(plan));
   if (diff) {
