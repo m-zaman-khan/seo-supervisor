@@ -120,6 +120,21 @@ Deeper checks, optional real-world data and search intent. Everything still work
   - Chrome gets `--proxy-server`.
   - As root or inside Docker, Podman or Kubernetes, Chrome runs with `--no-sandbox --disable-dev-shm-usage`, and the report says so.
 - **Effort on each fix.** Findings can carry `effort` (`quick`, `hours`, `half-day`), shown on each card.
+- **Language checks (META-08).** hreflang is read from the HTML, the HTTP `Link` header and the sitemap's `<xhtml:link>`, and checked as one set. New findings:
+  - sources that disagree
+  - a language version a page leaves out
+  - `<html lang>` or schema `inLanguage` that doesn't match hreflang
+  - language versions with the same title or main text
+  - `lang` values such as `auto`
+  - the Google Translate widget as a site's only translation
+- **Images by possible saving.** The crawl lists the images it weighed with a rough saving (`images`), and the report shows the top 15, information only. `images.mjs` converts heavy JPEG and PNG files to WebP (and AVIF) with the optional sharp add-on (`--with-image-tools`, about 20 MB, outside the project). It's a dry run until `--yes`, keeps the originals and prints the markup to change.
+- **More "Since last audit".** The crawl records `robotsTxt` and `redirects`. Seven new kinds: `robots-changed`, `left-sitemap`, `joined-sitemap`, `lost-internal-links`, `redirect-changed`, `redirect-added`, `redirect-removed`. "Since last audit" lines are escaped in Markdown.
+- **Linked pages that broke.** `links-import.mjs --crawl` flags pages other sites link to that now return 404 or 410, loop, or redirect to the home page (`linked-page-broken`, URL-07).
+- **Render every page.** `--render all` (with `--outside`, its own opt-in) renders every indexable page, up to 200, after printing the time estimate.
+- **Phone fields and text.** `input-zoom` (REND-09, low) flags form fields that iPhones zoom into, following WebKit's own rule. Phone main text under 16 px is noted, information only.
+- **Lighthouse details.** Every failed audit with up to 10 files each (`lighthouse[].detail`), in a collapsed panel. Information only.
+- **Matomo and PostHog by device and country.** Search visits by device type and for the top 10 countries, one quiet Overview line each.
+- **Bing URL submission (optional).** `connect-keys.mjs submit-bing` is a dry run until the owner says yes. It sends only the site's own URLs, and reads Bing's quota first (500 a request).
 - Setup and fix offer each connection once; a skip is listed under Limits and never changes the score. Keys are typed at a hidden prompt in the owner's own terminal, never in chat; Google sign-in prints its link for agents (`--print-url`, `~/.seo-supervisor/pending-signin.txt`). Search Console findings flag only pages Google really excluded; pages Google doesn't know yet are notes.
 - **Fewer false findings:** the log scan needs 5 server errors and 1% before a finding, and repeated 404s become findings only for pages the site links to; sitemap priority/changefreq tags are a note; IndexNow refuses a key file that redirects to another host.
 - **Off-site presence for AI answers:** with outside checks on, the agent looks the brand up on Wikipedia, Reddit, YouTube, LinkedIn and directories, and reports gaps as owner decisions.

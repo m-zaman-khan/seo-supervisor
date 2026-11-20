@@ -75,6 +75,12 @@ npx seo-supervisor        # then, in Claude Code: /seo-audit
   - Desktop speed with good / needs improvement / poor bands, and INP and CLS in "Since last audit".
   - Small checks: sitemap duplicates and nested indexes, unencoded links, images without `srcset` or lazy loading, repeated head tags, cookie flags, short HSTS, old TLS versions, and tap targets on phones.
   - `page-types.md` gives a checklist per page type.
+- **Languages, images and deeper comparisons:**
+  - hreflang is read from the page, the HTTP `Link` header and the sitemap, as one set. The skill flags missing language versions, untranslated copies, `lang` tags that don't match, and the Google Translate widget used as a site's only translation.
+  - An "Images by possible saving" table, and `images.mjs` to convert heavy images to WebP or AVIF with an optional add-on, only with your yes.
+  - "Since last audit" also shows robots.txt changes, pages leaving or joining the sitemap, pages losing internal links, and changed redirects. Pages other sites link to that now break are flagged.
+  - With `--render all`, every page is tested in a browser, up to 200, not just 10. Form fields that iPhones zoom into are flagged, and Lighthouse keeps every failed audit with the files behind it.
+  - Matomo and PostHog visits by device and country, and an optional Bing URL submission.
 
 ## Install
 
@@ -121,7 +127,10 @@ npx seo-supervisor --uninstall                                  # remove it agai
 
 `npx seo-supervisor --help` lists every agent key. Using an agent that isn't on the list? `npx skills add m-zaman-khan/seo-supervisor` covers 40+ more.
 
-Needs Node 22 or newer. There's nothing else to install: zero dependencies, plus one optional add-on. The installer offers **Lighthouse** (about 170 MB, kept in `~/.seo-supervisor/tools`, never in your project) for real Performance, SEO, Accessibility and Best practices scores; add it later with `npx seo-supervisor --with-lighthouse`. Every key or account is optional too: see [Optional: outside checks and Search Console](#optional-outside-checks-and-search-console).
+Needs Node 22 or newer. There's nothing else to install: zero dependencies, plus two optional add-ons, both kept in `~/.seo-supervisor/tools`, never in your project:
+- **Lighthouse** (about 170 MB) gives real Performance, SEO, Accessibility and Best practices scores. The installer offers it; add it later with `npx seo-supervisor --with-lighthouse`.
+- **sharp** (about 20 MB) converts heavy images to WebP or AVIF. The installer doesn't ask about it; fix mode offers it when it finds heavy images, or add it with `npx seo-supervisor --with-image-tools`.
+ Every key or account is optional too: see [Optional: outside checks and Search Console](#optional-outside-checks-and-search-console).
 
 ## Commands
 
@@ -188,6 +197,8 @@ A few more things reach out, each only after its own yes:
 - **The backlink check** visits the pages that link to you, to see if the links are still there. Useful after a redesign or a move.
 - **Broken outgoing links** (`--outbound-links`) visits up to 100 other websites your pages link to, to find broken links. It's asked about separately, even when outside checks are on.
 - **Desktop speed** (`--desktop`) sends the same sample URLs to Google PageSpeed again, for desktop. It's also asked about separately.
+- **Testing every page in a browser** (`--render all`) runs every page's own scripts, analytics included, up to 200 pages. It's asked about separately, with the time it will take.
+- **Bing URL submission** (`connect-keys.mjs submit-bing`) sends the URLs you choose to Bing Webmaster Tools, within Bing's daily quota. It only sends after your yes. IndexNow already tells Bing about changed pages.
 - **The connections** below send your site's address and domain names to Google, Bing, Open PageRank or Ahrefs. Matomo and PostHog get only your site or project ID and a request for search visits, sent to your own Matomo or PostHog server.
 
 To switch them on for one run, say so: `/seo-audit with outside checks`. Real-user speed needs a free PageSpeed Insights API key from Google Cloud in `PSI_API_KEY`: Google refuses almost all requests without one. The render and intent checks need no key. Add `CRUX_API_KEY` too and the Overview shows whether real-user speed got better or worse over the last 25 weeks, and which part of the main image's load real visitors wait on. With outside checks off, these checks are listed under the report's Limits.
@@ -195,7 +206,7 @@ To switch them on for one run, say so: `/seo-audit with outside checks`. Real-us
 **Connect your accounts (optional).** In `/seo-setup` and `/seo-fix` the agent offers each connection once, and you can say no:
 - **Google Search Console and Analytics:** "Sign in with Google" in your browser, or set up your own Google client in a few guided steps. Read-only. It adds your real queries and clicks, "is this page in Google" for key pages, sitemap errors and organic visits, next to Bing's numbers on each page. The one write action is optional: `google.mjs submit-sitemap` submits your sitemap only when you say yes, and asks Google for that permission only then. Remove access any time at myaccount.google.com/connections, or with `google.mjs disconnect`.
 - **Bing Webmaster Tools, Open PageRank and Ahrefs' free Domain Rating:** paste a free API key at a hidden prompt in your own terminal. They add Bing data, the pages other sites link to, and authority scores next to your competitors'.
-- **Matomo or PostHog:** offered only if your site uses one. It adds visits from search engines to each page, from your own analytics. `connect-keys.mjs guide matomo` (or `posthog`) shows where to find each value; `set matomo` asks for them, with the token at a hidden prompt.
+- **Matomo or PostHog:** offered only if your site uses one. It adds visits from search engines to each page, and by device and country, from your own analytics. `connect-keys.mjs guide matomo` (or `posthog`) shows where to find each value; `set matomo` asks for them, with the token at a hidden prompt.
 
 Logins and keys stay in `~/.seo-supervisor/` on your computer, never in your project. Anything you skip is listed under Limits and doesn't lower your score.
 
