@@ -54,6 +54,13 @@ Last reviewed: {YYYY-MM-DD} · Owner: {role}
 | Rule | Where | Why accepted | Until |
 | --- | --- | --- | --- |
 
+## Audiences
+Only audiences the owner named, 1 to 4. Never invented personas. Used by the audience check (`audience.md`).
+
+| Audience | What they come for | Key pages |
+| --- | --- | --- |
+| {Landlords} | {a fixed price for a gas safety certificate} | {/gas-safety/, /pricing/} |
+
 ## Outside checks
 **Outside checks:** {on / off} · asked {date}
 On means the audit may send up to 10 public URLs to Google PageSpeed Insights, render up to 10 pages in headless Chrome (the site's own scripts run), and look up target phrases with the agent's web search.

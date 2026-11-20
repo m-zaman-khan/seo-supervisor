@@ -137,6 +137,30 @@ Consequences for the JSON:
 
 Findings from `gsc-import.mjs` (INTENT-02…04) and the intent checks (INTENT-01, INTENT-05) are ordinary findings in the "Search intent" area. Findings from `google.mjs fetch` are ordinary findings too: key pages Google hasn't indexed (CRAWL-02), a different Google-chosen canonical (URL-04), sitemap errors (MAP-01) and rich-result errors Google reports for inspected pages (SCHEMA-08, `gsc-rich-result-errors`). Skipped or failed connections go under Limits with the reason and never change the score.
 
+## Audiences (the audience check)
+
+Written by you, not a script, as `audience.md` says. Leave it out when the owner named no audiences.
+
+```json
+"audiences": [
+  { "name": "Landlords", "wants": "a fixed price for a gas safety certificate", "checked": "2026-11-21",
+    "pages": [
+      { "url": "https://www.example-plumbing.com/gas-safety/",
+        "has": ["Who it's for: “Landlord gas safety certificates” in the H1", "Next step: a Book button above the fold"],
+        "missing": ["No price on the page or linked from it", "No reviews from landlords"] }
+    ] }
+]
+```
+
+| Field | Rule |
+| --- | --- |
+| `name`, `wants` | The audience exactly as the owner named it, and what they come for. Never an invented persona. |
+| `checked` | The date of the check, `YYYY-MM-DD`. |
+| `pages[]` | Up to 5 key pages, each with its `url`. |
+| `has`, `missing` | Short lines, each with evidence from the page: a quote, or where you looked. Up to 10 in each list. |
+
+Shown as a collapsed "Audience check" panel on the Overview (a section in the Markdown): each audience, then each page with "On the page:" and "Missing:". Everything is escaped, since it can quote page text. The report shows at most 4 audiences, 5 pages each and 10 items a list, and skips entries that are malformed or empty. Information only: no score, no percentages, no findings, and it never changes the score.
+
 ## The plan (setup mode only)
 
 `/seo-setup` adds a top-level `plan`. Without it, the report is unchanged. How to fill it is in `planning.md`.
