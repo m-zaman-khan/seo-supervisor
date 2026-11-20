@@ -1004,9 +1004,54 @@ const analyticsSplitLines = () =>
     )
     .filter(Boolean);
 
-// The audience check, written into seo-audit.json.
-const audienceHtml = () => "";
-const audienceMd = () => [];
+// audiences (audience.md) is written into seo-audit.json and may quote page text, so every string is escaped.
+// Malformed entries are dropped quietly, and lists are capped at 4 audiences, 5 pages each and 10 items a list.
+const audStrs = x => (Array.isArray(x) ? x.filter(s => typeof s === "string" && s.trim()).slice(0, 10) : []);
+const audiences = (Array.isArray(raw.audiences) ? raw.audiences : [])
+  .filter(a => obj(a) && typeof a.name === "string" && a.name.trim())
+  .map(a => ({
+    name: a.name,
+    who: [
+      typeof a.wants === "string" && a.wants.trim() && `What they come for: ${a.wants}.`,
+      typeof a.checked === "string" && /^\d{4}-\d{2}-\d{2}$/.test(a.checked) && `Checked on ${a.checked}.`,
+    ]
+      .filter(Boolean)
+      .join(" "),
+    pages: (Array.isArray(a.pages) ? a.pages : [])
+      .filter(p => obj(p) && typeof p.url === "string" && p.url.trim())
+      .map(p => ({
+        path: notePath(p.url),
+        lines: [audStrs(p.has), audStrs(p.missing)]
+          .map((l, i) => l.length && `${i ? "Missing" : "On the page"}: ${l.join(" · ")}`)
+          .filter(Boolean),
+      }))
+      .filter(p => p.lines.length)
+      .slice(0, 5),
+  }))
+  .filter(a => a.pages.length)
+  .slice(0, 4);
+const AUDIENCE_INTRO =
+  "What your key pages give each audience you named, with evidence from the page. It's a checklist, not a score: it never changes the score or the findings. A missing item becomes new text only through brief or rewrite mode, and only with your yes.";
+const audienceHtml = () =>
+  audiences.length
+    ? `\n    <details class="how audience"><summary>Audience check</summary><p>${esc(AUDIENCE_INTRO)}</p>${audiences.map(a => `<p><b>${esc(a.name)}</b>${a.who ? ` · ${esc(a.who)}` : ""}</p><ul class="lim">${a.pages.map(p => `<li><b><code>${esc(p.path)}</code></b><span>${p.lines.map(esc).join("<br>")}</span></li>`).join("")}</ul>`).join("")}</details>`
+    : "";
+const audienceMd = () =>
+  audiences.length
+    ? [
+        "## Audience check",
+        "",
+        AUDIENCE_INTRO,
+        "",
+        ...audiences.flatMap(a => [
+          `### ${noteMd(a.name)}`,
+          "",
+          ...(a.who ? [noteMd(a.who), ""] : []),
+          ...a.pages.flatMap(p => [`- ${noteCode(p.path)}`, ...p.lines.map(l => `  - ${noteMd(l)}`)]),
+          "",
+        ]),
+      ]
+    : [];
 
 function overviewHtml() {
   if (!overall)
