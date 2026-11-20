@@ -64,8 +64,18 @@ export function readExport(text, site) {
           : "texts";
   if (!kind) return { kind: null };
   const n = nums.find(h => COUNT.test(h)) || nums[0];
+  // Top linking sites also has Target pages: how many of the site's pages each one links to. In another language it's
+  // the other number column.
+  const t =
+    kind !== "sites"
+      ? undefined
+      : nums.find(h => /^target pages?$/i.test(h)) || (nums.length === 2 ? nums.find(h => h !== n) : null);
   const out = rows
-    .map(r => ({ [FIELD[kind]]: r[key], links: n ? count(r[n]) : null }))
+    .map(r => ({
+      [FIELD[kind]]: r[key],
+      links: n ? count(r[n]) : null,
+      ...(t !== undefined && { targets: t ? count(r[t]) : null }),
+    }))
     .filter(r => kind === "texts" || r[FIELD[kind]]);
   return { kind, rows: out.sort((a, b) => (b.links ?? 0) - (a.links ?? 0)) };
 }
@@ -139,6 +149,78 @@ export function anchorMix(texts, brand) {
   for (const t of texts) mix[classify(t.text, brand)] += w(t);
   for (const k in mix) mix[k] = Math.round((mix[k] / total) * 1000) / 1000;
   return mix;
+}
+
+// Never a score or a finding, and never called "toxic": Google can usually judge links on its own and most sites never
+// need the disavow tool, so each item says why it's listed and what to look at.
+// https://support.google.com/webmasters/answer/2648487
+// The cut-offs below are local lines for "stands out"; Google publishes none.
+const ONLY = "Only disavow links you know are paid or were made to manipulate rankings.";
+// https://developers.google.com/search/docs/essentials/spam-policies#link-spam
+const SPAM =
+  "Google's spam policies count “links with optimized anchor text in articles, guest posts, or press releases distributed on other sites” as link spam.";
+const pct = x => `${Math.round(x * 100)}%`;
+export function worthALook({ sites = [], texts = [], sample = [] }, site, brand) {
+  const own = bare(site.hostname),
+    mine = h => {
+      const b = bare(h);
+      return b === own || b.endsWith("." + own);
+    };
+  const out = [],
+    others = sites.filter(s => !mine(s.domain)),
+    total = others.reduce((n, s) => n + (s.links || 0), 0);
+  // Sitewide-looking: many of one site's pages link to few of this site's, and they're a big share of all links.
+  for (const s of others
+    .filter(s => s.links >= 50 && s.targets != null && s.targets <= 3 && s.links >= total * 0.2)
+    .slice(0, 5))
+    out.push({
+      kind: "sitewide",
+      subject: s.domain,
+      why: `Links to you from ${s.links.toLocaleString("en-US")} of its pages, but to only ${s.targets} of yours: ${pct(s.links / total)} of all the links Search Console listed. A link on every page like this is usually in a footer or sidebar.`,
+      look: `That's fine from a partner, a client, a supplier or another site you run. If you don't know the site, open a few of its pages and look at the link and its words. ${ONLY}`,
+    });
+  // Link text: 3 in 4 descriptive (not brand, address or generic), from at least 10 texts.
+  const mix = texts.length >= 10 && anchorMix(texts, brand);
+  if (mix && mix.other >= 0.75)
+    out.push({
+      kind: "keyword-text",
+      subject: "Link text to your site",
+      why: `${pct(mix.other)} of the link text is descriptive words, not your brand (read as “${brand}”) or your web address.`,
+      look: `That's normal when people link to articles by their titles. It's worth a look if you, or someone you paid, placed links: ${SPAM} ${ONLY}`,
+      examples: texts
+        .filter(t => classify(t.text, brand) === "other")
+        .slice(0, 5)
+        .map(t => t.text),
+    });
+  // Bing's sample of links to the home page: the same descriptive words from 3 or more sites. People who link on their
+  // own rarely pick the same words.
+  const same = new Map();
+  for (const l of sample) {
+    let h;
+    try {
+      h = bare(new URL(l.url).hostname);
+    } catch {
+      continue;
+    }
+    if (mine(h) || typeof l.anchorText !== "string" || classify(l.anchorText, brand) !== "other") continue;
+    const k = norm(l.anchorText),
+      g = same.get(k) || { text: l.anchorText.trim(), hosts: new Set(), urls: [] };
+    g.hosts.add(h);
+    g.urls.push(l.url);
+    same.set(k, g);
+  }
+  for (const g of [...same.values()]
+    .filter(g => g.hosts.size >= 3)
+    .sort((a, b) => b.hosts.size - a.hosts.size)
+    .slice(0, 5))
+    out.push({
+      kind: "same-text",
+      subject: g.text,
+      why: `The same link text comes from ${g.hosts.size} different sites in Bing's sample of links to your home page. People who link on their own rarely pick the same words.`,
+      look: `Check whether you, or someone you paid, placed these links. ${SPAM} ${ONLY}`,
+      examples: g.urls.slice(0, 5),
+    });
+  return out;
 }
 
 // Linking sites (Search Console) or Bing's linked pages fell by 30% or more and by at least 10. A count is compared
@@ -345,11 +427,14 @@ function main(argv) {
         `${n} of the pages other sites link to ${n === 1 ? "wasn't" : "weren't"} reached by the crawl, so whether ${n === 1 ? "it still works" : "they still work"} wasn't checked. List them in a file, one per line, pass it to seo-crawl.mjs with --urls and run links-import again: the ones that fail or redirect are judged then.`,
       );
   }
+  const sample = Array.isArray(keys?.bing?.backlinks?.sample) ? keys.bing.backlinks.sample.filter(obj) : [];
+  const look = worthALook({ sites: links?.sites, texts: links?.texts, sample }, site, brand);
   const result = {
     links,
     linkSummary,
     anchorMix: links?.texts.length ? anchorMix(links.texts, brand) : null,
     linksChange: linksChange(obj(previous?.linkSummary), linkSummary),
+    worthALook: look,
     findings,
     notes,
   };
@@ -359,7 +444,7 @@ function main(argv) {
   writeFileSync(out, JSON.stringify(result, null, 2));
   const c = result.linksChange;
   console.log(
-    `links-import: ${links ? `${links.sites.length} linking sites, ${links.pages.length} linked pages, ${links.texts.length} link texts` : "no Search Console export"}${c ? ` · ${c.what} dropped ${c.before} → ${c.after}` : ""}${findings.length ? ` · ${findings[0].count} linked page(s) broken` : ""} · wrote ${out}`,
+    `links-import: ${links ? `${links.sites.length} linking sites, ${links.pages.length} linked pages, ${links.texts.length} link texts` : "no Search Console export"}${c ? ` · ${c.what} dropped ${c.before} → ${c.after}` : ""}${findings.length ? ` · ${findings[0].count} linked page(s) broken` : ""}${look.length ? ` · ${look.length} worth a look` : ""} · wrote ${out}`,
   );
   return 0;
 }

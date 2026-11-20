@@ -44,10 +44,10 @@ test("reads the three Search Console link exports by header, in any column order
   assert.deepEqual(
     r.links.sites,
     [
-      { domain: "blog.example", links: 1200 },
-      { domain: "news.example", links: 12 },
+      { domain: "blog.example", links: 1200, targets: 40 },
+      { domain: "news.example", links: 12, targets: 3 },
     ],
-    "counts from Linking pages, most first",
+    "counts from Linking pages, most first, and Target pages",
   );
   assert.deepEqual(
     r.links.pages,
@@ -80,7 +80,7 @@ test("exports from another UI language are recognised by what their columns hold
     "b.csv": "Zielseite,Eingehende Links\nhttps://www.acme.com/x/,7\n",
     "c.csv": "Linktext\nAcme\n",
   });
-  assert.deepEqual(r.links.sites, [{ domain: "blog.example", links: 5 }]);
+  assert.deepEqual(r.links.sites, [{ domain: "blog.example", links: 5, targets: 2 }]);
   assert.deepEqual(r.links.pages, [{ url: "https://www.acme.com/x/", links: 7 }]);
   assert.deepEqual(r.links.texts, [{ text: "Acme", links: null }]);
 });
@@ -275,6 +275,131 @@ test("linked pages the crawl didn't reach, passed to the crawler with --urls, ar
     },
   ]);
   assert.ok(!r.notes.some(n => /reached by the crawl/.test(n)));
+});
+
+// ---------- links worth a look ----------
+const ONLY = "Only disavow links you know are paid or were made to manipulate rankings.";
+const siteRows = rows => "Site,Linking pages,Target pages\n" + rows.map(r => r.join(",")).join("\n") + "\n";
+const SMALL = Array.from({ length: 12 }, (_, i) => [`s${i}.example`, 10 + i, 1 + (i % 4)]);
+const sample = list => ({
+  bing: { backlinks: { pages: [], sample: list.map(([url, anchorText]) => ({ url, anchorText })) } },
+});
+
+test("a normal link profile has nothing worth a look", async () => {
+  const r = await importLinks(
+    {
+      "sites.csv": siteRows([
+        ["bigmedia.example", 400, 60],
+        ["partner.example", 45, 1],
+        ["blog.acme.com", 900, 1],
+        ...SMALL,
+      ]),
+      "text.csv":
+        "Linking text\nAcme\nAcme Plumbing\nacme.com\nhttps://www.acme.com/\nclick here\nboiler repair guide\nhow to bleed a radiator\nAcme plumbers\nwebsite\nAcme Ltd\n",
+    },
+    {
+      brand: "Acme",
+      keys: sample([
+        ["https://a.example/x", "Acme"],
+        ["https://b.example/y", "Acme Plumbing"],
+        ["https://c.example/z", "www.acme.com"],
+        ["https://d.example/", "boiler repair"],
+        ["https://e.example/", "Boiler Repair"],
+        ["https://f.example/1", "plumbing tips"],
+        ["https://f.example/2", "plumbing tips"],
+        ["https://www.f.example/3", "plumbing tips"],
+      ]),
+    },
+  );
+  assert.deepEqual(
+    r.worthALook,
+    [],
+    "many target pages, under 50 linking pages, the site's own subdomain, a brand-led mix and text from two sites stay quiet",
+  );
+  assert.doesNotMatch(JSON.stringify(r), /toxic/i);
+});
+
+test("one site linking from many pages to few of yours is worth a look, calmly", async () => {
+  const r = await importLinks({
+    "sites.csv": siteRows([["footer.example", 600, 1], ["news.example", 40, 12], ["blog.acme.com", 900, 1], ...SMALL]),
+  });
+  assert.equal(r.worthALook.length, 1);
+  const [x] = r.worthALook;
+  assert.equal(x.kind, "sitewide");
+  assert.equal(x.subject, "footer.example");
+  assert.match(x.why, /600 of its pages/);
+  assert.match(x.why, /only 1 of yours/);
+  assert.match(x.why, /footer or sidebar/);
+  assert.match(x.look, /partner/);
+  assert.ok(x.look.endsWith(ONLY));
+  assert.doesNotMatch(JSON.stringify(r), /toxic/i);
+  const noTargets = await importLinks({ "sites.csv": "Site,Linking pages\nfooter.example,600\nnews.example,40\n" });
+  assert.deepEqual(noTargets.worthALook, [], "without Target pages there's no telling, so nothing is listed");
+});
+
+test("link text that's mostly keyword phrases is worth a look, in Google's words", async () => {
+  const words = [
+    "best boiler repair london",
+    "cheap boiler repair",
+    "emergency plumber london",
+    "boiler service near me",
+    "boiler repair london",
+    "plumber london",
+    "cheap plumber",
+    "combi boiler repair",
+  ];
+  const r = await importLinks(
+    { "t.csv": "Linking text\n" + [...words, "Acme", "click here"].join("\n") + "\n" },
+    { brand: "Acme" },
+  );
+  assert.equal(r.worthALook.length, 1);
+  const [x] = r.worthALook;
+  assert.equal(x.kind, "keyword-text");
+  assert.match(x.why, /80%/);
+  assert.deepEqual(x.examples, words.slice(0, 5));
+  assert.ok(
+    x.look.includes(
+      "“links with optimized anchor text in articles, guest posts, or press releases distributed on other sites”",
+    ),
+  );
+  assert.match(x.look, /normal/);
+  assert.ok(x.look.endsWith(ONLY));
+  const some = await importLinks(
+    {
+      "t.csv":
+        "Linking text\n" + [...words.slice(0, 6), "Acme", "Acme Ltd", "acme.com", "click here"].join("\n") + "\n",
+    },
+    { brand: "Acme" },
+  );
+  assert.deepEqual(some.worthALook, [], "60% descriptive text is ordinary");
+  const few = await importLinks({ "t.csv": "Linking text\n" + words.slice(0, 5).join("\n") + "\n" }, { brand: "Acme" });
+  assert.deepEqual(few.worthALook, [], "too few texts to say anything");
+});
+
+test("the same keyword link text from several sites in Bing's sample is worth a look", async () => {
+  const r = await importLinks(null, {
+    brand: "Acme",
+    keys: sample([
+      ["https://a.example/p", "Cheap Boiler Repair"],
+      ["https://www.a.example/q", "cheap boiler repair"],
+      ["https://b.example/x", "cheap boiler repair"],
+      ["https://c.example/y", "cheap  boiler repair!"],
+      ["https://blog.acme.com/z", "cheap boiler repair"],
+      ...["d", "e", "f", "g"].map(h => [`https://${h}.example/`, "Acme"]),
+    ]),
+  });
+  assert.equal(r.worthALook.length, 1);
+  const [x] = r.worthALook;
+  assert.equal(x.kind, "same-text");
+  assert.equal(x.subject, "Cheap Boiler Repair");
+  assert.match(x.why, /3 different sites/, "a.example counts once; the site's own blog not at all");
+  assert.deepEqual(x.examples, [
+    "https://a.example/p",
+    "https://www.a.example/q",
+    "https://b.example/x",
+    "https://c.example/y",
+  ]);
+  assert.ok(x.look.endsWith(ONLY));
 });
 
 // ---------- the report ----------
