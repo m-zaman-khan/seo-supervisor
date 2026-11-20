@@ -114,8 +114,14 @@ test("the overview shows one line of real-user speed", async () => {
   await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "r.html")]);
   assert.match(
     readFileSync(join(dir, "r.html"), "utf8"),
-    /Real-user speed \(mobile\): LCP 2\.1 s · INP 180 ms · CLS 0\.05 \(passes\)/,
+    /Real-user speed \(mobile\): LCP 2\.1 s \(good\) · INP 180 ms \(good\) · CLS 0\.05 \(good\), passes Core Web Vitals/,
   );
+  data.speed.samples[0].origin = { lcp: 4200, inp: 180, cls: 0.3 };
+  writeFileSync(join(dir, "a.json"), JSON.stringify(data));
+  await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "r.html")]);
+  const line =
+    /Real-user speed \(mobile\): LCP 4\.2 s \(poor\) · INP 180 ms \(good\) · CLS 0\.3 \(poor\), fails Core Web Vitals/;
+  for (const f of ["r.html", "r.md"]) assert.match(readFileSync(join(dir, f), "utf8"), line, f);
 });
 
 test("when PageSpeed refuses (no key, quota used up), it stops asking and PERF-01 is not counted as passed", async () => {

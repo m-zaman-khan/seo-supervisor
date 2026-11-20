@@ -12,7 +12,7 @@ Close to launch-ready: the tool pages are server-rendered and well structured, b
 
 Open: 7 (2 blocker, 1 high, 1 decision, 2 medium, 1 low) · Fixed: 2 · Rules passing: 14 of 21
 
-Real-user speed (mobile): LCP 2.4 s · INP 180 ms · CLS 0.05 (passes)
+Real-user speed (mobile): LCP 2.4 s (good) · INP 180 ms (good) · CLS 0.05 (good), passes Core Web Vitals
 
 ## Area scores
 
