@@ -57,3 +57,27 @@ test("a proxy variable without the Node flag prints one plain note; Chrome gets 
     assert.doesNotMatch(on.stderr, /A proxy is set/, `${script} with the flag`);
   }
 });
+
+test("a proxy password never reaches Chrome's command line, with or without a scheme", () => {
+  assert.deepEqual(
+    chromeProxyArgs({ HTTP_PROXY: "user:secret@proxy.corp:8080" }),
+    ["--proxy-server=http=http://proxy.corp:8080"],
+    "curl-style, no scheme",
+  );
+  assert.deepEqual(chromeProxyArgs({ HTTP_PROXY: "http://user:secret@proxy.corp:8080" }), [
+    "--proxy-server=http=http://proxy.corp:8080",
+  ]);
+  assert.deepEqual(
+    chromeProxyArgs({ HTTPS_PROXY: "proxy.corp:8080" }),
+    ["--proxy-server=https=http://proxy.corp:8080"],
+    "a bare host:port",
+  );
+  assert.deepEqual(
+    chromeProxyArgs({ HTTPS_PROXY: "user:secret@" }),
+    [],
+    "no host left: no argument, never the raw value",
+  );
+  assert.deepEqual(chromeProxyArgs({ HTTP_PROXY: "user:secret@", HTTPS_PROXY: P }), [
+    "--proxy-server=https=http://proxy.corp:8080",
+  ]);
+});

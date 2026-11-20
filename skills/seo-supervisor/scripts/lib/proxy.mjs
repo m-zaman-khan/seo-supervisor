@@ -29,20 +29,17 @@ export function proxyNote(env = process.env, { execArgv = process.execArgv, vers
 // https://chromium.googlesource.com/chromium/src/+/HEAD/net/docs/proxy.md
 const server = u => {
   try {
-    const x = new URL(u);
+    const x = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(u) ? u : "http://" + u);
     if (x.host) return `${x.protocol}//${x.host}`;
   } catch {}
-  return u;
+  return null;
 };
 export function chromeProxyArgs(env = process.env) {
-  const http = pick(env, "HTTP_PROXY"),
-    https = pick(env, "HTTPS_PROXY"),
-    bypass = (pick(env, "NO_PROXY") || "").replace(/\s+/g, "");
+  const bypass = (pick(env, "NO_PROXY") || "").replace(/\s+/g, "");
+  const http = pick(env, "HTTP_PROXY") && server(pick(env, "HTTP_PROXY")),
+    https = pick(env, "HTTPS_PROXY") && server(pick(env, "HTTPS_PROXY"));
   if ((!http && !https) || bypass === "*") return [];
-  const to =
-    http === https
-      ? server(http)
-      : [http && `http=${server(http)}`, https && `https=${server(https)}`].filter(Boolean).join(";");
+  const to = http === https ? http : [http && `http=${http}`, https && `https=${https}`].filter(Boolean).join(";");
   return [
     `--proxy-server=${to}`,
     ...(bypass ? [`--proxy-bypass-list=${bypass.split(",").filter(Boolean).join(";")}`] : []),
