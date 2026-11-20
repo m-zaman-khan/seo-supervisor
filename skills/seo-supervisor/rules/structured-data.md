@@ -1,7 +1,7 @@
 # Structured data: JSON-LD (SCHEMA)
 
 > Facts checked **16 Nov 2026** against Google Search Central (Book actions **19 Nov 2026**). Verify again if this is more than about six months old.
-> **Still earn Google rich results:** Breadcrumb, Software app (needs a real rating or review), Article, Organization, Profile page, Product / merchant listing, Review snippet, Local business, Event, Recipe, Video, Dataset, Q&A and discussion forum.
+> **Still earn Google rich results:** Breadcrumb, Software app (needs a real rating or review), Article, Organization, Profile page, Product / merchant listing, Review snippet, Local business, Event, Recipe, Video, Dataset, Q&A and discussion forum, Course list, Education Q&A, Employer aggregate rating, Image metadata, Job posting, Math solver, Movie, Paywalled content, Vacation rental, Speakable (beta) and carousels. The full list, with each type's required properties and the date it was checked against Google's search gallery, is in `scripts/data/google-rich-results.json`.
 > **Gone:**
 > - FAQ rich results (removed for every site on 7 May 2026)
 > - HowTo (Sept 2023)

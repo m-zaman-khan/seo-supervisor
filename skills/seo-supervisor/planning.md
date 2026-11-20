@@ -5,7 +5,7 @@ Use this for a site with no SEO work: brand new, or an old app that never got it
 1. Map the site.
 2. Propose a plan, then **stop for the owner's approval**.
 3. Build the technical foundation exactly as planned, then fix the audit's other code findings listed in the plan.
-4. Draft the content the owner still has to approve.
+4. Draft the content the owner still has to approve. Every draft follows CONTENT-13 (plain language); re-read it against the writing notes before showing it.
 5. Prove the result with an audit.
 
 Everything goes in the usual report, which gains a **Plan** tab.

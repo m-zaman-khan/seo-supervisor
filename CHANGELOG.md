@@ -80,6 +80,45 @@ Deeper checks, optional real-world data and search intent. Everything still work
   - what to check when security warnings appear (LAUNCH-05)
 - **No word-count targets:** thin-page is a page to look at, not a word goal, and posts and city intros carry no word counts. LAUNCH-08 no longer lists update dates from memory.
 - **Fixed:** a page reached through a redirect (a link or canonical to an old address) was counted twice, which doubled its findings and could make it look like a duplicate of itself.
+- **Score views.**
+  - The crawler measures 11 trust signals (`trustSignals`): about page, contact, organisation schema, author bylines and pages, dates, sources, customer proof, policies, HTTPS and own images.
+  - The Overview shows them as "Trust signals (E-E-A-T) 73/100 · 8 of 11 found", with what to add. It's labelled as SEO Supervisor's own check, not a Google score, and missing signals never change the health score.
+  - "Local SEO" and "Content quality" show the existing area scores under clearer names.
+- **Free backlink data.** `links-import.mjs` reads Search Console's Top linking sites, Top linking text and Top linked pages exports, plus Bing's linked pages, into `links`, `linkSummary`, `anchorMix` and `linksChange`.
+  - The Overview shows a link summary and the link-text mix.
+  - "Since last audit" shows "Links dropped" (30% and at least 10).
+  - LINK-10 explains why there are no toxic-link scores.
+  - Local files only, and information only.
+- **Agent readiness and writing.**
+  - `controls-no-name` (AI-05, low): form fields and buttons with no accessible name.
+  - An information-only AI agents note lists WebMCP tools, a UCP profile (`/.well-known/ucp`), an RFC 9727 API catalog and an A2A agent card, read only from the crawled site.
+  - New CONTENT-13 "Plain language", with writing notes on English pages: sentences over 35 words, paragraphs over 150, about 20 stock phrases and Flesch reading ease. Code and tables are left out, and the notes never change the score.
+- **Schema by business type (SCHEMA-02).** `scripts/data/business-types.json` maps 48 business types, checked against schema.org 30.1, to their schema.org type.
+  - The crawl records `businessType`.
+  - `schema-too-generic` (medium) and `business-type-unclear` (needs-decision) are new.
+  - `examples/snippets.md` gains a business-types section.
+- **Small technical checks (all low):**
+  - sitemap duplicates, nested sitemap indexes, video and image sitemap tags, session IDs and over-long sitemap URLs
+  - unencoded links
+  - wide images without `srcset`, and late images without lazy loading
+  - repeated head tags and number-only headings
+  - cookie flags, short HSTS and `Referrer-Policy: unsafe-url`
+  - old TLS 1.0/1.1 (with `--check-live`)
+  - small tap targets on phones (WCAG 2.2 SC 2.5.8, with outside checks)
+  - broken links to other sites, behind their own opt-in `--outbound-links` (`outboundLinks`)
+- **Rich results and speed.**
+  - Google's rich-result rules are kept as data (`scripts/data/google-rich-results.json`, 62 rules, checked against the search gallery). Retired types are flagged (SCHEMA-05). There's a snippet for every type.
+  - Fixed: a recommended property no longer hides a missing required one.
+  - Desktop speed is behind its own opt-in `--desktop`, with good / needs improvement / poor bands.
+  - INP and CLS now count in "Since last audit".
+  - `desc-starts-with-title` (META-02) is new.
+  - `page-types.md` gives a checklist per page type.
+- **Search Console position summary** (`positions`) on the Overview.
+- **Consent per check.** `settings.json` records which outside checks the owner approved (`outsideChecks.approved`). `--desktop` and `--outbound-links` each need their own yes.
+- **Proxy and containers.**
+  - `NODE_USE_ENV_PROXY` is supported, with a reminder when a proxy is set without it.
+  - Chrome gets `--proxy-server`.
+  - As root or inside Docker, Podman or Kubernetes, Chrome runs with `--no-sandbox --disable-dev-shm-usage`, and the report says so.
 - **Effort on each fix.** Findings can carry `effort` (`quick`, `hours`, `half-day`), shown on each card.
 - Setup and fix offer each connection once; a skip is listed under Limits and never changes the score. Keys are typed at a hidden prompt in the owner's own terminal, never in chat; Google sign-in prints its link for agents (`--print-url`, `~/.seo-supervisor/pending-signin.txt`). Search Console findings flag only pages Google really excluded; pages Google doesn't know yet are notes.
 - **Fewer false findings:** the log scan needs 5 server errors and 1% before a finding, and repeated 404s become findings only for pages the site links to; sitemap priority/changefreq tags are a note; IndexNow refuses a key file that redirects to another host.

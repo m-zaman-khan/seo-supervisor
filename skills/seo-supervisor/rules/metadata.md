@@ -7,7 +7,7 @@
 - **Site-wide:** when the title is missing, or one title is shared, on at least 80% of indexable pages (and at least 3), the crawler reports one `*-sitewide` finding as a **blocker**, not one high per page. Keep it a blocker: it's the usual sign of a site with no SEO work.
 
 ### META-02 · Every indexable page has a unique meta description of 120–160 characters · medium
-- **Check:** crawler `desc-missing`, `desc-length`, `desc-dup`.
+- **Check:** crawler `desc-missing`, `desc-length`, `desc-dup`, and `desc-starts-with-title` (low): the description starts with the page's title, or its first 80%, for titles of 20 or more characters.
 - **Pass:** says what the visitor gets and why this page; no template text with a name swapped.
 - **Fix:** add a description field to the content model, or generate one per page type from specific data, never from boilerplate.
 - **Content scan:** `templated-desc` (medium) flags descriptions that are only the title, or end in a stock call to action, on 3+ items.

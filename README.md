@@ -20,7 +20,7 @@
   <img src="docs/images/report-overview-dark.png" alt="SEO Supervisor report: a 49/100 health score held down by two blockers, the 90 the site reaches once they are fixed, and the areas losing the most points" width="900">
 </p>
 
-SEO Supervisor is a skill for Claude Code and other coding agents. It crawls your site the way Google does and checks it against 170 current SEO rules. Then it gives you one clear report: a 0–100 score, every problem with its evidence, and what to do first.
+SEO Supervisor is a skill for Claude Code and other coding agents. It crawls your site the way Google does and checks it against 171 current SEO rules. Then it gives you one clear report: a 0–100 score, every problem with its evidence, and what to do first.
 
 Then it fixes what can safely be fixed in code, re-checks each fix, and tells you plainly what only you can fix.
 
@@ -61,6 +61,20 @@ npx seo-supervisor        # then, in Claude Code: /seo-audit
   - Tests the www/bare-domain redirect, and compares what Googlebot gets with what visitors get.
   - Checks the favicon and your phone number and address on the page.
   - Business Profile, Bing Places and Apple Business guidance for local businesses.
+- **Trust and the right schema:**
+  - A Trust signals (E-E-A-T) view on the Overview, for example "73/100 · 8 of 11 found", listing what to add. It's SEO Supervisor's own check, not a Google score, and it never changes your health score.
+  - The Local SEO and Content quality views show the existing area scores under clearer names.
+  - The crawler recognises 48 kinds of business (restaurants, clinics, trades, salons, hotels, shops, schools, publishers…), flags a schema that's too general, and asks you when two types fit.
+- **Free backlink view:** export Search Console's three Links tables into `seo-audit/links/`. The Overview then shows how many sites link to you, your most-linked pages and the mix of link text. If linking sites fall by 30% and at least 10, "Since last audit" says so. There are no toxic-link scores, because Google discounts spam links itself.
+- **Writing and AI agents:**
+  - Writing notes on English pages point out long sentences, long paragraphs and stock phrases. They're information only.
+  - Form fields and buttons with no name are flagged, since screen readers and browsing AI agents both need those names.
+  - An AI agents note lists WebMCP tools, a UCP shop profile and agent files when a site has them.
+- **More rich results and small checks:**
+  - The schema checker knows every rich-result type in Google's search gallery, flags retired ones, and `examples/snippets.md` has copy-ready code for each.
+  - Desktop speed with good / needs improvement / poor bands, and INP and CLS in "Since last audit".
+  - Small checks: sitemap duplicates and nested indexes, unencoded links, images without `srcset` or lazy loading, repeated head tags, cookie flags, short HSTS, old TLS versions, and tap targets on phones.
+  - `page-types.md` gives a checklist per page type.
 
 ## Install
 
@@ -172,6 +186,8 @@ One HTML file that works offline. It opens in dark mode and has a light-mode swi
 A few more things reach out, each only after its own yes:
 - **IndexNow** sends the URLs of changed pages to api.indexnow.org.
 - **The backlink check** visits the pages that link to you, to see if the links are still there. Useful after a redesign or a move.
+- **Broken outgoing links** (`--outbound-links`) visits up to 100 other websites your pages link to, to find broken links. It's asked about separately, even when outside checks are on.
+- **Desktop speed** (`--desktop`) sends the same sample URLs to Google PageSpeed again, for desktop. It's also asked about separately.
 - **The connections** below send your site's address and domain names to Google, Bing, Open PageRank or Ahrefs. Matomo and PostHog get only your site or project ID and a request for search visits, sent to your own Matomo or PostHog server.
 
 To switch them on for one run, say so: `/seo-audit with outside checks`. Real-user speed needs a free PageSpeed Insights API key from Google Cloud in `PSI_API_KEY`: Google refuses almost all requests without one. The render and intent checks need no key. Add `CRUX_API_KEY` too and the Overview shows whether real-user speed got better or worse over the last 25 weeks, and which part of the main image's load real visitors wait on. With outside checks off, these checks are listed under the report's Limits.
@@ -187,7 +203,7 @@ Logins and keys stay in `~/.seo-supervisor/` on your computer, never in your pro
 
 ## What it checks
 
-**121 core rules**, up to date as of November 2026:
+**122 core rules**, up to date as of November 2026:
 
 | Area | Rules | Examples |
 | --- | ---: | --- |
@@ -195,7 +211,7 @@ Logins and keys stay in `~/.seo-supervisor/` on your computer, never in your pro
 | URLs & canonicals | 9 | one URL per page, trailing slashes, canonicals on the right host, old URLs with 301s |
 | Rendering | 10 | content in the server HTML, not only in JavaScript; links crawlers can follow; doctype, charset and mobile viewport; obsolete tags |
 | Metadata | 10 | titles (and whether they match the page), descriptions, Open Graph, robots meta, the favicon in results |
-| Headings & content | 12 | one H1, heading order, thin or templated pages, placeholder text, banned claims |
+| Headings & content | 13 | one H1, heading order, thin or templated pages, placeholder text, banned claims, plain language |
 | Structured data | 8 | valid JSON-LD that matches the page; which rich results still exist |
 | Sitemaps & robots | 8 | sitemap host and status, lastmod, llms.txt (and why Google ignores it) |
 | Internal linking | 10 | orphans, click depth, hubs and circular linking, anchor text, earning links from other sites |
@@ -258,6 +274,15 @@ The agent tells you when a new version is out: at most once a week it asks npm f
 - **Installed as a Claude Code plugin:** update it from Claude Code's `/plugin` menu.
 
 Your logins, keys and settings in `~/.seo-supervisor/` and your reports in `seo-audit/` stay as they are. To turn the notices off, run `node <skill folder>/scripts/update-check.mjs off` (or set `SEO_SUPERVISOR_NO_UPDATE_CHECK=1`); they're also off in CI.
+
+## Behind a company proxy or in a container
+
+**Behind a company proxy:**
+- Set `NODE_USE_ENV_PROXY=1` alongside `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` (Node 22.21+ or 24.5+). The scripts print a one-line reminder when a proxy is set without it.
+- Chrome gets the same proxy through `--proxy-server` and `--proxy-bypass-list`. Proxy passwords aren't passed to Chrome.
+- The live certificate check (`--check-live`) opens a direct connection that a proxy doesn't carry, so behind a proxy it may say the site can't be reached.
+
+**Chrome in containers:** as root on Linux, or inside Docker, Podman or Kubernetes, Chrome runs with `--no-sandbox --disable-dev-shm-usage`, and the report says so. The site's scripts then run with fewer protections. To keep Chrome's sandbox, run as an ordinary user outside a container.
 
 ## Contributing
 
