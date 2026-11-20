@@ -195,7 +195,7 @@ In chat, give: the score and band, and while blockers are open, the score fixing
 13. **Heavy images (PERF-08):** prefer the framework's image component or the CDN's image resizing.
     1. If there's neither, offer the image add-on once: `npx seo-supervisor --with-image-tools` (sharp, about 20 MB, in `~/.seo-supervisor/tools`, never in the project). A no is fine.
     2. Run `node <skill-dir>/scripts/images.mjs --crawl seo-audit/seo-crawl.json --root <public folder>` and show the owner the dry run.
-    3. Add `--yes` only with the owner's yes. `--avif`, `--max-width` and `--out-dir` are optional. It keeps the originals.
+    3. Add `--yes` only with the owner's yes. `--avif`, `--max-width` and `--out-dir` are optional. It keeps the originals, and refuses files reached through a folder link outside `--root` unless you pass `--follow-links` (Laravel's `public/storage` is one). An image that won't convert is named and left alone.
     4. Make the markup change it prints (`<picture>` or the new src), rebuild and re-crawl.
 14. **Bing URL submission, only with the owner's own yes:** IndexNow already tells Bing about changed URLs, so offer this only when the owner wants Bing asked directly.
     - `node <skill-dir>/scripts/connect-keys.mjs submit-bing --site <origin> --from-diff seo-audit/seo-diff.json` (or `--urls <file>`) prints a dry run and sends nothing.
