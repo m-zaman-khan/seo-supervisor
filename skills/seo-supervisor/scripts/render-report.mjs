@@ -558,6 +558,27 @@ function googleUpdatesText(html = false) {
       : "none were announced";
   return `Google ranking updates in this period: ${list.length ? list.join(" · ") : none}${g.note ? `. ${text(g.note)}` : ""}`;
 }
+
+// ---------- extra panels: an empty one adds nothing to the output ----------
+// Score views: trust signals, Local SEO, Content quality.
+const viewsHtml = () => "";
+const viewsMd = () => [];
+
+// Links from other sites (Search Console exports) and their change since the last audit.
+const linksHtml = () => "";
+const linksMd = () => [];
+const linksDiffHtml = () => "";
+const linksDiffMd = () => [];
+
+const agentsHtml = () => "";
+const agentsMd = () => [];
+const writingHtml = () => "";
+const writingMd = () => [];
+
+const desktopSpeedText = () => "";
+
+const positionsText = () => "";
+
 function overviewHtml() {
   if (!overall)
     return `<section class="panel empty-state"><h2>Nothing to score</h2><p>This file has no findings or passed rules. Run the audit to fill it.</p></section>`;
@@ -609,7 +630,7 @@ function overviewHtml() {
         <p class="quiet"><span class="key k-fail" aria-hidden="true"></span>${num(overall.rules - overall.passing)} failing${notChecked.length ? ` · ${num(notChecked.length)} not checked` : ""}</p>
       </div>
     </section>
-    ${speedText() ? `<p class="quiet">${esc(speedText())}</p>` : ""}${labSpeedText() ? `\n    <p class="quiet">${esc(labSpeedText())}</p>` : ""}${lcpText() ? `\n    <p class="quiet">${esc(lcpText())}</p>` : ""}${lighthouseText() ? `\n    <p class="quiet">${esc(lighthouseText())}</p>` : ""}${authorityText() ? `\n    <p class="quiet">${esc(authorityText())}${ahrefsCredit() ? ` · <a href="${esc(ahrefsCredit().url)}" rel="noopener">${esc(ahrefsCredit().text)}</a>` : ""}</p>` : ""}
+    ${speedText() ? `<p class="quiet">${esc(speedText())}</p>` : ""}${labSpeedText() ? `\n    <p class="quiet">${esc(labSpeedText())}</p>` : ""}${lcpText() ? `\n    <p class="quiet">${esc(lcpText())}</p>` : ""}${lighthouseText() ? `\n    <p class="quiet">${esc(lighthouseText())}</p>` : ""}${authorityText() ? `\n    <p class="quiet">${esc(authorityText())}${ahrefsCredit() ? ` · <a href="${esc(ahrefsCredit().url)}" rel="noopener">${esc(ahrefsCredit().text)}</a>` : ""}</p>` : ""}${desktopSpeedText() ? `\n    <p class="quiet">${esc(desktopSpeedText())}</p>` : ""}${positionsText() ? `\n    <p class="quiet">${esc(positionsText())}</p>` : ""}
     ${googleUpdatesText() ? `<p class="quiet">${googleUpdatesText(true)}</p>\n    ` : ""}</div>
     <div class="ov-right">
     <section class="panel factors" aria-labelledby="h-factors">
@@ -640,7 +661,7 @@ function overviewHtml() {
         }
         return rows.join("");
       })()}</ol>
-    </section>${searchLines()
+    </section>${viewsHtml()}${searchLines()
       .map(t => `\n    <p class="quiet">${esc(t)}</p>`)
       .join("")}${
       bingLinks || linkCheckLine
@@ -658,7 +679,7 @@ function overviewHtml() {
         : ""
     }${topLinked.length ? `<p>The pages with the most links from other sites:</p><ul class="lim">${topLinked.map(p => `<li><b><code>${esc(p.url)}</code></b><span>${linkCount(p)}</span></li>`).join("")}</ul>` : ""}${linkSample.length ? `<p>Some of the links to the home page:</p><ul class="lim">${linkSample.map(s => `<li><b><code>${esc(s.url)}</code></b><span>${esc(s.anchorText || "")}</span></li>`).join("")}</ul>` : ""}</details>`
         : ""
-    }
+    }${linksHtml()}${agentsHtml()}${writingHtml()}
     </div>
   </div>
   ${
@@ -852,7 +873,7 @@ const sameFields = d => {
   return `${f.slice(0, -1).join(", ")} and ${f.at(-1)} as last time${c.has("speed") ? ", and no page got much faster or slower" : ""}`;
 };
 const diffHtml = () => `<div class="limits">
-  <p class="quiet">Compared with the crawl of ${esc(fmtDate(diff.since))}. Pages are matched by path.</p>${googleUpdatesText() ? `\n  <p class="quiet">${googleUpdatesText(true)}</p>` : ""}
+  <p class="quiet">Compared with the crawl of ${esc(fmtDate(diff.since))}. Pages are matched by path.</p>${googleUpdatesText() ? `\n  <p class="quiet">${googleUpdatesText(true)}</p>` : ""}${linksDiffHtml()}
   ${diffSections(diff)
     .map(
       ([h, list]) =>
@@ -1255,6 +1276,8 @@ function markdown() {
     if (lighthouseText()) L.push(lighthouseText(), "");
     if (authorityText())
       L.push(`${authorityText()}${ahrefsCredit() ? ` · [${ahrefsCredit().text}](${ahrefsCredit().url})` : ""}`, "");
+    if (desktopSpeedText()) L.push(mdText(desktopSpeedText()), "");
+    if (positionsText()) L.push(mdText(positionsText()), "");
     if (googleUpdatesText()) L.push(googleUpdatesText(), "");
     for (const t of searchLines()) L.push(mdText(t), ""); // paths from Search Console, escaped
     L.push("## Area scores", "", "| Area | Score | Open findings | Top issue |", "| --- | ---: | ---: | --- |");
@@ -1263,6 +1286,7 @@ function markdown() {
         `| ${mdEsc(a.name)} | ${a.value} | ${a.top.length} | ${mdEsc(a.top[0] ? mdSafe(a.top[0].title) : "All checks pass")} |`,
       );
     L.push("");
+    L.push(...viewsMd());
     if (bingLinks || linkCheckLine) L.push(`## Links from other sites${bingLinks ? " (Bing)" : ""}`, "");
     if (linkCheckLine)
       L.push(
@@ -1285,6 +1309,7 @@ function markdown() {
         ...linkSample.map(s => `- ${mdCode(s.url)}${s.anchorText ? ` ${mdText(s.anchorText)}` : ""}`),
         "",
       );
+    L.push(...linksMd(), ...agentsMd(), ...writingMd());
   }
   if (plan) L.push(...planMarkdown(plan));
   if (diff) {
@@ -1297,6 +1322,7 @@ function markdown() {
       ["Pages gone", diff.removed],
     ])
       if ((l || []).length) L.push(`### ${h}`, "", ...l.map(p => `- \`${p}\``), "");
+    L.push(...linksDiffMd());
   }
   if (decisions.length) {
     L.push("## Decisions needed", "");

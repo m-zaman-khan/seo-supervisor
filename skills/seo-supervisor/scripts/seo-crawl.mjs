@@ -21,7 +21,7 @@ import {
 import { CHECKS as RENDER_CHECKS, findBrowser, renderPage, compareRendered } from "./checks/render.mjs";
 import { CHECKS as VISUAL_CHECKS, checkVisual } from "./checks/visual.mjs";
 import { checkLighthouse, findLighthouse } from "./checks/lighthouse.mjs";
-import { imageSize } from "./lib/image-size.mjs";
+import { imageSize } from "./lib/image-size.mjs"; // once, before any request
 
 const VERSION = "2.0.0";
 const UA = "seo-supervisor-crawler/" + VERSION;
@@ -1000,6 +1000,7 @@ const CHECKS = {
 };
 
 Object.assign(CHECKS, HREFLANG_CHECKS, TLS_CHECKS, SPEED_CHECKS, RENDER_CHECKS, VISUAL_CHECKS);
+
 const findings = new Map(); // key -> {evidence:[], count}
 function add(key, url, detail) {
   if (!CHECKS[key]) throw new Error("unknown check " + key);
@@ -1490,7 +1491,7 @@ function analyze(url, html, headers, xRobotsLines) {
       ].map(m => m[1].toLowerCase()),
     ),
   ];
-  return {
+  const rec = {
     // Relative URLs resolve against the first <base href>, itself resolved against the page URL, as browsers do.
     base: urlOr(tagsOf(head, "base").find(b => b.href)?.href ?? url, url)?.href ?? url,
     title: titleM ? textOf(titleM[1]) : null,
@@ -1566,6 +1567,8 @@ function analyze(url, html, headers, xRobotsLines) {
         .match(/<[a-z][\w-]*/gi) || []
     ).length,
   };
+
+  return rec;
 }
 
 // ---------- robots ----------
@@ -3243,6 +3246,9 @@ for (let i = 0; i < botSample.length; i += CONC)
     }),
   );
 
+// ---------- site-wide checks and data; data for the report goes on `extra` ----------
+const extra = {};
+
 // ---------- what the crawler cannot check ----------
 // CRAWL-09 never passes here: a real Googlebot comes from Google's IP addresses, which no request from here can.
 const NOT_CRAWLABLE = [
@@ -3377,6 +3383,7 @@ const report = {
   findings: out,
   passed,
   notChecked,
+  ...extra,
   ...(speed ? { speed } : {}),
   ...(labSpeed ? { labSpeed } : {}),
   ...(lighthouse ? { lighthouse } : {}),
