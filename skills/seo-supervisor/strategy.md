@@ -33,6 +33,17 @@ Build them from the site's own pages and real queries only: Search Console queri
 4. **Order the work:** pages with demand (impressions, almost on page one) before pages without.
 5. **Gaps:** a group with evidence of demand and no page is a content opportunity (INTENT-05). Report it as a decision with `fixBy: "owner"` and its evidence. Never create the page yourself.
 
+## Keyword ideas
+
+`scripts/keyword-ideas.mjs` turns Search Console data (`google.json` or `gsc.json`) and the crawl into ideas, each with its source and evidence, in `seo-audit/keyword-ideas.json` and `.md`. It reads local files only, and never adds volumes or difficulty.
+
+- **Almost there:** a query at position 8–20, and the page that shows for it. This is per query; the almost-page-one finding (INTENT-04) is per page. Don't report a query again as a finding.
+- **Shown for, but no page is about it:** no page's title or H1 holds the query's main words. It's a candidate for a cluster gap above, once the owner agrees.
+- **Questions people search:** material for "Questions to answer" in a brief.
+- **Ideas from search results and competitors:** only with outside checks on. Save the phrases you saw as `seo-audit/keyword-extra.json`, `[{ "phrase", "source" }]`, with the engine (or the competitor's page) and the date in each source, e.g. `"Google related searches, 2026-11-21"`, and pass `--extra`.
+
+Show the owner the list. Only the ideas the owner picks become target phrases, with their source.
+
 ## The content brief
 
 One format for setup's drafts and for `/seo-brief`. Use only facts from the site or the owner; write anything else as a visible `[owner: …]` placeholder. The profile's claims lists beat the site's own copy: a claim the profile bans or hasn't confirmed is a question for the owner, not a fact.
