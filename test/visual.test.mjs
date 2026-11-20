@@ -157,6 +157,7 @@ test(
     }
     const n = Object.keys(SITE).length;
     assert.equal(r.checked, n, r.notes.join(" "));
+    // The newsletter's unstyled email field has Chrome's default 13.33 px text, which an iPhone zooms into.
     assert.deepEqual(
       found,
       {
@@ -164,10 +165,14 @@ test(
         heading: ["mobile-content-missing"],
         wide: ["mobile-overflow"],
         overlay: ["mobile-interstitial"],
-        newsletter: ["mobile-interstitial"],
+        newsletter: ["input-zoom", "mobile-interstitial"],
         tiny: ["mobile-small-text"],
       },
       "collapsed sections, a desktop-only word in the H1, app shells, sticky heroes, consent tools, clipped overflow, rem text and alert() raise nothing",
+    );
+    assert.ok(
+      !r.notes.some(t => /under 16 px/.test(t)),
+      "16 px text gets no phone-text note, and 10 px text is a finding instead",
     );
     assert.ok(
       r.notes.some(t => /consent/i.test(t) && t.includes("/consent/") && /onetrust/.test(t)),
@@ -338,6 +343,60 @@ test(
     assert.deepEqual(CHECKS["tap-targets-small"].slice(0, 2), ["REND-09", "low"]);
   },
 );
+
+// WebKit (WKWebViewIOS.mm, _zoomToFocusRect) zooms a focused field to 16 ÷ its text size, capped at the viewport's
+// maximum-scale, and skips a change under 10%.
+test("form fields under 16 px give input-zoom; 16 px fields don't", { skip, timeout: 240000 }, async () => {
+  const form = `<form><label>Email <input type="email" name="email"></label><select name="topic"><option>Sales</option></select><textarea name="msg"></textarea><input type="checkbox" name="ok"><button>Send</button></form>`;
+  const pages = {
+    // Unstyled fields: Chrome's default 13.33 px. Main text at 14 px is a phone-text note, not a finding.
+    small: doc(`<main><h1>Small fields</h1><p>${words(100)}</p>${form}</main>`, "p{font-size:14px}"),
+    // 16 px fields, a 15 px search box (16 ÷ 15 is under WebKit's 10%), and small fields that are hidden, disabled or
+    // read-only.
+    big: doc(
+      `<main><h1>Big fields</h1><p>${words(100)}</p>${form}<input type="search" class="s"><input type="text" class="t" style="display:none"><input type="text" class="t" disabled><input type="text" class="t" readonly></main>`,
+      "input,select,textarea{font-size:16px}.s{font-size:15px}.t{font-size:10px}",
+    ),
+    // maximum-scale=1 caps the zoom, so an iPhone doesn't zoom in.
+    capped: doc(`<main><h1>Capped</h1><p>${words(100)}</p>${form}</main>`).replace(
+      "initial-scale=1",
+      "initial-scale=1, maximum-scale=1",
+    ),
+  };
+  const dir = tmp();
+  for (const [name, html] of Object.entries(pages)) {
+    mkdirSync(join(dir, name));
+    writeFileSync(join(dir, name, "index.html"), html);
+  }
+  const site = await serve(dir),
+    found = [];
+  let r;
+  try {
+    r = await checkVisual(
+      browser,
+      Object.keys(pages).map(n => `${site.url}/${n}/`),
+      { add: (key, url, detail) => found.push([key, new URL(url).pathname, detail]) },
+    );
+  } finally {
+    await site.close();
+  }
+  assert.equal(r.checked, 3, r.notes.join(" "));
+  const zoom = found.filter(([key]) => key === "input-zoom");
+  assert.deepEqual(
+    zoom.map(z => z[1]),
+    ["/small/"],
+    JSON.stringify(found),
+  );
+  assert.match(
+    zoom[0][2],
+    /^3 form fields with text under 16 px, for example “Email” 13\.3 px, “topic” 13\.3 px, “msg” 13\.3 px$/,
+    "not the checkbox or the button",
+  );
+  assert.deepEqual(CHECKS["input-zoom"].slice(0, 2), ["REND-09", "low"]);
+  const note = r.notes.find(t => /under 16 px/.test(t)) || "";
+  assert.match(note, /main text is under 16 px on 1 page: \/small\/ \(14 px\)/, r.notes.join(" "));
+  assert.match(note, /Information only/);
+});
 
 // Chrome escapes non-ASCII as \uXXXX in protocol JSON, so this guards the decoding rather than reproducing a split.
 test("the DevTools helper round-trips multi-byte text longer than one pipe read", { skip }, async () => {

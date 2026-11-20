@@ -33,6 +33,13 @@ export const CHECKS = {
     "Visitors from search see the popup instead of the page they came for. Google's page-experience guidance calls this an intrusive interstitial, and many visitors leave instead of closing it.",
     "Use a small banner instead, or show the popup later (after the visitor interacts). Required age or legal notices should cover only part of the screen.",
   ],
+  "input-zoom": [
+    "REND-09",
+    "low",
+    n => `${n} page(s) have form fields with text under 16 px, which iPhones zoom into`,
+    "When a visitor taps a field whose text is smaller than 16 px, Safari on iPhone zooms the page in to make it readable (WebKit's rule: 16 px divided by the field's text size), so part of the form moves off the screen while they type.",
+    "Set inputs, selects and text areas to `font-size: 16px` (or `1rem`), at least on small screens. Don't stop the zoom with `maximum-scale=1` or `user-scalable=no` in the viewport tag: on Android that also stops visitors zooming in to read.",
+  ],
   "tap-targets-small": [
     "REND-09",
     "low",
@@ -117,6 +124,20 @@ const TAPS = `(() => {
   const bad = small.filter(x => all.some(y => y !== x && toBox(x.c, y.r) < 12) || small.some(y => y !== x && Math.hypot(x.c[0] - y.c[0], x.c[1] - y.c[1]) < 24));
   const name = e => (e.getAttribute("aria-label") || e.innerText || e.title || e.querySelector("img")?.alt || e.tagName.toLowerCase()).replace(/\\s+/g, " ").trim().slice(0, 40);
   return { count: bad.length, examples: bad.slice(0, 3).map(x => \`“\${name(x.e)}” \${Math.round(x.r.width)}×\${Math.round(x.r.height)} px\`) };
+})()`;
+// Form fields an iPhone zooms into when tapped. iOS Safari zooms a focused field to 16 ÷ its text size, capped at
+// maximum-scale, skips a change under 10%, and doesn't zoom under user-scalable=no. Fields that bring up the keyboard
+// or a picker count; hidden, disabled and read-only ones don't.
+// https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/API/ios/WKWebViewIOS.mm
+const FIELDS = `(() => {
+  const vp = (document.querySelector('meta[name="viewport" i]')?.content || "").toLowerCase();
+  const max = /user-scalable\\s*=\\s*(no|0)\\b/.test(vp) ? 1 : parseFloat(vp.match(/maximum-scale\\s*=\\s*([\\d.]+)/)?.[1]) || Infinity;
+  const NO_KEYS = /^(hidden|checkbox|radio|button|submit|reset|image|file|range|color)$/i;
+  const small = [...document.querySelectorAll("input, select, textarea")]
+    .filter(e => !(e.tagName === "INPUT" && NO_KEYS.test(e.type)) && !e.disabled && !e.readOnly && e.checkVisibility({ opacityProperty: true, visibilityProperty: true }))
+    .map(e => ({ e, size: parseFloat(getComputedStyle(e).fontSize) })).filter(x => x.size > 0 && Math.min(16 / x.size, max) >= 1.1);
+  const name = e => (e.labels?.[0]?.innerText || e.getAttribute("aria-label") || e.placeholder || e.name || e.type).replace(/\\s+/g, " ").trim().slice(0, 40);
+  return { count: small.length, examples: small.slice(0, 3).map(x => \`“\${name(x.e)}” \${Math.round(x.size * 10) / 10} px\`) };
 })()`;
 // Installed before the page's scripts. Blocking time is each long task's part over 50 ms, as in Lighthouse's TBT.
 const OBSERVE = `window.__seoLab = { lcp: 0, cls: 0, tbt: 0 }; try {
@@ -233,7 +254,8 @@ const slugOf = (url, used) => {
 export async function checkVisual(browser, urls, { add, screenshotDir, pageBudgetMs = 50000 } = {}) {
   const notes = [],
     lab = [],
-    used = new Set();
+    used = new Set(),
+    smallText = [];
   const why = e => String(e.message).split("\n")[0].slice(0, 120);
   let checked = 0,
     bfTested = 0;
@@ -265,7 +287,7 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
         );
         const m = await visit(chrome, url, { device: PHONE, userAgent: phoneUa, settleMs: 1000, deadline }, async p => {
           await shoot(p, "mobile");
-          return { ...(await evaluate(p, MEASURE)), taps: await evaluate(p, TAPS) };
+          return { ...(await evaluate(p, MEASURE)), taps: await evaluate(p, TAPS), fields: await evaluate(p, FIELDS) };
         });
         checked++;
         // Word counts below 30 are too small to compare. A real diff of the text would also catch swapped content.
@@ -287,11 +309,19 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
         if (m.viewport && !m.clipped && m.scrollWidth > PHONE.width + 2)
           add("mobile-overflow", url, `${m.scrollWidth} px wide on a ${PHONE.width} px screen`);
         if (m.viewport && m.fontSize < 12) add("mobile-small-text", url, `main text ${m.fontSize} px`);
+        else if (m.viewport && m.fontSize < 16)
+          smallText.push(`${new URL(url).pathname} (${Math.round(m.fontSize * 10) / 10} px)`);
         if (m.viewport && m.taps.count)
           add(
             "tap-targets-small",
             url,
             `${m.taps.count} ${m.taps.count === 1 ? "link or button" : "links or buttons"} under 24×24 px with too little space around them, for example ${m.taps.examples.join(", ")}`,
+          );
+        if (m.viewport && m.fields.count)
+          add(
+            "input-zoom",
+            url,
+            `${m.fields.count} form field${m.fields.count === 1 ? "" : "s"} with text under 16 px, for example ${m.fields.examples.join(", ")}`,
           );
         if (m.popup.cover)
           add(
@@ -349,6 +379,10 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
   if (checked)
     notes.push(
       `Loaded ${checked} sample page(s) at desktop (1366×768) and phone (390×844) size${screenshotDir ? ", with screenshots" : ""}${bfTested ? `, and ran Chrome's back/forward cache test on ${bfTested} of them` : ""}. Lab speed comes from one phone load with 4× CPU slowdown on slow 4G: indicative only, it won't match Lighthouse.`,
+    );
+  if (smallText.length)
+    notes.push(
+      `On a phone, the main text is under 16 px on ${smallText.length} page${smallText.length === 1 ? "" : "s"}: ${smallText.join(", ")}. Information only: 16 px is the browsers' default text size, and main text under 12 px is a finding (mobile-small-text).`,
     );
   if (checked && containerArgs().length)
     notes.push(
