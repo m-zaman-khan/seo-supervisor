@@ -698,10 +698,31 @@ const scList = (list, f) =>
     .slice(0, 5)
     .map(x => `<li><b><code>${esc(x[f])}</code></b><span>${scCount(x)}</span></li>`)
     .join("")}</ul>`;
+// worthALook (links-import.mjs): standout links, each with why and what to look at.
+const looks = (Array.isArray(raw.worthALook) ? raw.worthALook : [])
+  .filter(x => obj(x) && ["subject", "why", "look"].every(k => typeof x[k] === "string" && x[k]))
+  .slice(0, 10);
+const lookEx = x => (Array.isArray(x.examples) ? x.examples.filter(e => typeof e === "string" && e).slice(0, 5) : []);
+const LOOK_INTRO = "Worth a look: links that stand out. It isn't a score or a finding, and most turn out to be fine.";
+const looksHtml = () =>
+  looks.length
+    ? `<p>${esc(LOOK_INTRO)}</p><ul class="lim">${looks
+        .map(
+          x =>
+            `<li><b>${esc(x.subject)}</b><span>${esc(x.why)} ${esc(x.look)}${
+              lookEx(x).length
+                ? ` For example: ${lookEx(x)
+                    .map(e => `<code>${esc(e)}</code>`)
+                    .join(", ")}`
+                : ""
+            }</span></li>`,
+        )
+        .join("")}</ul>`
+    : "";
 const linksHtml = () =>
-  hasSc || bingLinks || linkCheckLine
+  hasSc || bingLinks || linkCheckLine || looks.length
     ? `
-    <details class="how links"><summary>Links from other sites${linkSources ? ` (${linkSources})` : ""}</summary>${scLine() ? `<p>${esc(scLine())}</p>` : ""}${scSites.length ? `<p>The sites with the most links to you:</p>${scList(scSites, "domain")}` : ""}${scPages.length ? `<p>Your most-linked pages in Search Console:</p>${scList(scPages, "url")}` : ""}${scMix ? `<p>${esc(scMixLine())}</p>` : ""}${hasSc ? `<p>${esc(scInfoLine())}</p>` : ""}${
+    <details class="how links"><summary>Links from other sites${linkSources ? ` (${linkSources})` : ""}</summary>${scLine() ? `<p>${esc(scLine())}</p>` : ""}${scSites.length ? `<p>The sites with the most links to you:</p>${scList(scSites, "domain")}` : ""}${scPages.length ? `<p>Your most-linked pages in Search Console:</p>${scList(scPages, "url")}` : ""}${scMix ? `<p>${esc(scMixLine())}</p>` : ""}${hasSc ? `<p>${esc(scInfoLine())}</p>` : ""}${looksHtml()}${
       linkCheckLine
         ? `<p>${esc(linkCheckLine)}</p>${
             goneLinks.length
@@ -715,7 +736,7 @@ const linksHtml = () =>
     }${topLinked.length ? `<p>${hasSc ? "Your most-linked pages in Bing:" : "The pages with the most links from other sites:"}</p><ul class="lim">${topLinked.map(p => `<li><b><code>${esc(p.url)}</code></b><span>${linkCount(p)}</span></li>`).join("")}</ul>` : ""}${linkSample.length ? `<p>${hasSc ? "Some of Bing's links to the home page:" : "Some of the links to the home page:"}</p><ul class="lim">${linkSample.map(s => `<li><b><code>${esc(s.url)}</code></b><span>${esc(s.anchorText || "")}</span></li>`).join("")}</ul>` : ""}</details>`
     : "";
 const linksMd = () => {
-  if (!(hasSc || bingLinks || linkCheckLine)) return [];
+  if (!(hasSc || bingLinks || linkCheckLine || looks.length)) return [];
   // The same as markdown()'s mdCode and mdText: other sites' addresses as code, their text escaped.
   const code = s => "`" + String(s ?? "").replace(/[`\r\n]/g, " ") + "`",
     text = s =>
@@ -731,6 +752,17 @@ const linksMd = () => {
     ...(scPages.length ? ["Your most-linked pages in Search Console:", "", ...list(scPages, "url"), ""] : []),
     ...(scMix ? [scMixLine(), ""] : []),
     ...(hasSc ? [scInfoLine(), ""] : []),
+    ...(looks.length
+      ? [
+          LOOK_INTRO,
+          "",
+          ...looks.map(
+            x =>
+              `- **${text(x.subject)}**: ${text(x.why)} ${text(x.look)}${lookEx(x).length ? ` For example: ${lookEx(x).map(code).join(", ")}` : ""}`,
+          ),
+          "",
+        ]
+      : []),
     ...(linkCheckLine
       ? [
           linkCheckLine,

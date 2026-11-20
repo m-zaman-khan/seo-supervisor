@@ -499,3 +499,74 @@ test("the report shows a link summary and the anchor mix, and Since last audit s
     assert.equal(j.md, none.md);
   }
 });
+
+test("the Links panel lists links worth a look, escaped, and the score doesn't change", async () => {
+  const look = [
+    {
+      kind: "sitewide",
+      subject: `${XSS}.example`,
+      why: "Links to you from 600 of its pages <b>here</b>.",
+      look: `That's fine from a partner. ${ONLY}`,
+    },
+    {
+      kind: "same-text",
+      subject: "cheap *boiler* repair",
+      why: "The same link text comes from 3 different sites.",
+      look: "Check who placed them.",
+      examples: ["https://a.example/`x`", XSS, 7],
+    },
+    null,
+    { kind: "x", subject: 5, why: "w", look: "l" },
+    "junk",
+  ];
+  const none = await render(() => {}),
+    r = await render(d => {
+      d.worthALook = look;
+    });
+  const scoreOf = html => html.match(/<p class="big[^"]*"><span class="n">(\d+)<\/span>/)[1];
+  assert.equal(scoreOf(r.html), scoreOf(none.html), "information only: the score is unchanged");
+  assert.equal(r.md.match(/\*\*SEO health score: [^*]+\*\*/)[0], none.md.match(/\*\*SEO health score: [^*]+\*\*/)[0]);
+
+  const det = tab(r.html, "overview").match(/<details class="how links">[\s\S]*?<\/details>/)?.[0];
+  assert.ok(det, "the Links panel shows");
+  assert.match(
+    det,
+    /<p>Worth a look: links that stand out\. It isn&#39;t a score or a finding, and most turn out to be fine\.<\/p>/,
+  );
+  assert.ok(
+    det.includes(
+      `<li><b>&lt;img src=x onerror=alert(1)&gt;.example</b><span>Links to you from 600 of its pages &lt;b&gt;here&lt;/b&gt;. That&#39;s fine from a partner. ${ONLY}</span></li>`,
+    ),
+  );
+  assert.ok(
+    det.includes(
+      "<li><b>cheap *boiler* repair</b><span>The same link text comes from 3 different sites. Check who placed them. For example: <code>https://a.example/`x`</code>, <code>&lt;img src=x onerror=alert(1)&gt;</code></span></li>",
+    ),
+    "examples in code, non-strings dropped",
+  );
+  assert.equal(det.match(/<li>/g).length, 2, "malformed items are skipped");
+  assert.doesNotMatch(r.html, /<img src=x|<b>here/);
+
+  assert.match(r.md, /^## Links from other sites$/m);
+  assert.ok(
+    r.md.includes(
+      "\nWorth a look: links that stand out. It isn't a score or a finding, and most turn out to be fine.\n\n",
+    ),
+  );
+  assert.ok(
+    r.md.includes(
+      `\n- **\\<img src=x onerror=alert(1)\\>.example**: Links to you from 600 of its pages \\<b\\>here\\</b\\>. That's fine from a partner. ${ONLY}\n`,
+    ),
+  );
+  assert.ok(
+    r.md.includes(
+      "\n- **cheap \\*boiler\\* repair**: The same link text comes from 3 different sites. Check who placed them. For example: `https://a.example/ x `, `<img src=x onerror=alert(1)>`\n",
+    ),
+  );
+
+  const junk = await render(d => {
+    d.worthALook = look.slice(2);
+  });
+  assert.equal(junk.html, none.html, "only malformed items: nothing is added");
+  assert.equal(junk.md, none.md);
+});
