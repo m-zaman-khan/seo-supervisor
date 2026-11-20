@@ -352,9 +352,12 @@ test("form fields under 16 px give input-zoom; 16 px fields don't", { skip, time
     // Unstyled fields: Chrome's default 13.33 px. Main text at 14 px is a phone-text note, not a finding.
     small: doc(`<main><h1>Small fields</h1><p>${words(100)}</p>${form}</main>`, "p{font-size:14px}"),
     // 16 px fields, a 15 px search box (16 ÷ 15 is under WebKit's 10%), and small fields that are hidden, disabled or
-    // read-only.
+    // read-only. Then Mailchimp's spam trap (off screen, aria-hidden, out of the tab order), and a field with each of
+    // those three alone.
     big: doc(
-      `<main><h1>Big fields</h1><p>${words(100)}</p>${form}<input type="search" class="s"><input type="text" class="t" style="display:none"><input type="text" class="t" disabled><input type="text" class="t" readonly></main>`,
+      `<main><h1>Big fields</h1><p>${words(100)}</p>${form}<input type="search" class="s"><input type="text" class="t" style="display:none"><input type="text" class="t" disabled><input type="text" class="t" readonly>
+<div style="position:absolute;left:-5000px" aria-hidden="true"><input type="text" name="b_123_456" tabindex="-1" value="" class="t"></div>
+<input name="offscreen" class="t" style="position:absolute;left:-5000px"><input name="untabbable" class="t" tabindex="-1"><div aria-hidden="true"><input name="ariahidden" class="t"></div></main>`,
       "input,select,textarea{font-size:16px}.s{font-size:15px}.t{font-size:10px}",
     ),
     // maximum-scale=1 caps the zoom, so an iPhone doesn't zoom in.

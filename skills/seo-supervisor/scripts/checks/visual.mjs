@@ -125,17 +125,18 @@ const TAPS = `(() => {
   const name = e => (e.getAttribute("aria-label") || e.innerText || e.title || e.querySelector("img")?.alt || e.tagName.toLowerCase()).replace(/\\s+/g, " ").trim().slice(0, 40);
   return { count: bad.length, examples: bad.slice(0, 3).map(x => \`“\${name(x.e)}” \${Math.round(x.r.width)}×\${Math.round(x.r.height)} px\`) };
 })()`;
-// Form fields an iPhone zooms into when tapped. iOS Safari zooms a focused field to 16 ÷ its text size, capped at
-// maximum-scale, skips a change under 10%, and doesn't zoom under user-scalable=no. Fields that bring up the keyboard
-// or a picker count; hidden, disabled and read-only ones don't.
+// iOS Safari zooms a focused field to 16 ÷ its text size, capped at maximum-scale, skips a change under 10%, and
+// doesn't zoom under user-scalable=no. Fields off screen sideways, out of the tab order or inside aria-hidden are
+// skipped: a sign-up form's spam trap is all three (Mailchimp's is).
 // https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/API/ios/WKWebViewIOS.mm
 const FIELDS = `(() => {
   const vp = (document.querySelector('meta[name="viewport" i]')?.content || "").toLowerCase();
   const max = /user-scalable\\s*=\\s*(no|0)\\b/.test(vp) ? 1 : parseFloat(vp.match(/maximum-scale\\s*=\\s*([\\d.]+)/)?.[1]) || Infinity;
   const NO_KEYS = /^(hidden|checkbox|radio|button|submit|reset|image|file|range|color)$/i;
   const small = [...document.querySelectorAll("input, select, textarea")]
-    .filter(e => !(e.tagName === "INPUT" && NO_KEYS.test(e.type)) && !e.disabled && !e.readOnly && e.checkVisibility({ opacityProperty: true, visibilityProperty: true }))
-    .map(e => ({ e, size: parseFloat(getComputedStyle(e).fontSize) })).filter(x => x.size > 0 && Math.min(16 / x.size, max) >= 1.1);
+    .filter(e => !(e.tagName === "INPUT" && NO_KEYS.test(e.type)) && !e.disabled && !e.readOnly && e.tabIndex >= 0 && !e.closest('[aria-hidden="true"]') && e.checkVisibility({ opacityProperty: true, visibilityProperty: true }))
+    .map(e => ({ e, r: e.getBoundingClientRect(), size: parseFloat(getComputedStyle(e).fontSize) }))
+    .filter(({ r, size }) => r.width >= 2 && r.height >= 2 && r.right > 0 && r.left < innerWidth && size > 0 && Math.min(16 / size, max) >= 1.1);
   const name = e => (e.labels?.[0]?.innerText || e.getAttribute("aria-label") || e.placeholder || e.name || e.type).replace(/\\s+/g, " ").trim().slice(0, 40);
   return { count: small.length, examples: small.slice(0, 3).map(x => \`“\${name(x.e)}” \${Math.round(x.size * 10) / 10} px\`) };
 })()`;

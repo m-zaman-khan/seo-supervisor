@@ -64,8 +64,8 @@ export const CHECKS = {
   "hreflang-sources-disagree": [
     "META-08",
     "medium",
-    n => `${n} page(s) list different language versions in the HTML, the Link header and the sitemap`,
-    "Google reads hreflang from all three places and treats them alike, and says using more than one brings no benefit. It doesn't say which wins when they differ, so a version can be paired with the wrong URL or left out. Two lists usually drift apart after a URL change, when one is updated and the other isn't.",
+    n => `${n} page(s) pair a language and a URL differently in the HTML, the Link header and the sitemap`,
+    "Google reads hreflang from all three places, treats them alike and combines them, and says using more than one brings no benefit. It doesn't say which wins when they conflict, so a version can be paired with the wrong URL or language. Two lists usually drift apart after a URL change, when one is updated and the other isn't.",
     "Keep hreflang in one place (HTML tags, the Link header or the sitemap) and remove the others, or build every one from the same list.",
   ],
   "hreflang-missing-version": [
@@ -85,7 +85,7 @@ export const CHECKS = {
   "untranslated-copy": [
     "META-08",
     "medium",
-    n => `${n} pair(s) of language versions have the same title or main text`,
+    n => `${n} pair(s) of language versions share their main text`,
     "The versions are listed as different languages, but one wasn't translated. Google works out a page's language from its visible text, so an untranslated version counts as the original language and can't rank for the other one, and the two compete as duplicates.",
     "Translate the title and main text of each version, or drop the untranslated page from hreflang (and the language menu) until it's translated.",
   ],
@@ -188,26 +188,41 @@ export const linkHreflang = header =>
 // between sources. same maps an absolute URL onto the one it's compared as (the public origin onto the crawled one).
 const SOURCE = { html: "the HTML", header: "the Link header", sitemap: "the sitemap" };
 export function mergeHreflang(sources, base, same = u => u) {
-  const key = h => {
+  const at = h => {
     try {
       const u = new URL(same(new URL(h.href, base).href));
-      return `${h.lang.toLowerCase()} ${u.origin}${pathKey(u)}${u.search}`;
+      return `${u.origin}${pathKey(u)}${u.search}`;
     } catch {
-      return `${h.lang.toLowerCase()} ${h.href}`;
+      return h.href;
     }
   };
   const lists = Object.entries(sources)
     .filter(([, l]) => l?.length)
-    .map(([s, l]) => [s, new Map(l.map(h => [key(h), h]))]);
+    .map(([s, l]) => [
+      s,
+      new Map(
+        l.map(h => {
+          const e = { h, lang: h.lang.toLowerCase(), url: at(h) };
+          return [`${e.lang} ${e.url}`, e];
+        }),
+      ),
+    ]);
   const merged = new Map();
+  for (const [, l] of lists) for (const [k, e] of l) if (!merged.has(k)) merged.set(k, e.h);
+  // Google combines the sources, so an entry missing from one isn't a conflict. A conflict is the same code at another
+  // URL, or the same URL under another language (x-default may share a version's URL).
   let disagree = null;
-  for (const [a, la] of lists) {
-    for (const [k, h] of la) if (!merged.has(k)) merged.set(k, h);
-    for (const [b, lb] of lists) {
-      const k = !disagree && a !== b && [...la.keys()].find(k => !lb.has(k));
-      if (k) disagree = `${SOURCE[a]} lists ${la.get(k).lang} → ${la.get(k).href}, ${SOURCE[b]} doesn't`;
+  for (const [i, [a, la]] of lists.entries())
+    for (const [b, lb] of lists.slice(i + 1)) {
+      const theirs = [...lb].filter(([k]) => !la.has(k)).map(([, o]) => o);
+      for (const [k, e] of la) {
+        const o =
+          !disagree &&
+          !lb.has(k) &&
+          theirs.find(o => o.lang === e.lang || (o.url === e.url && e.lang !== "x-default" && o.lang !== "x-default"));
+        if (o) disagree = `${SOURCE[a]} lists ${e.h.lang} → ${e.h.href}, ${SOURCE[b]} lists ${o.h.lang} → ${o.h.href}`;
+      }
     }
-  }
   return { hreflang: [...merged.values()], hreflangDisagree: disagree };
 }
 
@@ -234,6 +249,10 @@ const primary = c => {
   return ALIAS[l] || l;
 };
 const flat = s => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
+const words = s =>
+  flat(s)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
 const dice = (a, b) => {
   if (!a || !b) return 0;
   let n = 0;
@@ -249,13 +268,21 @@ export function checkLanguages(pages, { add, origin }) {
   const listedAs = new Map(); // path -> the codes any page lists it under
   for (const es of ent.values())
     for (const e of es) if (e.ours) (listedAs.get(e.path) || listedAs.set(e.path, new Set()).get(e.path)).add(e.lang);
-  const pairs = new Set();
+  // Words that name the page: no model numbers (words with digits) and no brand words (in over half the titles), so a
+  // product name kept in every language isn't counted.
+  const titled = pages.filter(p => p.title),
+    inTitles = new Map();
+  for (const p of titled) for (const w of new Set(words(p.title))) inTitles.set(w, (inTitles.get(w) || 0) + 1);
+  const naming = t => words(t).filter(w => !/\p{N}/u.test(w) && !(inTitles.get(w) > titled.length / 2)).length;
+  const pairs = new Set(),
+    langs = new Set();
   for (const p of pages) {
     const u = p.finalUrl,
       self = pathKey(new URL(u)),
       es = ent.get(p);
     if (p.hreflangDisagree) add("hreflang-sources-disagree", u, p.hreflangDisagree);
     const lang = p.lang && LANG_TAG.test(p.lang) ? primary(p.lang) : null;
+    if (lang) langs.add(lang);
     if (p.lang && !lang) add("lang-invalid", u, `lang="${p.lang}"`);
     const codes = [...(listedAs.get(self) || [])];
     if (lang && codes.length && !codes.some(c => primary(c) === lang))
@@ -275,9 +302,11 @@ export function checkLanguages(pages, { add, origin }) {
     for (const e of es) {
       const t = e.ours && e.path !== self && byPath.get(e.path);
       if (!t) continue;
+      // A version on the site counts only if crawled and indexable, which is all pages holds. One on another host
+      // can't be checked, so it counts.
       for (const f of ent.get(t))
         if (
-          !(f.ours && f.path === self) &&
+          (!f.ours || (f.path !== self && byPath.has(f.path))) &&
           !missing.has(f.lang) &&
           !es.some(x => x.lang === f.lang || x.where === f.where)
         )
@@ -287,28 +316,23 @@ export function checkLanguages(pages, { add, origin }) {
       if (!mine || mine === theirs || pairs.has(pair)) continue;
       pairs.add(pair);
       // Conservative: 80% of the main text, or the same title of five naming words or more and half the main text.
-      const title =
-          flat(p.title) &&
-          flat(p.title) === flat(t.title) &&
-          flat(p.title)
-            .split(" ")
-            .filter(w => /\p{L}/u.test(w)).length >= 5,
+      const title = flat(p.title) && flat(p.title) === flat(t.title) && naming(p.title) >= 5,
         same = dice(p.shingles, t.shingles);
-      const why = [
-        title && `have the same title “${t.title}”`,
-        same >= 0.8 && `share ${Math.round(same * 100)}% of their main text`,
-      ].filter(Boolean);
-      if (why.length)
-        add("untranslated-copy", t.finalUrl, `${t.finalUrl} (${theirs}) and ${u} (${mine}) ${why.join(" and ")}`);
+      if (same >= 0.8 || (title && same >= 0.5))
+        add(
+          "untranslated-copy",
+          t.finalUrl,
+          `${t.finalUrl} (${theirs}) and ${u} (${mine}) ${title ? `have the same title “${t.title}” and ` : ""}share ${Math.round(same * 100)}% of their main text`,
+        );
     }
     if (missing.size) add("hreflang-missing-version", u, [...missing.values()].join("; "));
   }
   // The widget as the site's only translation: every page is in one language, and none lists versions in two.
   const widget = pages.filter(p => p.translateWidget);
-  if (widget.length && ![...ent.values()].some(es => new Set(es.map(e => primary(e.lang))).size > 1))
+  if (widget.length && langs.size <= 1 && ![...ent.values()].some(es => new Set(es.map(e => primary(e.lang))).size > 1))
     add(
       "translate-widget",
       widget[0].finalUrl,
-      `on ${widget.length} page(s), and no page lists language versions with hreflang`,
+      `on ${widget.length} page(s); every page is in one language and none lists language versions with hreflang`,
     );
 }

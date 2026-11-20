@@ -4,7 +4,12 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { serve } from "./serve.mjs";
 import { SCRIPTS, node, tmp } from "./helpers.mjs";
-import { checkHreflang, checkLanguages, linkHreflang } from "../skills/seo-supervisor/scripts/checks/hreflang.mjs";
+import {
+  checkHreflang,
+  checkLanguages,
+  linkHreflang,
+  mergeHreflang,
+} from "../skills/seo-supervisor/scripts/checks/hreflang.mjs";
 
 // Pages are crawled locally while their hreflang links use the public origin, as on a real pre-launch audit.
 const LOCAL = "http://127.0.0.1:4000";
@@ -229,19 +234,47 @@ test("an HTTP Link header's hreflang alternates are read, other links skipped", 
   assert.deepEqual(linkHreflang(null), []);
 });
 
-test("hreflang from the Link header and the sitemap is merged with the page's, and disagreeing sources are flagged", async () => {
+test("hreflang from the Link header and the sitemap is merged with the page's; a source listing less isn't a conflict", async () => {
   const report = await good();
   // /de/ has hreflang only in its Link header and /es/ only in the sitemap: unmerged, /en/ would have no return links.
   for (const key of ["hreflang-no-return", "hreflang-no-self", "hreflang-no-xdefault", "hreflang-missing-version"])
     assert.deepEqual(paths(report, key), [], key);
   assert.deepEqual(
     paths(report, "hreflang-sources-disagree"),
-    ["/about/"],
-    "the English page's HTML and sitemap agree",
+    [],
+    "/about/'s sitemap adds fr, which Google combines with the HTML's",
   );
-  assert.match(
-    evidence(report, "hreflang-sources-disagree")[0].detail,
-    /the sitemap lists fr → https:\/\/example\.com\/fr\/about\/, the HTML doesn't/,
+});
+
+test("hreflang sources conflict when a code has another URL or a URL another language, not when one lists less", () => {
+  const list = (...pairs) => pairs.map(([lang, path]) => ({ lang, href: `https://example.com${path}` }));
+  const conflict = (html, header) =>
+    mergeHreflang({ html, header, sitemap: [] }, "https://example.com/en/").hreflangDisagree;
+  assert.equal(
+    conflict(list(["en", "/en/"], ["de", "/de/"], ["x-default", "/en/"]), list(["en", "/en/"], ["de", "/de/"])),
+    null,
+  );
+  assert.equal(
+    conflict(list(["en", "/en/"], ["de", "/de/"], ["de-AT", "/de/"]), list(["de-AT", "/de/"])),
+    null,
+    "the same URL under a second code the other source lists too",
+  );
+  assert.equal(conflict(list(["x-default", "/en/"]), list(["en", "/en/"])), null, "x-default shares a version's URL");
+  assert.equal(
+    conflict(list(["en", "/en/"], ["de", "/de/"]), list(["en", "/en/"], ["de", "/de-de/"])),
+    "the HTML lists de → https://example.com/de/, the Link header lists de → https://example.com/de-de/",
+  );
+  assert.equal(
+    conflict(list(["en", "/en/"], ["de", "/de/"]), list(["en", "/en/"], ["fr", "/de/"])),
+    "the HTML lists de → https://example.com/de/, the Link header lists fr → https://example.com/de/",
+  );
+  assert.equal(
+    mergeHreflang(
+      { html: list(["en", "/en/"]), header: list(["en", "/en/"], ["de", "/de/"]) },
+      "https://example.com/en/",
+    ).hreflang.length,
+    2,
+    "merged once each",
   );
 });
 
@@ -283,6 +316,101 @@ test("a language version missing from a cluster is flagged; a complete cluster i
   assert.match(found.find(f => f.key === "lang-hreflang-mismatch").detail, /lang="en".*fr/);
 });
 
+const languages = pages => {
+  const found = [];
+  checkLanguages(pages, {
+    add: (key, url, detail) => found.push({ key, path: new URL(url).pathname, detail }),
+    origin: "https://example.com",
+  });
+  return found;
+};
+
+test("a version that isn't published isn't asked for; a crawled, indexable one or one on another site is", () => {
+  const en = page(
+    "/en/post",
+    [
+      { lang: "en", href: "/en/post" },
+      { lang: "de", href: "/de/post" },
+      { lang: "fr", href: "/fr/post" },
+    ],
+    { lang: "en" },
+  );
+  const de = page(
+    "/de/post",
+    [
+      { lang: "en", href: "/en/post" },
+      { lang: "de", href: "/de/post" },
+    ],
+    { lang: "de" },
+  );
+  assert.deepEqual(languages([en, de]), [], "/fr/post is a 404, so it isn't among the crawled pages");
+  const found = languages([en, de, page("/fr/post", en.hreflang, { lang: "fr" })]);
+  assert.deepEqual(
+    found.map(f => [f.key, f.path]),
+    [["hreflang-missing-version", "/de/post"]],
+  );
+  assert.match(found[0].detail, /^fr → \/fr\/post \(listed by .*\/en\/post\)$/);
+  // Another host can't be crawled, so its versions are taken as listed.
+  en.hreflang[2].href = "https://example.fr/post";
+  assert.deepEqual(
+    languages([en, de]).map(f => [f.key, f.path]),
+    [["hreflang-missing-version", "/de/post"]],
+  );
+});
+
+test("a product name kept as the title isn't an untranslated copy; the same title with half the main text, or 80% of it, is", () => {
+  // 5-word sets of the main text, as the crawler builds them; the English version of each pair has text(0, 100).
+  const text = (from, to) => new Set(Array.from({ length: to - from }, (_, i) => `shingle ${from + i}`));
+  const pairs = [
+    ["p", "Samsung Galaxy S25 Ultra 512 GB | Samsung", text(100, 200)], // translated main text
+    ["q", "Galaxy S25 Ultra phone case | Samsung", text(40, 140)], // 60%, under a title of four words once the model number and the brand are left out
+    ["r", "Boiler repair and heating service in your area", text(40, 140)], // 60%, under a title of eight words
+    ["s", "Boiler repair across the region", text(15, 115), "Heizungsreparatur in der Region"],
+  ]; // 85%, under translated titles
+  const found = languages([
+    ...pairs.flatMap(([d, title, de, deTitle = title]) =>
+      ["en", "de"].map(l =>
+        page(
+          `/${l}/${d}/`,
+          [
+            { lang: "en", href: `/en/${d}/` },
+            { lang: "de", href: `/de/${d}/` },
+          ],
+          { lang: l, title: l === "en" ? title : deTitle, shingles: l === "en" ? text(0, 100) : de },
+        ),
+      ),
+    ),
+    // "Samsung" is in most of the site's titles, so it's a brand word.
+    page("/en/", [], { lang: "en", title: "Phones, TVs and home appliances | Samsung" }),
+    page("/de/", [], { lang: "de", title: "Handys, Fernseher und Haushaltsgeräte | Samsung" }),
+  ]);
+  assert.deepEqual(
+    found.map(f => [f.key, f.path]),
+    [
+      ["untranslated-copy", "/de/r/"],
+      ["untranslated-copy", "/de/s/"],
+    ],
+  );
+  assert.match(
+    found[0].detail,
+    /\/de\/r\/ \(de\) and .*\/en\/r\/ \(en\) have the same title “Boiler repair and heating service in your area” and share 60% of their main text$/,
+  );
+  assert.match(found[1].detail, /\(en\) share 85% of their main text$/);
+});
+
+test("a Translate widget is flagged on a one-language site, not on one with real language versions without hreflang", () => {
+  const widget = (path, lang) => page(path, [], { lang, translateWidget: true });
+  assert.deepEqual(
+    languages([widget("/", "en"), widget("/about/", "en-GB"), page("/contact/", [], {})]).map(f => [f.key, f.path]),
+    [["translate-widget", "/"]],
+  );
+  assert.deepEqual(
+    languages([widget("/", "en"), widget("/de/", "de"), widget("/fr/", "fr")]),
+    [],
+    "/de/ and /fr/ are real language versions",
+  );
+});
+
 test("untranslated copies, lang=auto, a Translate widget and inLanguage mismatches are flagged; a properly translated pair isn't", async () => {
   const TITLE = "Boiler repair and heating service in your area";
   const WIDGET =
@@ -316,7 +444,7 @@ test("untranslated copies, lang=auto, a Translate widget and inLanguage mismatch
   assert.deepEqual(paths(bad, "translate-widget"), [], "the site has real language versions as well");
   assert.equal(evidence(widget, "translate-widget").length, 1, "once for the site");
   assert.match(evidence(widget, "translate-widget")[0].detail, /2 page\(s\)/);
-  for (const key of NEW_CHECKS.filter(k => k !== "hreflang-sources-disagree"))
+  for (const key of NEW_CHECKS)
     assert.deepEqual(paths(ok, key), [], `${key} stays quiet on a properly translated site`);
   assert.deepEqual(
     NEW_CHECKS.flatMap(k => paths(widget, k)),
