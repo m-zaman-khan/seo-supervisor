@@ -23,7 +23,10 @@ import { CHECKS as VISUAL_CHECKS, checkVisual } from "./checks/visual.mjs";
 import { checkLighthouse, findLighthouse } from "./checks/lighthouse.mjs";
 import { imageSize } from "./lib/image-size.mjs";
 
-import { trustFeatures, trustSignals } from "./checks/trust.mjs"; // once, before any request
+import { trustFeatures, trustSignals } from "./checks/trust.mjs";
+
+import { CHECKS as AGENT_CHECKS, agentFeatures, agentFiles } from "./checks/agents.mjs";
+import { writingText, writingFeatures } from "./checks/writing.mjs"; // once, before any request
 
 const VERSION = "2.0.0";
 const UA = "seo-supervisor-crawler/" + VERSION;
@@ -1003,6 +1006,8 @@ const CHECKS = {
 
 Object.assign(CHECKS, HREFLANG_CHECKS, TLS_CHECKS, SPEED_CHECKS, RENDER_CHECKS, VISUAL_CHECKS);
 
+Object.assign(CHECKS, AGENT_CHECKS);
+
 const findings = new Map(); // key -> {evidence:[], count}
 function add(key, url, detail) {
   if (!CHECKS[key]) throw new Error("unknown check " + key);
@@ -1571,6 +1576,9 @@ function analyze(url, html, headers, xRobotsLines) {
   };
   // E-E-A-T signals for the report's trust view.
   rec.trust = trustFeatures(html, url, rec.base);
+
+  rec.agent = agentFeatures(html);
+  rec.writing = writingFeatures(writingText(mainHtml), rec.lang);
 
   return rec;
 }
@@ -3265,6 +3273,43 @@ extra.trustSignals = trustSignals(htmlPages, {
   orgSchema: (home?.html && home.trust.org) || htmlPages.find(p => p.trust.org)?.trust.org || null,
   unsourcedStats: htmlPages.filter(p => p.trust.unsourcedStat).length,
 });
+
+// ---------- AI agents and writing ----------
+// Unnamed controls (AI-05 counts as checked once a page has a control), plus WebMCP tools, agent files and writing
+// notes for the report; writing notes for the 50 pages with the most.
+{
+  const tools = [],
+    writingNotes = [];
+  for (const p of htmlPages) {
+    if (!p.agent || !indexable(p) || p.clientOnly) continue;
+    const { unnamedFields: f, unnamedButtons: b, webmcpTools, controls } = p.agent;
+    if (controls) evalRules("AI-05");
+    if (f.length || b.length)
+      add(
+        "controls-no-name",
+        p.finalUrl,
+        `${[f.length && `${f.length} field(s)`, b.length && `${b.length} button(s)`].filter(Boolean).join(" and ")}, e.g. \`${f[0] || b[0]}\``,
+      );
+    if (webmcpTools.length) tools.push({ url: p.finalUrl, tools: webmcpTools });
+    const w = p.writing,
+      count = w.longSentences + w.longParagraphs + w.stockPhrases.length;
+    if (count) writingNotes.push({ url: p.finalUrl, ...w, count });
+  }
+  writingNotes.sort((a, b) => b.count - a.count || (a.url < b.url ? -1 : 1));
+  if (writingNotes.length > 50)
+    notes.push(`Writing notes list the 50 pages with the most notes, of ${writingNotes.length}.`);
+  const files = await agentFiles(
+    u =>
+      fetch(u, {
+        redirect: "manual",
+        headers: { "user-agent": UA, accept: "application/json,*/*;q=0.8" },
+        signal: AbortSignal.timeout(15000),
+      }),
+    START_ORIGIN,
+  );
+  extra.agents = { pages: tools.slice(0, 50), ...files };
+  extra.writingNotes = writingNotes.slice(0, 50).map(({ count, ...n }) => n);
+}
 
 // ---------- what the crawler cannot check ----------
 // CRAWL-09 never passes here: a real Googlebot comes from Google's IP addresses, which no request from here can.

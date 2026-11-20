@@ -779,10 +779,93 @@ const linksDiffHtml = () =>
 const linksDiffMd = () =>
   linksDrop ? ["### Links dropped", "", `- ${LINKS_DROP[linksDrop.what]}: ${linksDropText()}`, ""] : [];
 
-const agentsHtml = () => "";
-const agentsMd = () => [];
-const writingHtml = () => "";
-const writingMd = () => [];
+// AI agents and writing notes, from the crawler. Crawled text (tool names, sentences, URLs) is escaped for HTML and
+// Markdown.
+const noteMd = s =>
+  String(s ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/[\\`*_[\]<>]/g, "\\$&");
+const noteCode = s => "`" + String(s ?? "").replace(/[`\r\n]/g, " ") + "`";
+const notePath = u => {
+  try {
+    const x = new URL(u);
+    return x.pathname + x.search;
+  } catch {
+    return String(u ?? "");
+  }
+};
+const AGENT_FILE = {
+  "/.well-known/api-catalog": "API catalog (RFC 9727)",
+  "/.well-known/agent-card.json": "A2A agent card",
+};
+const agentRows = (() => {
+  const a = obj(raw.agents),
+    strs = x => (Array.isArray(x) ? x.filter(s => typeof s === "string" && s) : []);
+  if (!a) return [];
+  return [
+    ...(Array.isArray(a.pages) ? a.pages.filter(p => obj(p) && strs(p.tools).length) : []).map(p => [
+      notePath(p.url),
+      `WebMCP tools: ${strs(p.tools).join(", ")}`,
+    ]),
+    typeof a.ucp === "string" && a.ucp && ["/.well-known/ucp", `UCP shop profile, version ${a.ucp}`],
+    ...strs(a.wellKnown).map(f => [f, AGENT_FILE[f] || "agent file"]),
+  ].filter(Boolean);
+})();
+const AGENTS_INTRO =
+  "What the site offers AI agents, listed for information: none of it is a finding or changes the score. WebMCP is a Chrome experiment that lets a page offer tools to AI agents, and its API is still changing; only inline scripts and forms were read. UCP is the open standard behind checkout in Google's AI Mode and Gemini.";
+const agentsHtml = () =>
+  agentRows.length
+    ? `\n    <details class="how agents"><summary>AI agents</summary><p>${esc(AGENTS_INTRO)}</p><ul class="lim">${agentRows.map(([where, what]) => `<li><b><code>${esc(where)}</code></b><span>${esc(what)}</span></li>`).join("")}</ul></details>`
+    : "";
+const agentsMd = () =>
+  agentRows.length
+    ? [
+        "## AI agents",
+        "",
+        AGENTS_INTRO,
+        "",
+        ...agentRows.map(([where, what]) => `- ${noteCode(where)} ${noteMd(what)}`),
+        "",
+      ]
+    : [];
+const writingNotes = (Array.isArray(raw.writingNotes) ? raw.writingNotes : []).filter(
+  n => obj(n) && typeof n.url === "string",
+);
+const noteText = n => {
+  const k = x => Math.max(0, Math.floor(Number(x) || 0)),
+    stock = Array.isArray(n.stockPhrases) ? n.stockPhrases.filter(s => typeof s === "string") : [];
+  return [
+    k(n.longSentences) && `${plural(k(n.longSentences), "sentence")} over 35 words`,
+    k(n.longParagraphs) && `${plural(k(n.longParagraphs), "paragraph")} over 150 words`,
+    stock.length && `stock phrases: ${stock.map(s => `“${s}”`).join(", ")}`,
+    Number.isFinite(n.readingEase) && `reading ease ${n.readingEase}`,
+    typeof n.longestSentence === "string" && n.longestSentence && `longest sentence: “${n.longestSentence}”`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+};
+const WRITING_INTRO =
+  "Long sentences, long paragraphs and stock phrases on English pages, with Flesch reading ease (0 to 100, higher is easier) as a rough guide. Code and tables are left out. These notes help the writing; they never change the score.";
+const writingHtml = () =>
+  writingNotes.length
+    ? `\n    <details class="how writing"><summary>Writing notes</summary><p>${esc(WRITING_INTRO)}</p><ul class="lim">${writingNotes
+        .slice(0, 10)
+        .map(n => `<li><b><code>${esc(notePath(n.url))}</code></b><span>${esc(noteText(n))}</span></li>`)
+        .join(
+          "",
+        )}</ul>${writingNotes.length > 10 && mdFile ? `<p>All ${num(writingNotes.length)} pages are listed in <code>${esc(mdFile)}</code>.</p>` : ""}</details>`
+    : "";
+const writingMd = () =>
+  writingNotes.length
+    ? [
+        "## Writing notes",
+        "",
+        WRITING_INTRO,
+        "",
+        ...writingNotes.map(n => `- ${noteCode(notePath(n.url))} ${noteMd(noteText(n))}`),
+        "",
+      ]
+    : [];
 
 const desktopSpeedText = () => "";
 

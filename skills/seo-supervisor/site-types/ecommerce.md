@@ -36,3 +36,5 @@ The feed data must match the page. When the price differs, Google can disapprove
 **Check:** the feed, the schema and the page take price and availability from the same live data, and the price is in the HTML the server sends.
 
 Setting up the account is an owner action: report it as a decision or a note.
+
+**AI checkout (UCP):** the Universal Commerce Protocol is the open standard behind checkout in Google's AI Mode and Gemini. Google started with eligible US retailers (blog.google, 11 Jan 2026), and shops set it up through Merchant Center (developers.google.com/merchant/ucp); ask the shop platform whether it does this for you. The crawler lists the shop's UCP profile (`/.well-known/ucp`) when there is one, as information only. Taking part is the owner's decision.

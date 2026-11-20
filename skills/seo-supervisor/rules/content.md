@@ -63,3 +63,8 @@
 - **Check:** content: years in business, certifications, guarantees, response times, prices, client logos, statistics.
 - **Pass:** every claim traces to an owner-confirmed source. Unconfirmed claims aren't published. Keep a list of banned claims and grep the rendered HTML for it.
 - **Content scan:** flags statistics with no source in the same item, such as “73% of drivers” or “studies show” (`unsourced-stat`, needs-decision). A link, a `[1]` marker, “source:” or “according to” counts as a source.
+
+### CONTENT-13 · Plain language · low
+- **Pass:** short sentences, common words, jargon explained or dropped, one idea per paragraph, and no stock filler (“in today's fast-paced world”, “delve into”, “game-changer”).
+- **Writing notes (crawler, information only):** on English pages (`<html lang="en…">`) the crawler notes sentences over 35 words, quoting the longest; paragraphs over 150 words; phrases from its own list of about 20 stock and filler phrases; and Flesch reading ease (0 to 100, higher is easier) on pages with at least 100 words, as a rough guide. Code, tables and other languages are left out. The notes show in a "Writing notes" panel, are never findings and never change the score: they help the writer, and the numbers aren't a target.
+- **Drafts:** every draft the agent writes (setup copy, briefs, fixes) follows this rule. The agent re-reads each draft against the writing notes before showing it.
