@@ -2,8 +2,9 @@
 // Services connected by an API key alone: Bing Webmaster Tools, Open PageRank, Ahrefs' free Domain Rating, Matomo and
 // PostHog. Keys, with Matomo's and PostHog's addresses and IDs, are saved in ~/.seo-supervisor/keys.json, never in the
 // project; a service's environment variable wins over its saved value. fetch sends the site's address and domain
-// names to these services, so without --yes it's a dry run that prints what it would send. *_ENDPOINT variables
-// point the services at the tests' fakes; Matomo and PostHog use their saved address instead.
+// names to these services, and submit-bing asks Bing to crawl URLs, so without --yes each is a dry run that prints
+// what it would send. *_ENDPOINT variables point the services at the tests' fakes; Matomo and PostHog use their
+// saved address instead.
 import { readFileSync, writeFileSync, mkdirSync, chmodSync, existsSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -141,7 +142,8 @@ export const SERVICES = {
 const USAGE = `usage: node connect-keys.mjs set bing|openpagerank|ahrefs|matomo|posthog [<key>]   (no key: it asks, hidden)
        node connect-keys.mjs set matomo [--url <address>] [--site-id <id>] | set posthog [--host us|eu|<address>] [--project-id <id>]
        node connect-keys.mjs status | remove <service> | guide <service>
-       node connect-keys.mjs fetch --site https://www.example.com [--competitors a.com,b.com] [--days 90] [--out seo-audit/keys.json] [--yes]`;
+       node connect-keys.mjs fetch --site https://www.example.com [--competitors a.com,b.com] [--days 90] [--out seo-audit/keys.json] [--yes]
+       node connect-keys.mjs submit-bing --site https://www.example.com (--urls changed.txt | --from-diff seo-audit/seo-diff.json) [--yes]`;
 const UA = "seo-supervisor-connect-keys";
 const ATTRIBUTION = { text: "Domain Rating by Ahrefs", url: "https://ahrefs.com/" };
 const MAX_LINK_PAGES = 10;
@@ -169,6 +171,15 @@ function address(s, what) {
 }
 function idOf(s, what, where) {
   return /^\d+$/.test(s) ? s : fail(`the ${what} is a number, like 1 or 3 (got "${s}"). Find it ${where}.`);
+}
+function siteOf(s) {
+  let u;
+  try {
+    u = new URL(s);
+  } catch {}
+  return u && /^https?:$/.test(u.protocol)
+    ? u
+    : fail(`--site must be the site's address, like https://www.example.com (got ${s})`);
 }
 
 // ---------- keys ----------
@@ -308,7 +319,8 @@ export function activeKeys(env = process.env) {
 const mask = k => (k.length > 8 ? "…" + k.slice(-4) : "…");
 
 // ---------- requests ----------
-const BING_ERRORS = { 3: "key", 4: "busy", 5: "busy", 6: "blocked", 14: "site" };
+// https://learn.microsoft.com/dotnet/api/microsoft.bing.webmaster.api.interfaces.apierrorcode
+const BING_ERRORS = { 3: "key", 4: "busy", 5: "busy", 6: "blocked", 7: "url", 14: "site" };
 // Matomo and PostHog live at a typed address, so a wrong address, site or project ID gets its own message.
 // Matomo answers errors as { result: "error", message }, often with HTTP 200; PostHog as { detail } with the status.
 function addressed(id, status, body, host, moved) {
@@ -357,6 +369,8 @@ function refusal(id, status, body, retryAfter, host, moved) {
     return `Bing Webmaster Tools says this key's account can't see the site (NotAuthorized). Verify the site in Bing Webmaster Tools with the same account the key belongs to.`;
   if (bing === "blocked")
     return `Bing Webmaster Tools says the account is blocked (UserBlocked). Sign in at bing.com/webmasters to see why.`;
+  if (bing === "url")
+    return `Bing Webmaster Tools refused a URL (InvalidUrl): every URL must be on the site exactly as it's verified in Bing Webmaster Tools (the same https:// and www). Check the site's address there and pass it as --site.`;
   if (status === 403)
     return `${s.name} refused the request (403): the key isn't allowed to do this. Check the key at ${s.where}, then run: ${setLine(id)}`;
   const detail =
@@ -422,9 +436,14 @@ const issueBits = v =>
         .reduce((n, s) => n | (ISSUES.find(i => i[0] === s)?.[1] || 0), 0);
 const day = ms => new Date(ms).toISOString().slice(0, 10);
 
-async function fetchBing(key, site, base, notes) {
-  const get = (method, params = {}) =>
+// Bing takes the key only as ?apikey= (or OAuth). It's never printed, and call()'s errors name the host, not the
+// URL.
+const bingGet =
+  (key, base) =>
+  (method, params = {}) =>
     call("bing", `${base}/${method}?${new URLSearchParams({ ...params, apikey: key })}`).then(b => b?.d);
+// Bing's own URL for the site (its www and https), which every other Bing call takes as siteUrl.
+async function bingSite(get, site) {
   const want = new URL(site).hostname,
     hostOf = u => {
       try {
@@ -443,7 +462,13 @@ async function fetchBing(key, site, base, notes) {
     throw new Refused(
       `Bing Webmaster Tools: ${want} is in your account but isn't verified yet. Finish verifying it at bing.com/webmasters, then run again.`,
     );
-  const siteUrl = match.Url;
+  return match.Url;
+}
+
+async function fetchBing(key, site, base, notes) {
+  const get = bingGet(key, base),
+    want = new URL(site).hostname,
+    siteUrl = await bingSite(get, site);
 
   const add = (map, k, r) => {
     if (k == null) return;
@@ -540,18 +565,100 @@ function crawlFinding(bing) {
   ];
 }
 
+// ---------- Bing URL submission: a write to Bing, so the CLI runs it only with --yes ----------
+// SubmitUrlBatch takes at most 500 URLs a batch, within what GetUrlSubmissionQuota reports. The quota differs per site,
+// so it's read each time, never assumed. Returns { siteUrl, quota, sent, notSent, error }.
+// https://learn.microsoft.com/dotnet/api/microsoft.bing.webmaster.api.interfaces.iwebmasterapi.submiturlbatch
+const BATCH = 500;
+export async function submitBing({ key, site, urls, endpoint }) {
+  const get = bingGet(key, endpoint),
+    siteUrl = await bingSite(get, site);
+  const q = await get("GetUrlSubmissionQuota", { siteUrl }),
+    left = v => (v == null || !(Number(v) >= 0) ? null : Math.floor(Number(v)));
+  const quota = { daily: left(q?.DailyQuota), monthly: left(q?.MonthlyQuota) };
+  if (quota.daily == null)
+    throw new Refused(
+      "Bing Webmaster Tools didn't say how many URLs it takes today (GetUrlSubmissionQuota), so nothing was sent. Try again later.",
+    );
+  const fits = urls.slice(0, Math.min(quota.daily, quota.monthly ?? quota.daily));
+  let sent = 0,
+    error = null;
+  for (const urlList of chunks(fits, BATCH)) {
+    try {
+      await call("bing", `${endpoint}/SubmitUrlBatch?${new URLSearchParams({ apikey: key })}`, {
+        ...POST,
+        headers: { "content-type": "application/json; charset=utf-8" },
+        body: JSON.stringify({ siteUrl, urlList }),
+      });
+    } catch (e) {
+      if (!(e instanceof Refused)) throw e;
+      error = e.message;
+      break;
+    }
+    sent += urlList.length;
+  }
+  return { siteUrl, quota, sent, notSent: urls.slice(sent), error };
+}
+
 // ---------- Matomo and PostHog: visits from search engines by landing page ----------
 // The same days google.mjs reads Google Analytics for, ending 3 days ago, so the numbers line up.
 const periodFor = days => ({ from: day(Date.now() - (days + 2) * 864e5), to: day(Date.now() - 3 * 864e5) });
-// Matomo: visits from a search engine (segment referrerType==search) by entry page, most first. token_auth goes in
-// the POST body, so the URL holds nothing secret.
-const matomoUrl = (k, p) =>
-  `${k.url}index.php?${new URLSearchParams({ module: "API", method: "Actions.getEntryPageUrls", idSite: k.siteId, period: "range", date: `${p.from},${p.to}`, segment: "referrerType==search", flat: 1, filter_limit: ROWS, filter_sort_column: "entry_nb_visits", filter_sort_order: "desc", format: "JSON" })}`;
+// Matomo: visits from a search engine (segment referrerType==search) by entry page, most first. Only token_auth goes
+// in the POST body; the other parameters aren't secret. The splits, the same visits by device type and by country,
+// cover the whole site ID; their rows are { label, code, nb_visits }.
+// https://developer.matomo.org/api-reference/reporting-api-legacy
+const MATOMO_SPLITS = { byDevice: "DevicesDetection.getType", byCountry: "UserCountry.getCountry" };
+const matomoUrl = (k, p, method = "Actions.getEntryPageUrls") =>
+  `${k.url}index.php?${new URLSearchParams({
+    module: "API",
+    method,
+    idSite: k.siteId,
+    period: "range",
+    date: `${p.from},${p.to}`,
+    segment: "referrerType==search",
+    ...(method === "Actions.getEntryPageUrls"
+      ? { flat: 1, filter_limit: ROWS, filter_sort_column: "entry_nb_visits" }
+      : { filter_limit: 10, filter_sort_column: "nb_visits" }),
+    filter_sort_order: "desc",
+    format: "JSON",
+  })}`;
 // PostHog: sessions it files as Organic Search (a search engine as referrer or utm_source, paid search left out, as
 // in GA4), by entry page. The site's host is matched here, not sent.
 const posthogQuery = p =>
   `SELECT domainWithoutWWW($entry_current_url) AS host, $entry_pathname AS path, count() AS visits FROM sessions WHERE $channel_type = 'Organic Search' AND toDate($start_timestamp) BETWEEN toDate('${p.from}') AND toDate('${p.to}') GROUP BY host, path ORDER BY visits DESC LIMIT ${ROWS}`;
+// sessions has no device or country, so the splits use its pageviews' $device_type and $geoip_country_code through
+// events' `session` join. The events' dates bound the scan; a session starting in the period has its first pageview
+// in it.
+// https://posthog.com/docs/data/sessions
+const POSTHOG_SPLITS = { byDevice: "properties.$device_type", byCountry: "properties.$geoip_country_code" };
+const posthogSplit = (p, prop) =>
+  `SELECT domainWithoutWWW(session.$entry_current_url) AS host, ${prop} AS k, count(DISTINCT $session_id) AS visits FROM events WHERE event = '$pageview' AND session.$channel_type = 'Organic Search' AND toDate(session.$start_timestamp) BETWEEN toDate('${p.from}') AND toDate('${p.to}') AND toDate(timestamp) BETWEEN toDate('${p.from}') AND toDate('${p.to}') GROUP BY host, k ORDER BY visits DESC LIMIT 1000`;
 const posthogUrl = k => `${k.host}api/projects/${k.projectId}/query/`;
+// [name, visits] pairs to { name: { visits } } for the top 10; a pair without a name or visits is dropped.
+const top10 = pairs => {
+  const m = new Map();
+  for (const [k, v] of pairs) if (typeof k === "string" && k && Number(v) > 0) m.set(k, (m.get(k) || 0) + Number(v));
+  return Object.fromEntries(
+    [...m]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([k, visits]) => [k, { visits }]),
+  );
+};
+const SPLIT_NAME = { byDevice: "by device", byCountry: "by country" };
+// A split that fails is noted; the visits by landing page stay.
+async function splits(name, fields, read, notes) {
+  const out = {};
+  for (const [field, what] of Object.entries(fields)) {
+    try {
+      out[field] = top10(await read(what, field));
+    } catch (e) {
+      if (!(e instanceof Refused)) throw e;
+      notes.push(`${name}'s visits from search engines ${SPLIT_NAME[field]} weren't read: ${e.message}`);
+    }
+  }
+  return out;
+}
 // One page's http/https, www/apex and tracking-parameter variants add up, by path as GA4's landing page is.
 const addVisits = (map, path, n) => {
   map[path] = { visits: (map[path]?.visits || 0) + n };
@@ -564,11 +671,15 @@ const POST = { method: "POST", redirect: "manual" };
 async function fetchMatomo(k, site, period, notes) {
   const want = bare(new URL(site).hostname),
     traffic = {};
-  const rows = await call("matomo", matomoUrl(k, period), {
-    ...POST,
-    body: new URLSearchParams({ token_auth: k.key }),
-  });
-  if (!Array.isArray(rows)) throw new Refused(refusal("matomo", 200, rows, null, new URL(k.url).host));
+  const read = async method => {
+    const rows = await call("matomo", matomoUrl(k, period, method), {
+      ...POST,
+      body: new URLSearchParams({ token_auth: k.key }),
+    });
+    if (!Array.isArray(rows)) throw new Refused(refusal("matomo", 200, rows, null, new URL(k.url).host));
+    return rows;
+  };
+  const rows = await read();
   // Rows without a URL (Matomo's "Others") and other sites tracked in the same Matomo are left out.
   for (const r of rows) {
     let x;
@@ -581,22 +692,51 @@ async function fetchMatomo(k, site, period, notes) {
     if (n > 0 && bare(x.hostname) === want) addVisits(traffic, x.pathname, n);
   }
   if (rows.length >= ROWS) notes.push(tooMany("Matomo"));
-  return { period, traffic };
+  // Countries by code, upper case as PostHog's; "xx" is Matomo's Unknown, not a country.
+  const name = (r, field) =>
+    field === "byDevice" ? r?.label : r?.code !== "xx" && typeof r?.code === "string" ? r.code.toUpperCase() : null;
+  return {
+    period,
+    traffic,
+    ...(await splits(
+      "Matomo",
+      MATOMO_SPLITS,
+      async (method, field) => (await read(method)).map(r => [name(r, field), r?.nb_visits]),
+      notes,
+    )),
+  };
 }
 
 async function fetchPosthog(k, site, period, notes) {
   const want = bare(new URL(site).hostname),
     traffic = {};
-  const b = await call("posthog", posthogUrl(k), {
-    ...POST,
-    headers: { authorization: `Bearer ${k.key}`, "content-type": "application/json" },
-    body: JSON.stringify({ query: { kind: "HogQLQuery", query: posthogQuery(period) } }),
-  });
-  if (!Array.isArray(b?.results)) throw new Refused(refusal("posthog", 200, null, null, new URL(k.host).host));
-  for (const [h, path, n] of b.results.filter(Array.isArray))
-    if (bare(String(h ?? "")) === want && /^\//.test(path) && Number(n) > 0) addVisits(traffic, path, Number(n));
-  if (b.results.length >= ROWS) notes.push(tooMany("PostHog"));
-  return { period, traffic };
+  const read = async query => {
+    const b = await call("posthog", posthogUrl(k), {
+      ...POST,
+      headers: { authorization: `Bearer ${k.key}`, "content-type": "application/json" },
+      body: JSON.stringify({ query: { kind: "HogQLQuery", query } }),
+    });
+    if (!Array.isArray(b?.results)) throw new Refused(refusal("posthog", 200, null, null, new URL(k.host).host));
+    return b.results;
+  };
+  const mine = rows => rows.filter(r => Array.isArray(r) && bare(String(r[0] ?? "")) === want);
+  const rows = await read(posthogQuery(period));
+  for (const [, path, n] of mine(rows)) if (/^\//.test(path) && Number(n) > 0) addVisits(traffic, path, Number(n));
+  if (rows.length >= ROWS) notes.push(tooMany("PostHog"));
+  return {
+    period,
+    traffic,
+    ...(await splits(
+      "PostHog",
+      POSTHOG_SPLITS,
+      async (prop, field) =>
+        mine(await read(posthogSplit(period, prop))).map(([, v, n]) => [
+          field === "byCountry" && typeof v === "string" ? v.toUpperCase() : v,
+          n,
+        ]),
+      notes,
+    )),
+  };
 }
 
 // Each service runs only when its key is set. problems holds the refusals, also kept in result.notes.
@@ -746,12 +886,7 @@ async function main(argv) {
     }
   } else if (cmd === "fetch") {
     if (!str("site")) throw new Fail(USAGE);
-    let site;
-    try {
-      site = new URL(args.site);
-    } catch {}
-    if (!site || !/^https?:$/.test(site.protocol))
-      fail(`--site must be the site's address, like https://www.example.com (got ${args.site})`);
+    const site = siteOf(args.site);
     const days = args.days === undefined ? 90 : Number(str("days"));
     if (!(Number.isInteger(days) && days >= 1 && days <= 480))
       fail(`--days must be a whole number from 1 to 480, as with google.mjs (got ${args.days}).`);
@@ -778,9 +913,9 @@ async function main(argv) {
         !keys[id]
           ? `  ${s.name}: not set, skipped (to add it: node connect-keys.mjs guide ${id})`
           : id === "matomo"
-            ? `  Matomo: your token (in the request body, never in the address) and site ID ${m.siteId}, to ${new URL(m.url).host}:\n    POST ${matomoUrl(m, period)}`
+            ? `  Matomo: your token (in the request body, never in the address) and site ID ${m.siteId}, to ${new URL(m.url).host}:${[undefined, ...Object.values(MATOMO_SPLITS)].map(method => `\n    POST ${matomoUrl(m, period, method)}`).join("")}`
             : id === "posthog"
-              ? `  PostHog: your key and project ID ${p.projectId}, to ${new URL(p.host).host}:\n    POST ${posthogUrl(p)} with the query: ${posthogQuery(period)}`
+              ? `  PostHog: your key and project ID ${p.projectId}, to ${new URL(p.host).host}:${[posthogQuery(period), ...Object.values(POSTHOG_SPLITS).map(prop => posthogSplit(period, prop))].map(q => `\n    POST ${posthogUrl(p)} with the query: ${q}`).join("")}`
               : `  ${s.name}: ${id === "bing" ? `your site's address (${siteUrl})` : `${domains.length} domain name(s) (${list})`} and your key, to ${new URL(endpoints[id]).host}`,
       );
       console.log(
@@ -800,9 +935,107 @@ async function main(argv) {
       `connect-keys: ${b ? `Bing ${Object.keys(b.traffic).length} pages, ${b.queries.length} queries, ${b.backlinks.pages.length} linked pages${b.crawlIssues ? `, ${b.crawlIssues.length} crawl issues` : ""} · ` : ""}${result.authority.length ? `authority for ${result.authority.length} domain(s) · ` : ""}${visits("Matomo", result.matomo)}${visits("PostHog", result.posthog)}${result.findings.length} finding(s) · wrote ${out}`,
     );
     return problems.length ? 1 : 0;
+  } else if (cmd === "submit-bing") {
+    if (!str("site") || !(str("urls") || str("from-diff"))) throw new Fail(USAGE);
+    const site = siteOf(args.site),
+      key = activeKeys().bing?.key;
+    if (!key) fail("no Bing Webmaster Tools key is set. To connect it: node connect-keys.mjs guide bing");
+    const read = f => {
+      try {
+        return readFileSync(f, "utf8");
+      } catch (e) {
+        fail(`can't read ${f} (${e.code || e.message}).`);
+      }
+    };
+    const found = [];
+    if (str("urls"))
+      found.push(
+        ...read(args.urls)
+          .split(/\r?\n/)
+          .map(s => s.trim())
+          .filter(s => s && !s.startsWith("#")),
+      );
+    if (str("from-diff")) {
+      let d;
+      try {
+        d = JSON.parse(read(args["from-diff"]));
+      } catch (e) {
+        if (e instanceof Fail) throw e;
+        fail(`${args["from-diff"]} isn't a seo-diff.json (run seo-diff.mjs first).`);
+      }
+      // Changed and added pages, as indexnow.mjs sends: not removed ones or pages that now fail.
+      found.push(
+        ...[...(d.regressions || []), ...(d.improvements || []), ...(d.changed || [])]
+          .filter(c => c?.kind !== "status-error")
+          .map(c => c?.path),
+        ...(d.added || []),
+      );
+    }
+    // Bing takes only the site's own URLs, so anything off-origin is dropped before sending.
+    const kept = new Set(),
+      others = [];
+    for (const s of found.filter(s => typeof s === "string")) {
+      let u;
+      try {
+        u = /^(https?:\/\/|\/)/i.test(s) ? new URL(s, site) : null;
+      } catch {}
+      if (u?.origin === site.origin) {
+        u.hash = "";
+        kept.add(u.href);
+      } else others.push(s);
+    }
+    const urls = [...kept];
+    if (others.length)
+      console.log(
+        `connect-keys: left out ${others.length} URL(s) that aren't on ${site.origin} (Bing only takes the site's own URLs), e.g. ${others[0]}`,
+      );
+    if (!urls.length) {
+      console.log(`connect-keys: no URLs on ${site.origin} to submit.`);
+      return 0;
+    }
+    if (args.yes !== true) {
+      console.log(
+        `connect-keys: dry run, nothing sent. With --yes it would ask Bing Webmaster Tools, with your key, for the site's URL submission quota (GetUrlSubmissionQuota), then submit as many of these ${urls.length} URL(s) as fit in it (SubmitUrlBatch, up to ${BATCH} a request):\n${urls
+          .slice(0, 20)
+          .map(u => "  " + u)
+          .join(
+            "\n",
+          )}${urls.length > 20 ? `\n  … and ${urls.length - 20} more` : ""}\nIndexNow (indexnow.mjs) already tells Bing about changed pages; this asks Bing directly. It's a write to the owner's Bing Webmaster Tools account, so re-run with --yes once the owner agrees.`,
+      );
+      return 0;
+    }
+    let r;
+    try {
+      r = await submitBing({
+        key,
+        site: site.href,
+        urls,
+        endpoint: process.env[SERVICES.bing.endpointEnv] || SERVICES.bing.endpoint,
+      });
+    } catch (e) {
+      if (!(e instanceof Refused)) throw e;
+      console.log("connect-keys: " + e.message);
+      return 1;
+    }
+    const { quota, sent, notSent, error } = r;
+    console.log(
+      `connect-keys: Bing's URL submission quota for ${r.siteUrl}: ${num(quota.daily)} URL(s) today${quota.monthly != null ? `, ${num(quota.monthly)} this month` : ""}.`,
+    );
+    if (!sent && !error) {
+      console.log("connect-keys: the quota is used up, so nothing was sent. Submit again on another day.");
+      return 1;
+    }
+    if (sent) console.log(`connect-keys: submitted ${sent} URL(s) to Bing Webmaster Tools.`);
+    if (error) console.log(`connect-keys: ${error}`);
+    if (notSent.length)
+      console.log(
+        `connect-keys: ${notSent.length} URL(s) ${error ? "weren't sent" : "didn't fit in the quota and weren't sent"}, starting with ${notSent[0]}. Submit them on another day.`,
+      );
+    return error ? 1 : 0;
   } else throw new Fail(USAGE);
   return 0;
 }
+const num = n => n.toLocaleString("en-US");
 
 // Not process.exit(): exiting while fetch's sockets close crashes Node on Windows.
 if (isMain(import.meta.url)) {

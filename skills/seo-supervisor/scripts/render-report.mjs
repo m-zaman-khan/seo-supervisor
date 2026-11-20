@@ -979,8 +979,30 @@ const lighthouseDetailMd = () =>
       ]
     : [];
 
-// Matomo and PostHog device and country lines.
-const analyticsSplitLines = () => [];
+// Matomo and PostHog device and country splits ({ name: { visits } }), top 10. The callers escape the names.
+const analyticsSplitLines = () =>
+  [
+    ["Matomo", matomo],
+    ["PostHog", posthog],
+  ]
+    .flatMap(([name, x]) =>
+      [
+        ["device", x?.byDevice, k => k.toLowerCase()],
+        ["country", x?.byCountry, k => k.toUpperCase()],
+      ].map(([by, map, label]) => {
+        const rows = Object.entries(obj(map) || {})
+            .map(([k, v]) => [k, visitsOf(v)])
+            .filter(([, n]) => n)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10),
+          d = isoDates(x);
+        return (
+          rows.length &&
+          `${name} organic visits by ${by}: ${rows.map(([k, n]) => `${label(k)} ${num(n)}`).join(" · ")}${d ? ` (${d})` : ""}`
+        );
+      }),
+    )
+    .filter(Boolean);
 
 function overviewHtml() {
   if (!overall)

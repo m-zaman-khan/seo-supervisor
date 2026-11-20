@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, existsSync, statSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { SCRIPTS, node, tmp } from "./helpers.mjs";
+import { SCRIPTS, SKILL, node, tmp } from "./helpers.mjs";
 import { serve } from "./serve.mjs";
 import { fetchKeys } from "../skills/seo-supervisor/scripts/connect-keys.mjs";
 
@@ -94,6 +94,33 @@ const POSTHOG_ROWS = [
   ["elsewhere.example.net", "/x", 7],
   ["example.com", null, 3],
 ];
+// Visits by device and by country: Matomo's report rows (label, code, nb_visits), PostHog's [host, value, visits].
+const XSS = "<img src=x onerror=alert(1)>";
+const COUNTRIES = ["us", "de", "gb", "fr", "in", "br", "ca", "au", "nl", "es", "it", "se"];
+const MATOMO_SPLITS = {
+  "DevicesDetection.getType": [
+    { label: "Desktop", nb_visits: 120, segment: "deviceType==desktop" },
+    { label: "Smartphone", nb_visits: 40 },
+    { label: XSS, nb_visits: 2 },
+    { label: "Tablet", nb_visits: 0 },
+  ],
+  "UserCountry.getCountry": [
+    { label: "Unknown", code: "xx", nb_visits: 500 },
+    ...COUNTRIES.map((code, i) => ({ label: code, code, nb_visits: 100 - i })),
+  ],
+};
+const POSTHOG_DEVICE = [
+  ["example.com", "Desktop", 30],
+  ["elsewhere.example.net", "Desktop", 99],
+  ["example.com", "Mobile", 12],
+  ["example.com", null, 5],
+];
+const POSTHOG_COUNTRY = [
+  ["elsewhere.example.net", "FR", 50],
+  ["example.com", "US", 20],
+  ["example.com", "DE", 4],
+  ["example.com", null, 9],
+];
 
 // One local server plays Bing Webmaster, Open PageRank, Ahrefs, Matomo (/matomo/) and PostHog (/posthog/).
 // `reply` overrides a route: (req, body) => [status, json or an HTML string, headers].
@@ -123,9 +150,11 @@ async function fake({ bing = BING, reply = {} } = {}) {
             .writeHead(status, { "content-type": typeof x === "string" ? "text/html" : "application/json", ...headers })
             .end(typeof x === "string" ? x : JSON.stringify(x));
         if (reply[route]) return send(...reply[route](req, body));
+        // A Bing route that answers an array gives [status, json]; Bing's own answers are always an object ({ d }).
         if (route === "bing") {
-          const r = bing[method];
-          return r ? send(200, typeof r === "function" ? r(u.searchParams.get("page")) : r) : send(404, {});
+          const r = bing[method],
+            x = typeof r === "function" ? r(u.searchParams.get("page")) : r;
+          return !r ? send(404, {}) : Array.isArray(x) ? send(...x) : send(200, x);
         }
         if (route === "opr")
           return send(200, {
@@ -152,9 +181,19 @@ async function fake({ bing = BING, reply = {} } = {}) {
               targets: JSON.parse(body).targets.map((t, i) => ({ target: t, domain_rating: 60 - 10 * i })),
             },
           });
-        if (route === "matomo") return send(200, MATOMO_ROWS);
-        if (route === "posthog")
-          return send(200, { columns: ["host", "path", "visits"], results: POSTHOG_ROWS, hasMore: false });
+        if (route === "matomo") return send(200, MATOMO_SPLITS[u.searchParams.get("method")] || MATOMO_ROWS);
+        if (route === "posthog") {
+          const q = JSON.parse(body).query.query;
+          return send(200, {
+            columns: ["host", "k", "visits"],
+            results: /\$device_type/.test(q)
+              ? POSTHOG_DEVICE
+              : /\$geoip_country_code/.test(q)
+                ? POSTHOG_COUNTRY
+                : POSTHOG_ROWS,
+            hasMore: false,
+          });
+        }
         send(404, {});
       });
       return true;
@@ -631,6 +670,13 @@ test("Matomo and PostHog dry runs show the exact requests, without the secrets, 
     assert.ok(r.stdout.includes(`POST ${srv.url}/posthog/api/projects/12345/query/`));
     assert.match(r.stdout, /\$channel_type = 'Organic Search'/);
     assert.ok(r.stdout.includes(`'${from}'`) && r.stdout.includes(`'${to}'`));
+    for (const s of [
+      "method=DevicesDetection.getType",
+      "method=UserCountry.getCountry",
+      "properties.$device_type",
+      "properties.$geoip_country_code",
+    ])
+      assert.ok(r.stdout.includes(s), `the dry run lists the split: ${s}`);
     assert.doesNotMatch(r.stdout, /matomo-token-0001|phx_posthog_key_0001|token_auth=/);
     assert.equal(existsSync(join(home, "keys-out.json")), false);
     await assert.rejects(fetchCli(home, srv, {}, ["--days", "0"]), e => e.code === 2 && /--days/.test(e.stderr));
@@ -644,7 +690,7 @@ test("Matomo: search-engine visits by landing page for Google Analytics' period,
     srv = await fake();
   try {
     const r = await fetchCli(home, srv, MATOMO_ENV(srv), ["--yes"]);
-    assert.equal(srv.hits.length, 1);
+    assert.equal(srv.hits.length, 3, "the landing pages, then the device and country splits");
     const h = srv.hits[0];
     assert.equal(h.verb, "POST");
     assert.equal(h.path, "/matomo/index.php");
@@ -663,10 +709,13 @@ test("Matomo: search-engine visits by landing page for Google Analytics' period,
     });
     assert.equal(new URLSearchParams(h.body).get("token_auth"), "matomo-token-0001");
     const o = output(home);
-    assert.deepEqual(o.matomo, {
-      period: { from: day(92), to: day(3) },
-      traffic: { "/pricing": { visits: 42 }, "/": { visits: 120 } },
-    });
+    assert.deepEqual(
+      [o.matomo.period, o.matomo.traffic],
+      [
+        { from: day(92), to: day(3) },
+        { "/pricing": { visits: 42 }, "/": { visits: 120 } },
+      ],
+    );
     assert.equal(o.posthog, null);
     assert.match(r.stdout, /Matomo 2 pages/);
   } finally {
@@ -679,7 +728,7 @@ test("PostHog: organic-search sessions by entry page through the Query API", asy
     srv = await fake();
   try {
     await fetchCli(home, srv, POSTHOG_ENV(srv), ["--yes"]);
-    assert.equal(srv.hits.length, 1);
+    assert.equal(srv.hits.length, 3, "the landing pages, then the device and country splits");
     const h = srv.hits[0];
     assert.equal(h.verb, "POST");
     assert.equal(h.path, "/posthog/api/projects/12345/query/");
@@ -689,10 +738,14 @@ test("PostHog: organic-search sessions by entry page through the Query API", asy
     for (const re of [/FROM sessions/, /\$channel_type = 'Organic Search'/, /\$entry_pathname/, /LIMIT 25000/])
       assert.match(q, re);
     assert.ok(q.includes(`'${day(92)}'`) && q.includes(`'${day(3)}'`));
-    assert.deepEqual(output(home).posthog, {
-      period: { from: day(92), to: day(3) },
-      traffic: { "/pricing": { visits: 40 }, "/": { visits: 120 } },
-    });
+    const o = output(home).posthog;
+    assert.deepEqual(
+      [o.period, o.traffic],
+      [
+        { from: day(92), to: day(3) },
+        { "/pricing": { visits: 40 }, "/": { visits: 120 } },
+      ],
+    );
   } finally {
     await srv.close();
   }
@@ -786,6 +839,230 @@ test("Matomo and PostHog refusals say what to fix: the token or key, the site or
     } finally {
       await srv.close();
     }
+  }
+});
+
+test("Matomo and PostHog device and country splits are fetched and drawn as one line each, escaped", async () => {
+  const home = tmp(),
+    srv = await fake();
+  try {
+    await fetchCli(home, srv, { ...MATOMO_ENV(srv), ...POSTHOG_ENV(srv) }, ["--yes"]);
+    const m = srv.hits.filter(h => h.route === "matomo"),
+      p = srv.hits.filter(h => h.route === "posthog");
+    assert.deepEqual(
+      m.map(h => h.query.get("method")),
+      ["Actions.getEntryPageUrls", "DevicesDetection.getType", "UserCountry.getCountry"],
+    );
+    for (const h of m) {
+      assert.deepEqual(
+        [h.verb, h.query.get("segment"), h.query.get("date"), h.query.has("token_auth")],
+        ["POST", "referrerType==search", `${day(92)},${day(3)}`, false],
+      );
+      assert.equal(new URLSearchParams(h.body).get("token_auth"), "matomo-token-0001");
+    }
+    assert.equal(p.length, 3);
+    for (const [h, prop] of [
+      [p[1], "properties.$device_type"],
+      [p[2], "properties.$geoip_country_code"],
+    ]) {
+      const q = h.body.query.query;
+      assert.equal(h.headers.authorization, "Bearer phx_posthog_key_0001");
+      for (const s of [
+        prop,
+        "FROM events",
+        "session.$channel_type = 'Organic Search'",
+        "count(DISTINCT $session_id)",
+        `'${day(92)}'`,
+        `'${day(3)}'`,
+      ])
+        assert.ok(q.includes(s), `${prop}: ${s}`);
+    }
+
+    const o = output(home);
+    assert.deepEqual(
+      o.matomo.byDevice,
+      { Desktop: { visits: 120 }, Smartphone: { visits: 40 }, [XSS]: { visits: 2 } },
+      "no zero rows",
+    );
+    assert.deepEqual(
+      Object.keys(o.matomo.byCountry),
+      COUNTRIES.slice(0, 10).map(c => c.toUpperCase()),
+      "the top 10 countries, not Matomo's Unknown (xx)",
+    );
+    assert.deepEqual(
+      o.posthog.byDevice,
+      { Desktop: { visits: 30 }, Mobile: { visits: 12 } },
+      "this site's sessions only",
+    );
+    assert.deepEqual(o.posthog.byCountry, { US: { visits: 20 }, DE: { visits: 4 } });
+
+    // The audit JSON carries connect-keys' matomo and posthog as is (report-format.md).
+    const dir = tmp(),
+      audit = JSON.parse(readFileSync(join(SKILL, "examples", "sample-audit.json"), "utf8"));
+    Object.assign(audit, { matomo: o.matomo, posthog: o.posthog });
+    writeFileSync(join(dir, "a.json"), JSON.stringify(audit));
+    await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "r.html")]);
+    const html = readFileSync(join(dir, "r.html"), "utf8"),
+      md = readFileSync(join(dir, "r.md"), "utf8"),
+      when = ` (${day(92)} to ${day(3)})`;
+    const lines = [
+      `Matomo organic visits by device: desktop 120 · smartphone 40 · ${XSS} 2${when}`,
+      `Matomo organic visits by country: US 100 · DE 99 · GB 98 · FR 97 · IN 96 · BR 95 · CA 94 · AU 93 · NL 92 · ES 91${when}`,
+      `PostHog organic visits by device: desktop 30 · mobile 12${when}`,
+      `PostHog organic visits by country: US 20 · DE 4${when}`,
+    ];
+    for (const l of lines) {
+      assert.ok(
+        html.includes(`<p class="quiet">${l.replace(XSS, "&lt;img src=x onerror=alert(1)&gt;")}</p>`),
+        `HTML: ${l}`,
+      );
+      assert.ok(md.includes(`\n${l.replace(XSS, "\\<img src=x onerror=alert(1)\\>")}\n`), `Markdown: ${l}`);
+    }
+    assert.doesNotMatch(html, /<img src=x/);
+    assert.doesNotMatch(md, /(^|[^\\])<img src=x/m);
+  } finally {
+    await srv.close();
+  }
+
+  // A split Matomo can't give (its UserCountry plugin is off) is noted; the landing pages and the other split stay.
+  const off = await fake({
+    reply: {
+      matomo: req => [
+        200,
+        /UserCountry/.test(req.url)
+          ? { result: "error", message: "The plugin UserCountry is not activated." }
+          : MATOMO_SPLITS[new URL(req.url, "http://x").searchParams.get("method")] || MATOMO_ROWS,
+      ],
+    },
+  });
+  try {
+    const { result, problems } = await fetchKeys({ site: SITE, keys: { matomo: both(off).matomo } });
+    assert.deepEqual(problems, []);
+    assert.deepEqual(
+      [Object.keys(result.matomo.traffic), Object.keys(result.matomo.byDevice), result.matomo.byCountry],
+      [["/pricing", "/"], ["Desktop", "Smartphone", XSS], undefined],
+    );
+    assert.ok(
+      result.notes.some(n =>
+        /^Matomo's visits from search engines by country weren't read: Matomo said: The plugin UserCountry/.test(n),
+      ),
+    );
+  } finally {
+    await off.close();
+  }
+});
+
+test("submit-bing is a dry run without --yes, stays within the quota and refuses other sites' URLs", async () => {
+  const home = tmp(),
+    dir = tmp(),
+    urls = join(dir, "urls.txt"),
+    diff = join(dir, "seo-diff.json"),
+    KEY = { BING_WEBMASTER_KEY: "b-key-0001" };
+  writeFileSync(
+    urls,
+    [
+      "# changed pages",
+      "/pricing",
+      "https://www.example.com/about#team",
+      "https://elsewhere.example.net/x",
+      "http://www.example.com/old",
+      "//elsewhere.example.net/y",
+      "/pricing",
+      ...Array.from({ length: 700 }, (_, i) => `/p${i}`),
+    ].join("\n"),
+  );
+  writeFileSync(
+    diff,
+    JSON.stringify({
+      regressions: [
+        { path: "/gone", kind: "status-error" },
+        { path: "/blog/", kind: "title-changed" },
+      ],
+      improvements: [],
+      changed: [],
+      added: ["/new"],
+      removed: ["/removed"],
+    }),
+  );
+  const quota = (daily, extra = {}) =>
+    fake({
+      bing: {
+        ...BING,
+        GetUrlSubmissionQuota: {
+          d: { __type: "UrlSubmissionQuota:#Microsoft.Bing.Webmaster.Api", DailyQuota: daily, MonthlyQuota: 9000 },
+        },
+        SubmitUrlBatch: { d: null },
+        ...extra,
+      },
+    });
+  const submit = (srv, args, env = KEY) => cli(["submit-bing", "--site", SITE, ...args], envFor(home, srv, env));
+  let srv = await quota(600);
+  try {
+    const dry = await submit(srv, ["--from-diff", diff]);
+    assert.equal(srv.hits.length, 0, "a dry run sends nothing, not even the quota request");
+    for (const re of [
+      /dry run/i,
+      /--yes/,
+      /IndexNow/,
+      /https:\/\/www\.example\.com\/blog\//,
+      /https:\/\/www\.example\.com\/new/,
+      /quota/,
+    ])
+      assert.match(dry.stdout, re);
+    assert.doesNotMatch(dry.stdout, /\/gone|\/removed|b-key-0001/);
+
+    const r = await submit(srv, ["--urls", urls, "--yes"]);
+    assert.deepEqual(
+      srv.hits.map(h => h.method),
+      ["GetUserSites", "GetUrlSubmissionQuota", "SubmitUrlBatch", "SubmitUrlBatch"],
+    );
+    const sends = srv.hits.filter(h => h.method === "SubmitUrlBatch");
+    assert.ok(
+      sends.every(
+        h =>
+          h.verb === "POST" && h.body.siteUrl === "https://www.example.com/" && h.query.get("apikey") === "b-key-0001",
+      ),
+      "Bing's own URL for the site, the key as Bing takes it",
+    );
+    assert.deepEqual(
+      sends.map(h => h.body.urlList.length),
+      [500, 100],
+      "at most 500 a request, and no more than the quota",
+    );
+    const sent = sends.flatMap(h => h.body.urlList);
+    assert.deepEqual(sent.slice(0, 3), [
+      "https://www.example.com/pricing",
+      "https://www.example.com/about",
+      "https://www.example.com/p0",
+    ]);
+    assert.ok(sent.every(u => u.startsWith("https://www.example.com/")));
+    for (const re of [
+      /left out 3 URL\(s\)[^\n]*https:\/\/www\.example\.com/,
+      /600 URL\(s\) today/,
+      /submitted 600 URL\(s\)/,
+      /102 URL\(s\) didn't fit/,
+    ])
+      assert.match(r.stdout, re);
+    assert.doesNotMatch(r.stdout + r.stderr, /b-key-0001/);
+    await srv.close();
+
+    srv = await quota(0);
+    await assert.rejects(submit(srv, ["--urls", urls, "--yes"]), e => e.code === 1 && /used up/.test(e.stdout));
+    assert.ok(!srv.hits.some(h => h.method === "SubmitUrlBatch"));
+    await srv.close();
+
+    srv = await quota(10, { SubmitUrlBatch: () => [400, { ErrorCode: 7, Message: "ERROR!!! InvalidUrl" }] });
+    await assert.rejects(
+      submit(srv, ["--urls", urls, "--yes"]),
+      e => e.code === 1 && /refused a URL \(InvalidUrl\)/.test(e.stdout) && !/b-key-0001/.test(e.stdout + e.stderr),
+    );
+    await assert.rejects(
+      submit(srv, ["--urls", urls], {}),
+      e => e.code === 2 && /guide bing/.test(e.stderr),
+      "no key: says how to connect Bing",
+    );
+  } finally {
+    await srv.close();
   }
 });
 

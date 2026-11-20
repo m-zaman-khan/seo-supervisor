@@ -350,6 +350,31 @@ test("Matomo and PostHog data is guarded: odd values and dates are dropped, neve
   assert.doesNotMatch(html + md, /<img src=x|<b>9<\/b>|PostHog/);
 });
 
+test("Matomo and PostHog device and country lines show only real counts, the top 10, and nothing when empty", async () => {
+  const { html, md } = await renderEdited(d => {
+    d.matomo = {
+      ...MATOMO(),
+      byDevice: { Desktop: { visits: 3 }, Tablet: { visits: "<b>9</b>" }, TV: { visits: -1 }, Phone: "x" },
+      byCountry: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`c${i}`, { visits: i + 1 }])),
+    };
+    d.posthog = { period: null, byDevice: {}, byCountry: "not a map" };
+  });
+  const device = "Matomo organic visits by device: desktop 3 (2026-08-20 to 2026-11-16)";
+  assert.ok(
+    html.includes(`<p class="quiet">${device}</p>`) && md.includes(`\n${device}\n`),
+    "only the device with a real count",
+  );
+  for (const s of [html, md]) {
+    assert.ok(
+      s.includes(
+        "Matomo organic visits by country: C11 12 · C10 11 · C9 10 · C8 9 · C7 8 · C6 7 · C5 6 · C4 5 · C3 4 · C2 3 (2026-08-20 to 2026-11-16)",
+      ),
+      "the 10 with the most visits, most first",
+    );
+    assert.doesNotMatch(s, /PostHog organic visits|<b>9/);
+  }
+});
+
 test("the links list shows Bing's 10 most-linked pages and 5 sample links, escaped", async () => {
   const { html, md } = await renderEdited(d => {
     d.bing = BING();
