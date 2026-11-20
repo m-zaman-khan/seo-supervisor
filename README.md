@@ -81,6 +81,12 @@ npx seo-supervisor        # then, in Claude Code: /seo-audit
   - "Since last audit" also shows robots.txt changes, pages leaving or joining the sitemap, pages losing internal links, and changed redirects. Pages other sites link to that now break are flagged.
   - With `--render all`, every page is tested in a browser, up to 200, not just 10. Form fields that iPhones zoom into are flagged, and Lighthouse keeps every failed audit with the files behind it.
   - Matomo and PostHog visits by device and country, and an optional Bing URL submission.
+- **Grow, rewrite and know your audience:**
+  - `/seo-grow` turns your own data into an ordered to-do list for more visitors: who visits, what they search for, quick wins, and when to check the results.
+  - `/seo-rewrite` rewrites a page in plain words, paragraph by paragraph. You see before and after, and nothing changes without your yes. No API needed: your own agent does it.
+  - Keyword ideas (`keyword-ideas.mjs`) from your own Search Console queries and crawl: queries almost on page one, queries no page is about, and real questions. With outside checks on, phrases from search results are added, each with its source. No made-up volumes, and you pick the targets.
+  - Audience check: name up to 4 audiences in the profile, and the report lists what each key page gives them and what's missing, with evidence from the page. No score, and no invented personas.
+  - Share previews: a share image without `twitter:card` (X then shows at most a small card), a `twitter:card` value X doesn't define, and pages with no description for shares.
 
 ## Install
 
@@ -115,7 +121,7 @@ It asks two things:
   …
 ```
 
-The skill goes into each agent's own skills folder, and agents that share a folder get one copy. Claude Code also gets the `/seo-audit`, `/seo-fix`, `/seo-review`, `/seo-launch`, `/seo-setup` and `/seo-brief` commands. In other agents, ask them to "audit the SEO of this site". The installer only ever replaces or removes its own files.
+The skill goes into each agent's own skills folder, and agents that share a folder get one copy. Claude Code also gets the `/seo-audit`, `/seo-fix`, `/seo-review`, `/seo-launch`, `/seo-setup`, `/seo-brief`, `/seo-rewrite` and `/seo-grow` commands. In other agents, ask them to "audit the SEO of this site". The installer only ever replaces or removes its own files.
 
 For scripts and CI, use flags to skip the questions:
 
@@ -143,6 +149,8 @@ Every key or account is optional too: see [Optional: outside checks and Search C
 | `/seo-launch [url]` | A pass/fail gate before you switch indexing on, plus the launch-day checklist | Never |
 | `/seo-setup [url]` | For a site with **no SEO yet**: proposes a full SEO plan, then builds it once you approve | Only after you approve the plan |
 | `/seo-brief [topic or URL]` | Writes a content brief: intent, phrases, outline, questions to answer, the facts it needs from you, and internal links | Never (writes only `seo-audit/briefs/`) |
+| `/seo-rewrite [page, file, or "writing notes"]` | Rewrites a page's text in plain words, paragraph by paragraph, keeping facts, links and target phrases | Only what you say yes to |
+| `/seo-grow [goal, page or audience]` | An ordered to-do list for more visitors, from your own data: who visits, what they search for, quick wins, and when to check the results | Never (writes only `seo-audit/grow-plan.md`) |
 
 ## Starting from zero
 

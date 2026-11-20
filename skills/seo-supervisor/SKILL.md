@@ -21,6 +21,8 @@ Supervise a site's SEO the way a senior technical SEO would: measure, cite evide
 | **launch** | Going live or switching indexing on | Never | Pass/fail gate |
 | **setup** | No SEO yet, "set up SEO", "SEO from scratch" | Only after the plan is approved | Same report, with a Plan tab |
 | **brief** | "write a brief", "content brief for…" | Never | `seo-audit/briefs/<slug>.md` |
+| **rewrite** | "rewrite this page", "rewrite what the writing notes flagged" | Only paragraphs the owner said yes to | Before → after for each paragraph, then the edited text |
+| **grow** | "get more visitors", "grow traffic", "what next" | Never | `seo-audit/grow-plan.md` |
 
 If the request doesn't name a mode, run **audit**. Finish an audit by offering to fix; never start fixing on your own.
 
@@ -136,6 +138,12 @@ node <skill-dir>/scripts/content-scan.mjs --in seo-audit/content.json --items pa
 - `confidence` is none on a business site
 - there's a `business-type-unclear` finding
 
+**Audience check (audit and setup modes).** When the owner has named audiences (the profile's "Audiences" section, or `audiences` in `seo-audit/settings.json`), follow `audience.md`.
+- For each audience, check up to 5 key pages: does the page say who it's for, answer their questions, show the cost, show proof, answer their worries and give a clear next step?
+- Write what's there and what's missing, with evidence, into `seo-audit.json` as `audiences`.
+- If no audiences are named, ask the owner once and record the answer. Never invent personas.
+- It's information only: no score, no findings.
+
 **Page checklists.** Read `page-types.md` when planning or reviewing a page: it lists what a home, about, contact, service, product, category, article or location page needs. Copy-ready JSON-LD for every Google rich-result type and every business type is in `examples/snippets.md`.
 
 ### 4. Write the report
@@ -216,17 +224,49 @@ Launch mode edits nothing. Among the launch-day steps, list IndexNow: once the s
 
 For a site with no SEO yet. Follow `planning.md` exactly.
 
-1. Work out what the site is from the site itself, never from a template.
+1. Work out what the site is from the site itself, never from a template. If the profile names no audiences, ask once (`audience.md`), and run the audience check on the existing key pages while planning.
 2. Propose a plan (a `plan` in `seo-audit.json`, shown on the report's Plan tab) and stop for approval.
 3. Build the code-level foundation once it's approved, then fix the audit's other code findings listed in the plan (`plan.alsoFixes`). Share images are part of the foundation: a default card plus one per key page type (`og-images.md`), in the folder the plan names. Offer the structured data checks in `examples/hooks/` as an opt-in (a pre-commit hook, a CI step, or an agent hook); install only the ones the owner picks.
 4. Draft the content the owner must approve.
 5. Verify with an audit.
 
-Each risky item on the "Needs your yes" list gets its own yes. Re-running setup continues from `plan.status`. After the plan is approved, offer the connections once (step 2): with Search Console, target phrases can come from real queries.
+Each risky item on the "Needs your yes" list gets its own yes. Re-running setup continues from `plan.status`. After the plan is approved, offer the connections once (step 2): with Search Console, target phrases can come from real queries (see **Keyword ideas** under step 9).
 
 ### 9. Brief mode
 
 Write one content brief for a topic or page, in the format `strategy.md` gives, to `seo-audit/briefs/<slug>.md`. It's read-only: never edit the project. Use only facts from the site or the owner; anything else is a `[owner: …]` placeholder. Look at what ranks only when outside checks are on, and name the search engine and date.
+
+**Keyword ideas** (brief mode, and setup and grow mode when choosing target phrases). When `seo-audit/` has `google.json` or `gsc.json`:
+1. Run `node <skill-dir>/scripts/keyword-ideas.mjs --google seo-audit/google.json --crawl seo-audit/seo-crawl.json [--brand "<business name>"] [--extra seo-audit/keyword-extra.json] --out seo-audit/keyword-ideas.json` (or `--gsc seo-audit/gsc.json`). It reads local files only.
+2. Only with outside checks on, save the phrases you saw in search results or on competitors' pages to `seo-audit/keyword-extra.json` as `[{ "phrase", "source" }]`. Each source names the search engine (or the competitor's page) and the date, for example `"Google related searches, 2026-11-21"`.
+3. Show the owner the ideas with their sources. Only the ones the owner picks become target phrases, kept with their source.
+
+Never add search volumes or difficulty.
+
+### 10. Rewrite mode
+
+Only when the owner asks. Follow `rewrite.md` exactly.
+- You rewrite the text yourself: no API, and no script edits it.
+- Find each passage with the writing notes' `examples`.
+- Show before → after for each paragraph, and apply only on the owner's yes. CMS content follows fix steps 3–4.
+- Never change facts, numbers, prices, dates, names, brand terms, what a claim means, legal text, quotes, code or links.
+- Target phrases stay in the title, the H1 and the opening paragraph.
+- Re-crawl afterwards: the writing notes should drop.
+
+### 11. Grow mode
+
+For "how do I get more visitors?". Follow `grow.md` stage by stage:
+1. the data on hand
+2. who visits (`audience.md`)
+3. what they search for (`keyword-ideas.json`; the owner picks the targets)
+4. quick wins from findings already there
+5. the plan
+6. building it
+7. checking it
+
+It writes only `seo-audit/grow-plan.md`: an ordered to-do list. Each item has its evidence, who does it and its mode (brief, rewrite or fix), plus a "check again after" date.
+
+It builds nothing: each item runs in its own mode, with the owner's yes. When a stage's data is missing, say how to get it, and never guess. When brief, rewrite or fix finishes a grow-plan item, mark it done in the plan with the date it went live.
 
 ## Plain language (CONTENT-13)
 

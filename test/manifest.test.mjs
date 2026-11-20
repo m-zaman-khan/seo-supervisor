@@ -205,7 +205,7 @@ test("the docs agree with the code and keep every outside or content step behind
     );
   const readme = read("README.md");
   assert.doesNotMatch(readme, /no API keys?\b/i);
-  assert.match(readme, /`\/seo-setup` and `\/seo-brief` commands/);
+  assert.match(readme, /`\/seo-brief`, `\/seo-rewrite` and `\/seo-grow` commands/);
   assert.match(read(S + "NOTICE"), /MIT License/, "installed skill copies carry the MIT notice");
 });
 

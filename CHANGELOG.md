@@ -135,6 +135,29 @@ Deeper checks, optional real-world data and search intent. Everything still work
 - **Lighthouse details.** Every failed audit with up to 10 files each (`lighthouse[].detail`), in a collapsed panel. Information only.
 - **Matomo and PostHog by device and country.** Search visits by device type and for the top 10 countries, one quiet Overview line each.
 - **Bing URL submission (optional).** `connect-keys.mjs submit-bing` is a dry run until the owner says yes. It sends only the site's own URLs, and reads Bing's quota first (500 a request).
+- **New `/seo-grow` command.** A step-by-step path to more visitors from search, built on the site's own data:
+  - audiences
+  - keyword ideas the owner picks
+  - quick wins from Search Console and the crawl
+  - a dated check of the results
+
+  It writes only `seo-audit/grow-plan.md`. Each item names its evidence, who does it and which mode builds it, and nothing changes without the owner's yes.
+- **Rewrite mode (`/seo-rewrite`).** On request, the agent rewrites a page in plain words (`rewrite.md`).
+  - It shows before → after and changes nothing without the owner's yes. No API.
+  - Facts, claims, legal text, quotes, links and target phrases stay.
+  - Writing notes now carry `examples`, so each passage can be found.
+- **Audience check.** Name 1 to 4 audiences in the SEO profile. The agent asks once if there are none, and never invents personas.
+  - In audit and setup mode it checks up to 5 key pages per audience.
+  - The report adds a collapsed "Audience check" panel: what's there and what's missing, with evidence.
+  - It's information only: no score, no findings. `audience.md` has the steps.
+- **Keyword ideas.** `keyword-ideas.mjs` lists:
+  - queries almost on page one
+  - queries no page's title or H1 covers
+  - question queries
+  - labelled phrases from outside checks (`--extra`)
+
+  It reads local files only, and it's information only, with no search volumes or difficulty.
+- **Share previews.** New checks `twitter-card-missing` and `twitter-card-invalid` (META-04, low). `og-missing` now also flags a page with neither `og:description` nor a meta description.
 - Setup and fix offer each connection once; a skip is listed under Limits and never changes the score. Keys are typed at a hidden prompt in the owner's own terminal, never in chat; Google sign-in prints its link for agents (`--print-url`, `~/.seo-supervisor/pending-signin.txt`). Search Console findings flag only pages Google really excluded; pages Google doesn't know yet are notes.
 - **Fewer false findings:** the log scan needs 5 server errors and 1% before a finding, and repeated 404s become findings only for pages the site links to; sitemap priority/changefreq tags are a note; IndexNow refuses a key file that redirects to another host.
 - **Off-site presence for AI answers:** with outside checks on, the agent looks the brand up on Wikipedia, Reddit, YouTube, LinkedIn and directories, and reports gaps as owner decisions.
