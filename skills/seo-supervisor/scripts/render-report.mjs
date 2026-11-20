@@ -1004,6 +1004,10 @@ const analyticsSplitLines = () =>
     )
     .filter(Boolean);
 
+// The audience check, written into seo-audit.json.
+const audienceHtml = () => "";
+const audienceMd = () => [];
+
 function overviewHtml() {
   if (!overall)
     return `<section class="panel empty-state"><h2>Nothing to score</h2><p>This file has no findings or passed rules. Run the audit to fill it.</p></section>`;
@@ -1090,7 +1094,7 @@ function overviewHtml() {
       })()}</ol>
     </section>${viewsHtml()}${searchLines()
       .map(t => `\n    <p class="quiet">${esc(t)}</p>`)
-      .join("")}${linksHtml()}${agentsHtml()}${writingHtml()}${imagesHtml()}${lighthouseDetailHtml()}
+      .join("")}${linksHtml()}${agentsHtml()}${writingHtml()}${audienceHtml()}${imagesHtml()}${lighthouseDetailHtml()}
     </div>
   </div>
   ${
@@ -1714,7 +1718,7 @@ function markdown() {
       );
     L.push("");
     L.push(...viewsMd());
-    L.push(...linksMd(), ...agentsMd(), ...writingMd(), ...imagesMd(), ...lighthouseDetailMd());
+    L.push(...linksMd(), ...agentsMd(), ...writingMd(), ...audienceMd(), ...imagesMd(), ...lighthouseDetailMd());
   }
   if (plan) L.push(...planMarkdown(plan));
   if (diff) {
