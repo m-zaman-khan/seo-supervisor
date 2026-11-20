@@ -23,8 +23,40 @@ const attrs = tag => {
 };
 const filled = v => typeof v === "string" && v.trim() !== "";
 const named = a => ["aria-label", "aria-labelledby", "title"].some(k => filled(a[k]));
-const unseen = a =>
-  "hidden" in a || a["aria-hidden"]?.trim().toLowerCase() === "true" || /^(none|presentation)$/i.test(a.role || "");
+const unseen = a => /^(none|presentation)$/i.test(a.role || "");
+// Hidden from everyone, along with everything inside it.
+const gone = a =>
+  "hidden" in a ||
+  a["aria-hidden"]?.trim().toLowerCase() === "true" ||
+  /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)\b/i.test(a.style || "");
+// A signup form's spam trap: a text field the Tab key skips, inside a box moved far off screen.
+const offScreen = a => /(?:^|;)\s*(?:left|top)\s*:\s*-\d{3,}px/i.test(a.style || "");
+const trap = t => {
+  const a = attrs(t);
+  return a.tabindex?.trim() === "-1" && TEXTLIKE.test((a.type || "text").trim().toLowerCase()) ? " " : t;
+};
+const VOID = /^(area|br|col|embed|hr|img|input|source|track|wbr)$/i;
+const swap = (html, pick, what) => {
+  const open = /<([a-z][\w-]*)\b[^>]*>/gi;
+  let out = "",
+    from = 0;
+  for (let m; (m = open.exec(html));) {
+    if (!pick(attrs(m[0]))) continue;
+    let end = open.lastIndex;
+    if (!VOID.test(m[1]) && !m[0].endsWith("/>")) {
+      const tag = new RegExp(`<(/?)${m[1]}(?=[\\s/>])[^>]*>`, "gi");
+      tag.lastIndex = end;
+      for (let d = 1, t; (t = tag.exec(html));)
+        if (!(d += t[1] ? -1 : 1)) {
+          end = tag.lastIndex;
+          break;
+        }
+    }
+    out += html.slice(from, m.index) + what(html.slice(m.index, end));
+    from = open.lastIndex = end;
+  }
+  return out + html.slice(from);
+};
 // A control as the evidence shows it: tag, type and the first identifying attribute.
 const describe = (tag, a) => {
   const k = ["name", "id", "class", "src"].find(x => filled(a[x]));
@@ -56,10 +88,16 @@ export function agentFeatures(html) {
     .replace(/<(script|style|template|noscript)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi, " ")
     .replace(/(<textarea\b[^>]*>)[\s\S]*?<\/textarea>/gi, "$1</textarea>");
   const labelFor = new Set([...doc.matchAll(/<label\b[^>]*>/gi)].map(m => attrs(m[0]).for).filter(filled));
+  // Hidden elements and spam-trap fields are out of visitors' reach, so they're dropped.
+  const shown = swap(
+    swap(doc, gone, () => " "),
+    offScreen,
+    el => el.replace(/<input\b[^>]*>/gi, trap),
+  );
   // A field inside a <label> is named by it, so only fields outside labels are checked one by one.
   const wrapped =
-    (doc.match(/<label\b[\s\S]*?<\/label>/gi) || []).join(" ").match(/<(input|select|textarea)\b/gi)?.length || 0;
-  const loose = doc.replace(/<label\b[\s\S]*?<\/label>/gi, " ");
+    (shown.match(/<label\b[\s\S]*?<\/label>/gi) || []).join(" ").match(/<(input|select|textarea)\b/gi)?.length || 0;
+  const loose = shown.replace(/<label\b[\s\S]*?<\/label>/gi, " ");
   const unnamedFields = [],
     unnamedButtons = [];
   let controls = wrapped;
@@ -88,7 +126,7 @@ export function agentFeatures(html) {
       unnamedFields.push(describe(tag, a));
   }
   // A button is named by its text (an SVG <title> counts), an alt or label inside it, or its own aria-label or title.
-  for (const m of doc.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gi)) {
+  for (const m of shown.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gi)) {
     const a = attrs("<button " + m[1] + ">");
     if (unseen(a)) continue;
     controls++;

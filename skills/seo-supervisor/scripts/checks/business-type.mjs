@@ -36,6 +36,7 @@ const norm = s =>
     .replace(/\p{M}/gu, "")
     .toLowerCase()
     .replace(/['’]/g, "")
+    .replace(/&/g, " and ")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim()} `;
 // Phrases that contain a trade's word without being that trade. They match as keywords mapped to null, so the trade
@@ -65,15 +66,25 @@ const WORD = new Map([
 ]);
 // Longest phrase first, so "dental clinic" is the dentist's and not a clinic.
 const KW = new RegExp(`(?<= )(${[...WORD.keys()].sort((a, b) => b.length - a.length).join("|")})(?:e?s)?(?= )`, "g");
-// A trade straight after "for", or before "software", "marketing" and the like, names a business that serves the trade
-// ("software for dental clinics", "dental practice software"), so the phrase counts for nothing.
-const SERVES = /^ (?:software|apps?|crm|pos|platform|systems?|marketing|seo|websites?|leads|booking) /;
+// A trade after "for" or before something it buys ("software for dental clinics", "dental supplies") names a supplier,
+// so it counts for nothing, and so does a trade in a later "for" phrase ("gym equipment for home gyms").
+const SERVES =
+  /^ (?:(?:and|or) \S+ )?(?:suppl(?:y|ies|iers?)|equipment|gear|parts?|chairs?|furniture|uniforms?|products?|wholesale|jobs?|recruitment|photography|insurance|courses?|training|cleaning|software|apps?|crm|pos|platform|systems?|marketing|seo|websites?|leads|booking) /;
 const hitsIn = s => {
   const t = norm(s);
+  let sold = -1;
   return [...t.matchAll(KW)]
-    .filter(
-      m => WORD.get(m[1]) && !t.slice(0, m.index).endsWith(" for ") && !SERVES.test(t.slice(m.index + m[0].length)),
-    )
+    .filter(m => {
+      if (
+        !WORD.get(m[1]) ||
+        t.slice(0, m.index).endsWith(" for ") ||
+        (sold >= 0 && t.slice(sold, m.index).includes(" for "))
+      )
+        return false;
+      if (!SERVES.test(t.slice(m.index + m[0].length))) return true;
+      if (sold < 0) sold = m.index;
+      return false;
+    })
     .map(m => [WORD.get(m[1]), m[0]]);
 };
 
@@ -161,9 +172,20 @@ export function checkBusinessType(pages, add) {
       .filter(([, w]) => w.length)
       .map(([s, w]) => `${s}: ${[...new Set(w)].join(", ")}`)
       .join(", ");
+  // A site whose schema has products, offers or a store type may be a shop that sells to the trade it names.
+  const store = t => isA(t, "Store") || isA(t, "OnlineStore");
+  const shop = [...new Set(pages.flatMap(p => p.types || []))].filter(
+    t => typeof t === "string" && (isA(t, "Product") || isA(t, "Offer") || store(t)),
+  );
   if (bt.confidence === "strong" && !fits(a)) {
     const broad = siteTypes.filter(t => isA(a.b.types[0], t));
-    if (broad.length)
+    if (broad.length && shop.length && !a.b.types.some(store))
+      add(
+        "business-type-unclear",
+        home.url,
+        `${a.b.types[0]} or OnlineStore? ${a.b.types[0]}: ${said(a)}; OnlineStore: schema: ${shop.join(", ")}`,
+      );
+    else if (broad.length)
       add("schema-too-generic", home.url, `use ${a.b.types.join(" or ")} instead of ${broad.join(", ")}; ${said(a)}`);
   } else if (bt.confidence === "weak" && a.head && b?.head && !fits(a) && !fits(b)) {
     add(

@@ -211,6 +211,47 @@ test("two close candidates give a needs-decision naming both; no evidence gives 
   assert.deepEqual([saas.bt.guess, saas.bt.confidence, saas.found], ["software", "strong", []]);
 });
 
+test("a shop or service that names a trade's products isn't that trade", () => {
+  for (const title of [
+    "FitKit – Gym Equipment for Home and Commercial Gyms",
+    "Jane Lens | Real Estate Photography",
+    "DentaPro – Dental Supplies",
+    "Trailhead Outdoors – Camping and Hiking Gear",
+    "Trailhead Outdoors – Camping & Hiking Gear",
+    "PipeCo | Plumbing Supplies & Heating Parts",
+    "Relaxa – Massage Chairs",
+  ])
+    assert.deepEqual(collect([home(title, "", "", ["Organization"])]).found, [], title);
+  for (const title of ["Bright Smile Dental Clinic", "Iron Gym and Personal Training", "Bed & Breakfast in Whitby"])
+    assert.deepEqual(
+      collect([home(title, "", "", ["Organization"])]).found.map(x => x.key),
+      ["schema-too-generic"],
+      title,
+    );
+
+  // Products or offers in the schema may mean a shop, so a trade's type needs confirming.
+  const gym = collect([home("Iron Gym | Leeds", "Your local gym", "", ["Organization", "Product"])]);
+  assert.deepEqual(
+    gym.found.map(x => x.key),
+    ["business-type-unclear"],
+  );
+  assert.match(
+    gym.found[0].detail,
+    /^ExerciseGym or OnlineStore\? ExerciseGym: title: gym, H1: gym; OnlineStore: schema: Product$/,
+  );
+  assert.deepEqual(
+    collect([home("Iron Gym | Leeds", "Your local gym", "", ["Organization", "Offer"])]).found.map(x => x.key),
+    ["business-type-unclear"],
+  );
+  // A store guess is still too generic as Organization.
+  const florist = collect([home("Bloom Florist | Leeds", "Flowers for every day", "", ["Organization", "Product"])]);
+  assert.deepEqual(
+    florist.found.map(x => x.key),
+    ["schema-too-generic"],
+  );
+  assert.match(florist.found[0].detail, /^use Florist or OnlineStore instead of Organization/);
+});
+
 test("a page that mentions another trade doesn't change the guess", async () => {
   // A plumber's home page lists two blog posts, one of them about dentists; the post itself is all about dentists.
   const teasers = `<article><h2><a href="/blog/dental-water-lines/">Why dentists need clean water lines</a></h2><p>Every dental surgery depends on clean water.</p></article>

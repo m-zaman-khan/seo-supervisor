@@ -68,6 +68,36 @@ test("form fields and buttons without a name are a low AI-05 finding; labelled o
   assert.ok(!r.passed.some(p => p.rule === "AI-05"));
 });
 
+test("hidden fields and a signup form's spam trap aren't unnamed controls", () => {
+  // Mailchimp's stock embed: a labelled email field, a submit button and a hidden, off-screen spam-trap field.
+  const MAILCHIMP = `<div id="mc_embed_signup"><form action="https://example.us1.list-manage.com/subscribe/post?u=123&amp;id=456" method="post" id="mc-embedded-subscribe-form" target="_blank">
+    <div id="mc_embed_signup_scroll"><h2>Subscribe</h2><div class="mc-field-group"><label for="mce-EMAIL">Email Address <span class="asterisk">*</span></label><input type="email" name="EMAIL" class="required email" id="mce-EMAIL" required="" value=""></div>
+    <div id="mce-responses" class="clear foot"><div class="response" id="mce-error-response" style="display: none;"></div></div>
+    <div style="position: absolute; left: -5000px;" aria-hidden="true"><input type="text" name="b_123_456" tabindex="-1" value=""></div>
+    <div class="clear foot"><input type="submit" name="subscribe" id="mc-embedded-subscribe" class="button" value="Subscribe"><p style="margin: 0px auto;"><a href="https://mailchimp.com" title="Mailchimp"><span style="display: inline-block;"><img src="data:," alt="Intuit Mailchimp"></span></a></p></div>
+    </div></form></div>`;
+  const mc = agentFeatures(page("Newsletter", MAILCHIMP));
+  assert.deepEqual([mc.unnamedFields, mc.unnamedButtons, mc.controls], [[], [], 2]);
+  // The same trap with no aria-hidden, and fields inside a hidden box, however it's hidden.
+  const hidden = agentFeatures(
+    page(
+      "Hidden",
+      `<div style="position:absolute;left:-9999px"><input type="text" name="trap" tabindex="-1"></div>
+    <div hidden><div><input type="text" name="a"></div><button></button></div> <div style="display:none"><select name="b"></select></div>
+    <section style="color: red; visibility: hidden"><textarea name="c"></textarea></section> <span aria-hidden="true"><svg/><button></button></span>`,
+    ),
+  );
+  assert.deepEqual([hidden.unnamedFields, hidden.unnamedButtons, hidden.controls], [[], [], 0]);
+  // A visible unlabelled field still counts, and so does one off screen that people can tab to.
+  const shown = agentFeatures(
+    page(
+      "Shown",
+      `${MAILCHIMP}<svg aria-hidden="true"/><input type="text" name="q"><div style="position: absolute; left: -5000px;"><input type="text" name="skip"></div>`,
+    ),
+  );
+  assert.deepEqual(shown.unnamedFields, ['<input type="text" name="q">', '<input type="text" name="skip">']);
+});
+
 // A shop with WebMCP tools, a UCP profile, an A2A agent card and an API catalog; /contact/ has unnamed controls.
 let agentRun;
 function agentSite() {
