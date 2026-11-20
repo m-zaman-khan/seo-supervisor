@@ -6,6 +6,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { labLcpParts } from "./speed.mjs";
+import { containerArgs } from "../lib/cdp.mjs";
+import { chromeProxyArgs } from "../lib/proxy.mjs";
 
 const CATEGORIES = {
   performance: "performance",
@@ -69,18 +71,25 @@ function parse(lhr, url) {
   };
 }
 
-/** One Lighthouse run on its defaults (mobile, simulated throttling) with a throwaway Chrome profile. */
-export function runLighthouse(bin, url, { chromePath, timeoutMs = 90000 } = {}) {
+/** One Lighthouse run on its defaults (mobile, simulated throttling) with a throwaway Chrome profile. Chrome gets
+ * launchChrome's container and proxy flags. host ({ platform, uid, env, exists }) is for tests. */
+export function runLighthouse(bin, url, { chromePath, timeoutMs = 90000, host = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "seo-supervisor-lighthouse-")),
     report = join(dir, "report.json");
   const [file, pre] = command(bin);
+  const chromeFlags = [
+    "--headless=new",
+    ...containerArgs(host),
+    ...chromeProxyArgs(host.env),
+    `--user-data-dir="${join(dir, "profile")}"`,
+  ].join(" ");
   const args = [
     ...pre,
     url,
     "--output=json",
     `--output-path=${report}`,
     "--quiet",
-    `--chrome-flags=--headless=new --user-data-dir="${join(dir, "profile")}"`,
+    `--chrome-flags=${chromeFlags}`,
     "--only-categories=performance,seo,accessibility,best-practices",
   ];
   const env = chromePath ? { ...process.env, CHROME_PATH: chromePath } : process.env;

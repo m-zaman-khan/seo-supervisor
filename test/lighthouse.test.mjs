@@ -132,10 +132,27 @@ test("a Lighthouse run gives category scores, the five metrics and the top faile
     assert.ok(call.args.includes(flag), flag);
   assert.equal(call.args[0], "http://127.0.0.1:1/");
   const flags = call.args.find(a => a.startsWith("--chrome-flags="));
-  assert.match(flags, /^--chrome-flags=--headless=new --user-data-dir="[^"]+"$/);
+  assert.match(
+    flags,
+    /^--chrome-flags=--headless=new (--\S+ )*--user-data-dir="[^"]+"$/,
+    "container and proxy flags, if any, in between",
+  );
   assert.equal(call.chrome, "/opt/chrome", "the browser goes to Lighthouse as CHROME_PATH");
   assert.ok(!existsSync(flags.match(/--user-data-dir="([^"]+)"/)[1]), "the temporary profile is removed afterwards");
   assert.ok(!existsSync(call.args.find(a => a.startsWith("--output-path=")).slice(14)), "so is the report file");
+});
+
+test("Lighthouse's Chrome gets the container and proxy flags through --chrome-flags", async () => {
+  const lh = fakeLighthouse(),
+    P = "http://proxy.corp:8080";
+  await runLighthouse(lh.bin, "http://127.0.0.1:1/", {
+    host: { platform: "linux", uid: 0, env: { HTTP_PROXY: P, HTTPS_PROXY: P }, exists: () => false },
+  });
+  const flags = lh.calls()[0].args.find(a => a.startsWith("--chrome-flags="));
+  assert.match(
+    flags,
+    /^--chrome-flags=--headless=new --no-sandbox --disable-dev-shm-usage --proxy-server=http:\/\/proxy\.corp:8080 --user-data-dir="[^"]+"$/,
+  );
 });
 
 test("a failed run rejects with the CLI's message", async () => {

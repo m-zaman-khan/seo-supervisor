@@ -4,6 +4,8 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { containerArgs } from "../lib/cdp.mjs";
+import { chromeProxyArgs } from "../lib/proxy.mjs";
 
 export const CHECKS = {
   "render-changes-head": [
@@ -68,20 +70,25 @@ export function chromeError(dom, stderr = "") {
   return dom.trim() ? null : "an empty page";
 }
 
+// When given, guard's flags replace launchChrome's proxy flags. host ({ platform, uid, env, exists }) is for tests.
+export const renderArgs = (profile, url, host = {}) => [
+  "--headless=new",
+  "--disable-gpu",
+  "--no-first-run",
+  "--no-default-browser-check",
+  "--disable-extensions",
+  ...containerArgs(host),
+  ...chromeProxyArgs(host.env),
+  `--user-data-dir=${profile}`,
+  "--virtual-time-budget=5000",
+  "--dump-dom",
+  url,
+];
+
 // The DOM after scripts ran, from a throwaway profile so a running browser isn't touched.
 export function renderPage(browser, url, { timeoutMs = 20000 } = {}) {
   const profile = mkdtempSync(join(tmpdir(), "seo-supervisor-render-"));
-  const args = [
-    "--headless=new",
-    "--disable-gpu",
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--disable-extensions",
-    `--user-data-dir=${profile}`,
-    "--virtual-time-budget=5000",
-    "--dump-dom",
-    url,
-  ];
+  const args = renderArgs(profile, url);
   return new Promise((ok, fail) =>
     execFile(browser, args, { timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 }, (err, stdout, stderr) => {
       try {

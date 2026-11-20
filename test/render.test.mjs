@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
-import { chromeError, findBrowser, renderPage } from "../skills/seo-supervisor/scripts/checks/render.mjs";
+import { chromeError, findBrowser, renderArgs, renderPage } from "../skills/seo-supervisor/scripts/checks/render.mjs";
 import { serve } from "./serve.mjs";
 import { ROOT, SKILL, SCRIPTS, node, tmp } from "./helpers.mjs";
 
@@ -433,6 +433,31 @@ test("the render step knows Chrome's own error page and a failed load from the s
       "[1119/195616.441:ERROR:gpu_init.cc(523)] Passthrough is not supported\n",
     ),
     null,
+  );
+});
+
+test("the render step's Chrome gets the container and proxy flags, and the URL last", () => {
+  const P = "http://proxy.corp:8080",
+    url = "https://example.com/";
+  const args = renderArgs("/tmp/p", url, {
+    platform: "linux",
+    uid: 0,
+    env: { HTTP_PROXY: P, HTTPS_PROXY: P },
+    exists: () => false,
+  });
+  for (const f of [
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    `--proxy-server=${P}`,
+    "--user-data-dir=/tmp/p",
+    "--dump-dom",
+  ])
+    assert.ok(args.includes(f), f);
+  assert.equal(args.at(-1), url);
+  assert.deepEqual(
+    renderArgs("/tmp/p", url, { platform: "darwin", env: {} }).filter(a => /sandbox|shm|proxy/.test(a)),
+    [],
+    "none on an ordinary machine with no proxy",
   );
 });
 
