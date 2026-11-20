@@ -20,6 +20,8 @@ const LHR = {
         ref("first-contentful-paint", 10),
         ref("speed-index", 10),
         ref("render-blocking-resources", 0),
+        ref("unused-javascript", 0),
+        ref("diagnostics", 0),
       ],
     },
     seo: {
@@ -50,13 +52,45 @@ const LHR = {
     "cumulative-layout-shift": { title: "Cumulative Layout Shift", score: 1, numericValue: 0.02 },
     "first-contentful-paint": { title: "First Contentful Paint", score: 0.8, numericValue: 2100 },
     "speed-index": { title: "Speed Index", score: 0.7, numericValue: 4300 },
-    "render-blocking-resources": { title: "Eliminate render-blocking resources", score: 0 },
+    "render-blocking-resources": {
+      title: "Eliminate render-blocking resources",
+      score: 0,
+      details: {
+        type: "opportunity",
+        items: [
+          { url: "https://cdn.example/app.js?v=<b>1</b>", wastedMs: 300 },
+          { url: "https://cdn.example/app.js?v=<b>1</b>", wastedMs: 20 },
+          { url: "http://127.0.0.1:1/style.css" },
+        ],
+      },
+    },
+    "unused-javascript": {
+      title: "Reduce unused JavaScript",
+      score: 0.3,
+      details: {
+        type: "opportunity",
+        items: Array.from({ length: 12 }, (_, i) => ({ url: `http://127.0.0.1:1/chunk-${i}.js` })),
+      },
+    },
+    "diagnostics": {
+      title: "Diagnostics",
+      score: 0,
+      scoreDisplayMode: "informative",
+      details: { type: "debugdata", items: [{ url: "http://127.0.0.1:1/never.js" }] },
+    },
     "meta-description": { title: "Document does not have a meta description", score: 0 },
     "document-title": { title: "Document has a `<title>` element", score: 1 },
     "http-status-code": { title: "Page has successful HTTP status code", score: 1 },
     "structured-data": { title: "Structured data is valid", score: null, scoreDisplayMode: "manual" },
     "link-text": { title: "Links have descriptive text", score: 1 },
-    "color-contrast": { title: "Background and foreground colors do not have a sufficient contrast ratio.", score: 0 },
+    "color-contrast": {
+      title: "Background and foreground colors do not have a sufficient contrast ratio.",
+      score: 0,
+      details: {
+        type: "table",
+        items: [{ node: { type: "node", selector: "footer > p.small", snippet: '<p class="small">' } }],
+      },
+    },
     "image-alt": { title: "Image elements have `[alt]` attributes", score: 1 },
     "button-name": { title: "Buttons do not have an accessible name", score: 0 },
     "errors-in-console": { title: "Browser errors were logged to the console", score: 0 },
@@ -140,6 +174,87 @@ test("a Lighthouse run gives category scores, the five metrics and the top faile
   assert.equal(call.chrome, "/opt/chrome", "the browser goes to Lighthouse as CHROME_PATH");
   assert.ok(!existsSync(flags.match(/--user-data-dir="([^"]+)"/)[1]), "the temporary profile is removed afterwards");
   assert.ok(!existsSync(call.args.find(a => a.startsWith("--output-path=")).slice(14)), "so is the report file");
+});
+
+test("Lighthouse detail lists each failed audit with its files, escaped", async () => {
+  const lh = fakeLighthouse();
+  const r = await runLighthouse(lh.bin, "http://127.0.0.1:1/");
+  // Every audit under 0.9, weighted or not, the costliest first; passing, unscored and informative ones aren't listed.
+  assert.deepEqual(
+    r.detail.map(d => d.id),
+    [
+      "button-name",
+      "meta-description",
+      "errors-in-console",
+      "largest-contentful-paint",
+      "color-contrast",
+      "total-blocking-time",
+      "speed-index",
+      "first-contentful-paint",
+      "render-blocking-resources",
+      "unused-javascript",
+    ],
+  );
+  const by = id => r.detail.find(d => d.id === id);
+  assert.deepEqual(
+    by("render-blocking-resources"),
+    {
+      id: "render-blocking-resources",
+      title: "Eliminate render-blocking resources",
+      category: "Performance",
+      items: ["https://cdn.example/app.js?v=<b>1</b>", "http://127.0.0.1:1/style.css"],
+    },
+    "each file once",
+  );
+  assert.deepEqual(by("color-contrast").items, ["footer > p.small"], "an element when the audit names no file");
+  assert.equal(by("unused-javascript").items.length, 10, "10 files an audit at most");
+  assert.deepEqual(by("button-name").items, []);
+  assert.equal(r.failed.length, 5, "the top five stay as they were");
+
+  // The report: a collapsed panel with a list per page, escaped.
+  const dir = tmp(),
+    data = JSON.parse(readFileSync(join(SKILL, "examples", "sample-audit.json"), "utf8"));
+  writeFileSync(join(dir, "plain.json"), JSON.stringify(data));
+  data.lighthouse = [
+    { ...r, url: "https://example.com/" },
+    {
+      url: "https://example.com/blog/<x>/",
+      scores: {},
+      metrics: {},
+      failed: [],
+      detail: [
+        {
+          id: "x",
+          title: "Avoid `<marquee>` **now**",
+          category: "Best Practices",
+          items: ["https://cdn.example/a.js?q=`x`|y"],
+        },
+      ],
+    },
+  ];
+  writeFileSync(join(dir, "a.json"), JSON.stringify(data));
+  for (const f of ["plain", "a"])
+    await node([join(SCRIPTS, "render-report.mjs"), join(dir, `${f}.json`), "--out", join(dir, `${f}.html`)]);
+  const html = readFileSync(join(dir, "a.html"), "utf8"),
+    md = readFileSync(join(dir, "a.md"), "utf8");
+  const has = (re, s) => assert.ok(re.test(s), String(re)); // the report is too long to print on a miss
+  has(/<details class="how lhdetail"><summary>Lighthouse details<\/summary>/, html);
+  has(/<details><summary><code>\/blog\/%3Cx%3E\/<\/code>/, html);
+  has(/<code>https:\/\/cdn\.example\/app\.js\?v=&lt;b&gt;1&lt;\/b&gt;<\/code>/, html);
+  has(/Avoid <code>&lt;marquee&gt;<\/code>/, html);
+  assert.ok(!/v=<b>|<marquee>|\/<x>\//.test(html), "escaped");
+  has(/^## Lighthouse details$/m, md);
+  has(/^- Reduce unused JavaScript \(Performance\): `http:\/\/127\.0\.0\.1:1\/chunk-0\.js`/m, md);
+  has(
+    /^- Avoid \\`\\<marquee\\>\\` \\\*\\\*now\\\*\\\* \(Best Practices\): `https:\/\/cdn\.example\/a\.js\?q= x \|y`$/m,
+    md,
+  );
+  const scoreOf = s => s.match(/<p class="big[^"]*"><span class="n">(\d+)/)[1];
+  assert.equal(
+    scoreOf(html),
+    scoreOf(readFileSync(join(dir, "plain.html"), "utf8")),
+    "information only: the score doesn't move",
+  );
 });
 
 test("Lighthouse's Chrome gets the container and proxy flags through --chrome-flags", async () => {

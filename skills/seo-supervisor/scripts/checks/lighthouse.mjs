@@ -45,16 +45,43 @@ function command(bin) {
   return /\.[cm]?js$/i.test(bin) ? [process.execPath, [bin]] : [bin, []];
 }
 
+// The files or page elements an audit's details.items point at, each once, up to 10. An insight's "list" nests its
+// tables.
+const UNSCORED = new Set(["informative", "notApplicable", "manual", "error"]);
+const rowsOf = d => (Array.isArray(d?.items) ? d.items.flatMap(i => (Array.isArray(i?.items) ? i.items : [i])) : []);
+const filesOf = d =>
+  [
+    ...new Set(
+      rowsOf(d)
+        .map(i => [i?.url, i?.source?.url, i?.node?.selector].find(s => typeof s === "string" && s))
+        .filter(Boolean),
+    ),
+  ]
+    .slice(0, 10)
+    .map(s => s.slice(0, 300));
+
 function parse(lhr, url) {
   const cats = lhr.categories || {},
     audits = lhr.audits || {};
-  const failed = [];
+  const failed = [],
+    detail = new Map();
   for (const c of Object.values(cats)) {
     const total = c.auditRefs.reduce((s, r) => s + r.weight, 0) || 1;
     for (const r of c.auditRefs) {
       const a = audits[r.id];
-      if (r.weight > 0 && typeof a?.score === "number" && a.score < 0.9)
-        failed.push({ id: r.id, title: a.title, category: c.title, cost: (r.weight * (1 - a.score)) / total });
+      if (typeof a?.score !== "number" || a.score >= 0.9) continue;
+      const cost = (r.weight * (1 - a.score)) / total;
+      if (r.weight > 0) failed.push({ id: r.id, title: a.title, category: c.title, cost });
+      // Every failed audit, weighted or not: most opportunities and diagnostics weigh nothing but name the files.
+      if (!detail.has(r.id) && !UNSCORED.has(a.scoreDisplayMode))
+        detail.set(r.id, {
+          id: r.id,
+          title: a.title,
+          category: c.title,
+          cost,
+          score: a.score,
+          items: filesOf(a.details),
+        });
     }
   }
   const map = (o, f) => Object.fromEntries(Object.entries(o).map(([k, id]) => [k, f(id)]));
@@ -68,6 +95,8 @@ function parse(lhr, url) {
       .sort((a, b) => b.cost - a.cost)
       .slice(0, 5)
       .map(({ cost, ...f }) => f),
+    // The same order, then the weightless audits, lowest score first.
+    detail: [...detail.values()].sort((a, b) => b.cost - a.cost || a.score - b.score).map(({ cost, score, ...d }) => d),
   };
 }
 

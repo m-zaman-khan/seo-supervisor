@@ -932,9 +932,52 @@ const imagesMd = () =>
       ]
     : [];
 
-// Lighthouse detail per page: failed audits with the files behind them.
-const lighthouseDetailHtml = () => "";
-const lighthouseDetailMd = () => [];
+// Lighthouse detail per page: each run's `detail` from lighthouse.mjs, every failed audit with up to 10 files or page
+// elements. Titles come from Lighthouse (Markdown backticks included) and files from the site, so both are escaped.
+const lhRuns = (Array.isArray(raw.lighthouse) ? raw.lighthouse : [])
+  .filter(x => obj(x) && typeof x.url === "string" && Array.isArray(x.detail))
+  .map(x => ({
+    path: notePath(x.url),
+    audits: x.detail
+      .filter(a => obj(a) && typeof a.title === "string")
+      .map(a => ({
+        ...a,
+        items: (Array.isArray(a.items) ? a.items : []).filter(s => typeof s === "string" && s).slice(0, 10),
+      })),
+  }))
+  .filter(x => x.audits.length);
+const LH_INTRO =
+  "Every audit each Lighthouse run failed, with the files or page elements it names (10 at most). Information only: Lighthouse's lab results don't change the score.";
+const lighthouseDetailHtml = () =>
+  lhRuns.length
+    ? `\n    <details class="how lhdetail"><summary>Lighthouse details</summary><p>${esc(LH_INTRO)}</p>${lhRuns
+        .slice(0, 10)
+        .map(
+          x =>
+            `<details><summary><code>${esc(x.path)}</code> · ${plural(x.audits.length, "failed audit")}</summary><ul class="lim">${x.audits.map(a => `<li><b>${inl(a.title)}</b><span>${esc(a.category || "")}${a.items.length ? ` · ${a.items.map(s => `<code>${esc(s)}</code>`).join(", ")}` : ""}</span></li>`).join("")}</ul></details>`,
+        )
+        .join(
+          "",
+        )}${lhRuns.length > 10 && mdFile ? `<p>All ${num(lhRuns.length)} pages are listed in <code>${esc(mdFile)}</code>.</p>` : ""}</details>`
+    : "";
+const lighthouseDetailMd = () =>
+  lhRuns.length
+    ? [
+        "## Lighthouse details",
+        "",
+        LH_INTRO,
+        "",
+        ...lhRuns.flatMap(x => [
+          `### ${noteCode(x.path)}`,
+          "",
+          ...x.audits.map(
+            a =>
+              `- ${noteMd(a.title)}${a.category ? ` (${noteMd(a.category)})` : ""}${a.items.length ? `: ${a.items.map(noteCode).join(", ")}` : ""}`,
+          ),
+          "",
+        ]),
+      ]
+    : [];
 
 // Matomo and PostHog device and country lines.
 const analyticsSplitLines = () => [];
