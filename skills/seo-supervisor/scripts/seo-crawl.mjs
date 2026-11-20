@@ -3864,11 +3864,15 @@ const report = {
     includeQuery: INCLUDE_QUERY,
     brand: BRAND || null,
   },
+  // capped: stopped at --max. sitemapComplete: every sitemap file answered 200 and none went unread past a limit.
+  // seo-diff.mjs compares internal links and sitemap listing only when they say the crawl and the sitemap were whole.
   stats: {
     fetched,
+    capped,
     htmlPages: htmlPages.length,
     sitemapUrls: sm.entries.length,
     sitemapFiles: sm.files,
+    sitemapComplete: !sm.cut && sm.files.every(f => f.status === 200),
     robotsTxt: robotsRes.status,
   },
   notes,

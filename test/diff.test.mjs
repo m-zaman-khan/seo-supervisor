@@ -503,6 +503,136 @@ test("robots.txt, sitemap membership, internal links and redirects are compared 
   );
 });
 
+test("internal links aren't compared when either crawl stopped at --max", () => {
+  const P = (path, linksIn) => ({
+    url: `https://e.com${path}`,
+    status: 200,
+    noindex: false,
+    canonical: `https://e.com${path}`,
+    title: path,
+    h1: 1,
+    schema: [],
+    linksIn,
+  });
+  const full = { options: { max: 1000 }, stats: { fetched: 400, capped: false }, pages: [P("/b", 40)] };
+  const capped = { options: { max: 30 }, stats: { fetched: 30, capped: true }, pages: [P("/b", 3)] };
+  for (const [o, n] of [
+    [full, capped],
+    [capped, full],
+  ]) {
+    const d = diffCrawls(o, n);
+    assert.deepEqual(kinds(d.regressions), [], "40 → 3 only counts the links on the pages crawled");
+    assert.ok(!d.compared.includes("links"));
+  }
+  // An older crawl didn't record capped: it stopped at --max when it fetched that many.
+  const older = { options: { max: 400 }, stats: { fetched: 400 }, pages: [P("/b", 40)] };
+  assert.deepEqual(kinds(diffCrawls(older, { ...full, pages: [P("/b", 3)] }).regressions), []);
+  const whole = { options: { max: 1000 }, stats: { fetched: 400 }, pages: [P("/b", 40)] };
+  assert.deepEqual(kinds(diffCrawls(whole, { ...full, pages: [P("/b", 3)] }).regressions), ["/b lost-internal-links"]);
+});
+
+test("sitemap listing is compared only when both crawls read every sitemap file", () => {
+  const P = (path, inSitemap) => ({
+    url: `https://e.com${path}`,
+    status: 200,
+    noindex: false,
+    canonical: `https://e.com${path}`,
+    title: path,
+    h1: 1,
+    schema: [],
+    inSitemap,
+  });
+  const files = (...statuses) => statuses.map((status, i) => ({ url: `https://e.com/sitemap-${i}.xml`, status }));
+  const old = {
+    stats: { sitemapFiles: files(200, 200, 200), sitemapComplete: true },
+    pages: [P("/a/", true), P("/b/", true)],
+  };
+  // One child sitemap of the index answered 503 this time: /b/ was in it.
+  const partial = {
+    stats: { sitemapFiles: files(200, 200, 503), sitemapComplete: false },
+    pages: [P("/a/", true), P("/b/", false)],
+  };
+  const d = diffCrawls(old, partial);
+  assert.deepEqual(kinds(d.regressions), [], "a sitemap that wasn't read isn't the page leaving it");
+  assert.ok(!d.compared.includes("sitemap"));
+  const cut = { stats: { sitemapFiles: files(200, 200, 200), sitemapComplete: false }, pages: partial.pages };
+  assert.deepEqual(kinds(diffCrawls(old, cut).regressions), [], "the 200,000-URL cut or the 60-file limit");
+  // An older crawl without the field counts as whole when every sitemap file answered 200.
+  const { sitemapComplete, ...olderStats } = old.stats;
+  const whole = { stats: { sitemapFiles: files(200, 200, 200), sitemapComplete: true }, pages: partial.pages };
+  assert.deepEqual(kinds(diffCrawls({ ...old, stats: olderStats }, whole).regressions), ["/b/ left-sitemap"]);
+  assert.deepEqual(kinds(diffCrawls({ ...old, stats: { sitemapFiles: files(200, 503) } }, whole).regressions), []);
+});
+
+test("a redirect that only swaps 301 for 308 or 302 for 307 hasn't changed", () => {
+  const R = (from, to, status) => ({ from: `https://e.com${from}`, to: `https://e.com${to}`, status });
+  const d = diffCrawls(
+    { pages: [], redirects: [R("/a", "/a/", 301), R("/b", "/b/", 302), R("/c", "/c/", 307), R("/d", "/d/", 308)] },
+    { pages: [], redirects: [R("/a", "/a/", 308), R("/b", "/b/", 307), R("/c", "/c/", 301), R("/d", "/d/", 302)] },
+  );
+  assert.deepEqual(kinds(d.changed), []);
+  assert.deepEqual(kinds(d.improvements), ["/c redirect-changed"], "temporary made permanent");
+  assert.deepEqual(kinds(d.regressions), ["/d redirect-changed"], "permanent made temporary");
+});
+
+test("the crawler records whether it stopped at --max and whether it read the whole sitemap", async () => {
+  const dir = tmp();
+  mkdirSync(join(dir, "a"));
+  writeFileSync(
+    join(dir, "index.html"),
+    `<!doctype html><html><head><title>Home</title></head><body><h1>Home</h1><a href="/a/">A</a></body></html>`,
+  );
+  writeFileSync(
+    join(dir, "a", "index.html"),
+    `<!doctype html><html><head><title>A</title></head><body><h1>A</h1><a href="/">Home</a></body></html>`,
+  );
+  let down = false;
+  const site = await serve(dir, {
+    before: (req, res) => {
+      const origin = `http://${req.headers.host}`,
+        xml = body => res.writeHead(200, { "Content-Type": "application/xml" }).end(`<?xml version="1.0"?>${body}`);
+      if (req.url === "/robots.txt") {
+        res
+          .writeHead(200, { "Content-Type": "text/plain" })
+          .end(`User-agent: *\nAllow: /\nSitemap: ${origin}/sitemap.xml\n`);
+        return true;
+      }
+      if (req.url === "/sitemap.xml") {
+        xml(
+          `<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>${origin}/s1.xml</loc></sitemap><sitemap><loc>${origin}/s2.xml</loc></sitemap></sitemapindex>`,
+        );
+        return true;
+      }
+      if (req.url === "/s1.xml") {
+        xml(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${origin}/</loc></url></urlset>`);
+        return true;
+      }
+      if (req.url === "/s2.xml") {
+        if (down) res.writeHead(503).end();
+        else
+          xml(
+            `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${origin}/a/</loc></url></urlset>`,
+          );
+        return true;
+      }
+    },
+  });
+  const crawl = async (...extra) => {
+    const out = join(dir, "crawl.json");
+    await node([join(SCRIPTS, "seo-crawl.mjs"), "--url", site.url, "--out", out, ...extra]);
+    return read(out).stats;
+  };
+  try {
+    const whole = await crawl();
+    assert.deepEqual([whole.capped, whole.sitemapComplete], [false, true]);
+    down = true;
+    const partial = await crawl("--max", "1");
+    assert.deepEqual([partial.capped, partial.sitemapComplete], [true, false]);
+  } finally {
+    await site.close();
+  }
+});
+
 test("the crawler records robots.txt, the redirects it met, and each page's internal links and sitemap listing", async () => {
   const dir = tmp(),
     rules = "User-agent: *\nDisallow: /private/\n# " + "x".repeat(60 * 1024) + "\n";

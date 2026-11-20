@@ -126,10 +126,19 @@ export function diffCrawls(oldReport, newReport) {
     improvements = [],
     changed = [],
     compared = new Set();
-  // Sitemap listing only when both crawls read a sitemap: one that failed this time is sitemap-missing, not every page
-  // in it leaving.
-  const sitemaps = [oldReport, newReport].every(r => (r.pages || []).some(p => p.inSitemap));
+  // Sitemap listing only when both crawls read the whole sitemap: one that failed this time is sitemap-missing, and a
+  // file that failed or went unread past a limit isn't every page in it leaving. An older crawl is whole when every
+  // file answered 200.
+  const wholeSitemap = r =>
+    (r.pages || []).some(p => p.inSitemap) &&
+    (r.stats?.sitemapComplete ?? (r.stats?.sitemapFiles || []).every(f => f.status === 200));
+  const sitemaps = wholeSitemap(oldReport) && wholeSitemap(newReport);
   if (sitemaps) compared.add("sitemap");
+  // A crawl that stopped at --max, or covered one part of the site (--include/--exclude, recorded as `section`) the
+  // other didn't, missed pages the other has: they aren't gone (or new). Internal links and section sizes only when
+  // both crawls were whole: linksIn counts links on the pages crawled.
+  const capped = r => r.stats?.capped ?? r.stats?.fetched >= r.options?.max;
+  const links = !capped(oldReport) && !capped(newReport);
   const hasRedirects = Array.isArray(oldReport.redirects) && Array.isArray(newReport.redirects);
   const redirectsOf = r => new Map((r.redirects || []).map(x => [pathOf(x.from), x]));
   const wasRedirect = redirectsOf(oldReport),
@@ -189,8 +198,8 @@ export function diffCrawls(oldReport, newReport) {
       if (o.inSitemap && !n.inSitemap) change(regressions, "left-sitemap", "listed", "not listed");
       if (!o.inSitemap && n.inSitemap) change(improvements, "joined-sitemap", "not listed", "listed");
     }
-    if (both("linksIn")) compared.add("links");
-    if (both("linksIn") && o.linksIn - n.linksIn >= 5 && n.linksIn * 2 <= o.linksIn)
+    if (links && both("linksIn")) compared.add("links");
+    if (links && both("linksIn") && o.linksIn - n.linksIn >= 5 && n.linksIn * 2 <= o.linksIn)
       change(regressions, "lost-internal-links", o.linksIn, n.linksIn);
     // Field names only, per type both crawls have: prices and dates change every crawl.
     if (both("schemaProps")) {
@@ -230,18 +239,15 @@ export function diffCrawls(oldReport, newReport) {
       const o = wasRedirect.get(path),
         was = before.get(path);
       // A new target or a loop is a regression; the same target made permanent is an improvement, made temporary a
-      // regression.
-      if (o && (target(o) !== target(n) || o.status !== n.status)) {
-        const moved = target(o) !== target(n),
-          p0 = permanent(o.status),
-          p1 = permanent(n.status);
-        (moved || (p0 && !p1) ? regressions : p1 && !p0 ? improvements : changed).push({
+      // regression. 301 and 308, or 302, 303 and 307, swapping (a server change) is no change.
+      const moved = o && target(o) !== target(n);
+      if (o && (moved || permanent(o.status) !== permanent(n.status)))
+        (moved || permanent(o.status) ? regressions : improvements).push({
           path,
           kind: "redirect-changed",
           before: redirectText(o),
           after: redirectText(n),
         });
-      }
       // Only a URL the last crawl had as a page or an error: one first met this time isn't a new redirect.
       if (!o && was) changed.push({ path, kind: "redirect-added", before: was.status, after: redirectText(n) });
     }
