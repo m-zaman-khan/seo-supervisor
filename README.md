@@ -130,7 +130,8 @@ npx seo-supervisor --uninstall                                  # remove it agai
 Needs Node 22 or newer. There's nothing else to install: zero dependencies, plus two optional add-ons, both kept in `~/.seo-supervisor/tools`, never in your project:
 - **Lighthouse** (about 170 MB) gives real Performance, SEO, Accessibility and Best practices scores. The installer offers it; add it later with `npx seo-supervisor --with-lighthouse`.
 - **sharp** (about 20 MB) converts heavy images to WebP or AVIF. The installer doesn't ask about it; fix mode offers it when it finds heavy images, or add it with `npx seo-supervisor --with-image-tools`.
- Every key or account is optional too: see [Optional: outside checks and Search Console](#optional-outside-checks-and-search-console).
+
+Every key or account is optional too: see [Optional: outside checks and Search Console](#optional-outside-checks-and-search-console).
 
 ## Commands
 
