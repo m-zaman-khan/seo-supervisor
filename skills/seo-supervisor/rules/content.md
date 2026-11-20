@@ -33,6 +33,7 @@
 - **Pass:** a named author or reviewer with real credentials and an author page, and a visible "last reviewed" date. Tool and service pages count too: "Reviewed by {name}, {credential} · Updated {date}". YMYL topics (health, money, security, legal) cite primary sources.
 - **Author pages** (`/about/team/{name}/` or similar) list role, certifications (e.g. OSCP, CISSP, licences), GitHub or portfolio, talks and publications, and credited work (e.g. CVEs). They use ProfilePage + Person schema and are linked from every byline and "Reviewed by" line.
 - **Review on a schedule:** every 6–12 months, and **straight away when a standard or regulation the page relies on changes.**
+- **Trust view:** on a site with articles, author names, author pages and dates show in the Overview's "Trust signals (E-E-A-T)" view with what to add; they're suggestions that never change the score, and this rule is still judged from the content and code.
 
 ### CONTENT-08 · Images have alt text · low
 - **Check:** crawler `img-alt`.

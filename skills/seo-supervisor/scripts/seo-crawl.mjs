@@ -21,7 +21,9 @@ import {
 import { CHECKS as RENDER_CHECKS, findBrowser, renderPage, compareRendered } from "./checks/render.mjs";
 import { CHECKS as VISUAL_CHECKS, checkVisual } from "./checks/visual.mjs";
 import { checkLighthouse, findLighthouse } from "./checks/lighthouse.mjs";
-import { imageSize } from "./lib/image-size.mjs"; // once, before any request
+import { imageSize } from "./lib/image-size.mjs";
+
+import { trustFeatures, trustSignals } from "./checks/trust.mjs"; // once, before any request
 
 const VERSION = "2.0.0";
 const UA = "seo-supervisor-crawler/" + VERSION;
@@ -1567,6 +1569,8 @@ function analyze(url, html, headers, xRobotsLines) {
         .match(/<[a-z][\w-]*/gi) || []
     ).length,
   };
+  // E-E-A-T signals for the report's trust view.
+  rec.trust = trustFeatures(html, url, rec.base);
 
   return rec;
 }
@@ -3248,6 +3252,19 @@ for (let i = 0; i < botSample.length; i += CONC)
 
 // ---------- site-wide checks and data; data for the report goes on `extra` ----------
 const extra = {};
+
+// ---------- trust signals ----------
+// E-E-A-T signals for the trust view, never findings or scored. HTTPS counts with no open TRUST-01 or TRUST-07
+// finding, and is unknown without a public origin.
+extra.trustSignals = trustSignals(htmlPages, {
+  origin: EXPECT_ORIGIN,
+  https: !isPublic(EXPECT_ORIGIN)
+    ? null
+    : EXPECT_ORIGIN.startsWith("https:") &&
+      ![...findings.keys()].some(k => ["TRUST-01", "TRUST-07"].includes(CHECKS[k][0])),
+  orgSchema: (home?.html && home.trust.org) || htmlPages.find(p => p.trust.org)?.trust.org || null,
+  unsourcedStats: htmlPages.filter(p => p.trust.unsourcedStat).length,
+});
 
 // ---------- what the crawler cannot check ----------
 // CRAWL-09 never passes here: a real Googlebot comes from Google's IP addresses, which no request from here can.

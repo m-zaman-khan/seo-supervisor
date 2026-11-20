@@ -561,8 +561,105 @@ function googleUpdatesText(html = false) {
 
 // ---------- extra panels: an empty one adds nothing to the output ----------
 // Score views: trust signals, Local SEO, Content quality.
-const viewsHtml = () => "";
-const viewsMd = () => [];
+// The trust view is found ÷ applicable signals × 100 (checks/trust.mjs); missing signals are suggestions, not
+// findings. Local SEO and Content quality are the "Local business" and "Headings & content" area scores renamed, each
+// shown only when its area has checked rules. Without trust data there's no panel.
+const trustScore = signals => {
+  const on = signals.filter(s => s.applies),
+    found = on.filter(s => s.found).length;
+  return {
+    value: on.length ? Math.round((100 * found) / on.length) : null,
+    found,
+    applicable: on.length,
+    missing: on.filter(s => !s.found),
+  };
+};
+const trustList = Array.isArray(raw.trustSignals) ? raw.trustSignals.filter(obj) : null;
+const NOT_GOOGLE = "SEO Supervisor's own check, not a Google score";
+const labelOf = s => String(s.label || s.id || "");
+function viewsOf() {
+  if (!trustList) return null;
+  const t = trustScore(trustList),
+    list = [
+      ["Local SEO", "Local business"],
+      ["Content quality", "Headings & content"],
+    ]
+      .map(([label, name]) => ({ label, a: areas.find(a => a.name === name) }))
+      .filter(v => v.a);
+  const lc = s => (/^\p{Lu}\p{Ll}/u.test(s) ? s[0].toLowerCase() + s.slice(1) : s);
+  const line = `${t.found} of ${t.applicable} signals found${t.missing.length ? ` · missing: ${t.missing.map(s => lc(labelOf(s))).join(", ")}` : ""}`;
+  return t.value == null && !list.length ? null : { t, list, line };
+}
+const viewsHtml = () => {
+  const v = viewsOf();
+  if (!v) return "";
+  const pass = `<i class="dot d-pass" aria-hidden="true"></i>`;
+  const row = (tag, attrs, d, name, lines, value) => `<li><${tag} class="area"${attrs}>${d}
+          <span class="an"><b>${name}</b>${lines}</span>
+          <span class="meter" aria-hidden="true"><i style="width:${Math.max(4, value)}%"></i></span><span class="as">${value}<small>/100</small></span></${tag}></li>`;
+  const rows = [
+    ...(v.t.value == null
+      ? []
+      : [
+          row(
+            "div",
+            "",
+            v.t.missing.length ? dot("low") : pass,
+            "Trust signals (E-E-A-T)",
+            `<span class="reason">${esc(v.line)}</span><span class="reason">${esc(NOT_GOOGLE)}</span>`,
+            v.t.value,
+          ),
+        ]),
+    ...v.list.map(({ label, a }) =>
+      row(
+        "a",
+        ` href="#findings" data-area="${esc(a.name)}"`,
+        a.worst ? dot(a.worst) : pass,
+        esc(label),
+        `<span>${esc(a.name)} area · ${a.top.length ? inl(a.top[0].title) : "All checks pass"}</span>`,
+        a.value,
+      ),
+    ),
+  ];
+  const add = v.t.missing.length
+    ? `
+      <details class="how"><summary>What to add for trust</summary><p>Suggestions, not findings: they never change the SEO health score, and not every signal fits every site.</p><ul class="lim">${v.t.missing.map(s => `<li><b>${esc(labelOf(s))}</b><span>${inl(s.add || "")}${s.rule ? ` See ${esc(s.rule)}.` : ""}</span></li>`).join("")}</ul></details>`
+    : "";
+  return `
+    <section class="panel factors" aria-labelledby="h-views">
+      <div class="ph"><h2 id="h-views">Score views</h2><span class="sub">The audit read another way</span></div>
+      <ol class="area-list">${rows.join("")}</ol>${add}
+    </section>`;
+};
+const viewsMd = () => {
+  const v = viewsOf();
+  if (!v) return [];
+  const md = s =>
+    String(s ?? "")
+      .replace(/\s+/g, " ")
+      .replace(/[\\`*_[\]<>|]/g, "\\$&"); // crawled text: names, links, dates
+  const found = trustList.filter(s => s.applies && s.found);
+  return [
+    "## Score views",
+    "",
+    "| View | Score | What it is |",
+    "| --- | ---: | --- |",
+    ...(v.t.value == null ? [] : [`| Trust signals (E-E-A-T) | ${v.t.value}/100 | ${md(v.line)}. ${NOT_GOOGLE} |`]),
+    ...v.list.map(({ label, a }) => `| ${label} | ${a.value}/100 | The ${md(a.name)} area's score |`),
+    "",
+    ...(v.t.missing.length
+      ? [
+          "Trust signals to add. They're suggestions, not findings: they never change the score, and not every signal fits every site.",
+          "",
+          ...v.t.missing.map(s => `- **${md(labelOf(s))}:** ${s.add || ""}${s.rule ? ` See ${md(s.rule)}.` : ""}`),
+          "",
+        ]
+      : []),
+    ...(found.length
+      ? ["Trust signals found:", "", ...found.map(s => `- **${md(labelOf(s))}:** ${md(s.evidence || "found")}`), ""]
+      : []),
+  ];
+};
 
 // Links from other sites (Search Console exports) and their change since the last audit.
 const linksHtml = () => "";

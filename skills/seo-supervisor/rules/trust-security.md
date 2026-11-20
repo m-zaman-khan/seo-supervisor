@@ -16,6 +16,7 @@
 ### TRUST-04 · Who's behind the site is clear · medium
 - **Check:** content: About, Contact, author pages, methodology or "how we test" pages, editorial policy.
 - **Pass:** a real organization with a contact route, named experts with credentials (CONTENT-07), and how claims and results are produced. Tool sites need a methodology page per tool family that names its standards, data sources and limits (TOOL-11).
+- **Trust view:** the crawler's About, contact, Organization schema and policy signals show in the Overview's "Trust signals (E-E-A-T)" view with what to add; they're suggestions that never change the score, and this rule is still judged from the content.
 
 ### TRUST-05 · No fake trust signals · blocker
 - **Check:** content and schema: ratings, review counts, testimonials, "as seen in" logos, certifications, years in business, team photos.
