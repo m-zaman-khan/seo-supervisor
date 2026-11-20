@@ -38,6 +38,15 @@ import { proxyNote } from "./lib/proxy.mjs";
   const n = proxyNote();
   if (n) console.error("note: " + n);
 } // once, before any request
+import { linkHreflang, mergeHreflang, languageFeatures, checkLanguages } from "./checks/hreflang.mjs";
+
+// Sitemap <xhtml:link> hreflang by crawl URL, built on first use: `sm` is only read later, before the crawl starts.
+let smHreflang;
+const sitemapHreflang = u =>
+  (smHreflang ||= new Map(sm.entries.filter(e => e.hreflang).map(e => [clean(toCrawl(e.loc)), e.hreflang]))).get(
+    clean(u),
+  ) || [];
+
 import { estSaving } from "./images.mjs";
 
 import { createHash } from "node:crypto";
@@ -1647,6 +1656,18 @@ function analyze(url, html, headers, xRobotsLines) {
     .filter(i => realSrc(i) && !("loading" in i) && !i["data-src"] && !(parseInt(i.width) < 100))
     .map(i => i.src);
 
+  // hreflang from the HTML, Link header and sitemap is merged before the checks run, noting where sources disagree;
+  // also the Translate widget and schema inLanguage.
+  Object.assign(
+    rec,
+    mergeHreflang(
+      { html: hreflang, header: linkHreflang(headers.get("link")), sitemap: sitemapHreflang(url) },
+      url,
+      toCrawl,
+    ),
+    languageFeatures(html, nodes),
+  );
+
   rec.dupHead = ["description", "robots", "viewport", "og:title"]
     .map(n => [n, metas.filter(m => (m.name || m.property || "").toLowerCase() === n).length])
     .filter(([, c]) => c > 1)
@@ -1926,6 +1947,12 @@ async function readSitemaps(urls, listed = true) {
         const imgs = [...m[1].matchAll(/<image:image\b[^>]*\/>|<image:image\b[^>]*>([\s\S]*?)<\/image:image>/g)];
         e.images = { count: imgs.length, noLoc: imgs.filter(x => !tagText(x[1], "image:loc")).length };
       }
+      // hreflang alternates (<xhtml:link rel="alternate" hreflang href>), which Google reads here as in the HTML.
+      if (/<[\w.-]+:link\b/.test(m[1]))
+        e.hreflang = [...m[1].matchAll(/<[\w.-]+:link\b[^>]*>/g)]
+          .map(t => attrs(t[0]))
+          .filter(a => (a.rel || "").toLowerCase().split(/\s+/).includes("alternate") && a.hreflang && a.href)
+          .map(a => ({ lang: a.hreflang, href: a.href }));
       // A page listed again in an image, video or news sitemap isn't a duplicate.
       e.media = !!(e.news || e.videos || e.images);
       entries.push(e);
@@ -3607,6 +3634,13 @@ for (const p of htmlPages) {
   if (t.length >= 20 && flat(p.description).startsWith(t.slice(0, Math.ceil(t.length * 0.8))))
     add("desc-starts-with-title", p.finalUrl, `“${p.description.slice(0, 80)}”`);
 }
+
+// hreflang sources that disagree, missing versions, lang against hreflang, untranslated versions, invalid lang values,
+// and the Translate widget as the only translation.
+checkLanguages(
+  htmlPages.filter(p => indexable(p) && !p.clientOnly),
+  { add, origin: EXPECT_ORIGIN },
+);
 
 // extra.images: the images PERF-08 weighed, largest first, with the pixel size from their first 64 KB, the pages using
 // them and a rough estSaving (images.mjs). One ranged GET each, on the crawled site; the size is Content-Range's
