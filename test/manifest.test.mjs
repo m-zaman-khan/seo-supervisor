@@ -28,6 +28,7 @@ test("the skill and every command are wired to the same skill name", () => {
     "seo-audit.md",
     "seo-brief.md",
     "seo-fix.md",
+    "seo-grow.md",
     "seo-launch.md",
     "seo-review.md",
     "seo-rewrite.md",
