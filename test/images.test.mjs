@@ -1,7 +1,7 @@
 // Images (PERF-08): the crawl's image list with a rough saving, the report's table, and images.mjs's conversions.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { serve } from "./serve.mjs";
 import { SCRIPTS, node, tmp } from "./helpers.mjs";
@@ -204,7 +204,10 @@ function fakeSharp(home) {
       "  const steps = [], p = {};",
       '  for (const k of ["autoOrient", "webp", "avif"]) p[k] = () => (steps.push(k), p);',
       '  p.resize = o => (steps.push(`resize ${o.width}${o.withoutEnlargement ? " withoutEnlargement" : ""}`), p);',
-      '  p.toFile = async out => { const body = steps.join(",") + " of " + input; fs.writeFileSync(out, body); return { size: body.length }; };',
+      "  p.toFile = async out => {",
+      '    if (/bad\\.jpg$/.test(input)) { fs.writeFileSync(out, "half"); throw new Error("Input image exceeds pixel limit"); }',
+      '    const body = steps.join(",") + " of " + input; fs.writeFileSync(out, body); return { size: body.length };',
+      "  };",
       "  return p;",
       "};",
       "",
@@ -323,4 +326,116 @@ test("with a stand-in converter, files are written next to the originals", async
     /resize 800 /,
     "--out-dir keeps the folders, --max-width sets the width",
   );
+});
+
+test("an image that won't convert is named and left alone, the rest still convert; a script URL and a repeat aren't listed", async () => {
+  const dir = tmp(),
+    root = join(dir, "public"),
+    crawl = join(dir, "seo-crawl.json"),
+    home = tmp(),
+    u = p => "https://site.example" + p;
+  mkdirSync(join(root, "img"), { recursive: true });
+  for (const f of ["img/bad.jpg", "img/z.jpg", "timthumb.php"]) writeFileSync(join(root, f), ORIGINAL);
+  const img = (p, bytes) => ({ url: u(p), bytes, width: 800, height: 100, format: "jpeg", pages: [], estSaving: 0 });
+  writeFileSync(
+    crawl,
+    JSON.stringify({
+      images: [
+        img("/img/bad.jpg", 500 * KB),
+        img("/img/z.jpg", 300 * KB),
+        img("/img/%7a.jpg", 300 * KB),
+        img("/timthumb.php?src=a.jpg", 400 * KB),
+        img("/timthumb.php?src=b.jpg", 400 * KB),
+      ],
+    }),
+  );
+  fakeSharp(home);
+  const dry = await node([IMAGES, "--crawl", crawl, "--root", root], { env: env(home), cwd: dir });
+  assert.match(dry.stdout, /2 image\(s\) to convert/, "bad.jpg and z.jpg, once each");
+  assert.equal(dry.stdout.split("\n").filter(l => /z\.jpg \(/.test(l)).length, 1, "the same file isn't listed twice");
+  assert.doesNotMatch(dry.stdout, /timthumb\.php \(/, "a script that makes images isn't an image file");
+  assert.match(dry.stdout, /timthumb\.php\?src=a\.jpg/, "it says what was skipped");
+
+  const r = await node([IMAGES, "--crawl", crawl, "--root", root, "--yes"], { env: env(home), cwd: dir }).then(
+    () => null,
+    e => e,
+  );
+  assert.ok(r, "exits non-zero when one failed");
+  assert.equal(r.code, 1);
+  assert.match(r.stdout, /couldn't convert public\/img\/bad\.jpg \(Input image exceeds pixel limit\), left alone/);
+  assert.doesNotMatch(r.stderr, /at main|Error:/, "no stack trace");
+  assert.match(readFileSync(join(root, "img", "z.webp"), "utf8"), /webp of .*z\.jpg$/, "the next image still converts");
+  assert.ok(!existsSync(join(root, "img", "bad.webp")), "a half-written output is removed");
+  assert.ok(!existsSync(join(root, "timthumb.webp")));
+});
+
+test("--max-width needs a real width: not missing, not text, not under 320", async () => {
+  const p = project();
+  for (const extra of [["--max-width"], ["--max-width", "--yes"], ["--max-width", "abc"], ["--max-width", "100"]]) {
+    await assert.rejects(
+      node([IMAGES, "--crawl", p.crawl, "--root", p.root, ...extra], { cwd: p.dir }),
+      e => e.code === 2 && /--max-width/.test(e.stderr) && !/at main/.test(e.stderr),
+      extra.join(" "),
+    );
+  }
+});
+
+test("a folder linked from outside --root is refused unless --follow-links", async t => {
+  const dir = tmp(),
+    root = join(dir, "public"),
+    away = join(dir, "elsewhere"),
+    crawl = join(dir, "seo-crawl.json"),
+    home = tmp();
+  mkdirSync(root);
+  mkdirSync(away);
+  writeFileSync(join(away, "p.jpg"), ORIGINAL);
+  try {
+    symlinkSync(away, join(root, "uploads"), "junction");
+  } catch (e) {
+    return t.skip(`can't make a link here (${e.code})`);
+  }
+  writeFileSync(
+    crawl,
+    JSON.stringify({
+      images: [
+        {
+          url: "https://site.example/uploads/p.jpg",
+          bytes: 300 * KB,
+          width: 800,
+          height: 100,
+          format: "jpeg",
+          pages: [],
+        },
+      ],
+    }),
+  );
+  fakeSharp(home);
+  const refused = await node([IMAGES, "--crawl", crawl, "--root", root, "--yes"], { env: env(home), cwd: dir });
+  assert.ok(!existsSync(join(away, "p.webp")), "nothing written outside --root");
+  assert.match(refused.stdout, /uploads\/p\.jpg/);
+  assert.match(refused.stdout, /--follow-links/, "it says how to allow it");
+
+  await node([IMAGES, "--crawl", crawl, "--root", root, "--yes", "--follow-links"], { env: env(home), cwd: dir });
+  assert.match(readFileSync(join(away, "p.webp"), "utf8"), /webp of /, "--follow-links allows it");
+
+  // The same under --out-dir: a real file, and an output folder that links outside --out-dir.
+  const root2 = join(dir, "public2"),
+    out = join(dir, "out"),
+    outAway = join(dir, "out-elsewhere");
+  mkdirSync(join(root2, "uploads"), { recursive: true });
+  mkdirSync(out);
+  mkdirSync(outAway);
+  writeFileSync(join(root2, "uploads", "p.jpg"), ORIGINAL);
+  symlinkSync(outAway, join(out, "uploads"), "junction");
+  const outRefused = await node([IMAGES, "--crawl", crawl, "--root", root2, "--out-dir", out, "--yes"], {
+    env: env(home),
+    cwd: dir,
+  });
+  assert.ok(!existsSync(join(outAway, "p.webp")), "an --out-dir folder that links outside it is refused");
+  assert.match(outRefused.stdout, /--follow-links/);
+  await node([IMAGES, "--crawl", crawl, "--root", root2, "--out-dir", out, "--yes", "--follow-links"], {
+    env: env(home),
+    cwd: dir,
+  });
+  assert.ok(existsSync(join(outAway, "p.webp")));
 });

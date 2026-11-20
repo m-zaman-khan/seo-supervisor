@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Converts the heavy JPEG and PNG files an audit found to WebP or AVIF, with sharp, the optional image add-on.
 import { createRequire } from "node:module";
-import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, extname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 
 // Rough saving in bytes. Lossy WebP is 25–34% smaller than JPEG at the same SSIM and lossless WebP 26% smaller than
@@ -24,6 +24,15 @@ class Fail extends Error {
 const kb = n => `${Math.round(n / 1024).toLocaleString("en-US")} KB`;
 const swapExt = (p, ext) => p.slice(0, p.length - extname(p).length) + "." + ext;
 const ADD_ON = "npx seo-supervisor --with-image-tools";
+// The path with links resolved, for a folder not made yet too (its nearest existing parent's, plus the rest).
+const real = p => {
+  try {
+    return realpathSync.native(p);
+  } catch {
+    return dirname(p) === p ? p : join(real(dirname(p)), basename(p));
+  }
+};
+const within = (p, base) => p === base || p.startsWith(base + sep);
 
 async function main() {
   const args = {};
@@ -33,11 +42,12 @@ async function main() {
   }
   if (typeof args.crawl !== "string" || typeof args.root !== "string")
     throw new Fail(
-      "usage: node images.mjs --crawl seo-audit/seo-crawl.json --root <public folder> [--avif] [--max-width 1600] [--out-dir <dir>] [--yes]",
+      "usage: node images.mjs --crawl seo-audit/seo-crawl.json --root <public folder> [--avif] [--max-width 1600] [--out-dir <dir>] [--follow-links] [--yes]",
     );
-  const maxWidth = args["max-width"] == null ? 1600 : Number(args["max-width"]);
-  if (!Number.isInteger(maxWidth) || maxWidth < 1)
-    throw new Fail(`--max-width needs a whole number of pixels (got ${args["max-width"]}).`);
+  const mw = args["max-width"] ?? "1600",
+    maxWidth = Number(mw);
+  if (!/^\d+$/.test(mw) || maxWidth < 320)
+    throw new Fail(`--max-width needs a width in pixels, 320 or more (got ${mw === true ? "no value" : mw}).`);
   const root = resolve(args.root),
     outDir = typeof args["out-dir"] === "string" ? resolve(args["out-dir"]) : null;
   let crawl;
@@ -54,7 +64,12 @@ async function main() {
   const formats = ["webp", ...(args.avif === true ? ["avif"] : [])];
   const todo = [],
     missing = [],
-    outside = [];
+    outside = [],
+    notFiles = [],
+    linked = [],
+    seen = new Set();
+  const realRoot = real(root),
+    realOut = outDir ? real(outDir) : realRoot;
   let modern = 0;
   for (const img of crawl.images) {
     // 100 KB is PERF-08's threshold.
@@ -69,6 +84,11 @@ async function main() {
     } catch {
       continue;
     }
+    // A script that makes images (timthumb.php?src=a.jpg) isn't the image file; a ?v=3 on photo.jpg is fine.
+    if (!/\.(jpe?g|png)$/i.test(path)) {
+      notFiles.push(img.url);
+      continue;
+    }
     const file = join(root, path);
     if (!file.startsWith(root + sep)) {
       outside.push(img.url);
@@ -78,7 +98,15 @@ async function main() {
       missing.push(path);
       continue;
     }
-    const out = outDir ? join(outDir, relative(root, file)) : file;
+    const out = outDir ? join(outDir, relative(root, file)) : file,
+      key = real(file);
+    // A symlink or junction leading outside --root or --out-dir needs --follow-links; Laravel's public/storage is one.
+    if (args["follow-links"] !== true && !(within(key, realRoot) && within(real(dirname(out)), realOut))) {
+      linked.push(path);
+      continue;
+    }
+    if (seen.has(key)) continue; // the same file by another URL (%7a for z, another ?v=)
+    seen.add(key);
     todo.push({
       img,
       file,
@@ -113,6 +141,14 @@ async function main() {
       `Not found under ${show(root)}, left alone: ${missing.slice(0, 10).join(", ")}${missing.length > 10 ? ` and ${missing.length - 10} more` : ""}`,
     );
   if (outside.length) console.log(`Outside --root, refused: ${outside.slice(0, 3).join(", ")}`);
+  if (notFiles.length)
+    console.log(
+      `Not a .jpg, .jpeg or .png file (a script makes these), left alone: ${notFiles.slice(0, 3).join(", ")}${notFiles.length > 3 ? ` and ${notFiles.length - 3} more` : ""}`,
+    );
+  if (linked.length)
+    console.log(
+      `Reached through a link that leads outside ${outDir ? "--root or --out-dir" : "--root"}, refused: ${linked.slice(0, 3).join(", ")}${linked.length > 3 ? ` and ${linked.length - 3} more` : ""}. Add --follow-links if that link is meant to be followed (Laravel's public/storage is one).`,
+    );
   if (modern)
     console.log(
       `${modern} heavy image(s) are already WebP, AVIF or another format; resize or compress those where they're made.`,
@@ -129,6 +165,7 @@ async function main() {
         `It needs the optional image add-on (sharp, about 20 MB in ~/.seo-supervisor/tools, not your project): ${ADD_ON}`,
       );
   }
+  let failed = 0;
   if (todo.length && args.yes === true) {
     if (!installed) {
       console.log(
@@ -151,9 +188,18 @@ async function main() {
           console.log(`  ${show(out)} exists, left alone`);
           continue;
         }
-        mkdirSync(dirname(out), { recursive: true });
-        const pipe = sharp(t.file).autoOrient().resize({ width: maxWidth, withoutEnlargement: true });
-        const info = await (f === "avif" ? pipe.avif() : pipe.webp()).toFile(out);
+        let info;
+        try {
+          mkdirSync(dirname(out), { recursive: true });
+          const pipe = sharp(t.file).autoOrient().resize({ width: maxWidth, withoutEnlargement: true });
+          info = await (f === "avif" ? pipe.avif() : pipe.webp()).toFile(out);
+        } catch (e) {
+          // too many pixels, a corrupt file: name it and carry on with the rest
+          failed++;
+          rmSync(out, { force: true }); // only a half-written file of this run's: out didn't exist above
+          console.log(`  couldn't convert ${show(t.file)} (${e.message}), left alone`);
+          break;
+        }
         const was = statSync(t.file).size;
         console.log(
           `  wrote ${show(out)}: ${kb(info.size)}, was ${kb(was)}${info.size >= was ? " (not smaller: keep using the original)" : ""}`,
@@ -173,7 +219,7 @@ async function main() {
       "or change the src to the .webp, which every current browser supports. A framework image component (next/image, Astro's <Image>, Nuxt Image) can serve WebP and AVIF for you instead.",
     );
   }
-  return 0;
+  return failed ? 1 : 0;
 }
 
 // Sets the exit code instead of calling process.exit(), like the other scripts.
