@@ -61,12 +61,25 @@ Inside each group, items chain into a loop. Across content types, each type poin
 - **Pass:** items link to their browse page (breadcrumb plus a "More in …" block). Browse pages link to every item, paginated. Tag pages exist only once there's enough volume.
 
 ### LINK-10 · Links from other sites are earned, never bought · medium
-> Checked 19 Nov 2026 against developers.google.com/search/docs/essentials/spam-policies#link-spam; the link text and disavow notes on 20 Nov 2026 against support.google.com/webmasters/answer/2648487 (disavow) and developers.google.com/search/blog/2022/12/december-22-link-spam-update.
+> Checked 19 Nov 2026 against developers.google.com/search/docs/essentials/spam-policies#link-spam; the link text and disavow notes on 20 Nov 2026 against support.google.com/webmasters/answer/2648487 (disavow) and developers.google.com/search/blog/2022/12/december-22-link-spam-update; the "Worth a look" list and the disavow file on 21 Nov 2026 against support.google.com/webmasters/answer/2648487, support.google.com/webmasters/answer/9044175 (manual actions) and Bing's notice that it removed its disavow tool (blogs.bing.com/webmaster/september-2023/Bing-Webmaster-Tools-to-Remove-Disavow-Links-Feature-in-October-2023).
 
 Google uses links from other well-known sites as one sign of quality, and for local businesses, as part of how well known the business is. Links worth having come from giving people a reason to link.
 - **Check:** ask the owner how the site gets links. Search Console's Links report shows who links now; `links-import.mjs` reads its exports into the report.
 - **Link text from other sites:** the report shows its mix: your brand, your web address, generic words like "click here", and other words. A natural mix is mostly brand, address and words that say what the page is about, because other people choose it. Google's spam policies count "links with optimized anchor text in articles, guest posts, or press releases distributed on other sites" as link spam, so never ask for keyword-rich link text. The mix is information only. Google publishes no target shares, so there are none here.
-- **No "toxic links":** don't hunt for toxic links or disavow them. Google says that "in most cases, Google can assess which links to trust without additional guidance", and its SpamBrain systems neutralize unnatural links, so the credit they passed is simply lost. Disavow only when unnatural links (paid links or other link schemes) have caused a manual action, or likely will, and can't be removed. Google warns that a disavow done wrong "can potentially harm your site's performance in Google Search results".
+- **No "toxic links":** never score links or call them toxic. Google says that "in most cases, Google can assess which links to trust without additional guidance", and its SpamBrain systems neutralize unnatural links, so the credit they passed is simply lost.
+- **Worth a look:** `links-import.mjs` lists links that stand out (`worthALook`), each with why it's listed and what to look at:
+  - one site linking from 50 or more of its pages to 3 or fewer of yours, and 20% or more of all links. It's usually a footer or sidebar link: fine from a partner, worth a look from a site the owner doesn't know.
+  - link text that's 75% or more descriptive words (not the brand, the address or generic words), from at least 10 texts. That's normal when people link to articles by their titles.
+  - the same descriptive words from 3 or more sites in Bing's sample of links to the home page.
+
+  These cut-offs are ours, not Google's. The list is information only: no score, no finding.
+- **Disavow only for real cases:** a manual action for unnatural links, or links the owner knows were paid for or made to manipulate rankings, after asking the sites to remove them. Google says "most sites will not need to use this tool", and warns that a disavow done wrong "can potentially harm your site's performance in Google Search results". The owner picks every domain and page; `disavow.mjs` only writes the file, and the owner uploads it at search.google.com/search-console/disavow-links.
+  - **The file:** a .txt file in UTF-8, one `domain:example.com` or full URL per line, `#` for comments, at most 100,000 lines and 2 MB, URLs up to 2,048 characters.
+  - **An upload replaces the old list,** so the new file keeps every line of it (`--existing`).
+  - **Properties:** the tool doesn't support Domain properties. A list applies to one URL-prefix property and its child properties, so http and https each need one.
+  - **Subdomains:** Google doesn't say whether `domain:example.com` also covers its subdomains, so list each subdomain you mean.
+  - **Not for dead pages:** links to the site's own 404 pages are fixed with redirects (URL-07), never disavowed.
+  - **Bing** removed its disavow tool in October 2023.
 - **Pass:** links come from:
   - **Something worth citing:** original data, a free tool, or a guide that answers a question better than anything else (AI-04).
   - **Digital PR with real news:** a study, a launch or a local first, sent to the journalists who cover it.
