@@ -111,9 +111,9 @@ Merge its `traffic` and `period` into `seo-audit.json` as `traffic` and `traffic
        --crawl seo-audit/seo-crawl.json --out seo-audit/links.json
      ```
      Leave out `--keys` without Bing, and `--previous` on a first run.
-  4. Copy `links`, `linkSummary`, `anchorMix` and `linksChange` into `seo-audit.json` as they are, and merge its `findings` and `notes`.
+  4. Copy `links`, `linkSummary`, `anchorMix`, `linksChange` and `worthALook` into `seo-audit.json` as they are, and merge its `findings` and `notes`.
 
-  With `--crawl`, a page other sites link to that now returns 404 or 410, redirects in a loop or redirects to the home page is `linked-page-broken` (URL-07). Fix it with a 301 to the closest live page. Apart from that finding, this is information only. Never call links toxic or suggest a disavow (LINK-10). With no export this time, say the export is missing, never that links fell.
+  With `--crawl`, a page other sites link to that now returns 404 or 410, redirects in a loop or redirects to the home page is `linked-page-broken` (URL-07). Fix it with a 301 to the closest live page. Apart from that finding, this is information only. `worthALook` lists links that stand out, and why. Never call links toxic or score them, and never suggest a disavow on your own (LINK-10; fix step 15). With no export this time, say the export is missing, never that links fell.
 
 ### 3. Inspect the code
 
@@ -209,6 +209,13 @@ In chat, give: the score and band, and while blockers are open, the score fixing
     - `node <skill-dir>/scripts/connect-keys.mjs submit-bing --site <origin> --from-diff seo-audit/seo-diff.json` (or `--urls <file>`) prints a dry run and sends nothing.
     - Add `--yes` only after the owner agrees to this write to their Bing account.
     - It sends only the site's own URLs, within the quota Bing gives.
+15. **Disavow file, only when the owner asks:**
+    1. Offer it only for a manual action for unnatural links, or for links the owner knows were bought. Never offer it for `worthALook` alone.
+    2. First say that most sites never need it, and a wrong one can hurt rankings.
+    3. Suggest asking the sites to remove the links. Dead pages get redirects instead (URL-07).
+    4. The owner picks every domain and page.
+    5. Run `node <skill-dir>/scripts/disavow.mjs --site <origin> --domains "a.com,b.com" [--urls <file>] [--existing <the list already in Search Console>] --reason "<why>" --out seo-audit/disavow.txt`.
+    6. Show the owner the file and its printed steps. The owner uploads it; there is no API.
 
 ### 6. Review mode
 

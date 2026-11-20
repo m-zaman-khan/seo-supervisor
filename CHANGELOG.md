@@ -157,6 +157,9 @@ Deeper checks, optional real-world data and search intent. Everything still work
   - labelled phrases from outside checks (`--extra`)
 
   It reads local files only, and it's information only, with no search volumes or difficulty.
+- **Links worth a look, and a disavow helper.**
+  - `links-import.mjs` adds `worthALook`, shown in the Links panel: sitewide-looking sites, keyword-heavy link text, and the same text from 3 or more sites. It has no score and never says "toxic".
+  - `disavow.mjs` writes Google's disavow file from the domains and pages the owner picks. It keeps the old list, stays within Google's limits and refuses the site's own domain. It never uploads.
 - **Share previews.** New checks `twitter-card-missing` and `twitter-card-invalid` (META-04, low). `og-missing` now also flags a page with neither `og:description` nor a meta description.
 - Setup and fix offer each connection once; a skip is listed under Limits and never changes the score. Keys are typed at a hidden prompt in the owner's own terminal, never in chat; Google sign-in prints its link for agents (`--print-url`, `~/.seo-supervisor/pending-signin.txt`). Search Console findings flag only pages Google really excluded; pages Google doesn't know yet are notes.
 - **Fewer false findings:** the log scan needs 5 server errors and 1% before a finding, and repeated 404s become findings only for pages the site links to; sitemap priority/changefreq tags are a note; IndexNow refuses a key file that redirects to another host.
