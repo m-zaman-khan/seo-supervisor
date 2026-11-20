@@ -410,6 +410,42 @@ test("FAQPage on a page with a visible FAQ isn't flagged as retired", async () =
   assert.equal(howTo?.rule, "SCHEMA-05", "while HowTo is flagged");
 });
 
+test("the crawler flags every retired type in google-rich-results.json as deprecated-schema, but never FAQPage", async () => {
+  const dir = tmp(),
+    out = join(tmp(), "crawl.json");
+  const pageAt = (path, title, schema, links = "") => {
+    mkdirSync(join(dir, path), { recursive: true });
+    writeFileSync(
+      join(dir, path, "index.html"),
+      `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title><script type="application/ld+json">${JSON.stringify({ ...CTX, ...schema })}</script></head><body><main><h1>${title}</h1>${links}</main></body></html>`,
+    );
+  };
+  pageAt(
+    "",
+    "Fact checks",
+    { "@type": "ClaimReview", claimReviewed: "The moon is cheese" },
+    ["notice", "faq"].map(p => `<a href="/${p}/">${p}</a>`).join(" "),
+  );
+  pageAt("notice", "Opening hours notice", { "@type": "SpecialAnnouncement", name: "Closed on Monday" });
+  pageAt("faq", "Questions", {
+    "@type": "FAQPage",
+    mainEntity: [{ "@type": "Question", name: "Open on Sunday?", acceptedAnswer: { "@type": "Answer", text: "No." } }],
+  });
+  const site = await serve(dir);
+  try {
+    await node([join(SCRIPTS, "seo-crawl.mjs"), "--url", site.url, "--out", out]);
+  } finally {
+    await site.close();
+  }
+  const f = JSON.parse(readFileSync(out, "utf8")).findings.find(x => x.check === "deprecated-schema");
+  assert.deepEqual([f?.rule, f?.severity], ["SCHEMA-05", "low"]);
+  assert.deepEqual(
+    f.evidence.map(e => `${new URL(e.url).pathname} ${e.detail}`).sort(),
+    ["/ ClaimReview", "/notice/ SpecialAnnouncement"],
+    "FAQPage isn't flagged",
+  );
+});
+
 test("page-types.md gives a checklist for each page type, citing only rules that exist", () => {
   const text = readFileSync(join(SKILL, "page-types.md"), "utf8");
   for (const t of ["Home", "About", "Contact", "Service", "Product", "Category", "Article", "Location"])

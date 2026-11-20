@@ -151,6 +151,12 @@ const RULES = {
   "PERF-08": ["Images are a sensible weight and in a modern format", "Performance"],
 };
 
+// Types whose Google rich result is retired, the list schema-check.mjs reads too. One marked keep (FAQPage) is never
+// flagged.
+const RETIRED = JSON.parse(
+  readFileSync(new URL("./data/google-rich-results.json", import.meta.url), "utf8"),
+).retired.filter(r => !r.keep);
+
 // key -> [rule, severity, title(n), why, fix]
 const CHECKS = {
   "robots-blocks-all": [
@@ -716,8 +722,8 @@ const CHECKS = {
   "deprecated-schema": [
     "SCHEMA-05",
     "low",
-    n => `${n} page(s) use schema with no rich result (HowTo, SearchAction)`,
-    "HowTo rich results ended in 2023 and the sitelinks search box in 2024. The markup does no harm but earns nothing.",
+    n => `${n} page(s) use schema with no rich result (${RETIRED.map(r => r.type).join(", ")})`,
+    `Google ended ${RETIRED.map(r => `${r.feature} (${r.since.slice(0, 4)})`).join(", ")}. The markup does no harm but earns nothing.`,
     "Remove it, or keep it knowingly. Don't promise these rich results.",
   ],
   "breadcrumb-missing": [
@@ -1359,12 +1365,10 @@ function analyze(url, html, headers, xRobotsLines) {
   const hasRating = nodes.some(n =>
     deepHas(n, o => "aggregateRating" in o || typesOf(o).some(t => t === "AggregateRating" || t === "Review")),
   );
-  const deprecated = [
-    ...new Set([
-      ...types.filter(t => t === "HowTo"),
-      ...(nodes.some(n => deepHas(n, o => typesOf(o).includes("SearchAction"))) ? ["SearchAction"] : []),
-    ]),
-  ];
+  // Matched at any depth, as schema-check.mjs does; a `top` type (Occupation) only when not nested.
+  const deprecated = RETIRED.filter(r =>
+    r.top ? types.includes(r.type) : nodes.some(n => deepHas(n, o => typesOf(o).includes(r.type))),
+  ).map(r => r.type);
   const phMatch = text.match(PH);
   const mainM = body.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
   const mainHtml = mainM ? mainM[1] : body.replace(/<(header|nav|footer|aside)\b[\s\S]*?<\/\1>/gi, " ");
