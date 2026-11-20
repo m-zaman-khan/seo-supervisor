@@ -1111,6 +1111,7 @@ async function follow(url, ua) {
 }
 // The start of an own-site file by Range request, read no further if the range is ignored. A redirect off the site
 // returns null, so no third party is contacted, as does one that maps back onto the same URL, which would loop.
+// size is the whole file: Content-Range's total, or Content-Length when the range is ignored.
 async function firstBytes(url, max = 65536) {
   try {
     for (let hop = 0; hop < 5; hop++) {
@@ -1134,7 +1135,15 @@ async function firstBytes(url, max = 65536) {
           chunks.push(c);
           if ((n += c.length) >= max) break;
         }
-      return { status: r.status, type: r.headers.get("content-type") || "", bytes: Buffer.concat(chunks) };
+      return {
+        status: r.status,
+        type: r.headers.get("content-type") || "",
+        bytes: Buffer.concat(chunks),
+        size:
+          Number(
+            r.status === 206 ? r.headers.get("content-range")?.match(/\/(\d+)$/)?.[1] : r.headers.get("content-length"),
+          ) || 0,
+      };
     }
     return { status: 0, error: "too many redirects" };
   } catch (e) {
@@ -2885,31 +2894,37 @@ checkHreflang(htmlPages, {
   statusOf: href => pages.get(clean(toCrawl(href)))?.status,
   origin: EXPECT_ORIGIN,
 });
-// Image weight and format by HEAD request. Same-origin images only, so no third party is contacted.
-const imageList = [...images].slice(0, 50);
+// Image weight, format and pixel size from the first 64 KB of each. Only on-site images are read, so no third party
+// is contacted, even through a page that redirected off the site. Runs before the Googlebot test; extra.images reuses
+// the rows, so each image is asked once.
+const onSiteImages = [...images].filter(([src]) => new URL(src).origin === START_ORIGIN),
+  imageList = onSiteImages.slice(0, 50);
+const imageRows = [];
 let weighed = 0; // PERF-08 counts as checked only once an image is weighed
 for (let i = 0; i < imageList.length; i += CONC)
   await Promise.all(
     imageList.slice(i, i + CONC).map(async ([src, page]) => {
-      try {
-        const r = await fetch(src, {
-          method: "HEAD",
-          headers: { "user-agent": UA, accept: "image/avif,image/webp,image/*,*/*;q=0.8" },
-          signal: AbortSignal.timeout(15000),
-        });
-        const size = Number(r.headers.get("content-length")),
-          type = (r.headers.get("content-type") || "").split(";")[0];
-        if (!r.ok || !size) return;
-        weighed++;
-        const kb = Math.round(size / 1024);
-        if (size > 200 * 1024) add("heavy-image", page, `${src} · ${kb} KB`);
-        if (/^image\/(jpeg|png)$/.test(type) && size > 100 * 1024)
-          add("legacy-image-format", page, `${src} · ${type} · ${kb} KB`);
-      } catch {}
+      const r = await firstBytes(src);
+      if (!r || r.status < 200 || r.status > 299 || !r.size) return;
+      weighed++;
+      const { size } = r,
+        type = r.type.split(";")[0].trim().toLowerCase(),
+        px = imageSize(r.bytes),
+        kb = Math.round(size / 1024);
+      if (size > 200 * 1024) add("heavy-image", page, `${src} · ${kb} KB`);
+      if (/^image\/(jpeg|png)$/.test(type) && size > 100 * 1024)
+        add("legacy-image-format", page, `${src} · ${type} · ${kb} KB`);
+      imageRows.push({
+        url: src,
+        bytes: size,
+        width: px?.width ?? null,
+        height: px?.height ?? null,
+        format: px?.type || type.match(/^image\/([a-z0-9.-]+)/)?.[1] || null,
+      });
     }),
   );
 if (weighed) evalRules("PERF-08");
-if (images.size > 50) notes.push(`Image weight was checked for the first 50 of ${images.size} images.`);
+if (onSiteImages.length > 50) notes.push(`Image weight was checked for the first 50 of ${onSiteImages.length} images.`);
 // Share images: the first 64 KB of up to 20 on-site og:images, enough for the pixel size.
 const shareList = [...shareImages].slice(0, 20);
 let shareRead = 0,
@@ -3656,45 +3671,8 @@ checkLanguages(
   { add, origin: EXPECT_ORIGIN },
 );
 
-// extra.images: the images PERF-08 weighed, largest first, with the pixel size from their first 64 KB, the pages using
-// them and a rough estSaving (images.mjs). One ranged GET each, on the crawled site; the size is Content-Range's
-// total, or Content-Length when the range is ignored. An image that redirects is left out. This costs a second
-// request per image, since the HEAD loop keeps nothing; read the size in that loop to save it.
-async function imageInfo(src) {
-  try {
-    const r = await fetch(src, {
-      redirect: "manual",
-      headers: { "user-agent": UA, range: "bytes=0-65535", accept: "image/avif,image/webp,image/*,*/*;q=0.8" },
-      signal: AbortSignal.timeout(15000),
-    });
-    const chunks = [];
-    let n = 0;
-    if (r.body)
-      for await (const c of r.body) {
-        chunks.push(c);
-        if ((n += c.length) >= 65536) break;
-      }
-    const bytes = Number(
-      r.status === 206
-        ? r.headers.get("content-range")?.match(/\/(\d+)$/)?.[1]
-        : r.status === 200
-          ? r.headers.get("content-length")
-          : 0,
-    );
-    if (!bytes) return null;
-    const size = imageSize(Buffer.concat(chunks)),
-      type = (r.headers.get("content-type") || "").toLowerCase().match(/^image\/([a-z0-9.-]+)/)?.[1];
-    return {
-      url: src,
-      bytes,
-      width: size?.width ?? null,
-      height: size?.height ?? null,
-      format: size?.type || type || null,
-    };
-  } catch {
-    return null;
-  }
-}
+// extra.images: the images PERF-08 weighed, largest first, with their pixel size, the pages using them and a rough
+// estSaving (images.mjs). Built from imageRows, so it makes no requests.
 const usedOn = new Map(); // image URL -> pages using it, keyed as in `images`
 for (const p of htmlPages)
   if (!p.clientOnly && indexable(p))
@@ -3702,9 +3680,6 @@ for (const p of htmlPages)
       const s = urlOr(i.src, p.base)?.href;
       if (s && images.has(s)) (usedOn.get(s) || usedOn.set(s, []).get(s)).push(p.finalUrl);
     }
-const imageRows = [];
-for (let i = 0; i < imageList.length; i += CONC)
-  imageRows.push(...(await Promise.all(imageList.slice(i, i + CONC).map(([src]) => imageInfo(src)))).filter(Boolean));
 extra.images = imageRows
   .sort((a, b) => b.bytes - a.bytes)
   .slice(0, 100)

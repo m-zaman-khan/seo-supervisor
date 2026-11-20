@@ -132,6 +132,67 @@ test("the crawl lists the images it weighed, largest first, with pixels, format,
   assert.ok(!report.findings.some(f => /images?-saving|images\b/.test(f.check)), "information only, no new finding");
 });
 
+test("the crawl weighs each image once, before the Googlebot test, and only on the crawled site", async () => {
+  const dir = tmp(),
+    awayDir = tmp(),
+    out = join(tmp(), "crawl.json"),
+    hits = [];
+  const page = (title, imgs, extra = "") =>
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title></head><body><h1>${title}</h1>${extra}${imgs.map(s => `<img src="${s}" alt="" width="10" height="10">`).join("")}</body></html>`;
+  mkdirSync(join(awayDir, "elsewhere"));
+  writeFileSync(join(awayDir, "elsewhere", "index.html"), page("A page on another host entirely", ["/img/far.jpg"]));
+  writeFileSync(
+    join(dir, "index.html"),
+    page("Plumbers in Leeds who answer the phone", ["/img/hero.jpg"], `<a href="/away/">Away</a>`),
+  );
+  const log = who => req => {
+    hits.push(`${who(req)} ${req.method} ${req.url}`);
+    return false;
+  };
+  const away = await serve(awayDir, {
+    files: { "/img/far.jpg": { type: "image/jpeg", body: jpeg(2000, 1000, 300 * KB) } },
+    before: log(() => "away"),
+  });
+  const site = await serve(dir, {
+    files: { "/img/hero.jpg": { type: "image/jpeg", body: jpeg(2400, 1200, 300 * KB) } },
+    before: (req, res) => {
+      log(r => (/Googlebot/.test(r.headers["user-agent"]) ? "googlebot" : "site"))(req);
+      if (req.url !== "/away/") return false;
+      res.writeHead(301, { Location: away.url + "/elsewhere/" }).end(); // an internal link that lands on another host
+      return true;
+    },
+  });
+  try {
+    await node([join(SCRIPTS, "seo-crawl.mjs"), "--url", site.url, "--out", out]);
+  } finally {
+    await site.close();
+    await away.close();
+  }
+  const report = JSON.parse(readFileSync(out, "utf8"));
+  assert.ok(hits.includes("away GET /elsewhere/"), "the other host's page was part of the crawl");
+  assert.deepEqual(
+    report.images.map(i => [i.url, i.bytes, i.width]),
+    [[site.url + "/img/hero.jpg", 300 * KB, 2400]],
+  );
+  assert.deepEqual(
+    hits.filter(h => h.startsWith("away") && h.includes("/img/")),
+    [],
+    "no image is asked of the other host",
+  );
+  assert.deepEqual(
+    hits.filter(h => h.includes("/img/hero.jpg")),
+    ["site GET /img/hero.jpg"],
+    "one request per image",
+  );
+  const bot = hits.findIndex(h => h.startsWith("googlebot"));
+  assert.ok(bot > 0, "the Googlebot test ran");
+  assert.deepEqual(
+    hits.slice(bot).filter(h => h.includes("/img/")),
+    [],
+    "no image request after it",
+  );
+});
+
 const render = async data => {
   const dir = tmp();
   writeFileSync(join(dir, "a.json"), JSON.stringify(data));
