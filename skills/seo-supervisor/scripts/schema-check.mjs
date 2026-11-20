@@ -3,6 +3,7 @@
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
+import { proxyNote } from "./lib/proxy.mjs";
 
 const VOCAB = JSON.parse(readFileSync(new URL("./data/schema-vocab.json", import.meta.url), "utf8"));
 // Null-prototype maps, so "toString" or "__proto__" in a page is just an unknown name.
@@ -449,6 +450,10 @@ if (isMain(import.meta.url)) {
   if (opts.hook) await hook(opts.hook);
   else {
     if (!inputs.length) usage();
+    if (inputs.some(a => /^https?:\/\//i.test(a))) {
+      const n = proxyNote();
+      if (n) console.error("note: " + n);
+    } // only URLs are fetched
     const r = await checkInputs(inputs, opts);
     const count = s => r.issues.filter(i => i.severity === s).length,
       errors = count("error"),

@@ -9,6 +9,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { isMain } from "./lib/is-main.mjs";
+import { proxyNote } from "./lib/proxy.mjs";
 
 const setLine = id => `node connect-keys.mjs set ${id}`;
 const PASTE =
@@ -805,6 +806,10 @@ async function main(argv) {
 
 // Not process.exit(): exiting while fetch's sockets close crashes Node on Windows.
 if (isMain(import.meta.url)) {
+  {
+    const n = proxyNote();
+    if (n) console.error("note: " + n);
+  } // once, before any request is sent
   process.exitCode = await main(process.argv.slice(2)).then(null, e => {
     if (!(e instanceof Fail)) throw e;
     console.error(e.message);

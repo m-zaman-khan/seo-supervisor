@@ -1,13 +1,12 @@
-// Company proxies. Node honours HTTP_PROXY / HTTPS_PROXY (minus NO_PROXY; lowercase names win) for fetch() and
-// http(s).request() only with NODE_USE_ENV_PROXY=1 or --use-env-proxy, from Node 22.21 and 24.5. Chrome over CDP
-// gets the same proxy as flags.
+// Company proxies. Node honours HTTP_PROXY / HTTPS_PROXY (minus NO_PROXY; lowercase names win) only with
+// NODE_USE_ENV_PROXY=1: fetch() from Node 22.21 and 24.0, http(s).request() and --use-env-proxy from 22.21 and 24.5.
+// Chrome over CDP gets the same proxy as flags.
 // https://nodejs.org/api/cli.html#node_use_env_proxy1
-// https://nodejs.org/api/http.html#built-in-proxy-support
 
 const pick = (env, name) => env[name.toLowerCase()] || env[name];
-const supported = version => {
+const since = (version, v24) => {
   const [a, b] = version.split(".").map(Number);
-  return a > 24 || (a === 24 && b >= 5) || (a === 22 && b >= 21);
+  return a > 24 || (a === 24 && b >= v24) || (a === 22 && b >= 21);
 };
 
 // One plain line when a proxy is set but this Node won't use it for fetch(), else null.
@@ -16,11 +15,11 @@ export function proxyNote(env = process.env, { execArgv = process.execArgv, vers
   const on =
     env.NODE_USE_ENV_PROXY === "1" ||
     [...execArgv, ...(env.NODE_OPTIONS || "").split(/\s+/)].includes("--use-env-proxy");
-  if (!supported(version))
-    return `A proxy is set (HTTPS_PROXY or HTTP_PROXY), but Node ${version} can't send requests through it, so requests to other sites may fail. Node 22.21 or 24.5 and later can, when NODE_USE_ENV_PROXY=1 is set.`;
+  if (!since(version, 0))
+    return `A proxy is set (HTTPS_PROXY or HTTP_PROXY), but Node ${version} can't send requests through it, so requests to other sites may fail. Node 22.21 or 24.0 and later can, when NODE_USE_ENV_PROXY=1 is set.`;
   return on
     ? null
-    : "A proxy is set (HTTPS_PROXY or HTTP_PROXY), but Node uses it only when started with NODE_USE_ENV_PROXY=1 (or --use-env-proxy), so requests to other sites may fail. Set it and run this again.";
+    : `A proxy is set (HTTPS_PROXY or HTTP_PROXY), but Node uses it only when started with NODE_USE_ENV_PROXY=1${since(version, 5) ? " (or --use-env-proxy)" : ""}, so requests to other sites may fail. Set it and run this again.`;
 }
 
 // Chrome's --proxy-server (scheme=proxy pairs when http and https differ) and --proxy-bypass-list from NO_PROXY; Chrome

@@ -4,6 +4,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
+import { proxyNote } from "./lib/proxy.mjs";
 
 // The Search Status Dashboard's history, in Google Cloud's status format.
 export const FEED = "https://status.search.google.com/incidents.json";
@@ -112,9 +113,14 @@ async function main() {
 }
 
 // Not process.exit(): exiting while fetch's sockets close crashes Node on Windows.
-if (isMain(import.meta.url))
+if (isMain(import.meta.url)) {
+  {
+    const n = proxyNote();
+    if (n) console.error("note: " + n);
+  } // once, before any request is sent
   process.exitCode = await main().catch(e => {
     if (!(e instanceof Fail)) throw e;
     console.error(e.message);
     return e.code;
   });
+}

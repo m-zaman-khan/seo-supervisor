@@ -25,9 +25,21 @@ test("a proxy variable without the Node flag prints one plain note; Chrome gets 
   assert.equal(proxyNote({ HTTP_PROXY: P, NODE_OPTIONS: "--max-old-space-size=4096 --use-env-proxy" }, NOW), null);
   assert.match(
     proxyNote({ HTTPS_PROXY: P, NODE_USE_ENV_PROXY: "1" }, { ...NOW, version: "22.12.0" }),
-    /Node 22\.12\.0 can't .*22\.21 or 24\.5/,
+    /Node 22\.12\.0 can't .*22\.21 or 24\.0/,
     "too old for the flag",
   );
+  assert.match(
+    proxyNote({ HTTPS_PROXY: P, NODE_USE_ENV_PROXY: "1" }, { ...NOW, version: "23.11.0" }),
+    /Node 23\.11\.0 can't/,
+    "23 never had it",
+  );
+  // NODE_USE_ENV_PROXY=1 covers fetch() from 24.0 and 22.21; --use-env-proxy only from 24.5 and 22.21.
+  // https://nodejs.org/api/cli.html
+  for (const version of ["24.0.0", "24.4.1", "22.21.0"])
+    assert.equal(proxyNote({ HTTPS_PROXY: P, NODE_USE_ENV_PROXY: "1" }, { ...NOW, version }), null, version);
+  const early = proxyNote({ HTTPS_PROXY: P }, { ...NOW, version: "24.4.1" });
+  assert.match(early, /NODE_USE_ENV_PROXY=1/);
+  assert.doesNotMatch(early, /can't|--use-env-proxy/, "24.4 can, but has no --use-env-proxy flag yet");
 
   assert.deepEqual(chromeProxyArgs({}), []);
   assert.deepEqual(
@@ -44,18 +56,38 @@ test("a proxy variable without the Node flag prints one plain note; Chrome gets 
   ]);
   assert.deepEqual(chromeProxyArgs({ HTTPS_PROXY: P, NO_PROXY: "*" }), [], "everything bypasses the proxy");
 
-  for (const script of ["seo-crawl.mjs", "google.mjs"]) {
-    const r = spawnSync(process.execPath, [join(SCRIPTS, script)], {
+  // Every script that calls fetch(). schema-check notes it only when given a URL (its hook and file runs stay silent);
+  // the one here is refused offline.
+  const ARGS = { "schema-check.mjs": ["https://example.com/"] };
+  for (const script of [
+    "seo-crawl.mjs",
+    "google.mjs",
+    "connect-keys.mjs",
+    "google-updates.mjs",
+    "indexnow.mjs",
+    "schema-check.mjs",
+  ]) {
+    const run = env =>
+      spawnSync(process.execPath, [join(SCRIPTS, script), ...(ARGS[script] || [])], {
+        env: envWith(env),
+        encoding: "utf8",
+      });
+    const r = run({ HTTPS_PROXY: P });
+    assert.equal(r.stderr.match(/A proxy is set/g)?.length, 1, `${script} prints it once: ${r.stderr}`);
+    assert.doesNotMatch(
+      run({ HTTPS_PROXY: P, NODE_USE_ENV_PROXY: "1" }).stderr,
+      /A proxy is set/,
+      `${script} with the flag`,
+    );
+  }
+  assert.doesNotMatch(
+    spawnSync(process.execPath, [join(SCRIPTS, "schema-check.mjs"), "--quiet", join(SCRIPTS, "..", "examples")], {
       env: envWith({ HTTPS_PROXY: P }),
       encoding: "utf8",
-    });
-    assert.equal(r.stderr.match(/A proxy is set/g)?.length, 1, `${script} prints it once: ${r.stderr}`);
-    const on = spawnSync(process.execPath, [join(SCRIPTS, script)], {
-      env: envWith({ HTTPS_PROXY: P, NODE_USE_ENV_PROXY: "1" }),
-      encoding: "utf8",
-    });
-    assert.doesNotMatch(on.stderr, /A proxy is set/, `${script} with the flag`);
-  }
+    }).stderr,
+    /A proxy is set/,
+    "schema-check on files fetches nothing",
+  );
 });
 
 test("a proxy password never reaches Chrome's command line, with or without a scheme", () => {

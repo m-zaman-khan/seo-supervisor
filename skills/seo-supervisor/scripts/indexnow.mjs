@@ -6,6 +6,11 @@
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, statSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
+import { proxyNote } from "./lib/proxy.mjs";
+{
+  const n = proxyNote();
+  if (n) console.error("note: " + n);
+} // once, before any request
 
 const cmd = process.argv[2];
 const args = {};
