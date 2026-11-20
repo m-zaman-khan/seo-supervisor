@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SKILL, SCRIPTS, node, tmp } from "./helpers.mjs";
+import { serve } from "./serve.mjs";
 
 const CLI = join(SCRIPTS, "links-import.mjs");
 // Writes the exports into a links/ folder (files: null leaves the folder out), runs links-import and returns its JSON.
@@ -245,6 +246,35 @@ test("the home page's other addresses redirecting to it aren't linked-page-broke
     r.findings[0].evidence.map(e => e.url),
     ["https://www.acme.com/promo/", "https://www.acme.com/english/"],
   );
+});
+
+test("linked pages the crawl didn't reach, passed to the crawler with --urls, are judged", async () => {
+  const dir = tmp(),
+    list = join(dir, "old-urls.txt"),
+    out = join(dir, "crawl.json");
+  writeFileSync(
+    join(dir, "index.html"),
+    "<!doctype html><html><head><title>Home</title></head><body><h1>Home</h1></body></html>",
+  );
+  writeFileSync(list, "/old-guide/\n/promo/\n");
+  const site = await serve(dir, {
+    before: (req, res) => (req.url.startsWith("/promo") ? (res.writeHead(301, { Location: "/" }).end(), true) : false),
+  });
+  try {
+    await node([join(SCRIPTS, "seo-crawl.mjs"), "--url", site.url, "--urls", list, "--out", out]);
+  } finally {
+    await site.close();
+  }
+  const csv = "Target page,Incoming links\nhttps://www.acme.com/old-guide/,9\nhttps://www.acme.com/promo/,4\n";
+  const r = await importLinks({ "p.csv": csv }, { crawl: JSON.parse(readFileSync(out, "utf8")) });
+  assert.deepEqual(r.findings[0]?.evidence, [
+    { url: "https://www.acme.com/old-guide/", detail: "returns 404 · 9 links from other sites (Search Console)" },
+    {
+      url: "https://www.acme.com/promo/",
+      detail: "redirects to the home page · 4 links from other sites (Search Console)",
+    },
+  ]);
+  assert.ok(!r.notes.some(n => /reached by the crawl/.test(n)));
 });
 
 // ---------- the report ----------

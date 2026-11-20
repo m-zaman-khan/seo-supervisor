@@ -118,6 +118,15 @@ test("pages are keyed by path and query, a lost self-canonical is a regression, 
     },
   );
   assert.deepEqual(n.added, ["/new/"], "a new URL that only fails (a broken link target) isn't an added page");
+  const was404 = diffCrawls(
+    { pages: [P("https://e.com/a/")], errors: [{ url: "https://e.com/old-url/", status: 404 }] },
+    { pages: [P("https://e.com/a/")] },
+  );
+  assert.deepEqual(
+    was404.removed,
+    [],
+    "a URL that failed last time (an old URL from --urls) and isn't met now isn't a page gone",
+  );
 });
 
 test("descriptions, share tags and word counts are compared only when both crawls recorded them", () => {

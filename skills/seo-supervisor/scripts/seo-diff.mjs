@@ -320,7 +320,11 @@ export function diffCrawls(oldReport, newReport) {
       .filter(([p, n]) => !before.has(p) && ok(n.status))
       .map(([p]) => p)
       .sort(),
-    removed: [...before.keys()].filter(p => !after.has(p) && !nowRedirect.has(p)).sort(), // a page that now redirects is redirect-added
+    // A page that now redirects is redirect-added; a URL that failed last time and isn't met now was never a page.
+    removed: [...before]
+      .filter(([p, o]) => ok(o.status) && !after.has(p) && !nowRedirect.has(p))
+      .map(([p]) => p)
+      .sort(),
   };
 }
 

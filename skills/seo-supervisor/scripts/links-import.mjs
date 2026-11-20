@@ -342,7 +342,7 @@ function main(argv) {
     const n = checked.unreached;
     if (n)
       notes.push(
-        `${n} of the pages other sites link to ${n === 1 ? "wasn't" : "weren't"} reached by the crawl, so whether ${n === 1 ? "it still works" : "they still work"} wasn't checked. List them in a file, one per line, and pass it to seo-crawl.mjs with --urls: it tests each one.`,
+        `${n} of the pages other sites link to ${n === 1 ? "wasn't" : "weren't"} reached by the crawl, so whether ${n === 1 ? "it still works" : "they still work"} wasn't checked. List them in a file, one per line, pass it to seo-crawl.mjs with --urls and run links-import again: the ones that fail or redirect are judged then.`,
       );
   }
   const result = {

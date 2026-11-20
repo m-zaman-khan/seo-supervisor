@@ -3185,6 +3185,9 @@ if (redirectSources.length) {
   }
   for (const u of list.slice(0, 2000)) {
     const r = await follow(u);
+    // Kept with the crawl's records so the report lists it; links-import.mjs and seo-diff.mjs read it from there.
+    if (!pages.has(u))
+      all.push({ url: u, status: r.status, finalUrl: r.finalUrl, chain: r.chain, error: r.error || null });
     const trail = r.chain.map(c => c.status).join(" → ") + ` → ${r.finalUrl}`;
     if (r.status >= 400 || r.status === 0) add("redirect-broken", u, trail + (r.error ? ` (${r.error})` : ""));
     else {
