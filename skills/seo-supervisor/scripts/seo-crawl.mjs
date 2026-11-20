@@ -28,6 +28,8 @@ import { trustFeatures, trustSignals } from "./checks/trust.mjs";
 import { CHECKS as AGENT_CHECKS, agentFeatures, agentFiles } from "./checks/agents.mjs";
 import { writingText, writingFeatures } from "./checks/writing.mjs";
 
+import { CHECKS as BUSINESS_CHECKS, checkBusinessType, detectBusinessType } from "./checks/business-type.mjs";
+
 import { proxyNote } from "./lib/proxy.mjs";
 {
   const n = proxyNote();
@@ -1014,6 +1016,8 @@ Object.assign(CHECKS, HREFLANG_CHECKS, TLS_CHECKS, SPEED_CHECKS, RENDER_CHECKS, 
 
 Object.assign(CHECKS, AGENT_CHECKS);
 
+Object.assign(CHECKS, BUSINESS_CHECKS);
+
 const findings = new Map(); // key -> {evidence:[], count}
 function add(key, url, detail) {
   if (!CHECKS[key]) throw new Error("unknown check " + key);
@@ -1585,6 +1589,14 @@ function analyze(url, html, headers, xRobotsLines) {
 
   rec.agent = agentFeatures(html);
   rec.writing = writingFeatures(writingText(mainHtml), rec.lang);
+
+  // The home page's main text feeds the business-type guess, minus post teasers (two or more <article>s).
+  if (url === START.href || new URL(url).pathname === "/")
+    rec.bizText = textOf(
+      (mainHtml.match(/<article\b/gi) || []).length > 1
+        ? mainHtml.replace(/<article\b[\s\S]*?<\/article>/gi, " ")
+        : mainHtml,
+    );
 
   return rec;
 }
@@ -3316,6 +3328,20 @@ extra.trustSignals = trustSignals(htmlPages, {
   extra.agents = { pages: tools.slice(0, 50), ...files };
   extra.writingNotes = writingNotes.slice(0, 50).map(({ count, ...n }) => n);
 }
+
+// A business type guessed from the home page and the schema, and a finding when the schema is too general.
+extra.businessType = home?.html
+  ? checkBusinessType(
+      htmlPages.map(p => ({
+        url: p.finalUrl,
+        title: p.title,
+        h1: p.headings.find(h => h.level === 1)?.text,
+        text: p.bizText,
+        types: [...p.types, ...p.schemaOther],
+      })),
+      add,
+    )
+  : detectBusinessType([]);
 
 // ---------- what the crawler cannot check ----------
 // CRAWL-09 never passes here: a real Googlebot comes from Google's IP addresses, which no request from here can.

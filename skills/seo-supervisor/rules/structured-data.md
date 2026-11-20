@@ -33,6 +33,7 @@
 ### SCHEMA-02 · Organization (or the right business subtype) and WebSite, once, with stable `@id`s · medium
 - **Check:** crawler `org-missing`, `website-missing`. Code: root layout.
 - **Pass:** one node each, in the root layout: `https://site/#organization` and `https://site/#website`. Other nodes reference them by `@id` (`publisher`, `provider`, `isPartOf`) instead of repeating them. `sameAs` lists real profiles.
+- **Business type:** crawler `schema-too-generic` (medium) when the home page's title or H1 plainly names one kind of business but the schema says only `LocalBusiness`, `Organization` or another broad parent; it names the specific type from `scripts/data/business-types.json`, since Google asks for "the most specific LocalBusiness sub-type possible". Two kinds named alike give `business-type-unclear` (needs-decision), and words only in the body text, in post teasers or on other pages raise nothing.
 
 ### SCHEMA-03 · Each page type carries the schema the profile assigns · medium
 - **Check:** crawler `jsonld-none` (no JSON-LD, Microdata or RDFa at all) and the `schema` list per page in `seo-crawl.json` (plus `schemaOther` for Microdata and RDFa), compared with the profile's schema column.

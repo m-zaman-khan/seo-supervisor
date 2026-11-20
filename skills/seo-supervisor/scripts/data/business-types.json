@@ -1,0 +1,338 @@
+[
+  {
+    "id": "restaurant", "label": "Restaurant", "types": ["Restaurant"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "servesCuisine", "menu", "acceptsReservations", "priceRange", "geo"],
+    "keywords": ["restaurant", "bistro", "brasserie", "trattoria", "pizzeria", "steakhouse", "eatery", "takeaway", "fine dining"],
+    "feature": "Local business details in Google Search and Maps; Google reads the menu's URL (menu) and the cuisine (servesCuisine)",
+    "mistakes": ["LocalBusiness or Organization instead of a food type: menu, servesCuisine and acceptsReservations are defined only for food establishments.", "A relative menu link: Google wants the full URL of the menu.", "aggregateRating or review on your own business: Google uses them only on sites that collect reviews of other businesses."]
+  },
+  {
+    "id": "cafe", "label": "Café or coffee shop", "types": ["CafeOrCoffeeShop"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "servesCuisine", "menu", "priceRange", "geo"],
+    "keywords": ["cafe", "coffee shop", "coffee house", "coffeehouse", "tea room", "tearoom", "espresso bar"],
+    "feature": "Local business details in Google Search and Maps; Google reads the menu's URL (menu) and the cuisine (servesCuisine)",
+    "mistakes": ["LocalBusiness or Organization instead of a food type: menu and servesCuisine are defined only for food establishments.", "aggregateRating or review on your own business: Google uses them only on sites that collect reviews of other businesses."]
+  },
+  {
+    "id": "bar", "label": "Bar or pub", "types": ["BarOrPub"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "servesCuisine", "menu", "acceptsReservations", "priceRange", "geo"],
+    "keywords": ["pub", "gastropub", "cocktail bar", "wine bar", "sports bar", "tavern", "taproom", "beer garden"],
+    "feature": "Local business details in Google Search and Maps; Google reads the menu's URL (menu) and the cuisine (servesCuisine)",
+    "mistakes": ["LocalBusiness or Organization instead of a food type: menu, servesCuisine and acceptsReservations are defined only for food establishments.", "aggregateRating or review on your own business: Google uses them only on sites that collect reviews of other businesses."]
+  },
+  {
+    "id": "bakery", "label": "Bakery", "types": ["Bakery"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "menu", "priceRange", "geo"],
+    "keywords": ["bakery", "bakeries", "bakehouse", "patisserie", "cake shop", "bake shop", "artisan bread"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["Store or LocalBusiness for a bakery: Bakery is a food establishment, which gives it menu and opening hours fields."]
+  },
+  {
+    "id": "dentist", "label": "Dentist", "types": ["Dentist"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "medicalSpecialty", "isAcceptingNewPatients", "geo"],
+    "keywords": ["dentist", "dentistry", "dental", "dental clinic", "dental practice", "dental surgery", "orthodontist", "orthodontics", "teeth whitening", "dental implant"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["MedicalOrganization alone: it isn't a place, so opening hours and geo don't belong on it; Dentist is both a medical organization and a local business.", "aggregateRating or review on your own business: Google uses them only on sites that collect reviews of other businesses."]
+  },
+  {
+    "id": "physician", "label": "Doctor's practice", "types": ["Physician"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "medicalSpecialty", "availableService", "isAcceptingNewPatients", "geo"],
+    "keywords": ["family doctor", "gp practice", "gp surgery", "doctors surgery", "general practitioner", "physician", "family medicine", "family practice"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["MedicalOrganization alone: it isn't a place, so opening hours and geo don't belong on it; Physician is both a medical organization and a local business.", "PhysiciansOffice (\"A doctor's office or clinic\" on schema.org) is a more specific choice for a practice."]
+  },
+  {
+    "id": "clinic", "label": "Medical clinic", "types": ["MedicalClinic"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "medicalSpecialty", "availableService", "isAcceptingNewPatients", "geo"],
+    "keywords": ["clinic", "medical clinic", "medical centre", "medical center", "health centre", "health center", "walk in clinic", "urgent care", "polyclinic"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["MedicalClinic for a dental practice or a doctor's surgery: Dentist and Physician say more.", "MedicalOrganization alone: it isn't a place, so opening hours and geo don't belong on it."]
+  },
+  {
+    "id": "hospital", "label": "Hospital", "types": ["Hospital"],
+    "properties": ["name", "address", "telephone", "url", "medicalSpecialty", "availableService", "department", "geo"],
+    "keywords": ["hospital"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["One node with every department's hours and phone: Google's local business markup reads each department as its own nested node."]
+  },
+  {
+    "id": "pharmacy", "label": "Pharmacy", "types": ["Pharmacy"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "geo"],
+    "keywords": ["pharmacy", "pharmacies", "chemist", "drugstore", "pharmacist", "dispensary"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["A pharmacy inside a shop marked as a separate business: Google's local business doc puts it in the shop's department, named like \"gMart Pharmacy\"."]
+  },
+  {
+    "id": "optician", "label": "Optician", "types": ["Optician"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "priceRange", "geo"],
+    "keywords": ["optician", "optometrist", "eye test", "eye exam", "eye care", "eyewear"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["MedicalClinic or Store for an optician: Optician is its own type."]
+  },
+  {
+    "id": "lawyer", "label": "Lawyer or law firm", "types": ["LegalService"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "areaServed", "knowsAbout", "geo"],
+    "keywords": ["lawyer", "law firm", "solicitor", "attorney", "legal services", "barrister", "law office", "legal advice", "notary"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["Attorney: schema.org deprecated it (\"LegalService is more inclusive and less ambiguous\").", "aggregateRating or review on your own business: Google uses them only on sites that collect reviews of other businesses."]
+  },
+  {
+    "id": "real-estate", "label": "Estate agent", "types": ["RealEstateAgent"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "areaServed", "geo"],
+    "keywords": ["estate agent", "real estate agent", "real estate", "realtor", "realty", "letting agent", "lettings", "property for sale", "homes for sale", "property management"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["Listings marked up as Product with an Offer, which asks for shopping fields: schema.org has RealEstateListing for a listing page."]
+  },
+  {
+    "id": "car-dealer", "label": "Car dealer", "types": ["AutoDealer"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "department", "brand", "geo"],
+    "keywords": ["car dealer", "car dealership", "dealership", "used car", "new car", "car sales", "pre owned", "approved used"],
+    "feature": "Local business details in Google Search and Maps, with sales, service and parts as departments",
+    "mistakes": ["One set of opening hours for sales, service and parts: give each its own department node with its own hours and phone.", "Vehicle listing markup: Google phased that rich result out in June 2025."]
+  },
+  {
+    "id": "hotel", "label": "Hotel", "types": ["Hotel"],
+    "properties": ["name", "address", "telephone", "url", "checkinTime", "checkoutTime", "amenityFeature", "numberOfRooms", "petsAllowed", "starRating", "geo"],
+    "keywords": ["hotel", "boutique hotel", "country house hotel", "hotel and spa"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["starRating from guest reviews: schema.org defines it as \"an official rating for a lodging business\", from national associations or standards bodies.", "aggregateRating or review on your own business: Google uses them only on sites that collect reviews of other businesses."]
+  },
+  {
+    "id": "motel", "label": "Motel", "types": ["Motel"],
+    "properties": ["name", "address", "telephone", "url", "checkinTime", "checkoutTime", "amenityFeature", "numberOfRooms", "petsAllowed", "geo"],
+    "keywords": ["motel", "motor inn", "motor lodge"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["Hotel or LodgingBusiness for a motel: Motel is its own type."]
+  },
+  {
+    "id": "bed-and-breakfast", "label": "Bed and breakfast", "types": ["BedAndBreakfast"],
+    "properties": ["name", "address", "telephone", "url", "checkinTime", "checkoutTime", "amenityFeature", "numberOfRooms", "petsAllowed", "geo"],
+    "keywords": ["bed and breakfast", "b&b", "guest house", "guesthouse"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["Hotel for a bed and breakfast: BedAndBreakfast is its own type."]
+  },
+  {
+    "id": "hostel", "label": "Hostel", "types": ["Hostel"],
+    "properties": ["name", "address", "telephone", "url", "checkinTime", "checkoutTime", "amenityFeature", "petsAllowed", "geo"],
+    "keywords": ["hostel", "youth hostel", "backpackers"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["Hotel for a hostel: Hostel is its own type."]
+  },
+  {
+    "id": "resort", "label": "Resort", "types": ["Resort"],
+    "properties": ["name", "address", "telephone", "url", "checkinTime", "checkoutTime", "amenityFeature", "numberOfRooms", "petsAllowed", "starRating", "geo"],
+    "keywords": ["resort", "holiday resort", "ski resort", "beach resort", "golf resort"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["starRating from guest reviews: schema.org defines it as \"an official rating for a lodging business\", from national associations or standards bodies."]
+  },
+  {
+    "id": "campground", "label": "Campsite", "types": ["Campground"],
+    "properties": ["name", "address", "telephone", "url", "checkinTime", "checkoutTime", "amenityFeature", "petsAllowed", "geo"],
+    "keywords": ["campsite", "campground", "camping", "caravan park", "rv park", "glamping", "holiday park"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["Park or LodgingBusiness for a campsite: Campground is its own type."]
+  },
+  {
+    "id": "vacation-rental", "label": "Holiday let", "types": ["VacationRental"],
+    "properties": ["name", "identifier", "image", "address", "geo", "containsPlace", "checkinTime", "checkoutTime", "amenityFeature", "petsAllowed"],
+    "keywords": ["vacation rental", "holiday let", "holiday cottage", "holiday home", "holiday rental", "holiday apartment", "self catering", "cabin rental"],
+    "feature": "Vacation rental listings in Google, only for eligible sites with Hotel Center access; otherwise local business details",
+    "mistakes": ["Expecting vacation rental results without Google's approval: the feature is limited to eligible sites that work with Google through Hotel Center."]
+  },
+  {
+    "id": "plumber", "label": "Plumber", "types": ["Plumber"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "areaServed", "priceRange", "geo"],
+    "keywords": ["plumber", "plumbing", "plumbing and heating", "emergency plumber", "drain unblocking", "blocked drain", "boiler repair", "burst pipe", "leak repair"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["A business node for every town served: one node per real staffed office, with the towns in areaServed (LOCAL-06).", "Types for trades the business doesn't offer: list several (Google's own example is [\"Electrician\", \"Plumber\", \"Locksmith\"]) only when it really does each."]
+  },
+  {
+    "id": "electrician", "label": "Electrician", "types": ["Electrician"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "areaServed", "priceRange", "geo"],
+    "keywords": ["electrician", "electrical contractor", "electrical services", "electrical repair", "rewiring", "rewire", "fuse box", "ev charger installation"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["A business node for every town served: one node per real staffed office, with the towns in areaServed (LOCAL-06).", "Types for trades the business doesn't offer: list several (Google's own example is [\"Electrician\", \"Plumber\", \"Locksmith\"]) only when it really does each."]
+  },
+  {
+    "id": "hvac", "label": "Heating and air conditioning", "types": ["HVACBusiness"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "areaServed", "priceRange", "geo"],
+    "keywords": ["hvac", "air conditioning", "air conditioner", "heating and cooling", "heating and air", "furnace", "heat pump", "ac repair"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["A business node for every town served: one node per real staffed office, with the towns in areaServed (LOCAL-06)."]
+  },
+  {
+    "id": "roofer", "label": "Roofer", "types": ["RoofingContractor"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "areaServed", "priceRange", "geo"],
+    "keywords": ["roofer", "roofing", "roofing contractor", "roof repair", "flat roof", "guttering"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["A business node for every town served: one node per real staffed office, with the towns in areaServed (LOCAL-06)."]
+  },
+  {
+    "id": "builder", "label": "Builder or general contractor", "types": ["GeneralContractor"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "areaServed", "priceRange", "geo"],
+    "keywords": ["general contractor", "building contractor", "builders", "construction company", "home renovation", "renovations", "home improvement", "loft conversion"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["A business node for every town served: one node per real staffed office, with the towns in areaServed (LOCAL-06)."]
+  },
+  {
+    "id": "painter", "label": "Painter and decorator", "types": ["HousePainter"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "areaServed", "priceRange", "geo"],
+    "keywords": ["painter and decorator", "painters and decorators", "house painter", "house painting", "painting and decorating", "decorator"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["A business node for every town served: one node per real staffed office, with the towns in areaServed (LOCAL-06)."]
+  },
+  {
+    "id": "locksmith", "label": "Locksmith", "types": ["Locksmith"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "areaServed", "priceRange", "geo"],
+    "keywords": ["locksmith", "lock repair", "lock change", "locked out"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["A business node for every town served: one node per real staffed office, with the towns in areaServed (LOCAL-06)."]
+  },
+  {
+    "id": "movers", "label": "Removals company", "types": ["MovingCompany"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "areaServed", "priceRange", "geo"],
+    "keywords": ["removals", "removal company", "moving company", "movers", "man and van", "house move"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["A business node for every town served: one node per real staffed office, with the towns in areaServed (LOCAL-06)."]
+  },
+  {
+    "id": "beauty-salon", "label": "Beauty salon", "types": ["BeautySalon"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "priceRange", "geo"],
+    "keywords": ["beauty salon", "beautician", "beauty clinic", "beauty treatment", "beauty therapist", "aesthetics clinic", "lash extensions", "eyelash extensions", "waxing", "facials"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["A broad type when one service is the business: Google's own Business Profile example is \"Nail salon\", not \"Salon\" (LOCAL-11)."]
+  },
+  {
+    "id": "hair-salon", "label": "Hair salon or barber", "types": ["HairSalon"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "priceRange", "geo"],
+    "keywords": ["hair salon", "hairdresser", "hairdressing", "hair stylist", "hair studio", "barber", "barbershop", "barber shop"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["BeautySalon for a hairdresser or barber: HairSalon says what it does."]
+  },
+  {
+    "id": "nail-salon", "label": "Nail salon", "types": ["NailSalon"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "priceRange", "geo"],
+    "keywords": ["nail salon", "nail bar", "nail studio", "manicure", "pedicure", "gel nails", "nail art", "nail technician"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["BeautySalon for a nail salon: Google's own Business Profile example is \"Nail salon\", not \"Salon\" (LOCAL-11)."]
+  },
+  {
+    "id": "day-spa", "label": "Day spa", "types": ["DaySpa"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "priceRange", "geo"],
+    "keywords": ["day spa", "spa day", "spa treatment", "massage", "massage therapy"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["BeautySalon for a spa: DaySpa is its own type, and Google's local business doc names it as an example."]
+  },
+  {
+    "id": "gym", "label": "Gym", "types": ["ExerciseGym"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "amenityFeature", "priceRange", "geo"],
+    "keywords": ["gym", "fitness centre", "fitness center", "personal training", "personal trainer", "fitness class", "crossfit", "strength and conditioning"],
+    "feature": "Local business details in Google Search and Maps",
+    "mistakes": ["SportsActivityLocation alone for a gym: ExerciseGym says what it is."]
+  },
+  {
+    "id": "online-store", "label": "Online shop", "types": ["OnlineStore"],
+    "properties": ["name", "url", "logo", "sameAs", "contactPoint", "hasMerchantReturnPolicy", "hasShippingService", "hasMemberProgram"],
+    "keywords": ["online store", "online shop", "webshop", "web shop", "shop online", "buy online", "ecommerce store", "online boutique"],
+    "feature": "Merchant details in Google (return policy, shipping, contact) from the OnlineStore node; product pages earn merchant listings",
+    "mistakes": ["Store or LocalBusiness for an online-only shop: those are places to visit, and Google's local business markup needs a street address. Google recommends OnlineStore for ecommerce.", "No store-wide policies: hasMerchantReturnPolicy and hasShippingService on the OnlineStore cover every product."]
+  },
+  {
+    "id": "clothing-store", "label": "Clothes shop", "types": ["ClothingStore", "OnlineStore"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "priceRange", "geo"],
+    "keywords": ["clothing store", "clothing shop", "clothes shop", "fashion store", "menswear", "womenswear", "childrenswear", "apparel"],
+    "feature": "Local business details in Google Search and Maps; product pages earn merchant listings",
+    "mistakes": ["OnlineStore for a shop people can visit, or a Store type for an online-only shop: a Store is a place with a street address."]
+  },
+  {
+    "id": "florist", "label": "Florist", "types": ["Florist", "OnlineStore"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "areaServed", "priceRange", "geo"],
+    "keywords": ["florist", "flower shop", "flower delivery", "floristry", "bouquet"],
+    "feature": "Local business details in Google Search and Maps; product pages earn merchant listings",
+    "mistakes": ["OnlineStore for a shop people can visit, or a Store type for an online-only shop: a Store is a place with a street address."]
+  },
+  {
+    "id": "book-store", "label": "Bookshop", "types": ["BookStore", "OnlineStore"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "priceRange", "geo"],
+    "keywords": ["bookshop", "bookstore", "book shop", "bookseller"],
+    "feature": "Local business details in Google Search and Maps; product pages earn merchant listings",
+    "mistakes": ["OnlineStore for a shop people can visit, or a Store type for an online-only shop: a Store is a place with a street address."]
+  },
+  {
+    "id": "jewelry-store", "label": "Jeweller", "types": ["JewelryStore", "OnlineStore"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "priceRange", "geo"],
+    "keywords": ["jeweller", "jeweler", "jewelry store", "jewelry shop", "jewellery store", "jewellery shop", "engagement ring"],
+    "feature": "Local business details in Google Search and Maps; product pages earn merchant listings",
+    "mistakes": ["OnlineStore for a shop people can visit, or a Store type for an online-only shop: a Store is a place with a street address."]
+  },
+  {
+    "id": "furniture-store", "label": "Furniture shop", "types": ["FurnitureStore", "OnlineStore"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "priceRange", "geo"],
+    "keywords": ["furniture store", "furniture shop", "furniture showroom", "furniture retailer"],
+    "feature": "Local business details in Google Search and Maps; product pages earn merchant listings",
+    "mistakes": ["OnlineStore for a shop people can visit, or a Store type for an online-only shop: a Store is a place with a street address."]
+  },
+  {
+    "id": "hardware-store", "label": "Hardware shop", "types": ["HardwareStore", "OnlineStore"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "priceRange", "geo"],
+    "keywords": ["hardware store", "hardware shop", "diy store", "ironmonger", "builders merchant"],
+    "feature": "Local business details in Google Search and Maps; product pages earn merchant listings",
+    "mistakes": ["OnlineStore for a shop people can visit, or a Store type for an online-only shop: a Store is a place with a street address."]
+  },
+  {
+    "id": "pet-store", "label": "Pet shop", "types": ["PetStore", "OnlineStore"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "priceRange", "geo"],
+    "keywords": ["pet shop", "pet store", "pet supplies", "aquatics"],
+    "feature": "Local business details in Google Search and Maps; product pages earn merchant listings",
+    "mistakes": ["OnlineStore for a shop people can visit, or a Store type for an online-only shop: a Store is a place with a street address."]
+  },
+  {
+    "id": "bike-store", "label": "Bike shop", "types": ["BikeStore", "OnlineStore"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "priceRange", "geo"],
+    "keywords": ["bike shop", "bike store", "bicycle shop", "cycle shop", "bike repair"],
+    "feature": "Local business details in Google Search and Maps; product pages earn merchant listings",
+    "mistakes": ["OnlineStore for a shop people can visit, or a Store type for an online-only shop: a Store is a place with a street address."]
+  },
+  {
+    "id": "grocery-store", "label": "Grocery shop", "types": ["GroceryStore", "OnlineStore"],
+    "properties": ["name", "address", "telephone", "url", "openingHoursSpecification", "priceRange", "geo"],
+    "keywords": ["grocery store", "grocery", "grocer", "greengrocer", "supermarket", "farm shop", "delicatessen"],
+    "feature": "Local business details in Google Search and Maps; product pages earn merchant listings",
+    "mistakes": ["OnlineStore for a shop people can visit, or a Store type for an online-only shop: a Store is a place with a street address."]
+  },
+  {
+    "id": "software", "label": "Software or online tool", "types": ["SoftwareApplication", "WebApplication"],
+    "properties": ["name", "applicationCategory", "operatingSystem", "offers", "aggregateRating", "review"],
+    "keywords": ["software", "saas", "web app", "web application", "online tool", "free tool", "desktop app", "mobile app", "browser extension", "api"],
+    "feature": "Software app rich result (needs name, offers.price and a real aggregateRating or review); the company itself stays an Organization",
+    "mistakes": ["No rating or review: Google's Software app result needs one, and it must be real.", "The company's rating attached to the app: ratings in the app's markup must be about the app (SCHEMA-04).", "An applicationCategory Google doesn't list: use one of its values, such as BusinessApplication or SecurityApplication."]
+  },
+  {
+    "id": "school", "label": "School", "types": ["School"],
+    "properties": ["name", "address", "telephone", "url", "logo", "sameAs", "alumni"],
+    "keywords": ["school", "primary school", "secondary school", "high school", "elementary school", "middle school", "nursery school", "prep school", "sixth form", "language school"],
+    "feature": "Course list rich result for its courses (Course markup; English results)",
+    "mistakes": ["EducationalOrganization or Organization for a school: School says what it is."]
+  },
+  {
+    "id": "university", "label": "College or university", "types": ["CollegeOrUniversity"],
+    "properties": ["name", "address", "telephone", "url", "logo", "sameAs", "alumni"],
+    "keywords": ["university", "college", "polytechnic", "undergraduate", "postgraduate"],
+    "feature": "Course list rich result for its courses (Course markup; English results)",
+    "mistakes": ["School for a college or university: CollegeOrUniversity is its own type."]
+  },
+  {
+    "id": "education", "label": "Training or tutoring", "types": ["EducationalOrganization"],
+    "properties": ["name", "url", "logo", "sameAs", "address", "telephone"],
+    "keywords": ["tutoring", "tutor", "tuition", "training provider", "training course", "online course", "bootcamp"],
+    "feature": "Course list rich result for its courses (Course markup; English results)",
+    "mistakes": ["Organization for a training provider: EducationalOrganization says it teaches."]
+  },
+  {
+    "id": "publisher", "label": "News publisher or magazine", "types": ["NewsMediaOrganization"],
+    "properties": ["name", "url", "logo", "sameAs", "publishingPrinciples", "correctionsPolicy", "ethicsPolicy", "masthead"],
+    "keywords": ["news", "newspaper", "magazine", "breaking news", "latest news", "local news", "news site", "journalism"],
+    "feature": "Article results for its stories (Article, NewsArticle or BlogPosting on each story)",
+    "mistakes": ["Organization instead of NewsMediaOrganization: it hides what the site is, and masthead is defined only for news media organizations.", "Article markup without author and dates: Google recommends author, datePublished and dateModified."]
+  }
+]

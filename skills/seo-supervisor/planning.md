@@ -59,6 +59,11 @@ Crawl and run a content scan exactly as an audit does (SKILL.md step 2, pre-laun
 - **Anything the owner must supply goes in `owner`:** `{ "needs": "copy" | "facts" | "decision" | "yes", "what", "draft", "done": false }`.
 - **A missing parent page also gets `intro`:** its 1–2 sentence intro, built only from facts already on the site. The Plan tab shows it, so approving the plan approves exactly these words.
 
+**Schema by business type.** The crawl's `businessType` guesses what the business is from the home page and the schema already there. `scripts/data/business-types.json` maps each guess to its schema.org type, key fields, the Google feature it can unlock and the usual mistakes. Use it to choose the business node's type and the rows' `schema`:
+- **A `strong` guess:** plan that type, in place of a plain Organization or LocalBusiness.
+- **A `weak` guess, or `none` on a business site:** don't pick. Show the owner the top 2 guesses (`guess` and the first of `alternatives`) and ask, as the home row's `owner` item (`needs: "decision"`).
+- **Fields:** plan only the key fields the site already has facts for. `examples/snippets.md` (Business types) has the pattern for each.
+
 **Target phrases.** Never guessed. Each one comes from a recorded source:
 - **The site and the owner:** what the business actually offers, in the words a customer would search with, plus the owner's input.
 - **Search Console:** when `seo-audit/` holds the Performance export, run `gsc-import.mjs` (SKILL.md step 2). Site-level queries are *suggested* phrases and are labelled as suggestions. A per-page export's queries belong to that page.

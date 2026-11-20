@@ -132,3 +132,174 @@ curl -sI https://example.com/sitemap.xml | head -1
 curl -sI https://example.com/ | grep -i '^x-robots-tag:.*noindex'
 curl -s  https://example.com/ | grep -i '<meta[^>]*name="robots"[^>]*noindex'
 ```
+
+## Business types (SCHEMA-02, LOCAL-06)
+
+One business node in the root layout, in place of the plain Organization in the first snippet: same `@id`, with the type `scripts/data/business-types.json` gives for the business (the crawl's `businessType`). That file also lists each type's key fields, the Google feature it can unlock and the usual mistakes. Google asks for the most specific type that fits. A business that really is two trades can list both, as in Google's own example: `"@type": ["Electrician", "Plumber", "Locksmith"]`. Put in only facts the site already shows, and leave out `aggregateRating` and `review` for your own business: Google uses them only on sites that collect reviews of other businesses. Software and tools keep an Organization and put a WebApplication on each tool page (the tool page snippet above).
+
+### Restaurant, café, bar or bakery
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Restaurant",
+  "@id": "https://example.com/#organization",
+  "name": "Brand Trattoria", "url": "https://example.com/", "telephone": "+44 113 496 0000",
+  "address": { "@type": "PostalAddress", "streetAddress": "12 High Street", "addressLocality": "Leeds", "postalCode": "LS1 4AB", "addressCountry": "GB" },
+  "geo": { "@type": "GeoCoordinates", "latitude": 53.79648, "longitude": -1.54785 },
+  "servesCuisine": ["Italian", "Pizza"], "menu": "https://example.com/menu/", "acceptsReservations": true, "priceRange": "££",
+  "openingHoursSpecification": [{ "@type": "OpeningHoursSpecification", "dayOfWeek": ["https://schema.org/Tuesday", "https://schema.org/Wednesday", "https://schema.org/Thursday", "https://schema.org/Friday", "https://schema.org/Saturday"], "opens": "12:00", "closes": "22:00" }]
+}
+```
+
+### Dentist, doctor, clinic, pharmacy or optician
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Dentist",
+  "@id": "https://example.com/#organization",
+  "name": "Brand Dental", "url": "https://example.com/", "telephone": "+44 113 496 0001",
+  "address": { "@type": "PostalAddress", "streetAddress": "4 Park Row", "addressLocality": "Leeds", "postalCode": "LS1 5HD", "addressCountry": "GB" },
+  "isAcceptingNewPatients": true,
+  "openingHoursSpecification": [{ "@type": "OpeningHoursSpecification", "dayOfWeek": ["https://schema.org/Monday", "https://schema.org/Tuesday", "https://schema.org/Wednesday", "https://schema.org/Thursday", "https://schema.org/Friday"], "opens": "08:30", "closes": "17:30" }]
+}
+```
+
+### Lawyer or law firm
+`LegalService`, not `Attorney`, which schema.org has deprecated.
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "LegalService",
+  "@id": "https://example.com/#organization",
+  "name": "Brand Solicitors", "url": "https://example.com/", "telephone": "+44 113 496 0002",
+  "address": { "@type": "PostalAddress", "streetAddress": "1 Albion Place", "addressLocality": "Leeds", "postalCode": "LS1 6JL", "addressCountry": "GB" },
+  "knowsAbout": ["Family law", "Conveyancing", "Wills and probate"],
+  "areaServed": { "@type": "City", "name": "Leeds" }
+}
+```
+
+### Estate agent
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "RealEstateAgent",
+  "@id": "https://example.com/#organization",
+  "name": "Brand Estates", "url": "https://example.com/", "telephone": "+44 113 496 0003",
+  "address": { "@type": "PostalAddress", "streetAddress": "22 Commercial Street", "addressLocality": "Leeds", "postalCode": "LS1 6EX", "addressCountry": "GB" },
+  "areaServed": [{ "@type": "City", "name": "Leeds" }, { "@type": "City", "name": "Harrogate" }]
+}
+```
+
+### Car dealer, with sales, service and parts as departments
+Each department is named "{business} {department}", as Google's local business doc asks, with its own hours and phone.
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "AutoDealer",
+  "@id": "https://example.com/#organization",
+  "name": "Brand Motors", "url": "https://example.com/", "telephone": "+44 113 496 0004",
+  "address": { "@type": "PostalAddress", "streetAddress": "100 Kirkstall Road", "addressLocality": "Leeds", "postalCode": "LS4 2AA", "addressCountry": "GB" },
+  "brand": { "@type": "Brand", "name": "Example Cars" },
+  "department": [
+    { "@type": "AutoRepair", "name": "Brand Motors Service", "telephone": "+44 113 496 0005",
+      "address": { "@type": "PostalAddress", "streetAddress": "100 Kirkstall Road", "addressLocality": "Leeds", "postalCode": "LS4 2AA", "addressCountry": "GB" },
+      "openingHoursSpecification": [{ "@type": "OpeningHoursSpecification", "dayOfWeek": ["https://schema.org/Monday", "https://schema.org/Tuesday", "https://schema.org/Wednesday", "https://schema.org/Thursday", "https://schema.org/Friday"], "opens": "07:30", "closes": "18:00" }] },
+    { "@type": "AutoPartsStore", "name": "Brand Motors Parts", "telephone": "+44 113 496 0006",
+      "address": { "@type": "PostalAddress", "streetAddress": "100 Kirkstall Road", "addressLocality": "Leeds", "postalCode": "LS4 2AA", "addressCountry": "GB" } }
+  ]
+}
+```
+
+### Hotel, B&B, hostel, campsite or holiday let
+`starRating` only when an official body (a tourist board or hotel association) gave it.
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Hotel",
+  "@id": "https://example.com/#organization",
+  "name": "Brand House Hotel", "url": "https://example.com/", "telephone": "+44 113 496 0007",
+  "address": { "@type": "PostalAddress", "streetAddress": "8 Station Road", "addressLocality": "York", "postalCode": "YO1 6HT", "addressCountry": "GB" },
+  "checkinTime": "15:00", "checkoutTime": "11:00", "numberOfRooms": 24, "petsAllowed": true,
+  "amenityFeature": [{ "@type": "LocationFeatureSpecification", "name": "Free Wi-Fi", "value": true }, { "@type": "LocationFeatureSpecification", "name": "Parking", "value": true }]
+}
+```
+
+### Plumber, electrician, roofer and other trades
+Towns served go in `areaServed`; a separate node only for a real staffed office (LOCAL-06).
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Plumber",
+  "@id": "https://example.com/#organization",
+  "name": "Brand Plumbing", "url": "https://example.com/", "telephone": "+44 113 496 0008",
+  "address": { "@type": "PostalAddress", "streetAddress": "3 Mill Lane", "addressLocality": "Leeds", "postalCode": "LS6 2BB", "addressCountry": "GB" },
+  "areaServed": [{ "@type": "City", "name": "Leeds" }, { "@type": "City", "name": "Bradford" }],
+  "openingHoursSpecification": [{ "@type": "OpeningHoursSpecification", "dayOfWeek": ["https://schema.org/Monday", "https://schema.org/Tuesday", "https://schema.org/Wednesday", "https://schema.org/Thursday", "https://schema.org/Friday"], "opens": "08:00", "closes": "18:00" }]
+}
+```
+
+### Hair salon, barber, nail salon, beauty salon or day spa
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "HairSalon",
+  "@id": "https://example.com/#organization",
+  "name": "Brand Hair", "url": "https://example.com/", "telephone": "+44 113 496 0009", "priceRange": "££",
+  "address": { "@type": "PostalAddress", "streetAddress": "15 Boar Lane", "addressLocality": "Leeds", "postalCode": "LS1 6EN", "addressCountry": "GB" },
+  "openingHoursSpecification": [{ "@type": "OpeningHoursSpecification", "dayOfWeek": ["https://schema.org/Tuesday", "https://schema.org/Wednesday", "https://schema.org/Thursday", "https://schema.org/Friday", "https://schema.org/Saturday"], "opens": "09:00", "closes": "18:00" }]
+}
+```
+
+### Gym
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "ExerciseGym",
+  "@id": "https://example.com/#organization",
+  "name": "Brand Fitness", "url": "https://example.com/", "telephone": "+44 113 496 0010",
+  "address": { "@type": "PostalAddress", "streetAddress": "50 Wellington Street", "addressLocality": "Leeds", "postalCode": "LS1 2DE", "addressCountry": "GB" },
+  "amenityFeature": [{ "@type": "LocationFeatureSpecification", "name": "Showers", "value": true }],
+  "openingHoursSpecification": [{ "@type": "OpeningHoursSpecification", "dayOfWeek": ["https://schema.org/Monday", "https://schema.org/Tuesday", "https://schema.org/Wednesday", "https://schema.org/Thursday", "https://schema.org/Friday"], "opens": "06:00", "closes": "22:00" }]
+}
+```
+
+### Online shop
+`OnlineStore`, as Google recommends for ecommerce. A shop people can visit uses its Store type (ClothingStore, Florist and so on) with an address, like the local businesses above. One return policy here covers every product.
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "OnlineStore",
+  "@id": "https://example.com/#organization",
+  "name": "Brand", "url": "https://example.com/", "logo": "https://example.com/logo-512.png",
+  "sameAs": ["https://www.instagram.com/brand"],
+  "contactPoint": { "@type": "ContactPoint", "contactType": "customer service", "email": "help@example.com" },
+  "hasMerchantReturnPolicy": { "@type": "MerchantReturnPolicy", "applicableCountry": "GB", "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow", "merchantReturnDays": 30, "returnMethod": "https://schema.org/ReturnByMail", "returnFees": "https://schema.org/FreeReturn" }
+}
+```
+
+### School, college or training provider
+`School`, `CollegeOrUniversity`, or `EducationalOrganization` for training and tutoring. Each course page can carry `Course` for Google's course list.
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "School",
+  "@id": "https://example.com/#organization",
+  "name": "Brand Primary School", "url": "https://example.com/", "logo": "https://example.com/logo-512.png", "telephone": "+44 113 496 0011",
+  "address": { "@type": "PostalAddress", "streetAddress": "Church Road", "addressLocality": "Leeds", "postalCode": "LS12 1AA", "addressCountry": "GB" }
+}
+```
+
+### News publisher or magazine
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "NewsMediaOrganization",
+  "@id": "https://example.com/#organization",
+  "name": "Brand News", "url": "https://example.com/", "logo": "https://example.com/logo-512.png",
+  "sameAs": ["https://x.com/brandnews"],
+  "masthead": "https://example.com/about/team/",
+  "publishingPrinciples": "https://example.com/about/standards/",
+  "correctionsPolicy": "https://example.com/about/corrections/",
+  "ethicsPolicy": "https://example.com/about/ethics/"
+}
+```
