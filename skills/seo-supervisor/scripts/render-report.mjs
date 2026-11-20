@@ -1152,6 +1152,13 @@ const DIFF_KIND = {
   "speed-faster": ["Now faster", "PERF-01"],
   "schema-fields-removed": ["Schema fields removed", "SCHEMA-03"],
   "schema-fields-added": ["Schema fields added", "SCHEMA-03"],
+  "robots-changed": ["robots.txt changed", "MAP-05"],
+  "left-sitemap": ["Left the sitemap", "MAP-03"],
+  "joined-sitemap": ["Joined the sitemap", "MAP-03"],
+  "lost-internal-links": ["Fewer internal links", "LINK-02"],
+  "redirect-changed": ["Redirect changed", "URL-07"],
+  "redirect-added": ["Now redirects", "URL-07"],
+  "redirect-removed": ["Redirect removed", "URL-07"],
 };
 const diffSections = d =>
   [
@@ -1188,8 +1195,15 @@ const sameFields = d => {
     "schema",
     c.has("schemaProps") && "schema fields",
     c.has("words") && "length",
+    c.has("sitemap") && "sitemap listing",
+    c.has("links") && "internal links",
   ].filter(Boolean);
-  return `${f.slice(0, -1).join(", ")} and ${f.at(-1)} as last time${c.has("speed") ? ", and no page got much faster or slower" : ""}`;
+  const also = [
+    c.has("redirects") && "no redirect changed",
+    c.has("robots") && "robots.txt has the same rules",
+    c.has("speed") && "no page got much faster or slower",
+  ].filter(Boolean);
+  return `${f.slice(0, -1).join(", ")} and ${f.at(-1)} as last time${also.length ? `, ${[...also.slice(0, -1), `and ${also.at(-1)}`].join(", ")}` : ""}`;
 };
 const diffHtml = () => `<div class="limits">
   <p class="quiet">Compared with the crawl of ${esc(fmtDate(diff.since))}. Pages are matched by path.</p>${googleUpdatesText() ? `\n  <p class="quiet">${googleUpdatesText(true)}</p>` : ""}${linksDiffHtml()}
@@ -1614,7 +1628,7 @@ function markdown() {
     L.push("## Since last audit", "", `Compared with the crawl of ${fmtDate(diff.since)}.`, "");
     if (googleUpdatesText()) L.push(googleUpdatesText(), "");
     for (const [h, list] of diffSections(diff))
-      L.push(`### ${h}`, "", ...list.map(c => `- \`${c.path}\` ${diffText(c)}`), "");
+      L.push(`### ${h}`, "", ...list.map(c => `- ${mdCode(c.path)} ${mdText(diffText(c))}`), ""); // crawled titles and robots.txt rules, escaped
     for (const [h, l] of [
       ["Pages added", diff.added],
       ["Pages gone", diff.removed],

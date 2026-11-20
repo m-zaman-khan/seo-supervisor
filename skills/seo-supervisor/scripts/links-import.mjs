@@ -9,7 +9,7 @@ import { isMain } from "./lib/is-main.mjs";
 import { parseCsv } from "./lib/csv.mjs";
 
 const USAGE =
-  'usage: node links-import.mjs --dir seo-audit/links --site https://www.example.com [--brand "Acme"] [--keys seo-audit/keys.json] [--previous <earlier links.json>] [--out seo-audit/links.json]';
+  'usage: node links-import.mjs --dir seo-audit/links --site https://www.example.com [--brand "Acme"] [--keys seo-audit/keys.json] [--previous <earlier links.json>] [--crawl seo-audit/seo-crawl.json] [--out seo-audit/links.json]';
 class Fail extends Error {}
 const obj = x => (x && typeof x === "object" ? x : null);
 const bare = h => h.toLowerCase().replace(/^www\./, "");
@@ -157,6 +157,89 @@ export function linksChange(before, after) {
   return fell.length ? { kind: "links-dropped", what: fell[0], before: before[fell[0]], after: after[fell[0]] } : null;
 }
 
+// Linked pages the crawl found broken: 404 or 410, a redirect loop, or a redirect to the home page, which Google may
+// treat as a soft 404. https://developers.google.com/search/docs/crawling-indexing/site-move-with-url-changes
+// Matched by path so a local crawl works; other hosts' pages and pages the crawl didn't reach aren't judged.
+export function brokenLinked(linked, crawl, site) {
+  const host = bare(site.hostname),
+    url = u => {
+      try {
+        return new URL(u);
+      } catch {
+        return null;
+      }
+    },
+    pathOf = x => x.pathname + x.search;
+  const byPath = list =>
+    new Map(
+      (list || [])
+        .map(x => [url(x.url ?? x.from), x])
+        .filter(([u]) => u)
+        .map(([u, x]) => [pathOf(u), x]),
+    );
+  const pages = byPath(crawl.pages),
+    errors = byPath(crawl.errors),
+    redirects = byPath(crawl.redirects);
+  const toHome = r => {
+    const t = url(r.to),
+      f = url(r.from);
+    return (
+      !!t &&
+      !!f &&
+      t.pathname === "/" &&
+      !t.search &&
+      pathOf(f) !== "/" &&
+      (t.origin === f.origin || bare(t.hostname) === host)
+    );
+  };
+  const seen = new Set(),
+    broken = [];
+  let unreached = 0;
+  for (const l of linked) {
+    const u = url(l.url);
+    if (!u || bare(u.hostname) !== host || seen.has(pathOf(u))) continue;
+    seen.add(pathOf(u));
+    const r = redirects.get(pathOf(u)),
+      status = errors.get(pathOf(u))?.status;
+    const why =
+      r && r.to == null
+        ? "redirects in a loop"
+        : r && toHome(r)
+          ? "redirects to the home page"
+          : status === 404 || status === 410
+            ? `returns ${status}`
+            : null;
+    const n = l.links,
+      from =
+        n == null
+          ? "linked from other sites"
+          : `${n.toLocaleString("en-US")} link${n === 1 ? "" : "s"} from other sites`;
+    if (why) broken.push({ url: l.url, links: n ?? 0, detail: `${why} · ${from} (${l.source})` });
+    else if (!r && !pages.has(pathOf(u)) && !errors.has(pathOf(u))) unreached++;
+  }
+  broken.sort((a, b) => b.links - a.links);
+  const findings = broken.length
+    ? [
+        {
+          id: "I-001",
+          check: "linked-page-broken",
+          rule: "URL-07",
+          severity: "medium",
+          category: "URLs & canonicals",
+          title: `${broken.length} page(s) other sites link to are broken or redirect to the home page`,
+          what: `${broken.length === 1 ? "Found on" : `${broken.length} cases, for example`} \`${broken[0].url.replace(/`/g, "%60")}\` (${broken[0].detail}).`,
+          why: "Other sites link to these pages, but they now return 404 or 410, redirect in a loop, or redirect to the home page, which Google may treat as a soft 404. Visitors who follow those links hit a dead end, and what the links brought the site is lost.",
+          fix: "Redirect each one with a 301 to the closest live page: the page that replaced it, or its section, never just the home page. If the content is gone for good and nothing comes close, keep the 404 or 410 and ask the linking sites to update the link (Search Console's Links report lists them).",
+          count: broken.length,
+          evidence: broken.slice(0, 100).map(b => ({ url: b.url, detail: b.detail })),
+          source: "links-import",
+          status: "open",
+        },
+      ]
+    : [];
+  return { findings, unreached };
+}
+
 function main(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i++)
@@ -233,11 +316,37 @@ function main(argv) {
     bingPages: Array.isArray(keys?.bing?.backlinks?.pages) ? keys.bing.backlinks.pages.length : null,
   };
   const previous = str("previous") ? readJson(args.previous, "there was nothing to compare with") : null;
+  // Checked against the crawl's data only; nothing is fetched.
+  let findings = [];
+  const crawl = str("crawl")
+    ? readJson(args.crawl, "the pages other sites link to weren't checked against the crawl")
+    : null;
+  if (crawl && !Array.isArray(crawl.pages))
+    notes.push(
+      `${args.crawl} isn't the crawler's seo-crawl.json, so the pages other sites link to weren't checked against it.`,
+    );
+  else if (crawl) {
+    const bing = Array.isArray(keys?.bing?.backlinks?.pages)
+      ? keys.bing.backlinks.pages.filter(obj).map(p => ({ url: p.url, links: p.count ?? null, source: "Bing" }))
+      : [];
+    const checked = brokenLinked(
+      [...(links?.pages || []).map(p => ({ ...p, source: "Search Console" })), ...bing],
+      crawl,
+      site,
+    );
+    findings = checked.findings;
+    const n = checked.unreached;
+    if (n)
+      notes.push(
+        `${n} of the pages other sites link to ${n === 1 ? "wasn't" : "weren't"} reached by the crawl, so whether ${n === 1 ? "it still works" : "they still work"} wasn't checked. List them in a file, one per line, and pass it to seo-crawl.mjs with --urls: it tests each one.`,
+      );
+  }
   const result = {
     links,
     linkSummary,
     anchorMix: links?.texts.length ? anchorMix(links.texts, brand) : null,
     linksChange: linksChange(obj(previous?.linkSummary), linkSummary),
+    findings,
     notes,
   };
 
@@ -246,7 +355,7 @@ function main(argv) {
   writeFileSync(out, JSON.stringify(result, null, 2));
   const c = result.linksChange;
   console.log(
-    `links-import: ${links ? `${links.sites.length} linking sites, ${links.pages.length} linked pages, ${links.texts.length} link texts` : "no Search Console export"}${c ? ` · ${c.what} dropped ${c.before} → ${c.after}` : ""} · wrote ${out}`,
+    `links-import: ${links ? `${links.sites.length} linking sites, ${links.pages.length} linked pages, ${links.texts.length} link texts` : "no Search Console export"}${c ? ` · ${c.what} dropped ${c.before} → ${c.after}` : ""}${findings.length ? ` · ${findings[0].count} linked page(s) broken` : ""} · wrote ${out}`,
   );
   return 0;
 }

@@ -38,6 +38,7 @@ import { proxyNote } from "./lib/proxy.mjs";
   const n = proxyNote();
   if (n) console.error("note: " + n);
 } // once, before any request
+import { createHash } from "node:crypto";
 
 const VERSION = "2.0.0";
 const UA = "seo-supervisor-crawler/" + VERSION;
@@ -3603,6 +3604,22 @@ for (const p of htmlPages) {
     t = flat(p.title);
   if (t.length >= 20 && flat(p.description).startsWith(t.slice(0, Math.ceil(t.length * 0.8))))
     add("desc-starts-with-title", p.finalUrl, `“${p.description.slice(0, 80)}”`);
+}
+
+// Kept for seo-diff.mjs. A redirect that never ends (a loop, or more than 10 hops) has no target.
+{
+  const body = robots ? robotsRes.body : null,
+    met = all.filter(p => p.chain?.length > 1).sort((a, b) => (a.url < b.url ? -1 : 1));
+  extra.robotsTxt = {
+    status: robotsRes.status,
+    hash: body == null ? null : createHash("sha256").update(body).digest("hex"),
+    text: body?.slice(0, 50 * 1024) ?? null,
+  };
+  extra.redirects = met
+    .slice(0, 500)
+    .map(p => ({ from: p.url, to: p.error === "too many redirects" ? null : p.finalUrl, status: p.chain[0].status }));
+  if (met.length > 500)
+    notes.push(`The crawl met ${met.length} redirects; the first 500 are kept for the next audit's comparison.`);
 }
 
 // E-E-A-T signals for the trust view, never findings or scored; last, so the security findings are in. HTTPS counts

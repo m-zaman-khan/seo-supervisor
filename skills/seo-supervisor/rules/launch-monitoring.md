@@ -30,7 +30,8 @@
 
 ### LAUNCH-05 · Watch Search Console every week · medium
 - **Pages report:** "Crawled, currently not indexed" on templated pages usually means thin or duplicate content (CONTENT-04/05).
-- 404s that have backlinks get redirects.
+- 404s that have backlinks get redirects. `scripts/links-import.mjs --crawl seo-audit/seo-crawl.json` checks Search Console's Top linked pages and Bing's linked pages against the crawl: one that returns 404 or 410, redirects in a loop, or redirects to the home page is `linked-page-broken` (URL-07).
+- **Since last audit:** besides the pages themselves, `seo-diff.mjs` compares robots.txt (`robots-changed`, with the rules that went and came), sitemap listing (`left-sitemap`, `joined-sitemap`), internal links in (`lost-internal-links`: fell by half and by at least 5) and the redirects the crawl met (`redirect-changed`, `redirect-added`, `redirect-removed`), each only when both crawls recorded it.
 - Known backlinks still link (`backlinks-gone`, `scripts/backlinks.mjs`, after a redesign or move). For each gone one, ask the site to restore or update the link. If it pointed at a page that moved, 301 the old address to the closest live page.
 - Core Web Vitals and enhancement reports.
 - Manual actions and security issues.

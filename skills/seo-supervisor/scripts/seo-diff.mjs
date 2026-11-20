@@ -56,6 +56,67 @@ const SPEED = [
   ],
 ];
 
+// Each rule is tagged with its group's user agents, so a rule moving between crawlers shows. As in the crawler, a
+// User-agent line after a rule starts a new group.
+function robotsLines(text) {
+  let agents = [],
+    ruled = true;
+  const out = [];
+  for (const raw of (text || "").split(/\r?\n/)) {
+    const line = raw.replace(/#.*/, "").trim(),
+      key = line.split(":")[0].trim().toLowerCase();
+    if (!line) continue;
+    if (key === "user-agent") {
+      if (ruled) agents = [];
+      ruled = false;
+      agents.push(line.slice(line.indexOf(":") + 1).trim());
+      continue;
+    }
+    if (key === "allow" || key === "disallow") {
+      ruled = true;
+      out.push(`${line} (${agents.join(", ") || "no user agent"})`);
+    } else out.push(line);
+  }
+  return out;
+}
+// Compares the first 50 KB the crawl keeps; a change past that (rare: Google reads 500 KiB) changes only the hash.
+function robotsChange(o, n) {
+  if (o.status === n.status && o.hash === n.hash) return null;
+  const was = robotsLines(o.text),
+    now = robotsLines(n.text);
+  const lines = [
+    ...was.filter(l => !now.includes(l)).map(l => `− ${l}`),
+    ...now.filter(l => !was.includes(l)).map(l => `+ ${l}`),
+  ];
+  if (o.status === n.status && !lines.length) return null; // comments, spacing or order only
+  const detail = [
+    o.status !== n.status && `status ${o.status} → ${n.status}`,
+    lines.length && lines.slice(0, 8).join(" · ") + (lines.length > 8 ? ` · and ${lines.length - 8} more` : ""),
+  ]
+    .filter(Boolean)
+    .join("; ");
+  return {
+    path: "/robots.txt",
+    kind: "robots-changed",
+    before: `status ${o.status}`,
+    after: `status ${n.status}`,
+    detail,
+  };
+}
+const permanent = s => s === 301 || s === 308;
+// A redirect's target by path when it stays on the same host, in full when it leaves it; null when it never ends.
+const target = r => {
+  if (r.to == null) return null;
+  try {
+    const t = new URL(r.to),
+      f = new URL(r.from);
+    return t.origin === f.origin ? t.pathname + t.search : t.href;
+  } catch {
+    return r.to;
+  }
+};
+const redirectText = r => (target(r) == null ? "a redirect loop" : `${r.status} to ${target(r)}`);
+
 export function diffCrawls(oldReport, newReport) {
   // Working pages plus the crawl's error records, so a page that now fails is a status change, not "gone".
   const index = r => new Map([...(r.pages || []), ...(r.errors || [])].map(p => [pathOf(p.url), p]));
@@ -65,6 +126,14 @@ export function diffCrawls(oldReport, newReport) {
     improvements = [],
     changed = [],
     compared = new Set();
+  // Sitemap listing only when both crawls read a sitemap: one that failed this time is sitemap-missing, not every page
+  // in it leaving.
+  const sitemaps = [oldReport, newReport].every(r => (r.pages || []).some(p => p.inSitemap));
+  if (sitemaps) compared.add("sitemap");
+  const hasRedirects = Array.isArray(oldReport.redirects) && Array.isArray(newReport.redirects);
+  const redirectsOf = r => new Map((r.redirects || []).map(x => [pathOf(x.from), x]));
+  const wasRedirect = redirectsOf(oldReport),
+    nowRedirect = hasRedirects ? redirectsOf(newReport) : new Map();
   for (const [path, o] of before) {
     const n = after.get(path);
     if (!n) continue;
@@ -115,6 +184,14 @@ export function diffCrawls(oldReport, newReport) {
       change(regressions, "content-shrunk", o.words, n.words);
     if (both("words") && n.words - o.words >= 100 && n.words > o.words * 2)
       change(changed, "content-grew", o.words, n.words);
+    // Noindex pages and pages canonical elsewhere belong out of the sitemap; their own change kind says why.
+    if (sitemaps && both("inSitemap") && !n.noindex && (!nc || nc === path)) {
+      if (o.inSitemap && !n.inSitemap) change(regressions, "left-sitemap", "listed", "not listed");
+      if (!o.inSitemap && n.inSitemap) change(improvements, "joined-sitemap", "not listed", "listed");
+    }
+    if (both("linksIn")) compared.add("links");
+    if (both("linksIn") && o.linksIn - n.linksIn >= 5 && n.linksIn * 2 <= o.linksIn)
+      change(regressions, "lost-internal-links", o.linksIn, n.linksIn);
     // Field names only, per type both crawls have: prices and dates change every crawl.
     if (both("schemaProps")) {
       compared.add("schemaProps");
@@ -140,6 +217,44 @@ export function diffCrawls(oldReport, newReport) {
             after: now.join(", "),
           });
       }
+    }
+  }
+  if (oldReport.robotsTxt && newReport.robotsTxt) {
+    compared.add("robots");
+    const c = robotsChange(oldReport.robotsTxt, newReport.robotsTxt);
+    if (c) changed.push(c);
+  }
+  if (hasRedirects) {
+    compared.add("redirects");
+    for (const [path, n] of nowRedirect) {
+      const o = wasRedirect.get(path),
+        was = before.get(path);
+      // A new target or a loop is a regression; the same target made permanent is an improvement, made temporary a
+      // regression.
+      if (o && (target(o) !== target(n) || o.status !== n.status)) {
+        const moved = target(o) !== target(n),
+          p0 = permanent(o.status),
+          p1 = permanent(n.status);
+        (moved || (p0 && !p1) ? regressions : p1 && !p0 ? improvements : changed).push({
+          path,
+          kind: "redirect-changed",
+          before: redirectText(o),
+          after: redirectText(n),
+        });
+      }
+      // Only a URL the last crawl had as a page or an error: one first met this time isn't a new redirect.
+      if (!o && was) changed.push({ path, kind: "redirect-added", before: was.status, after: redirectText(n) });
+    }
+    // Only a URL this crawl reached: one no longer linked isn't a removed redirect. Ending in an error is a regression.
+    for (const [path, o] of wasRedirect) {
+      const now = after.get(path);
+      if (now && !nowRedirect.has(path))
+        (ok(now.status) ? changed : regressions).push({
+          path,
+          kind: "redirect-removed",
+          before: redirectText(o),
+          after: now.status,
+        });
     }
   }
   for (const [source, read, judge, fmt] of SPEED) {
@@ -170,7 +285,7 @@ export function diffCrawls(oldReport, newReport) {
       .filter(([p, n]) => !before.has(p) && ok(n.status))
       .map(([p]) => p)
       .sort(),
-    removed: [...before.keys()].filter(p => !after.has(p)).sort(),
+    removed: [...before.keys()].filter(p => !after.has(p) && !nowRedirect.has(p)).sort(), // a page that now redirects is redirect-added
   };
 }
 

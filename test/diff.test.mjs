@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { diffCrawls } from "../skills/seo-supervisor/scripts/seo-diff.mjs";
 import { serve } from "./serve.mjs";
 import { ROOT, SKILL, SCRIPTS, node, tmp } from "./helpers.mjs";
@@ -355,6 +356,280 @@ test("the crawler records each schema type's top-level fields, merged across blo
     diffCrawls(a, b).regressions.map(c => c.detail),
     ["Product lost aggregateRating"],
     "the price changed, the fields didn't",
+  );
+});
+
+test("robots.txt, sitemap membership, internal links and redirects are compared only when both crawls have them", () => {
+  const P = (path, extra = {}) => ({
+    url: `https://e.com${path}`,
+    status: 200,
+    noindex: false,
+    canonical: `https://e.com${path}`,
+    title: path,
+    h1: 1,
+    schema: [],
+    inSitemap: true,
+    linksIn: 20,
+    ...extra,
+  });
+  const robots = text => ({ status: 200, hash: text, text }); // the text stands in for its hash
+  const R = (origin, from, to, status = 301) => ({
+    from: origin + from,
+    to: to && (/^https?:/.test(to) ? to : origin + to),
+    status,
+  });
+  const L = "http://127.0.0.1:3000",
+    E = "https://e.com";
+  const old = {
+    robotsTxt: robots("User-agent: *\nDisallow: /private/\n\nUser-agent: GPTBot\nDisallow: /\n"),
+    pages: [
+      P("/"),
+      P("/a/"),
+      P("/b/", { inSitemap: false }),
+      P("/c/"),
+      P("/d/", { linksIn: 8 }),
+      P("/e/"),
+      P("/f/", { linksIn: 20 }),
+      P("/g/"),
+    ],
+    redirects: [
+      R(L, "/old/", "/a/"),
+      R(L, "/temp/", "/b/", 302),
+      R(L, "/gone/", "/c/"),
+      R(L, "/loop/", "/x/"),
+      R(L, "/moved/", "/f/"),
+      R(L, "/h/", "/a/"),
+    ],
+  };
+  const now = {
+    // A comment and the rules swapped between the two groups: only the rules show, each with its user agents.
+    robotsTxt: robots("# rules\nUser-agent: *\nDisallow: /\n\nUser-agent: GPTBot\nDisallow: /private/\n"),
+    pages: [
+      P("/"),
+      P("/a/", { inSitemap: false }),
+      P("/b/"),
+      P("/c/", { inSitemap: false, noindex: true }),
+      P("/d/", { linksIn: 4 }),
+      P("/e/", { linksIn: 3 }),
+      P("/f/", { linksIn: 11 }),
+      P("/h/"),
+    ],
+    errors: [{ url: `${E}/gone/`, status: 404 }],
+    redirects: [
+      R(E, "/old/", "/a/"),
+      R(E, "/temp/", "/b/"),
+      R(E, "/loop/", null),
+      R(E, "/moved/", "https://other.example/b/"),
+      R(E, "/g/", "/a/"),
+      R(E, "/new-link/", "/a/"),
+    ],
+  };
+  const d = diffCrawls(old, now);
+  assert.deepEqual(
+    kinds(d.regressions),
+    [
+      "/a/ left-sitemap",
+      "/c/ noindex-added",
+      "/e/ lost-internal-links",
+      "/gone/ redirect-removed",
+      "/loop/ redirect-changed",
+      "/moved/ redirect-changed",
+    ],
+    "/c/ left the sitemap because it's noindex now; /d/ lost only 4 links, /f/ less than half",
+  );
+  assert.deepEqual(
+    kinds(d.improvements),
+    ["/b/ joined-sitemap", "/temp/ redirect-changed"],
+    "a temporary redirect made permanent",
+  );
+  assert.deepEqual(
+    kinds(d.changed),
+    ["/g/ redirect-added", "/h/ redirect-removed", "/robots.txt robots-changed"],
+    "/new-link/ wasn't a page last time",
+  );
+  const at = (path, kind) =>
+    [...d.regressions, ...d.improvements, ...d.changed].find(c => c.path === path && c.kind === kind);
+  assert.deepEqual(at("/robots.txt", "robots-changed"), {
+    path: "/robots.txt",
+    kind: "robots-changed",
+    before: "status 200",
+    after: "status 200",
+    detail: "− Disallow: /private/ (*) · − Disallow: / (GPTBot) · + Disallow: / (*) · + Disallow: /private/ (GPTBot)",
+  });
+  assert.deepEqual(
+    [at("/loop/", "redirect-changed").before, at("/loop/", "redirect-changed").after],
+    ["301 to /x/", "a redirect loop"],
+  );
+  assert.deepEqual(
+    [at("/moved/", "redirect-changed").before, at("/moved/", "redirect-changed").after],
+    ["301 to /f/", "301 to https://other.example/b/"],
+    "matched by path; another host is shown in full",
+  );
+  assert.deepEqual([at("/g/", "redirect-added").before, at("/g/", "redirect-added").after], [200, "301 to /a/"]);
+  assert.deepEqual(
+    [at("/gone/", "redirect-removed").before, at("/gone/", "redirect-removed").after],
+    ["301 to /c/", 404],
+  );
+  assert.deepEqual([at("/e/", "lost-internal-links").before, at("/e/", "lost-internal-links").after], [20, 3]);
+  assert.deepEqual(d.removed, [], "/g/ redirects now: it isn't gone");
+  for (const k of ["robots", "sitemap", "links", "redirects"]) assert.ok(d.compared.includes(k), k);
+
+  // A crawl from an older version has none of these fields: nothing new is compared, and /g/ is gone as before.
+  const older = { pages: old.pages.map(({ inSitemap, linksIn, ...p }) => p) };
+  const o = diffCrawls(older, now);
+  assert.deepEqual(kinds([...o.regressions, ...o.improvements, ...o.changed]), ["/c/ noindex-added"]);
+  assert.deepEqual(o.removed, ["/g/"]);
+  for (const k of ["robots", "sitemap", "links", "redirects"]) assert.ok(!o.compared.includes(k), k);
+  // A sitemap that couldn't be read this time is sitemap-missing, not every page leaving it. Comments alone aren't a
+  // change.
+  const noSitemap = diffCrawls(old, {
+    ...old,
+    robotsTxt: robots("User-agent: *   # all\nDisallow: /private/\nUser-agent: GPTBot\nDisallow: /"),
+    pages: old.pages.map(p => ({ ...p, inSitemap: false })),
+  });
+  assert.deepEqual([...noSitemap.regressions, ...noSitemap.improvements, ...noSitemap.changed], []);
+  assert.ok(!noSitemap.compared.includes("sitemap"));
+  const down = diffCrawls(old, { ...old, robotsTxt: { status: 503, hash: null, text: null } });
+  assert.deepEqual(
+    down.changed.map(c => [c.kind, c.before, c.after, c.detail]),
+    [
+      [
+        "robots-changed",
+        "status 200",
+        "status 503",
+        "status 200 → 503; − Disallow: /private/ (*) · − Disallow: / (GPTBot)",
+      ],
+    ],
+  );
+});
+
+test("the crawler records robots.txt, the redirects it met, and each page's internal links and sitemap listing", async () => {
+  const dir = tmp(),
+    rules = "User-agent: *\nDisallow: /private/\n# " + "x".repeat(60 * 1024) + "\n";
+  mkdirSync(join(dir, "a"));
+  writeFileSync(
+    join(dir, "index.html"),
+    `<!doctype html><html><head><title>Home</title></head><body><h1>Home</h1><a href="/a">A</a> <a href="/a/">A again</a> <a href="/loop/">Loop</a></body></html>`,
+  );
+  writeFileSync(
+    join(dir, "a", "index.html"),
+    `<!doctype html><html><head><title>A</title></head><body><h1>A</h1><a href="/">Home</a></body></html>`,
+  );
+  const site = await serve(dir, {
+    before: (req, res) => {
+      const origin = `http://${req.headers.host}`;
+      if (req.url === "/robots.txt") {
+        res.writeHead(200, { "Content-Type": "text/plain" }).end(rules + `Sitemap: ${origin}/sitemap.xml\n`);
+        return true;
+      }
+      if (req.url === "/sitemap.xml") {
+        res
+          .writeHead(200, { "Content-Type": "application/xml" })
+          .end(
+            `<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${origin}/a/</loc></url></urlset>`,
+          );
+        return true;
+      }
+      if (req.url.startsWith("/loop")) {
+        res.writeHead(302, { Location: req.url === "/loop/" ? "/loop2/" : "/loop/" }).end();
+        return true;
+      }
+    },
+  });
+  const out = join(dir, "crawl.json");
+  try {
+    await node([join(SCRIPTS, "seo-crawl.mjs"), "--url", site.url, "--out", out]);
+  } finally {
+    await site.close();
+  }
+  const r = read(out),
+    body = rules + `Sitemap: ${site.url}/sitemap.xml\n`;
+  assert.deepEqual(
+    r.robotsTxt,
+    { status: 200, hash: createHash("sha256").update(body).digest("hex"), text: body.slice(0, 50 * 1024) },
+    "the text is cut at 50 KB, the hash covers all of it",
+  );
+  assert.deepEqual(
+    r.redirects,
+    [
+      { from: `${site.url}/a`, to: `${site.url}/a/`, status: 301 },
+      { from: `${site.url}/loop/`, to: null, status: 302 },
+    ],
+    "a redirect that never ends has no target",
+  );
+  const page = path => r.pages.find(p => new URL(p.url).pathname === path);
+  assert.deepEqual([page("/a/").inSitemap, page("/a/").linksIn], [true, 2]);
+  assert.deepEqual([page("/").inSitemap, page("/").linksIn], [false, 1]);
+  const same = diffCrawls(r, r);
+  assert.deepEqual([...same.regressions, ...same.improvements, ...same.changed], []);
+  for (const k of ["robots", "sitemap", "links", "redirects"]) assert.ok(same.compared.includes(k), k);
+});
+
+test("robots.txt, sitemap, link and redirect changes show in Since last audit with plain labels, escaped", async () => {
+  const diff = {
+    since: "2026-10-01T09:00:00.000Z",
+    added: [],
+    removed: [],
+    compared: ["robots", "sitemap", "links", "redirects"],
+    regressions: [
+      { path: "/a/", kind: "left-sitemap", before: "listed", after: "not listed" },
+      { path: "/e/", kind: "lost-internal-links", before: 20, after: 3 },
+      { path: "/loop/", kind: "redirect-changed", before: "301 to /x/", after: "a redirect loop" },
+    ],
+    improvements: [{ path: "/b/", kind: "joined-sitemap", before: "not listed", after: "listed" }],
+    changed: [
+      {
+        path: "/robots.txt",
+        kind: "robots-changed",
+        before: "status 200",
+        after: "status 200",
+        detail: "+ Disallow: /*.pdf$ (*) · + Disallow: /<img src=x onerror=alert(1)> (*)",
+      },
+      { path: "/g/", kind: "redirect-added", before: 200, after: "301 to /a/" },
+      { path: "/h/", kind: "redirect-removed", before: "301 to /a/", after: 200 },
+    ],
+  };
+  const { html, md } = await render(diff);
+  for (const text of [
+    "Left the sitemap: listed → not listed",
+    "Fewer internal links: 20 → 3",
+    "Redirect changed: 301 to /x/ → a redirect loop",
+    "Joined the sitemap: not listed → listed",
+    "Now redirects: 200 → 301 to /a/",
+    "Redirect removed: 301 to /a/ → 200",
+  ]) {
+    assert.ok(html.includes(text), text);
+    assert.ok(md.includes(text), text);
+  }
+  assert.ok(
+    html.includes("robots.txt changed: + Disallow: /*.pdf$ (*) · + Disallow: /&lt;img src=x onerror=alert(1)&gt; (*)"),
+  );
+  assert.doesNotMatch(html, /<img src=x/);
+  assert.ok(
+    md.includes(
+      "robots.txt changed: + Disallow: /\\*.pdf$ (\\*) · + Disallow: /\\<img src=x onerror=alert(1)\\> (\\*)",
+    ),
+    "Markdown escapes robots.txt's rules",
+  );
+  const said = async compared =>
+    (
+      await render({
+        since: diff.since,
+        regressions: [],
+        improvements: [],
+        changed: [],
+        added: [],
+        removed: [],
+        compared,
+      })
+    ).html.match(/<h2>Nothing changed<\/h2><p>([^<]*)<\/p>/)[1];
+  assert.equal(
+    await said(["sitemap", "links", "redirects", "robots", "speed"]),
+    "Every page has the same status, indexing, canonical, title, H1, schema, sitemap listing and internal links as last time, no redirect changed, robots.txt has the same rules, and no page got much faster or slower.",
+  );
+  assert.equal(
+    await said(["redirects"]),
+    "Every page has the same status, indexing, canonical, title, H1 and schema as last time, and no redirect changed.",
   );
 });
 

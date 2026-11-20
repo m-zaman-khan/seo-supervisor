@@ -6,7 +6,7 @@ import { SKILL, SCRIPTS, node, tmp } from "./helpers.mjs";
 
 const CLI = join(SCRIPTS, "links-import.mjs");
 // Writes the exports into a links/ folder (files: null leaves the folder out), runs links-import and returns its JSON.
-async function importLinks(files, { brand, previous, keys } = {}) {
+async function importLinks(files, { brand, previous, keys, crawl } = {}) {
   const dir = tmp(),
     links = join(dir, "links"),
     out = join(dir, "links.json"),
@@ -23,6 +23,10 @@ async function importLinks(files, { brand, previous, keys } = {}) {
   if (keys) {
     writeFileSync(join(dir, "keys.json"), JSON.stringify(keys));
     args.push("--keys", join(dir, "keys.json"));
+  }
+  if (crawl) {
+    writeFileSync(join(dir, "crawl.json"), JSON.stringify(crawl));
+    args.push("--crawl", join(dir, "crawl.json"));
   }
   await node([CLI, "--dir", links, "--site", "https://www.acme.com", "--out", out, ...args]);
   return JSON.parse(readFileSync(out, "utf8"));
@@ -154,6 +158,75 @@ test("no export this time is not a drop", async () => {
   const textOnly = await importLinks({ "t.csv": "Linking text\nAcme\n" }, { previous });
   assert.equal(textOnly.linkSummary.sites, null, "no linking-sites export this time");
   assert.equal(textOnly.linksChange, null);
+});
+
+test("a page other sites link to that now returns 404 is linked-page-broken; a live one isn't", async () => {
+  const L = "http://127.0.0.1:3000";
+  const crawl = {
+    pages: [
+      { url: `${L}/`, status: 200 },
+      { url: `${L}/guide/`, status: 200 },
+    ],
+    errors: [
+      { url: `${L}/old-guide/`, status: 404 },
+      { url: `${L}/retired/`, status: 410 },
+      { url: `${L}/loop/`, status: 0 },
+      { url: `${L}/flaky/`, status: 500 },
+    ],
+    redirects: [
+      { from: `${L}/loop/`, to: null, status: 302 },
+      { from: `${L}/promo/`, to: `${L}/`, status: 301 },
+      { from: `${L}/tools`, to: `${L}/tools/`, status: 301 },
+    ],
+  };
+  const csv =
+    "Target page,Incoming links\n" +
+    ["/", "/guide/", "/old-guide/", "/loop/", "/promo/", "/tools", "/flaky/", "/never-crawled/"]
+      .map((p, i) => `https://www.acme.com${p},${90 - i * 10}`)
+      .join("\n") +
+    "\nhttps://blog.acme.com/old-guide/,5\n";
+  const keys = {
+    bing: {
+      backlinks: {
+        pages: [
+          { url: "https://www.acme.com/retired/", count: 3 },
+          { url: "https://www.acme.com/old-guide/", count: 70 },
+        ],
+        sample: [],
+      },
+    },
+  };
+  const r = await importLinks({ "p.csv": csv }, { crawl, keys });
+  assert.equal(r.findings.length, 1);
+  const f = r.findings[0];
+  assert.deepEqual(
+    [f.check, f.rule, f.severity, f.category, f.source, f.status, f.count],
+    ["linked-page-broken", "URL-07", "medium", "URLs & canonicals", "links-import", "open", 4],
+  );
+  assert.deepEqual(
+    f.evidence,
+    [
+      { url: "https://www.acme.com/old-guide/", detail: "returns 404 · 70 links from other sites (Search Console)" },
+      { url: "https://www.acme.com/loop/", detail: "redirects in a loop · 60 links from other sites (Search Console)" },
+      {
+        url: "https://www.acme.com/promo/",
+        detail: "redirects to the home page · 50 links from other sites (Search Console)",
+      },
+      { url: "https://www.acme.com/retired/", detail: "returns 410 · 3 links from other sites (Bing)" },
+    ],
+    "most links first; the home page, a live page, a slash redirect and a server error aren't findings",
+  );
+  assert.match(f.what, /^4 cases, for example `https:\/\/www\.acme\.com\/old-guide\/` \(returns 404/);
+  assert.match(f.fix, /301/);
+  assert.ok(
+    r.notes.some(n => /^1 of the pages other sites link to wasn't reached by the crawl/.test(n) && /--urls/.test(n)),
+    "/never-crawled/ isn't judged; blog.acme.com is another host",
+  );
+
+  const none = await importLinks({ "p.csv": csv });
+  assert.deepEqual(none.findings, [], "without --crawl there's nothing to cross-check");
+  const live = await importLinks({ "p.csv": "Target page,Incoming links\nhttps://www.acme.com/guide/,9\n" }, { crawl });
+  assert.deepEqual(live.findings, []);
 });
 
 // ---------- the report ----------
