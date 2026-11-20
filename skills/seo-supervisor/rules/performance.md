@@ -25,7 +25,7 @@
 - **Fix:** dynamic import per widget, with server rendering kept on for anything with text.
 
 ### PERF-03 · The LCP element loads first · medium
-- **Check:** crawler `lazy-lcp`, and `render-blocking` (low): a `<script src>` in the `<head>` without `async`, `defer` or `type="module"` (other script types, `nomodule`, scripts in comments and known consent managers such as Cookiebot, OneTrust, Usercentrics and Didomi don't count), or six or more stylesheets for every screen (no `media`, or `all`/`screen`; `<noscript>` fallbacks don't count). One or two stylesheets are normal and aren't flagged. Code: hero components.
+- **Check:** crawler `lazy-lcp`, and `render-blocking` (low): a `<script src>` in the `<head>` without `async`, `defer` or `type="module"` (other script types, `nomodule`, scripts in comments and known consent managers such as Cookiebot, OneTrust, Usercentrics and Didomi don't count), or six or more stylesheets for every screen (no `media`, or `all`/`screen`; `<noscript>` fallbacks don't count). One or two stylesheets are normal and aren't flagged. And `img-not-lazy` (low): from the 11th image on, images with no `loading` attribute (an explicit `eager`, script-loaded `data-src` images and images under 100 px wide aside). web.dev advises `loading="lazy"` outside the first screen; the 11th image is this skill's working level, as the crawler can't see the layout. Code: hero components.
 - **Pass:** the LCP is a real `<img>` (never a CSS background) or text. It's never lazy-loaded on any template, and gets `fetchpriority="high"` / framework `priority`. Exactly one preload per page. Fonts use `font-display: swap` and are self-hosted or preloaded.
 
 ### PERF-04 · Layout doesn't jump · medium
@@ -42,7 +42,7 @@
 - **Pass:** third-party domains kept to a minimum. Iframes load on interaction or below the fold and carry a descriptive `title`. Images are no more than about 2× their display size and use modern formats.
 
 ### PERF-08 · Images are a sensible weight and in a modern format · low
-- **Check:** the crawler sends a HEAD request for up to 50 same-origin images on indexable pages, with a browser's `Accept` header.
+- **Check:** the crawler sends a HEAD request for up to 50 same-origin images on indexable pages, with a browser's `Accept` header. It also flags `img-no-srcset` (low): images over 1,000 px wide by their `width` attribute with no `srcset`, outside `<picture>` and SVG aside. web.dev says desktop-size images can cost phones 2–4 times the data; 1,000 px is this skill's working level.
 - **Pass:** no image over 200 KB, and no JPEG or PNG over 100 KB where WebP or AVIF would serve. These are this skill's working thresholds, not Google's; Lighthouse's image audits measure the same thing as savings.
 - **Fix:** resize to the displayed size, compress, and serve WebP or AVIF through the framework's image component or the CDN.
 

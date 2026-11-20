@@ -7,6 +7,7 @@
 
 ### CONTENT-02 · Heading levels are never skipped · medium
 - **Check:** crawler `heading-skip`. Footer and sidebar headings count too.
+- **Number-only headings:** crawler `heading-only-number` (low): a heading that is only a number ("250+", "01", "99%"), years aside. WCAG 2.2 (SC 2.4.6) asks headings to describe their section; put the words in the heading, or style the number as text.
 - **Fix:** nest H2 → H3 in order and style with CSS. Card titles inside an H2 section use H3 or non-heading text. Each FAQ question is an H3 under the FAQ H2. A full outline is in `examples/snippets.md`.
 
 ### CONTENT-03 · The main keyword sits in the title, H1, first paragraph and one H2 · medium

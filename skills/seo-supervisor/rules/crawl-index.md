@@ -42,6 +42,7 @@ Can search engines reach the pages, and are they allowed to index the right ones
 ### CRAWL-07 · No internal links to broken pages · high
 - **Check:** crawler `broken-internal-link`. Code: generated link blocks (related, next, breadcrumbs, footer).
 - **Fix:** fix or remove the link, and filter generated links through the set of live pages (LINK-04).
+- **Links to other sites:** only with `--outbound-links`, its own owner opt-in, since it visits other sites. Up to 100 distinct outside URLs, 4 at a time, HEAD then GET, 15 s each, and never a private or local address (checked on every redirect and at connect time). `outbound-broken` (low) is a 404 or 410. A refusal (403, 429), a server error or no answer is "couldn't check": it's in the notes and in `outboundLinks`, never counted as broken. Without the flag, Limits lists the outside links as not checked.
 - **Check (logs):** `log-scan.mjs --crawl seo-audit/seo-crawl.json` `bot-404s`: URLs the site itself links to (or lists in its sitemap) that search crawlers requested 5 or more times and got a 404. Other repeated 404s are only listed (`repeated404s`), and probe paths such as `/.env` or `/wp-*` are ignored. A 404 or 410 for pages gone for good is fine.
 
 ### CRAWL-08 · Redirects take one hop, and internal links skip them · medium

@@ -5,6 +5,10 @@
 - **Pass:** HTTPS only. `Strict-Transport-Security`, `Content-Security-Policy` (with `frame-ancestors`), `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`. No HTTP resources on HTTPS pages.
 - **Live check:** `--check-live` reads HSTS from the production origin itself (`no-hsts`), since a CDN often adds or strips it.
 - **Old TLS:** `--check-live` also tries a TLS 1.0 and a TLS 1.1 handshake with the production origin (`tls-old-versions`, low). RFC 8996 (2021) says neither may be used; turn both off at the server or CDN and keep TLS 1.2 and 1.3. A handshake that fails or times out counts as refused.
+- **Crawler, each low:**
+  - `cookie-flags`: a cookie in a `Set-Cookie` header on an HTML page without `HttpOnly` or `SameSite`, or without `Secure` on an HTTPS crawl (local dev servers leave it off). Cookies that scripts set (analytics, consent banners) aren't seen, a CSRF-token cookie may skip `HttpOnly` because a script must read it, and cookies being deleted are skipped.
+  - `hsts-short`: the home page's HSTS `max-age` is under 31536000 (a year, the minimum hstspreload.org asks for).
+  - `referrer-unsafe`: `Referrer-Policy: unsafe-url` in the header (the last valid value counts) or in `<meta name="referrer">`. The W3C spec calls it unsafe: it leaks full addresses from HTTPS pages to insecure sites.
 
 ### TRUST-02 · /.well-known/security.txt is published · low (high for security companies)
 - **Check:** crawler `security-txt`.

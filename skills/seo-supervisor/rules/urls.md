@@ -4,6 +4,7 @@
 - **Check:** crawler `url-format`. Code: route folders, slug generation.
 - **Pass:** lowercase words joined by hyphens, using the words people actually search (`dmarc-checker`, `ssl-certificate-checker`, not `tool-17` or `dmarc-v2`). No IDs, dates, file extensions or version numbers in slugs. Each content type has a fixed prefix from the profile's URL map. Slugs are permanent; tools, guides and posts get linked from forums and docs for years.
 - **Fix:** follow the profile's URL map. When a slug must change, 301 the old one (URL-07).
+- **Unencoded links:** crawler `url-unencoded` (low) flags links whose path or query holds a space or a non-ASCII letter (`/my page/`, `/café/`). Google's URL structure guide asks for non-ASCII characters to be percent-encoded (`/caf%C3%A9/`). A non-ASCII host name is fine, and so are spaces around the address.
 
 ### URL-02 · One trailing-slash style, with the other variant redirecting · high
 - **Check:** crawler `trailing-slash-mixed`, `slash-variant-no-redirect`, `slash-redirect-temporary`, `link-to-redirect`. Code: framework config (`trailingSlash` in Next.js), link helpers, canonical and sitemap builders.

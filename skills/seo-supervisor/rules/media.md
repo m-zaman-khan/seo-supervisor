@@ -18,10 +18,12 @@
 
 ### MEDIA-04 · Image sitemaps only where they help · low
 - Optional. Useful when images live on a CDN or are loaded in ways crawlers miss. Only `<image:loc>` is used; verify the CDN host in Search Console.
+- **Crawler:** `image-sitemap-tags` (low, under MAP-01): an `<image:image>` without `<image:loc>`, or over 1,000 images for one page.
 
 ### MEDIA-05 · Videos get indexed on watch pages · medium
 - **Check:** pages with video; robots rules for video files and thumbnails.
 - **Pass:** a video gets video results only on a page where it's the main content (a watch page). Embeds inside articles, products or categories generally don't. Video files and thumbnails aren't blocked by robots.txt, noindex or login, and use stable URLs (expiring CDN URLs break indexing). Thumbnails are at least 60×30.
+- **Video sitemaps:** crawler `video-sitemap-tags` (low, under MAP-01): a `<video:video>` without `<video:thumbnail_loc>`, `<video:title>`, a `<video:description>` of at most 2,048 characters, and either `<video:content_loc>` (preferred) or `<video:player_loc>`.
 
 ### MEDIA-06 · VideoObject is complete · high (on watch pages)
 - **Required:** `name`, `thumbnailUrl`, `uploadDate` (ISO 8601 with a timezone).

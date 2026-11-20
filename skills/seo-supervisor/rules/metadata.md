@@ -13,7 +13,7 @@
 - **Content scan:** `templated-desc` (medium) flags descriptions that are only the title, or end in a stock call to action, on 3+ items.
 
 ### META-03 · All metadata comes from one helper · medium
-- **Check:** crawler `title-brand-twice` (with `--brand`). Code: how pages set titles, canonicals, Open Graph and robots.
+- **Check:** crawler `title-brand-twice` (with `--brand`), and `duplicate-head-tags` (low): two or more meta descriptions, robots tags, viewports or `og:title` tags on one page. Repeated `og:image` tags are fine, as Open Graph reads them as a list (ogp.me). Without `--brand`, duplicate tags can fail META-03 but nothing passes it. Code: how pages set titles, canonicals, Open Graph and robots.
 - **Pass:** one helper sets the title, description, canonical, Open Graph, Twitter card and robots. The title template doesn't double the brand.
 - **Fix:** centralize it. When a page title already contains the brand, use an absolute title.
 

@@ -30,6 +30,9 @@ import { writingText, writingFeatures } from "./checks/writing.mjs";
 
 import { CHECKS as BUSINESS_CHECKS, checkBusinessType, detectBusinessType } from "./checks/business-type.mjs";
 
+import { CHECKS as TECH_CHECKS, cookieProblems } from "./checks/technical.mjs";
+import { CHECKS as OUTBOUND_CHECKS, checkOutbound } from "./checks/outbound.mjs";
+
 import { proxyNote } from "./lib/proxy.mjs";
 {
   const n = proxyNote();
@@ -1018,6 +1021,8 @@ Object.assign(CHECKS, AGENT_CHECKS);
 
 Object.assign(CHECKS, BUSINESS_CHECKS);
 
+Object.assign(CHECKS, TECH_CHECKS, OUTBOUND_CHECKS);
+
 const findings = new Map(); // key -> {evidence:[], count}
 function add(key, url, detail) {
   if (!CHECKS[key]) throw new Error("unknown check " + key);
@@ -1598,6 +1603,38 @@ function analyze(url, html, headers, xRobotsLines) {
         : mainHtml,
     );
 
+  // Links with a space or non-ASCII character in the path or query. A non-ASCII host is fine: browsers punycode it.
+  const rawPath = h => h.replace(/^(?:[a-z][\w+.-]*:)?\/\/[^/?#]*/i, "").split("#")[0];
+  rec.unencoded = [
+    ...new Set(
+      anchors
+        .map(a => a.href?.trim())
+        .filter(h => h && !/^(mailto|tel|javascript|sms|data):/i.test(h) && /[^\x21-\x7e]/.test(rawPath(h))),
+    ),
+  ];
+  // Wide images without srcset; one in a <picture> has its own sources, and SVG scales.
+  const realSrc = i => i.src && !/^data:/i.test(i.src);
+  rec.wideImgs = tagsOf(body.replace(/<picture\b[\s\S]*?<\/picture>/gi, " "), "img")
+    .filter(
+      i => realSrc(i) && parseInt(i.width) > 1000 && !i.srcset && !i["data-srcset"] && !/\.svg(?:[?#]|$)/i.test(i.src),
+    )
+    .map(i => `${i.src} (${parseInt(i.width)} px)`);
+  // Images from the 11th on with no loading attribute (an explicit eager is a choice), bar script-loaded and tiny ones.
+  rec.eagerLate = imgs
+    .slice(10)
+    .filter(i => realSrc(i) && !("loading" in i) && !i["data-src"] && !(parseInt(i.width) < 100))
+    .map(i => i.src);
+  rec.dupHead = ["description", "robots", "viewport", "og:title"]
+    .map(n => [n, metas.filter(m => (m.name || m.property || "").toLowerCase() === n).length])
+    .filter(([, c]) => c > 1)
+    .map(([n, c]) => `${c} × ${n}`);
+  rec.numberHeadings = headings
+    .filter(
+      h => /^[#№]?[+\-−]?[$€£¥]?\d[\d.,\s]*(?:[kmb%x×])?\+?\.?$/i.test(h.text) && !/^(1[5-9]|20)\d\d$/.test(h.text),
+    )
+    .map(h => `H${h.level} “${h.text}”`);
+  rec.referrerMeta = meta("referrer") ?? null;
+
   return rec;
 }
 
@@ -1777,9 +1814,9 @@ async function readSitemaps(urls, listed = true) {
     seen = new Set(),
     files = [];
   let cut = false;
-  const queue = urls.map(u => [u, listed]);
+  const queue = urls.map(u => [u, listed, null]); // [url, named, the sitemap index that lists it]
   while (queue.length && files.length < 60 && !cut) {
-    const [u, named] = queue.shift();
+    const [u, named, parent] = queue.shift();
     if (seen.has(u)) continue;
     seen.add(u);
     const r = await fetchSitemap(toCrawl(u)),
@@ -1810,9 +1847,11 @@ async function readSitemaps(urls, listed = true) {
       }
       continue;
     }
+    // Search Console reports an index listed in another index as an error; its sitemaps are still read here.
     if (/<sitemapindex\b/i.test(body)) {
+      if (parent) file.nestedIn = parent;
       for (const m of body.matchAll(/<sitemap\b[\s\S]*?<loc>\s*([\s\S]*?)\s*<\/loc>/gi))
-        queue.push([decode(m[1].trim()), true]);
+        queue.push([decode(m[1].trim()), true, u]);
       continue;
     }
     file.urls = 0;
@@ -1846,6 +1885,26 @@ async function readSitemaps(urls, listed = true) {
             t => !tagText(t === "news:name" || t === "news:language" ? pub : news, t),
           ),
         };
+      // Each <video:video> needs a thumbnail, title, description (2,048 characters at most) and a content or player
+      // URL; each <image:image> needs <image:loc>, and a page may list 1,000 images at most.
+      if (m[1].includes("<video:video"))
+        e.videos = [...m[1].matchAll(/<video:video\b[^>]*>([\s\S]*?)<\/video:video>/g)].map(([, v]) =>
+          [
+            ...["video:thumbnail_loc", "video:title", "video:description"]
+              .filter(t => !tagText(v, t))
+              .map(t => `no <${t}>`),
+            tagText(v, "video:description")?.length > 2048 && "a description over 2,048 characters",
+            !tagText(v, "video:content_loc") &&
+              !tagText(v, "video:player_loc") &&
+              "no <video:content_loc> or <video:player_loc>",
+          ].filter(Boolean),
+        );
+      if (m[1].includes("<image:image")) {
+        const imgs = [...m[1].matchAll(/<image:image\b[^>]*\/>|<image:image\b[^>]*>([\s\S]*?)<\/image:image>/g)];
+        e.images = { count: imgs.length, noLoc: imgs.filter(x => !tagText(x[1], "image:loc")).length };
+      }
+      // A page listed again in an image, video or news sitemap isn't a duplicate.
+      e.media = !!(e.news || e.videos || e.images);
       entries.push(e);
     }
   }
@@ -2099,6 +2158,7 @@ for (const f of sm.files) {
   if (f.invalid) add("sitemap-invalid", f.url, f.invalid);
   if (f.tooBig || f.urls > 50000)
     add("sitemap-too-big", f.url, f.tooBig ? "over 50 MB uncompressed" : `${f.urls.toLocaleString("en-US")} URLs`);
+  if (f.nestedIn) add("sitemap-index-nested", f.url, `listed in ${f.nestedIn}`);
 }
 if (!sm.entries.length && !findings.has("sitemap-invalid"))
   add(
@@ -2121,7 +2181,20 @@ if (SITE_ORIGIN && SITE_ORIGIN !== START_ORIGIN)
   notes.push(`Public origin ${SITE_ORIGIN} was mapped onto ${START_ORIGIN} for crawling.`);
 const smSet = new Map(); // crawl URL -> entry
 evalRules("MAP-02", "MAP-04");
+// Google asks to keep session IDs out of URLs: the common names and ASP.NET's (S(…)) path form.
+// https://developers.google.com/search/docs/crawling-indexing/url-structure
+const SESSION_ID =
+  /[;?&](?:jsessionid|phpsessid|sessionid|session_id|sessid|aspsessionid[a-z]*|cftoken)=[^&#;]*|\/\(S\([a-z0-9]+\)\)/i;
 for (const e of sm.entries) {
+  // A <loc> must be under 2,048 characters, and Google ignores #fragments. https://www.sitemaps.org/protocol.html
+  if (e.loc.length >= 2048)
+    add(
+      "sitemap-url-too-long",
+      e.sitemap,
+      `${e.loc.slice(0, 80)}… (${e.loc.length.toLocaleString("en-US")} characters)`,
+    );
+  const sid = SESSION_ID.exec(e.loc)?.[0];
+  if (sid || e.loc.includes("#")) add("sitemap-session-ids", e.loc, sid ? `session ID ${sid}` : "a #fragment");
   let o;
   try {
     o = new URL(e.loc).origin;
@@ -2151,7 +2224,42 @@ const realDay = s => {
 const validLastmod = s => W3C_DATE.test(s) && realDay(s);
 const bySitemap = new Map();
 for (const e of sm.entries) (bySitemap.get(e.sitemap) || bySitemap.set(e.sitemap, []).get(e.sitemap)).push(e);
+// The same URL twice in one file or in two regular sitemaps; a media or news entry for a listed page is fine.
+const plainIn = new Map(),
+  inFile = new Set(),
+  dupes = new Map(); // URL -> first regular file; "file URL"; file -> [[URL, other file]]
+for (const e of sm.entries) {
+  const key = `${e.sitemap} ${e.loc}`,
+    other = inFile.has(key) ? e.sitemap : !e.media && plainIn.get(e.loc);
+  inFile.add(key);
+  if (!e.media && !plainIn.has(e.loc)) plainIn.set(e.loc, e.sitemap);
+  if (other) (dupes.get(e.sitemap) || dupes.set(e.sitemap, []).get(e.sitemap)).push([e.loc, other]);
+}
+for (const [file, ds] of dupes)
+  add(
+    "sitemap-duplicate-urls",
+    file,
+    `${ds.length.toLocaleString("en-US")} URL(s) listed more than once, e.g. ${ds[0][0]} ${ds[0][1] === file ? "twice in this file" : `(also in ${ds[0][1]})`}`,
+  );
 for (const [file, es] of bySitemap) {
+  const videos = es.flatMap(e => (e.videos || []).map(missing => ({ loc: e.loc, missing }))),
+    badVideos = videos.filter(v => v.missing.length);
+  if (badVideos.length)
+    add(
+      "video-sitemap-tags",
+      file,
+      `${badVideos.length} of ${videos.length} videos, e.g. ${badVideos[0].loc}: ${badVideos[0].missing.join(", ")}`,
+    );
+  const pictured = es.filter(e => e.images),
+    badImages = pictured.filter(e => e.images.noLoc || e.images.count > 1000);
+  if (badImages.length) {
+    const { loc, images: i } = badImages[0];
+    add(
+      "image-sitemap-tags",
+      file,
+      `${badImages.length} of ${pictured.length} pages with images, e.g. ${loc}: ${[i.noLoc && `${i.noLoc} <image:image> without <image:loc>`, i.count > 1000 && `${i.count.toLocaleString("en-US")} images (1,000 at most)`].filter(Boolean).join(", ")}`,
+    );
+  }
   const dated = es.filter(e => e.lastmod),
     eg = list => `${list.length} of ${es.length} entries, e.g. ${list[0].loc}: ${list[0].lastmod}`;
   const invalid = dated.filter(e => !validLastmod(e.lastmod)),
@@ -3342,6 +3450,94 @@ extra.businessType = home?.html
       add,
     )
   : detectBusinessType([]);
+
+// On the pages the per-page checks read: unencoded links, wide images without srcset, images far down loaded at once,
+// repeated head tags and number-only headings.
+for (const p of htmlPages) {
+  if (p.clientOnly || !indexable(p)) continue;
+  const u = p.finalUrl;
+  if (p.unencoded.length)
+    add("url-unencoded", u, `${p.unencoded.length} link(s), e.g. ${p.unencoded.slice(0, 3).join(", ")}`);
+  if (p.wideImgs.length)
+    add("img-no-srcset", u, `${p.wideImgs.length} image(s) over 1,000 px wide, e.g. ${p.wideImgs[0]}`);
+  if (p.eagerLate.length)
+    add("img-not-lazy", u, `${p.eagerLate.length} image(s) from the 11th on, e.g. ${p.eagerLate[0]}`);
+  if (p.dupHead.length) add("duplicate-head-tags", u, p.dupHead.join(", "));
+  if (p.numberHeadings.length) add("heading-only-number", u, p.numberHeadings.slice(0, 3).join("; "));
+}
+// Security (TRUST-01): cookies in Set-Cookie headers on HTML pages, each name once (cookies scripts set aren't seen),
+// the home page's HSTS max-age (a year is the preload list's minimum), and Referrer-Policy: unsafe-url in the header
+// or the meta tag. In the header the last valid value wins.
+// https://hstspreload.org
+// https://www.w3.org/TR/referrer-policy/#parse-referrer-policy-from-header
+const cookieSeen = new Set();
+for (const p of htmlPages)
+  for (const c of p.headers.getSetCookie()) {
+    const name = c.split(";")[0].split("=")[0].trim();
+    if (cookieSeen.has(name)) continue;
+    cookieSeen.add(name);
+    const problems = cookieProblems(c, { https: p.finalUrl.startsWith("https:") });
+    if (problems.length) add("cookie-flags", p.finalUrl, `“${name}”: ${problems.join(", ")}`);
+  }
+const maxAge = /max-age\s*=\s*"?(\d+)/i.exec(home?.headers?.get("strict-transport-security") || "")?.[1];
+if (maxAge != null && +maxAge < 31536000) {
+  const d = Math.round(maxAge / 86400);
+  add(
+    "hsts-short",
+    home.finalUrl,
+    `max-age=${maxAge} (${maxAge < 86400 ? "under a day" : `${d} day${d === 1 ? "" : "s"}`})`,
+  );
+}
+const POLICIES = new Set([
+  "no-referrer",
+  "no-referrer-when-downgrade",
+  "same-origin",
+  "origin",
+  "strict-origin",
+  "origin-when-cross-origin",
+  "strict-origin-when-cross-origin",
+  "unsafe-url",
+]);
+const policyOf = v =>
+  (v || "")
+    .split(",")
+    .map(t => t.trim().toLowerCase())
+    .filter(t => POLICIES.has(t))
+    .at(-1);
+for (const p of htmlPages) {
+  const header = p.headers.get("referrer-policy");
+  const unsafe = [
+    policyOf(header) === "unsafe-url" && `header: ${header}`,
+    policyOf(p.referrerMeta) === "unsafe-url" && `meta: ${p.referrerMeta}`,
+  ].filter(Boolean);
+  if (unsafe.length) add("referrer-unsafe", p.finalUrl, unsafe.join(" · "));
+}
+// Other sites are visited only with --outbound-links, a separate opt-in.
+const OUTBOUND = !!args["outbound-links"];
+const selfHosts = new Set([START_ORIGIN, EXPECT_ORIGIN].map(o => bareHost(new URL(o).host)));
+const outbound = new Map(); // another site's URL -> the first page linking to it
+for (const p of htmlPages)
+  for (const a of p.anchors) {
+    const x = a.href && urlOr(a.href.trim(), p.base);
+    if (!x || !/^https?:$/.test(x.protocol) || selfHosts.has(bareHost(x.host))) continue;
+    x.hash = "";
+    if (!outbound.has(x.href)) outbound.set(x.href, p.finalUrl);
+  }
+if (OUTBOUND) {
+  const r = await checkOutbound([...outbound.keys()], { limit: 100 });
+  for (const b of r.broken) add("outbound-broken", b.url, `status ${b.status}, linked from ${outbound.get(b.url)}`);
+  extra.outboundLinks = { checked: Math.min(outbound.size, 100), ...r };
+  if (r.unreachable.length)
+    notes.push(
+      `${r.unreachable.length} link(s) to other sites couldn't be checked (the site turned the visit away, didn't answer, or isn't a public address), e.g. ${r.unreachable[0].url}: ${r.unreachable[0].reason}. They aren't counted as broken; outboundLinks in seo-crawl.json lists them.`,
+    );
+  if (outbound.size > 100) notes.push(`Links to other sites: the first 100 of ${outbound.size} were checked.`);
+} else if (outbound.size)
+  notChecked.push({
+    rule: "CRAWL-07",
+    area: "CRAWL-07 Links to other sites",
+    reason: `The pages link to ${outbound.size} address(es) on other sites, which weren't visited: that contacts other sites, so it needs the owner's own yes. With it, --outbound-links checks up to 100 of them, 4 at a time, for broken links.`,
+  });
 
 // ---------- what the crawler cannot check ----------
 // CRAWL-09 never passes here: a real Googlebot comes from Google's IP addresses, which no request from here can.
