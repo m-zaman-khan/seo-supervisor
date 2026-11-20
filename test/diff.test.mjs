@@ -540,6 +540,36 @@ test("internal links aren't compared when either crawl stopped at --max", () => 
   assert.deepEqual(kinds(diffCrawls(whole, { ...full, pages: [P("/b", 3)] }).regressions), ["/b lost-internal-links"]);
 });
 
+test("a crawl that stopped at --max lists no pages as gone, since it didn't reach them all", async () => {
+  const P = path => ({
+    url: `https://e.com${path}`,
+    status: 200,
+    noindex: false,
+    canonical: `https://e.com${path}`,
+    title: path,
+    h1: 1,
+    schema: [],
+  });
+  const full = { options: { max: 1000 }, stats: { fetched: 3, capped: false }, pages: [P("/"), P("/a"), P("/b")] };
+  const capped = { options: { max: 2 }, stats: { fetched: 2, capped: true }, pages: [P("/"), P("/a")] };
+  const d = diffCrawls(full, capped);
+  assert.deepEqual(d.removed, [], "/b wasn't reached, not gone");
+  assert.equal(d.removedUnknown, true, "the diff says it couldn't tell");
+  assert.deepEqual(
+    diffCrawls(full, { ...full, pages: [P("/"), P("/a")] }).removed,
+    ["/b"],
+    "a whole crawl still lists pages that are gone",
+  );
+  // The report says why no page is listed as gone.
+  const dir = tmp(),
+    data = JSON.parse(readFileSync(join(SKILL, "examples", "sample-audit.json"), "utf8"));
+  data.diff = { since: "2026-11-01T00:00:00Z", ...d };
+  writeFileSync(join(dir, "a.json"), JSON.stringify(data));
+  await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "r.html")]);
+  for (const f of ["r.html", "r.md"])
+    assert.match(readFileSync(join(dir, f), "utf8"), /stopped at its page limit \(--max\)/, f);
+});
+
 test("sitemap listing is compared only when both crawls read every sitemap file", () => {
   const P = (path, inSitemap) => ({
     url: `https://e.com${path}`,

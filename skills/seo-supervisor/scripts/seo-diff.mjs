@@ -321,10 +321,14 @@ export function diffCrawls(oldReport, newReport) {
       .map(([p]) => p)
       .sort(),
     // A page that now redirects is redirect-added; a URL that failed last time and isn't met now was never a page.
-    removed: [...before]
-      .filter(([p, o]) => ok(o.status) && !after.has(p) && !nowRedirect.has(p))
-      .map(([p]) => p)
-      .sort(),
+    // A crawl that stopped at --max didn't reach every page, so a page missing from it isn't known to be gone.
+    removed: capped(newReport)
+      ? []
+      : [...before]
+          .filter(([p, o]) => ok(o.status) && !after.has(p) && !nowRedirect.has(p))
+          .map(([p]) => p)
+          .sort(),
+    ...(capped(newReport) ? { removedUnknown: true } : {}),
   };
 }
 

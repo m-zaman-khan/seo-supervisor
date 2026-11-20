@@ -1297,8 +1297,9 @@ const sameFields = d => {
   ].filter(Boolean);
   return `${f.slice(0, -1).join(", ")} and ${f.at(-1)} as last time${also.length ? `, ${[...also.slice(0, -1), `and ${also.at(-1)}`].join(", ")}` : ""}`;
 };
+const REMOVED_UNKNOWN = "This crawl stopped at its page limit (--max), so pages it didn't reach aren't listed as gone.";
 const diffHtml = () => `<div class="limits">
-  <p class="quiet">Compared with the crawl of ${esc(fmtDate(diff.since))}. Pages are matched by path.</p>${googleUpdatesText() ? `\n  <p class="quiet">${googleUpdatesText(true)}</p>` : ""}${linksDiffHtml()}
+  <p class="quiet">Compared with the crawl of ${esc(fmtDate(diff.since))}. Pages are matched by path.${diff.removedUnknown === true ? ` ${REMOVED_UNKNOWN}` : ""}</p>${googleUpdatesText() ? `\n  <p class="quiet">${googleUpdatesText(true)}</p>` : ""}${linksDiffHtml()}
   ${diffSections(diff)
     .map(
       ([h, list]) =>
@@ -1721,6 +1722,7 @@ function markdown() {
     if (googleUpdatesText()) L.push(googleUpdatesText(), "");
     for (const [h, list] of diffSections(diff))
       L.push(`### ${h}`, "", ...list.map(c => `- ${mdCode(c.path)} ${mdText(diffText(c))}`), ""); // crawled titles and robots.txt rules, escaped
+    if (diff.removedUnknown === true) L.push(REMOVED_UNKNOWN, "");
     for (const [h, l] of [
       ["Pages added", diff.added],
       ["Pages gone", diff.removed],
