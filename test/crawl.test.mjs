@@ -986,6 +986,52 @@ const site = pages =>
 const file = (type, body) => ({ type, body: Buffer.from(body) });
 const pathOf = r => p => new URL(p.url).pathname;
 
+// Share tags: og:title, og:description and (unless `image` is false) og:image, then `more`.
+const og = (more = "", { image = true, desc = true } = {}) =>
+  `<meta property="og:title" content="Boiler repairs in Leeds">${desc ? '<meta property="og:description" content="Same-day boiler repairs.">' : ""}${image ? '<meta property="og:image" content="https://site.example/og.png">' : ""}${more}`;
+
+test("share previews: a share image without twitter:card, or with a card X doesn't define, is flagged; a page with every tag isn't", async () => {
+  const r = await crawlSite(
+    site({
+      "/": ["Boiler Repairs and Servicing in Leeds", og('<meta name="twitter:card" content="summary_large_image">')],
+      "/property/": ["About Our Leeds Engineers", og('<meta property="twitter:card" content="Summary">')],
+      "/no-card/": ["Radiator Bleeding and Repairs", og()],
+      "/no-image/": ["Hot Water Cylinder Fitting", og("", { image: false })],
+      "/invalid/": ["Bathroom Tap Replacement", og('<meta name="twitter:card" content="gallery">')],
+      "/meta-desc/": [
+        "Power Flushing Your Heating",
+        `<meta name="description" content="What a power flush does and when it helps.">${og('<meta name="twitter:card" content="summary_large_image">', { desc: false })}`,
+      ],
+      "/no-desc/": [
+        "Gas Safety Certificates",
+        og('<meta name="twitter:card" content="summary_large_image">', { desc: false }),
+      ],
+    }),
+  );
+  assert.deepEqual(
+    pathsOf(r, "twitter-card-missing"),
+    ["/no-card/"],
+    "a page with no share image gets only og-missing",
+  );
+  assert.deepEqual(
+    pathsOf(r, "twitter-card-invalid"),
+    ["/invalid/"],
+    "X reads property= too, and the case of a value isn't held against it",
+  );
+  assert.deepEqual(
+    pathsOf(r, "og-missing"),
+    ["/no-desc/", "/no-image/"],
+    "a meta description stands in for og:description",
+  );
+  const detail = (key, path) => findingOf(r, key).evidence.find(e => new URL(e.url).pathname === path).detail;
+  assert.equal(detail("og-missing", "/no-image/"), "og:image");
+  assert.equal(detail("og-missing", "/no-desc/"), "og:description");
+  assert.equal(detail("twitter-card-invalid", "/invalid/"), "“gallery”");
+  for (const key of ["twitter-card-missing", "twitter-card-invalid"])
+    assert.deepEqual([findingOf(r, key).rule, findingOf(r, key).severity], ["META-04", "low"], key);
+  assert.match(findingOf(r, "twitter-card-missing").fix, /summary_large_image/);
+});
+
 test("robots rules: none means noindex and nofollow, other crawlers' rules don't count, a nofollow page and noindex with a canonical elsewhere are flagged", async () => {
   const r = await crawlSite(
     site({
@@ -1136,6 +1182,9 @@ test("a missing llms.txt is a note, not a finding (it's optional); a well-formed
 test("the rule text matches the checks: short titles, and Book actions still in use", () => {
   const read = f => readFileSync(join(ROOT, "skills", "seo-supervisor", "rules", f), "utf8");
   assert.match(read("metadata.md"), /`title-short` \(flagged under 20 characters; aim for about 30–60\)/);
+  const meta04 = read("metadata.md").split("### META-04 ·")[1].split("\n### ")[0];
+  for (const key of ["og-missing", "twitter-card-missing", "twitter-card-invalid"])
+    assert.match(meta04.split("\n")[1], new RegExp("`" + key + "`"), `META-04's Check line names ${key}`);
   const sd = read("structured-data.md");
   assert.doesNotMatch(sd.split("**Gone:**")[1].split("\n>\n")[0], /Book/);
   assert.match(sd, /Book actions[^\n]*5 Nov 2025/);

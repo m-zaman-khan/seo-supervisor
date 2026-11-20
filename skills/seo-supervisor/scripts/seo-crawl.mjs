@@ -561,9 +561,9 @@ const CHECKS = {
   "og-missing": [
     "META-04",
     "low",
-    n => `${n} page(s) lack og:title or og:image`,
-    "Shared links on Slack, LinkedIn and X show a bare URL instead of a card.",
-    "Emit Open Graph and Twitter tags from the metadata helper, with a default image and per-page images for key pages.",
+    n => `${n} page(s) lack og:title, og:image or any description for shares`,
+    "Without og:title and og:image, shared links on Slack, LinkedIn and X show a bare URL instead of a card. Without og:description or a meta description, the card has no line of text under its title.",
+    "Emit Open Graph and Twitter tags from the metadata helper, with a default image and per-page images for key pages, and og:description from the page's meta description.",
   ],
   "og-image-broken": [
     "META-04",
@@ -578,6 +578,20 @@ const CHECKS = {
     n => `${n} page(s) don't declare their share image's size`,
     "Without og:image:width and og:image:height, Facebook and LinkedIn have to download the image before they can lay out the card, so the first share of a page often shows no image.",
     "Emit `og:image:width` and `og:image:height` next to og:image in the metadata helper.",
+  ],
+  "twitter-card-missing": [
+    "META-04",
+    "low",
+    n => `${n} page(s) have a share image but no twitter:card`,
+    "X shows a large image card only when the page asks for one with twitter:card. Without it, X shows at most a small card with a thumbnail, and only when og:type, og:title and og:description are all set.",
+    'Add `<meta name="twitter:card" content="summary_large_image">` next to og:image in the metadata helper. X takes the title, description and image from the Open Graph tags.',
+  ],
+  "twitter-card-invalid": [
+    "META-04",
+    "low",
+    n => `${n} page(s) have a twitter:card value X doesn't know`,
+    "X has four card types: summary, summary_large_image, app and player. Any other value, old ones such as gallery, photo and product included, names a card X can't show.",
+    "Set twitter:card to `summary_large_image` for pages with a share image, or `summary` for a small square one.",
   ],
   "og-image-small": [
     "MEDIA-03",
@@ -1563,7 +1577,11 @@ function analyze(url, html, headers, xRobotsLines) {
     ogTitle: meta("og:title") ?? null,
     ogImage: meta("og:image") ?? null,
     ogUrl: meta("og:url") ?? null,
+    ogDescription: meta("og:description") ?? null,
     ogImageSized: !!(meta("og:image:width") && meta("og:image:height")),
+    // X reads twitter: tags from name= and falls back to property=, and the last twitter:card on the page wins.
+    // From X's cards getting-started guide, archived 30 May 2025.
+    twitterCard: metas.findLast(m => (m.name || m.property || "").toLowerCase() === "twitter:card")?.content ?? null,
     doctype: /^\s*(?:<!--[\s\S]*?-->\s*)*<!doctype html/i.test(html.replace(/^\uFEFF/, "")),
     charset:
       metas.some(m => m.charset || /charset=/i.test(m.content || "")) ||
@@ -2703,9 +2721,21 @@ for (const p of htmlPages) {
       add("desc-length", u, `${p.description.length} chars`);
     (descMap.get(p.description) || descMap.set(p.description, []).get(p.description)).push(u);
   }
-  if (!p.ogTitle || !p.ogImage)
-    add("og-missing", u, [!p.ogTitle && "og:title", !p.ogImage && "og:image"].filter(Boolean).join(", "));
+  // og:description is optional (https://ogp.me), but X falls back only to it and LinkedIn requires it. None says
+  // whether the meta description stands in, so a missing one is flagged only when that's missing too.
+  const noOg = [
+    !p.ogTitle && "og:title",
+    !p.ogImage && "og:image",
+    !p.ogDescription && !p.description && "og:description",
+  ].filter(Boolean);
+  if (noOg.length) add("og-missing", u, noOg.join(", "));
+  // Without twitter:card, X shows at most the small summary card. A page with no share image gets og-missing instead.
+  // From X's cards markup guide, archived 30 May 2025; X has since taken its card docs down.
+  const card = p.twitterCard?.trim().toLowerCase();
+  if (card && !["summary", "summary_large_image", "app", "player"].includes(card))
+    add("twitter-card-invalid", u, `“${p.twitterCard}”`);
   if (p.ogImage) {
+    if (!card) add("twitter-card-missing", u);
     if (!p.ogImageSized) add("og-image-no-size", u);
     const src = urlOr(p.ogImage, p.base),
       c = src && clean(toCrawl(src.href));
