@@ -27,6 +27,7 @@ With no options it asks where to install and for which agents.
   --force           Replace a skill folder or command file that isn't SEO Supervisor's
   --with-lighthouse Also install the optional Lighthouse add-on (about 170 MB, in ~/.seo-supervisor/tools, not your project)
   --no-lighthouse   Don't ask about Lighthouse
+  --with-image-tools Also install the optional image add-on, sharp (about 20 MB, in ~/.seo-supervisor/tools), which scripts/images.mjs uses to convert images to WebP and AVIF
   --version         Print the version
 
 Agent keys: ${AGENTS.map(a => a.key).join(", ")}
@@ -50,6 +51,7 @@ for (let n = 0; n < argv.length; n++) {
     "--agents": "agents",
     "--uninstall": "uninstall",
     "--force": "force",
+    "--with-image-tools": "imageTools",
     "--yes": "yes",
     "-y": "yes",
     "--help": "help",
@@ -139,7 +141,7 @@ if (opts.uninstall) {
   console.log(removed ? "\nSEO Supervisor uninstalled." : `\nNothing to remove in the ${scope} scope.`);
   if (existsSync(TOOLS))
     console.log(
-      `Lighthouse stays in ${show(TOOLS)} (about 170 MB), shared by every install. To remove it too, delete that folder: ${TOOLS}`,
+      `The optional add-ons (Lighthouse, about 170 MB; sharp for images, about 20 MB) stay in ${show(TOOLS)}, shared by every install. To remove them too, delete that folder: ${TOOLS}`,
     );
   process.exit(0);
 }
@@ -227,7 +229,20 @@ for (const t of targetsFor(keys, scope, c)) {
   if (added.length) console.log(`commands ${added.join(" ")}  (${show(t.commands)})`);
 }
 
-// ---- optional Lighthouse add-on in TOOLS: a failure never fails the install, since the skill works without it ----
+// ---- optional add-ons in TOOLS: a failure never fails the install, since the skill works without them ----
+// Returns null on success, else the reason.
+function npmInstall(spec) {
+  const npm = c.env.SEO_SUPERVISOR_NPM || "npm",
+    args = ["install", "--prefix", TOOLS, spec, "--no-audit", "--no-fund"];
+  // A .js bin runs with this Node. On Windows npm is npm.cmd, which only starts through a shell. Only parts with spaces
+  // are quoted: cmd gives a quoted batch name found on PATH the wrong %~dp0, and npm.cmd then can't find npm.
+  const r = /\.[cm]?js$/i.test(npm)
+    ? spawnSync(process.execPath, [npm, ...args], { stdio: "inherit" })
+    : process.platform === "win32"
+      ? spawnSync([npm, ...args].map(a => (/\s/.test(a) ? `"${a}"` : a)).join(" "), { stdio: "inherit", shell: true })
+      : spawnSync(npm, args, { stdio: "inherit" });
+  return r.status === 0 ? null : r.error ? r.error.message : `npm exited with code ${r.status}`;
+}
 if (opts.lighthouse) {
   const [major, minor] = process.versions.node.split(".").map(Number);
   if (major < 22 || (major === 22 && minor < 19))
@@ -236,21 +251,24 @@ if (opts.lighthouse) {
     );
   else {
     console.log(`\nInstalling Lighthouse into ${show(TOOLS)} (about 170 MB, usually a minute or two)...`);
-    const npm = c.env.SEO_SUPERVISOR_NPM || "npm",
-      args = ["install", "--prefix", TOOLS, "lighthouse@13", "--no-audit", "--no-fund"];
-    // A .js bin runs with this Node. On Windows npm is npm.cmd, which only starts through a shell. Only parts with spaces
-    // are quoted: cmd gives a quoted batch name found on PATH the wrong %~dp0, and npm.cmd then can't find npm.
-    const r = /\.[cm]?js$/i.test(npm)
-      ? spawnSync(process.execPath, [npm, ...args], { stdio: "inherit" })
-      : process.platform === "win32"
-        ? spawnSync([npm, ...args].map(a => (/\s/.test(a) ? `"${a}"` : a)).join(" "), { stdio: "inherit", shell: true })
-        : spawnSync(npm, args, { stdio: "inherit" });
-    if (r.status === 0) console.log(`lighthouse ${show(TOOLS)}  (the crawler runs it with --outside --lighthouse)`);
+    const err = npmInstall("lighthouse@13");
+    if (!err) console.log(`lighthouse ${show(TOOLS)}  (the crawler runs it with --outside --lighthouse)`);
     else
       console.error(
-        `Lighthouse wasn't installed (${r.error ? r.error.message : `npm exited with code ${r.status}`}). The skill works without it; try again later with npx seo-supervisor --with-lighthouse, or npm i -g lighthouse.`,
+        `Lighthouse wasn't installed (${err}). The skill works without it; try again later with npx seo-supervisor --with-lighthouse, or npm i -g lighthouse.`,
       );
   }
+}
+// sharp is never prompted for: fix mode offers it when an audit finds heavy images. Each 0.x minor of sharp is a
+// breaking release, so 0.35 is pinned. It's about 1 MB plus an 18–20 MB prebuilt libvips.
+if (opts.imageTools) {
+  console.log(`\nInstalling sharp, the image add-on, into ${show(TOOLS)} (about 20 MB)...`);
+  const err = npmInstall("sharp@0.35");
+  if (!err) console.log(`sharp    ${show(TOOLS)}  (scripts/images.mjs converts images with it, only after your yes)`);
+  else
+    console.error(
+      `sharp wasn't installed (${err}). The skill works without it; try again later with npx seo-supervisor --with-image-tools.`,
+    );
 }
 
 const usesClaude = keys.includes("claude-code");

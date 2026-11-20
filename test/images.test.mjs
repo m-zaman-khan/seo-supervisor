@@ -1,0 +1,326 @@
+// Images (PERF-08): the crawl's image list with a rough saving, the report's table, and images.mjs's conversions.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { serve } from "./serve.mjs";
+import { SCRIPTS, node, tmp } from "./helpers.mjs";
+import { estSaving } from "../skills/seo-supervisor/scripts/images.mjs";
+
+const IMAGES = join(SCRIPTS, "images.mjs");
+const KB = 1024;
+// Just enough of each format's header to carry the pixel size, padded to the weight wanted.
+const pad = (b, n) => Buffer.concat([b, Buffer.alloc(n - b.length)]);
+const png = (w, h, n) => {
+  const b = Buffer.alloc(33);
+  Buffer.from("89504e470d0a1a0a", "hex").copy(b);
+  b.writeUInt32BE(13, 8);
+  b.write("IHDR", 12, "latin1");
+  b.writeUInt32BE(w, 16);
+  b.writeUInt32BE(h, 20);
+  return pad(b, n);
+};
+const jpeg = (w, h, n) => {
+  const app0 = Buffer.alloc(18),
+    sof = Buffer.alloc(19);
+  app0.writeUInt16BE(0xffe0, 0);
+  app0.writeUInt16BE(16, 2);
+  sof.writeUInt16BE(0xffc2, 0);
+  sof.writeUInt16BE(17, 2);
+  sof[4] = 8;
+  sof.writeUInt16BE(h, 5);
+  sof.writeUInt16BE(w, 7);
+  return pad(Buffer.concat([Buffer.from([0xff, 0xd8]), app0, sof]), n);
+};
+const webp = (w, h, n) => {
+  const b = Buffer.alloc(30);
+  b.write("RIFF", 0, "latin1");
+  b.write("WEBP", 8, "latin1");
+  b.write("VP8X", 12, "latin1");
+  b.writeUIntLE(w - 1, 24, 3);
+  b.writeUIntLE(h - 1, 27, 3);
+  return pad(b, n);
+};
+
+test("the rough saving: WebP's low end for JPEG and PNG, and resizing by pixels past the maximum width", () => {
+  assert.equal(estSaving({ bytes: 1000, width: 800, format: "jpeg" }), 250, "lossy WebP is 25–34% smaller than JPEG");
+  assert.equal(estSaving({ bytes: 1000, width: 800, format: "png" }), 260, "lossless WebP is 26% smaller than PNG");
+  assert.equal(estSaving({ bytes: 1000, width: 800, format: "webp" }), 0, "already modern");
+  assert.equal(estSaving({ bytes: 1000, width: null, format: "svg" }), 0);
+  assert.equal(
+    estSaving({ bytes: 1000, width: 3200, format: "webp" }),
+    750,
+    "half the width is a quarter of the pixels",
+  );
+  assert.equal(estSaving({ bytes: 1000, width: 3200, format: "jpeg" }, 3200), 250, "--max-width moves the limit");
+});
+
+let crawled;
+const imageSite = () =>
+  (crawled ||= (async () => {
+    const dir = tmp(),
+      out = join(tmp(), "crawl.json");
+    const page = imgs =>
+      `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Plumbers in Leeds who answer the phone</title></head><body><h1>Plumbers</h1><a href="/about/">About us</a>${imgs.map(s => `<img src="${s}" alt="" width="10" height="10">`).join("")}</body></html>`;
+    writeFileSync(join(dir, "index.html"), page(["/img/hero.jpg", "/img/logo.png", "/img/ok.webp"]));
+    mkdirSync(join(dir, "about"));
+    writeFileSync(join(dir, "about", "index.html"), page(["/img/hero.jpg"]));
+    writeFileSync(join(dir, "robots.txt"), "User-agent: *\nAllow: /\n");
+    const logo = png(800, 400, 150 * KB);
+    const site = await serve(dir, {
+      files: {
+        "/img/hero.jpg": { type: "image/jpeg", body: jpeg(2400, 1200, 300 * KB) },
+        "/img/logo.png": { type: "image/png", body: logo },
+        "/img/ok.webp": { type: "image/webp", body: webp(1000, 500, 50 * KB) },
+      },
+      // A server that honours the range: the full size comes from Content-Range.
+      before: (req, res) => {
+        if (req.url !== "/img/logo.png" || !req.headers.range) return false;
+        res
+          .writeHead(206, {
+            "Content-Type": "image/png",
+            "Content-Range": `bytes 0-65535/${logo.length}`,
+            "Content-Length": 65536,
+          })
+          .end(logo.subarray(0, 65536));
+        return true;
+      },
+    });
+    try {
+      await node([
+        join(SCRIPTS, "seo-crawl.mjs"),
+        "--url",
+        site.url,
+        "--site-origin",
+        "https://site.example",
+        "--out",
+        out,
+      ]);
+    } finally {
+      await site.close();
+    }
+    return { origin: site.url, report: JSON.parse(readFileSync(out, "utf8")) };
+  })());
+
+test("the crawl lists the images it weighed, largest first, with pixels, format, pages and a rough saving", async () => {
+  const { origin, report } = await imageSite();
+  const at = p => origin + p;
+  assert.deepEqual(
+    report.images.map(i => i.url),
+    [at("/img/hero.jpg"), at("/img/logo.png"), at("/img/ok.webp")],
+  );
+  const [hero, logo, ok] = report.images;
+  assert.deepEqual(
+    { ...hero, pages: [...hero.pages].sort() },
+    {
+      url: at("/img/hero.jpg"),
+      bytes: 300 * KB,
+      width: 2400,
+      height: 1200,
+      format: "jpeg",
+      pages: [at("/"), at("/about/")],
+      estSaving: estSaving({ bytes: 300 * KB, width: 2400, format: "jpeg" }),
+    },
+  );
+  assert.equal(hero.estSaving, 204800, "resized to 1,600 px (4/9 of the pixels), then a quarter off");
+  assert.deepEqual(
+    [logo.bytes, logo.width, logo.height, logo.format, logo.estSaving],
+    [150 * KB, 800, 400, "png", 39936],
+    "the size from Content-Range",
+  );
+  assert.deepEqual([ok.format, ok.estSaving], ["webp", 0]);
+  assert.ok(!report.findings.some(f => /images?-saving|images\b/.test(f.check)), "information only, no new finding");
+});
+
+const render = async data => {
+  const dir = tmp();
+  writeFileSync(join(dir, "a.json"), JSON.stringify(data));
+  await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "a.html")]);
+  return { html: readFileSync(join(dir, "a.html"), "utf8"), md: readFileSync(join(dir, "a.md"), "utf8") };
+};
+
+test("the images table is ranked by saving, escaped and not scored", async () => {
+  const { origin, report } = await imageSite(),
+    evil = "<img src=x onerror=alert(1)>|";
+  const filler = Array.from({ length: 16 }, (_, i) => ({
+    url: `${origin}/img/f${i}.jpg`,
+    bytes: 120 * KB,
+    width: 600,
+    height: 400,
+    format: "jpeg",
+    pages: [],
+    estSaving: 1000 + i,
+  }));
+  const images = [
+    ...report.images,
+    { url: evil, bytes: 200 * KB, width: 100, height: 100, format: evil, pages: [], estSaving: 50000 },
+    ...filler,
+  ];
+  const withInfo = await render({ ...report, images }),
+    without = await render({ ...report, images: undefined });
+  const panels = withInfo.html.match(/\n {4}<details class="how images">[\s\S]*?<\/details>/g) || [];
+  assert.equal(panels.length, 1, "one collapsed Images panel");
+  assert.equal(
+    withInfo.html.replace(panels[0], ""),
+    without.html,
+    "the panel is the only change: the score and areas are the same",
+  );
+  const p = panels[0];
+  assert.match(p, /<summary>Images by possible saving<\/summary>/);
+  assert.equal((p.match(/<tr>/g) || []).length - 1, 15, "the top 15 rows under the header");
+  const hero = p.indexOf("/img/hero.jpg"),
+    bad = p.indexOf("&lt;img src=x"),
+    logo = p.indexOf("/img/logo.png");
+  assert.ok(hero > 0 && hero < bad && bad < logo, "largest saving first");
+  assert.ok(!p.includes("/img/ok.webp"), "nothing to save, not listed");
+  assert.ok(!withInfo.html.includes("<img src=x"), "crawled text is escaped");
+  assert.match(p, /rough/i);
+  assert.match(p, /never changes? the score/);
+
+  const sections = withInfo.md.match(/## Images by possible saving\n[\s\S]*?\n\n(?=## )/g) || [];
+  assert.equal(sections.length, 1);
+  assert.equal(withInfo.md.replace(sections[0], ""), without.md);
+  const rows = sections[0].split("\n").filter(l => /^\| `/.test(l));
+  assert.equal(rows.length, 15);
+  for (const row of rows)
+    assert.equal(row.replace(/\\\|/g, "").split("|").length - 1, 5, `a | in the text can't break the table: ${row}`);
+  const evilRow = rows.find(r => r.includes("onerror"));
+  assert.ok(
+    evilRow.includes("`<img src=x onerror=alert(1)>\\|`") && evilRow.includes("\\<img src=x onerror=alert(1)\\>\\|"),
+    `code or escaped, never raw HTML: ${evilRow}`,
+  );
+});
+
+// A stand-in for sharp in the add-on folder under home: each output file holds the steps it was made with.
+function fakeSharp(home) {
+  const dir = join(home, ".seo-supervisor", "tools", "node_modules", "sharp");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "sharp", main: "index.cjs" }));
+  writeFileSync(
+    join(dir, "index.cjs"),
+    [
+      'const fs = require("node:fs");',
+      "module.exports = input => {",
+      "  const steps = [], p = {};",
+      '  for (const k of ["autoOrient", "webp", "avif"]) p[k] = () => (steps.push(k), p);',
+      '  p.resize = o => (steps.push(`resize ${o.width}${o.withoutEnlargement ? " withoutEnlargement" : ""}`), p);',
+      '  p.toFile = async out => { const body = steps.join(",") + " of " + input; fs.writeFileSync(out, body); return { size: body.length }; };',
+      "  return p;",
+      "};",
+      "",
+    ].join("\n"),
+  );
+}
+const env = home => ({ ...process.env, HOME: home, USERPROFILE: home });
+const ORIGINAL = Buffer.alloc(5000, 7);
+// A project with two images to convert, plus the cases that must be left alone.
+function project() {
+  const dir = tmp(),
+    root = join(dir, "public"),
+    crawl = join(dir, "seo-crawl.json"),
+    u = p => "https://site.example" + p;
+  mkdirSync(join(root, "img"), { recursive: true });
+  for (const f of ["hero.jpg", "logo.png", "small.jpg", "ok.webp"]) writeFileSync(join(root, "img", f), ORIGINAL);
+  writeFileSync(join(dir, "secret.jpg"), ORIGINAL);
+  const img = (p, bytes, width, format) => ({
+    url: u(p),
+    bytes,
+    width,
+    height: 100,
+    format,
+    pages: [u("/"), u("/about/")],
+    estSaving: estSaving({ bytes, width, format }),
+  });
+  writeFileSync(
+    crawl,
+    JSON.stringify({
+      tool: "seo-supervisor-crawler",
+      images: [
+        img("/img/hero.jpg?v=3", 400 * KB, 2400, "jpeg"),
+        img("/img/logo.png", 150 * KB, 800, "png"),
+        img("/img/ok.webp", 300 * KB, 800, "webp"),
+        img("/img/small.jpg", 20 * KB, 300, "jpeg"),
+        img("/img/missing.jpg", 300 * KB, 800, "jpeg"),
+        img("/..%2Fsecret.jpg", 300 * KB, 800, "jpeg"),
+      ],
+    }),
+  );
+  const files = () => readdirSync(dir, { recursive: true }).map(String).sort();
+  return { dir, root, crawl, files };
+}
+
+test("images.mjs is a dry run without --yes and never touches originals", async () => {
+  const p = project(),
+    before = p.files(),
+    home = tmp();
+  const dry = await node([IMAGES, "--crawl", p.crawl, "--root", p.root], { env: env(home), cwd: p.dir });
+  assert.match(dry.stdout, /hero\.jpg/);
+  assert.match(dry.stdout, /logo\.png/);
+  assert.doesNotMatch(dry.stdout, /small\.jpg|ok\.webp → /, "light and modern images aren't converted");
+  assert.match(dry.stdout, /about 267 KB smaller/, "hero: resized to 1,600 px, then WebP (rough)");
+  assert.match(dry.stdout, /\/img\/missing\.jpg/, "a file not under --root is named");
+  assert.doesNotMatch(dry.stdout, /secret\.jpg →/, "a path that leaves --root is refused");
+  assert.match(dry.stdout, /[Dd]ry run/);
+  assert.match(dry.stdout, /--with-image-tools/, "the add-on isn't installed: it says how to add it");
+  assert.match(dry.stdout, /<picture>/, "what to change in the markup");
+  assert.deepEqual(p.files(), before, "nothing written");
+
+  const yesNoAddOn = await node([IMAGES, "--crawl", p.crawl, "--root", p.root, "--yes"], {
+    env: env(home),
+    cwd: p.dir,
+  });
+  assert.match(yesNoAddOn.stdout, /npx seo-supervisor --with-image-tools/);
+  assert.deepEqual(p.files(), before, "without the add-on nothing is written, and it exits 0");
+
+  fakeSharp(home);
+  await node([IMAGES, "--crawl", p.crawl, "--root", p.root, "--avif"], { env: env(home), cwd: p.dir });
+  assert.deepEqual(p.files(), before, "with the add-on, still nothing without --yes");
+  for (const f of ["hero.jpg", "logo.png"]) assert.deepEqual(readFileSync(join(p.root, "img", f)), ORIGINAL);
+
+  await assert.rejects(
+    node([IMAGES, "--crawl", p.crawl]),
+    e => e.code === 2 && /--root/.test(e.stderr),
+    "--root is required",
+  );
+});
+
+test("with a stand-in converter, files are written next to the originals", async () => {
+  const p = project(),
+    home = tmp();
+  fakeSharp(home);
+  const r = await node([IMAGES, "--crawl", p.crawl, "--root", p.root, "--avif", "--yes"], {
+    env: env(home),
+    cwd: p.dir,
+  });
+  const made = f => readFileSync(join(p.root, "img", f), "utf8");
+  assert.equal(
+    made("hero.webp"),
+    `autoOrient,resize 1600 withoutEnlargement,webp of ${join(p.root, "img", "hero.jpg")}`,
+  );
+  assert.match(made("hero.avif"), /,avif of /);
+  assert.match(made("logo.webp"), /webp of .*logo\.png$/);
+  for (const f of ["hero.jpg", "logo.png", "ok.webp", "small.jpg"])
+    assert.deepEqual(readFileSync(join(p.root, "img", f)), ORIGINAL, `${f} untouched`);
+  assert.ok(!existsSync(join(p.root, "img", "small.webp")) && !existsSync(join(p.dir, "secret.webp")));
+  assert.match(r.stdout, /\/img\/hero\.webp/, "the new src");
+  assert.match(r.stdout, /<picture>/);
+
+  writeFileSync(join(p.root, "img", "logo.webp"), "mine");
+  const again = await node([IMAGES, "--crawl", p.crawl, "--root", p.root, "--yes", "--max-width", "800"], {
+    env: env(home),
+    cwd: p.dir,
+  });
+  assert.equal(made("logo.webp"), "mine", "an existing file is never overwritten");
+  assert.match(again.stdout, /logo\.webp.*left alone/);
+
+  const out = join(p.dir, "converted");
+  await node([IMAGES, "--crawl", p.crawl, "--root", p.root, "--out-dir", out, "--yes", "--max-width", "800"], {
+    env: env(home),
+    cwd: p.dir,
+  });
+  assert.match(
+    readFileSync(join(out, "img", "hero.webp"), "utf8"),
+    /resize 800 /,
+    "--out-dir keeps the folders, --max-width sets the width",
+  );
+});

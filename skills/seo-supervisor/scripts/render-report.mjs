@@ -901,9 +901,36 @@ const positionsText = () => {
   return `Search Console queries by average position: ${pct("top3")} in the top 3 · ${pct("top10")} in the top 10 · ${pct("beyond")} beyond, of ${plural(p.queries, "query", "queries")}${raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : ""}`;
 };
 
-// Images ranked by what converting or resizing them would save.
-const imagesHtml = () => "";
-const imagesMd = () => [];
+// Images ranked by what converting or resizing them would save, top 15. Crawled text is escaped.
+const imageRows = (Array.isArray(raw.images) ? raw.images : [])
+  .filter(i => obj(i) && typeof i.url === "string" && Number.isFinite(i.bytes) && i.estSaving > 0)
+  .sort((a, b) => b.estSaving - a.estSaving)
+  .slice(0, 15);
+const kbOf = n => `${num(Math.round(n / 1024))} KB`;
+const imageWhat = i => [i.format, i.width && i.height && `${i.width} × ${i.height} px`].filter(Boolean).join(" · ");
+const IMAGES_INTRO =
+  "A rough estimate of what WebP and resizing to 1,600 px wide would save: Google measured lossy WebP 25–34% smaller than JPEG and lossless WebP 26% smaller than PNG, and the low end is used. Information only: it never changes the score. With your yes, scripts/images.mjs converts the JPEG and PNG ones and keeps the originals (it needs the optional image add-on: npx seo-supervisor --with-image-tools).";
+const imagesHtml = () =>
+  imageRows.length
+    ? `\n    <details class="how images"><summary>Images by possible saving</summary><p>${esc(IMAGES_INTRO)}</p><div class="tablewrap"><table><thead><tr><th scope="col">Image</th><th scope="col">Size</th><th scope="col">Format</th><th scope="col">Possible saving</th></tr></thead><tbody>${imageRows.map(i => `<tr><td><code>${esc(notePath(i.url))}</code></td><td>${kbOf(i.bytes)}</td><td>${esc(imageWhat(i))}</td><td>about ${kbOf(i.estSaving)}</td></tr>`).join("")}</tbody></table></div></details>`
+    : "";
+const cellMd = s => s.replace(/\|/g, "\\|");
+const imagesMd = () =>
+  imageRows.length
+    ? [
+        "## Images by possible saving",
+        "",
+        IMAGES_INTRO,
+        "",
+        "| Image | Size | Format | Possible saving |",
+        "| --- | ---: | --- | ---: |",
+        ...imageRows.map(
+          i =>
+            `| ${cellMd(noteCode(notePath(i.url)))} | ${kbOf(i.bytes)} | ${cellMd(noteMd(imageWhat(i)))} | about ${kbOf(i.estSaving)} |`,
+        ),
+        "",
+      ]
+    : [];
 
 // Lighthouse detail per page: failed audits with the files behind them.
 const lighthouseDetailHtml = () => "";

@@ -201,6 +201,31 @@ test("--uninstall leaves the Lighthouse tools folder alone and says how to remov
   assert.match(r.stdout, /~\/\.seo-supervisor\/tools/);
 });
 
+test("--with-image-tools installs sharp into the tools folder, not the project", async () => {
+  const home = tmp(),
+    cwd = tmp(),
+    npm = fakeNpm();
+  const r = await node([BIN, "--agent", "cursor", "--with-image-tools"], {
+    env: { ...env(home), SEO_SUPERVISOR_NPM: npm.bin },
+    cwd,
+  });
+  assert.deepEqual(npm.args(), ["install", "--prefix", tools(home), "sharp@0.35", "--no-audit", "--no-fund"]);
+  assert.match(r.stdout, /Installing sharp/);
+  assert.ok(existsSync(join(home, ".cursor", "skills", "seo-supervisor", "SKILL.md")), "the skill is installed too");
+
+  const failed = fakeNpm(1);
+  const f = await node([BIN, "--agent", "cursor", "--with-image-tools"], {
+    env: { ...env(home), SEO_SUPERVISOR_NPM: failed.bin },
+    cwd,
+  });
+  assert.match(f.stdout + f.stderr, /sharp wasn't installed.*works without it/);
+  assert.match(f.stdout, /installed for Cursor/, "a failed add-on never fails the install");
+
+  mkdirSync(join(tools(home), "node_modules"), { recursive: true });
+  const u = await node([BIN, "--uninstall"], { env: env(home), cwd });
+  assert.match(u.stdout, /sharp/, "--uninstall names the image add-on too");
+});
+
 test("an unknown agent key fails with the list of valid keys", async () => {
   await assert.rejects(
     node([BIN, "--agent", "notepad", "--yes"], { env: env(tmp()) }),

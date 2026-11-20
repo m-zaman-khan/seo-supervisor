@@ -38,6 +38,8 @@ import { proxyNote } from "./lib/proxy.mjs";
   const n = proxyNote();
   if (n) console.error("note: " + n);
 } // once, before any request
+import { estSaving } from "./images.mjs";
+
 import { createHash } from "node:crypto";
 
 const VERSION = "2.0.0";
@@ -3605,6 +3607,60 @@ for (const p of htmlPages) {
   if (t.length >= 20 && flat(p.description).startsWith(t.slice(0, Math.ceil(t.length * 0.8))))
     add("desc-starts-with-title", p.finalUrl, `“${p.description.slice(0, 80)}”`);
 }
+
+// extra.images: the images PERF-08 weighed, largest first, with the pixel size from their first 64 KB, the pages using
+// them and a rough estSaving (images.mjs). One ranged GET each, on the crawled site; the size is Content-Range's
+// total, or Content-Length when the range is ignored. An image that redirects is left out. This costs a second
+// request per image, since the HEAD loop keeps nothing; read the size in that loop to save it.
+async function imageInfo(src) {
+  try {
+    const r = await fetch(src, {
+      redirect: "manual",
+      headers: { "user-agent": UA, range: "bytes=0-65535", accept: "image/avif,image/webp,image/*,*/*;q=0.8" },
+      signal: AbortSignal.timeout(15000),
+    });
+    const chunks = [];
+    let n = 0;
+    if (r.body)
+      for await (const c of r.body) {
+        chunks.push(c);
+        if ((n += c.length) >= 65536) break;
+      }
+    const bytes = Number(
+      r.status === 206
+        ? r.headers.get("content-range")?.match(/\/(\d+)$/)?.[1]
+        : r.status === 200
+          ? r.headers.get("content-length")
+          : 0,
+    );
+    if (!bytes) return null;
+    const size = imageSize(Buffer.concat(chunks)),
+      type = (r.headers.get("content-type") || "").toLowerCase().match(/^image\/([a-z0-9.-]+)/)?.[1];
+    return {
+      url: src,
+      bytes,
+      width: size?.width ?? null,
+      height: size?.height ?? null,
+      format: size?.type || type || null,
+    };
+  } catch {
+    return null;
+  }
+}
+const usedOn = new Map(); // image URL -> pages using it, keyed as in `images`
+for (const p of htmlPages)
+  if (!p.clientOnly && indexable(p))
+    for (const i of p.imgs) {
+      const s = urlOr(i.src, p.base)?.href;
+      if (s && images.has(s)) (usedOn.get(s) || usedOn.set(s, []).get(s)).push(p.finalUrl);
+    }
+const imageRows = [];
+for (let i = 0; i < imageList.length; i += CONC)
+  imageRows.push(...(await Promise.all(imageList.slice(i, i + CONC).map(([src]) => imageInfo(src)))).filter(Boolean));
+extra.images = imageRows
+  .sort((a, b) => b.bytes - a.bytes)
+  .slice(0, 100)
+  .map(x => ({ ...x, pages: [...new Set(usedOn.get(x.url))].slice(0, 10), estSaving: estSaving(x) }));
 
 // Kept for seo-diff.mjs. A redirect that never ends (a loop, or more than 10 hops) has no target.
 {
