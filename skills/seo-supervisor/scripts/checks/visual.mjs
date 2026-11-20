@@ -2,7 +2,7 @@
 // with screenshots. The pages' own scripts, analytics included, run.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { launchChrome } from "../lib/cdp.mjs";
+import { launchChrome, containerArgs } from "../lib/cdp.mjs";
 
 export const CHECKS = {
   "mobile-content-missing": [
@@ -32,6 +32,13 @@ export const CHECKS = {
     n => `${n} page(s) cover most of the phone screen with a popup on arrival`,
     "Visitors from search see the popup instead of the page they came for. Google's page-experience guidance calls this an intrusive interstitial, and many visitors leave instead of closing it.",
     "Use a small banner instead, or show the popup later (after the visitor interacts). Required age or legal notices should cover only part of the screen.",
+  ],
+  "tap-targets-small": [
+    "REND-09",
+    "low",
+    n => `${n} page(s) have links or buttons too small and too close together to tap on a phone`,
+    "A finger covers more than a small link, so visitors tap the wrong one and have to go back. The accessibility standard (WCAG 2.2, success criterion 2.5.8) asks for at least 24×24 px, or enough space around smaller ones.",
+    "Give links and buttons padding so each is at least 24×24 px, or space small ones out: icons in a row need 24 px from the centre of one to the next. Links inside a sentence are fine as they are.",
   ],
   "bfcache-blocked": [
     "PERF-10",
@@ -88,6 +95,28 @@ const MEASURE = `(() => {
     fontSize: parseFloat(Object.entries(sizes).sort((a, b) => b[1] - a[1])[0]?.[0] || css(main).fontSize),
     popup, consent,
   };
+})()`;
+// A target under 24×24 CSS px fails unless a 24 px circle on its centre touches no other target and no other small
+// one's circle. Links in a sentence, visually hidden ones (skip links) and ones off screen sideways (closed drawers)
+// are exempt. Whole-box geometry: a clipped or covered target still counts. Lighthouse 12 uses the same rule.
+// https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum
+const TAPS = `(() => {
+  const SEL = 'a[href], button, [role="button"], input[type="button" i], input[type="submit" i], input[type="reset" i], input[type="image" i]';
+  const css = e => getComputedStyle(e), letters = s => (s.match(/[\\p{L}\\p{N}]/gu) || []).length;
+  const inSentence = e => {
+    if (css(e).display !== "inline") return false;
+    let b = e.parentElement;
+    while (b && css(b).display.startsWith("inline")) b = b.parentElement;
+    return !!b && letters(b.textContent) > letters(e.textContent);
+  };
+  const all = [...document.querySelectorAll(SEL)].filter(e => !e.parentElement?.closest(SEL) && e.checkVisibility({ opacityProperty: true, visibilityProperty: true }))
+    .map(e => ({ e, r: e.getBoundingClientRect() })).filter(({ r }) => r.width >= 2 && r.height >= 2 && r.right > 0 && r.left < innerWidth);
+  const small = all.filter(x => (x.r.width < 24 || x.r.height < 24) && !inSentence(x.e));
+  for (const x of small) x.c = [(x.r.left + x.r.right) / 2, (x.r.top + x.r.bottom) / 2];
+  const toBox = ([px, py], r) => Math.hypot(Math.max(r.left - px, 0, px - r.right), Math.max(r.top - py, 0, py - r.bottom));
+  const bad = small.filter(x => all.some(y => y !== x && toBox(x.c, y.r) < 12) || small.some(y => y !== x && Math.hypot(x.c[0] - y.c[0], x.c[1] - y.c[1]) < 24));
+  const name = e => (e.getAttribute("aria-label") || e.innerText || e.title || e.querySelector("img")?.alt || e.tagName.toLowerCase()).replace(/\\s+/g, " ").trim().slice(0, 40);
+  return { count: bad.length, examples: bad.slice(0, 3).map(x => \`“\${name(x.e)}” \${Math.round(x.r.width)}×\${Math.round(x.r.height)} px\`) };
 })()`;
 // Installed before the page's scripts. Blocking time is each long task's part over 50 ms, as in Lighthouse's TBT.
 const OBSERVE = `window.__seoLab = { lcp: 0, cls: 0, tbt: 0 }; try {
@@ -236,7 +265,7 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
         );
         const m = await visit(chrome, url, { device: PHONE, userAgent: phoneUa, settleMs: 1000, deadline }, async p => {
           await shoot(p, "mobile");
-          return evaluate(p, MEASURE);
+          return { ...(await evaluate(p, MEASURE)), taps: await evaluate(p, TAPS) };
         });
         checked++;
         // Word counts below 30 are too small to compare. A real diff of the text would also catch swapped content.
@@ -258,6 +287,12 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
         if (m.viewport && !m.clipped && m.scrollWidth > PHONE.width + 2)
           add("mobile-overflow", url, `${m.scrollWidth} px wide on a ${PHONE.width} px screen`);
         if (m.viewport && m.fontSize < 12) add("mobile-small-text", url, `main text ${m.fontSize} px`);
+        if (m.viewport && m.taps.count)
+          add(
+            "tap-targets-small",
+            url,
+            `${m.taps.count} ${m.taps.count === 1 ? "link or button" : "links or buttons"} under 24×24 px with too little space around them, for example ${m.taps.examples.join(", ")}`,
+          );
         if (m.popup.cover)
           add(
             "mobile-interstitial",
@@ -314,6 +349,10 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
   if (checked)
     notes.push(
       `Loaded ${checked} sample page(s) at desktop (1366×768) and phone (390×844) size${screenshotDir ? ", with screenshots" : ""}${bfTested ? `, and ran Chrome's back/forward cache test on ${bfTested} of them` : ""}. Lab speed comes from one phone load with 4× CPU slowdown on slow 4G: indicative only, it won't match Lighthouse.`,
+    );
+  if (checked && containerArgs().length)
+    notes.push(
+      "Chrome ran without its security sandbox (--no-sandbox), because this runs as root on Linux or inside a container, where the sandbox can't start. The sample pages' scripts ran with fewer protections than in a normal browser; to keep the sandbox, run the audit as an ordinary user outside a container.",
     );
   return { checked, lab, notes, bfTested }; // bfTested: the pages Chrome's back/forward test actually ran on
 }

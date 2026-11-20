@@ -7,7 +7,13 @@ import { connect } from "node:net";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SCRIPTS, SKILL, node, tmp } from "./helpers.mjs";
-import { challengeFor, pkce, fetchGoogle, anomaliesIn } from "../skills/seo-supervisor/scripts/google.mjs";
+import {
+  challengeFor,
+  pkce,
+  fetchGoogle,
+  anomaliesIn,
+  positionShares,
+} from "../skills/seo-supervisor/scripts/google.mjs";
 
 const CLI = join(SCRIPTS, "google.mjs");
 const SC = "https://www.googleapis.com/auth/webmasters.readonly",
@@ -733,6 +739,7 @@ test("fetch: Search Console data in gsc-import's shape, URL Inspection and sitem
     assert.equal(r.traffic["/guide/"].position, 12.3);
     assert.equal(r.traffic["/elsewhere/"], undefined, "other subdomains of a domain property are left out");
     assert.deepEqual(r.queries, [{ query: "widgets", clicks: 9, impressions: 500, ctr: 0.018, position: 6.6 }]);
+    assert.deepEqual(r.positions, { queries: 1, top3: 0, top10: 1, beyond: 0 }, "from the queries already read");
     assert.deepEqual(
       Object.keys(r.pageQueries).sort(),
       ["/a/", "/b/", "/pricing/"],
@@ -1059,6 +1066,7 @@ test("fetch from the CLI writes seo-audit/google.json", async () => {
       "period",
       "traffic",
       "queries",
+      "positions",
       "pageQueries",
       "trafficChange",
       "searchTypes",
@@ -1490,6 +1498,34 @@ test("the Overview shows the change from the period before, the biggest drops, o
     /News tab \d|tablet \d|ITA \d/,
     "types, devices and countries without clicks are left out",
   );
+});
+
+test("the Overview shows the share of queries in the top 3, top 10 and beyond, escaped and information only", async () => {
+  // Shares of queries (not of impressions) by average position; the top 10 includes the top 3.
+  const q = p => ({ query: "q", clicks: 1, impressions: 1000, ctr: 0.001, position: p });
+  assert.deepEqual(positionShares([1, 2.9, 3, 3.1, 7, 10, 10.1, 25].map(q)), {
+    queries: 8,
+    top3: 0.375,
+    top10: 0.75,
+    beyond: 0.25,
+  });
+  assert.equal(positionShares([]), null);
+  const positions = { queries: 1240, top3: 0.124, top10: 0.426, beyond: 0.574 };
+  const { html, md } = await renderWith({ positions, trafficPeriod: "Last 3 months <b>" });
+  const line =
+    "Search Console queries by average position: 12% in the top 3 · 43% in the top 10 · 57% beyond, of 1,240 queries (last 3 months ";
+  assert.ok(html.includes(line + "&lt;b&gt;)"), "HTML, escaped");
+  assert.ok(md.includes(line + "\\<b\\>)"), "Markdown, escaped");
+  const plain = await renderWith({ trafficPeriod: "Last 3 months <b>" }),
+    score = h => h.match(/<span class="n">(\d+)<\/span>/)[1];
+  assert.equal(score(html), score(plain.html), "the score doesn't change");
+  assert.equal(
+    html.match(/<article class="f /g).length,
+    plain.html.match(/<article class="f /g).length,
+    "no findings are added",
+  );
+  const odd = await renderWith({ positions: { queries: "<b>5</b>", top3: "x", top10: 2, beyond: -1 } });
+  assert.doesNotMatch(odd.html + odd.md, /queries by average position/, "malformed numbers show nothing");
 });
 
 test("the Overview has no Search Console change, device, country or anomaly lines when that data is empty", async () => {

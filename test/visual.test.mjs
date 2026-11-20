@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import { launchChrome } from "../skills/seo-supervisor/scripts/lib/cdp.mjs";
+import { launchChrome, containerArgs } from "../skills/seo-supervisor/scripts/lib/cdp.mjs";
 import { CHECKS, checkVisual } from "../skills/seo-supervisor/scripts/checks/visual.mjs";
 import { findBrowser } from "../skills/seo-supervisor/scripts/checks/render.mjs";
 import { imageSize } from "../skills/seo-supervisor/scripts/lib/image-size.mjs";
@@ -33,6 +33,26 @@ test("the DevTools helper drives a page over the pipe and leaves no browser or p
   }
   assert.ok(gone(chrome.pid), "the browser process has exited");
   assert.ok(!existsSync(chrome.profile), "the temporary profile is removed");
+});
+
+test("Chrome gets --no-sandbox only as root on Linux or in a container", () => {
+  const none = () => false,
+    off = ["--no-sandbox", "--disable-dev-shm-usage"],
+    linux = { platform: "linux", uid: 1000, env: {}, exists: none };
+  assert.deepEqual(containerArgs(linux), [], "an ordinary Linux user keeps the sandbox");
+  assert.deepEqual(containerArgs({ ...linux, uid: 0 }), off, "root");
+  assert.deepEqual(containerArgs({ ...linux, exists: f => f === "/.dockerenv" }), off, "Docker");
+  assert.deepEqual(containerArgs({ ...linux, exists: f => f === "/run/.containerenv" }), off, "Podman");
+  assert.deepEqual(containerArgs({ ...linux, env: { KUBERNETES_SERVICE_HOST: "10.0.0.1" } }), off, "a Kubernetes pod");
+  assert.deepEqual(
+    containerArgs({ platform: "darwin", uid: 0, env: {}, exists: () => true }),
+    [],
+    "macOS keeps it, even as root",
+  );
+  assert.deepEqual(
+    containerArgs({ platform: "win32", uid: undefined, env: { KUBERNETES_SERVICE_HOST: "x" }, exists: () => true }),
+    [],
+  );
 });
 
 test("a browser that won't start fails fast and cleanly", async () => {
@@ -264,6 +284,58 @@ test(
       r.notes.join(" "),
     );
     assert.equal(r.bfTested, 2, "the crawler counts PERF-10 as checked only when this ran");
+  },
+);
+
+// Under 24×24 CSS px fails unless a 24 px circle on each touches no other target or small target's circle.
+// https://www.w3.org/TR/WCAG22/#target-size-minimum
+test(
+  "small, crowded tap targets are flagged; a standard dense menu with spacing passes",
+  { skip, timeout: 120000 },
+  async () => {
+    const icon = n => `<a href="/${n}/" aria-label="${n}" class="i"></a>`;
+    const pages = {
+      // 16 px icons 2 px apart, and a footer list of 18 px links with no gap.
+      crowded: doc(
+        `<main><h1>Crowded</h1><p>${words(100)}</p><nav>${["x", "fb", "in", "yt"].map(icon).join("")}</nav><ul class="f">${[1, 2, 3, 4].map(i => `<li><a href="/f${i}/">Footer ${i}</a></li>`).join("")}</ul></main>`,
+        ".i{display:inline-block;width:16px;height:16px;margin-right:2px;background:#333}.f{list-style:none;margin:0;padding:0}.f a{display:block;line-height:18px;font-size:14px}",
+      ),
+      // 20 px links 8 px apart, 16 px icons 24 px centre to centre, links in a sentence, a 1 px skip link, a lone button,
+      // and a closed drawer and dropdown full of tiny links.
+      densemenu: doc(
+        `<a href="#main" class="sr">Skip to content</a><nav class="m">${[1, 2, 3, 4, 5, 6].map(i => `<a href="/m${i}/">Menu ${i}</a>`).join("")}</nav><div>${["x", "fb", "in"].map(icon).join("")}</div>
+<main id="main"><h1>Dense menu</h1><p>Read our <a href="/terms/">terms</a> and <a href="/privacy/">privacy policy</a> before ${words(100)}</p><button>OK</button></main>
+<nav class="drawer">${[1, 2, 3].map(i => `<a href="/d${i}/" class="t">D${i}</a>`).join("")}</nav><div style="display:none">${[1, 2, 3].map(i => `<a href="/h${i}/" class="t">H${i}</a>`).join("")}</div>`,
+        ".sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}.m a{display:block;line-height:20px;margin:8px 0}.i{display:inline-block;width:16px;height:16px;margin-right:8px;background:#333}.drawer{position:fixed;top:0;left:0;transform:translateX(-100%)}.t{display:block;font-size:10px;line-height:10px}",
+      ),
+    };
+    const dir = tmp();
+    for (const [name, html] of Object.entries(pages)) {
+      mkdirSync(join(dir, name));
+      writeFileSync(join(dir, name, "index.html"), html);
+    }
+    const site = await serve(dir),
+      found = [];
+    let r;
+    try {
+      r = await checkVisual(
+        browser,
+        Object.keys(pages).map(n => `${site.url}/${n}/`),
+        { add: (key, url, detail) => found.push([key, new URL(url).pathname, detail]) },
+      );
+    } finally {
+      await site.close();
+    }
+    assert.equal(r.checked, 2, r.notes.join(" "));
+    const taps = found.filter(([key]) => key === "tap-targets-small");
+    assert.deepEqual(
+      taps.map(t => t[1]),
+      ["/crowded/"],
+      JSON.stringify(found),
+    );
+    assert.match(taps[0][2], /^8 links or buttons/, "4 icons and 4 footer links");
+    assert.match(taps[0][2], /“x” 16×16 px/);
+    assert.deepEqual(CHECKS["tap-targets-small"].slice(0, 2), ["REND-09", "low"]);
   },
 );
 

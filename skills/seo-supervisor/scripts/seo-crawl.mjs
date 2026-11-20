@@ -26,7 +26,13 @@ import { imageSize } from "./lib/image-size.mjs";
 import { trustFeatures, trustSignals } from "./checks/trust.mjs";
 
 import { CHECKS as AGENT_CHECKS, agentFeatures, agentFiles } from "./checks/agents.mjs";
-import { writingText, writingFeatures } from "./checks/writing.mjs"; // once, before any request
+import { writingText, writingFeatures } from "./checks/writing.mjs";
+
+import { proxyNote } from "./lib/proxy.mjs";
+{
+  const n = proxyNote();
+  if (n) console.error("note: " + n);
+} // once, before any request
 
 const VERSION = "2.0.0";
 const UA = "seo-supervisor-crawler/" + VERSION;

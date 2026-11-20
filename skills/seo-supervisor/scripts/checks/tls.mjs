@@ -93,6 +93,13 @@ export const CHECKS = {
     "Without HSTS, browsers can still make a first plain-HTTP request that can be intercepted.",
     "Send `Strict-Transport-Security: max-age=31536000; includeSubDomains` from the server or CDN.",
   ],
+  "tls-old-versions": [
+    "TRUST-01",
+    "low",
+    () => "The live site still accepts the old TLS 1.0 or 1.1",
+    "These versions have known weaknesses and were retired by the standard's own authors in 2021 (RFC 8996: they must not be used). Leaving them on only helps an attacker force a weaker connection.",
+    "Turn off TLS 1.0 and 1.1 in the server or CDN's TLS settings and keep TLS 1.2 and 1.3.",
+  ],
 };
 
 const DAY = 864e5;
@@ -120,6 +127,40 @@ export function tlsCert(host, port = 443, timeoutMs = 10000) {
   });
 }
 
+// Node offers TLS 1.0 and 1.1 only with min and max version pinned to them and the OpenSSL security level at 0. A
+// failed or timed-out handshake counts as refused, so a flaky connection never raises a finding.
+// https://nodejs.org/api/tls.html#openssl-security-level
+const accepts = (host, port, version, timeoutMs) =>
+  new Promise(ok => {
+    const socket = tls.connect(
+      {
+        host,
+        port,
+        servername: host,
+        rejectUnauthorized: false,
+        minVersion: version,
+        maxVersion: version,
+        ciphers: "DEFAULT@SECLEVEL=0",
+        timeout: timeoutMs,
+      },
+      () => {
+        ok(socket.getProtocol() === version);
+        socket.end();
+      },
+    );
+    socket.on("timeout", () => {
+      socket.destroy();
+      ok(false);
+    });
+    socket.on("error", () => ok(false));
+  });
+export async function oldTlsVersions(host, port = 443, timeoutMs = 10000) {
+  const out = [];
+  for (const v of ["TLSv1", "TLSv1.1"]) if (await accepts(host, port, v, timeoutMs)) out.push(v);
+  return out;
+}
+const TLS_NAME = { TLSv1: "TLS 1.0", "TLSv1.1": "TLS 1.1" };
+
 const covers = (san, host) =>
   san
     .split(",")
@@ -144,7 +185,10 @@ async function walk(url, fetchFn, stop) {
 }
 const trail = w => `${w.hops.map(h => h.status).join(" → ")} → ${w.url}`;
 
-export async function checkLive(origin, { add, now = Date.now(), connect = tlsCert, fetchFn = fetch, path }) {
+export async function checkLive(
+  origin,
+  { add, now = Date.now(), connect = tlsCert, oldTls = oldTlsVersions, fetchFn = fetch, path },
+) {
   const notes = [],
     o = new URL(origin),
     host = o.hostname,
@@ -189,6 +233,8 @@ export async function checkLive(origin, { add, now = Date.now(), connect = tlsCe
       } catch {}
     if (oc && !covers(oc.subjectaltname, other))
       add("cert-host-mismatch", `https://${other}`, `certificate names: ${oc.subjectaltname || "none"}`);
+    const old = await oldTls(host, port);
+    if (old.length) add("tls-old-versions", origin, `accepts ${old.map(v => TLS_NAME[v]).join(" and ")}`);
   }
   // http:// → https://, with redirects followed by hand to count them.
   let http = null;

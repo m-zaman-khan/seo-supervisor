@@ -869,7 +869,14 @@ const writingMd = () =>
 
 const desktopSpeedText = () => "";
 
-const positionsText = () => "";
+// Search Console positions (`positions`, google.mjs fetch) as shares of queries.
+const positionsText = () => {
+  const p = obj(raw.positions),
+    ok = ["top3", "top10", "beyond"].every(k => typeof p?.[k] === "number" && p[k] >= 0 && p[k] <= 1);
+  if (!ok || !(Number.isInteger(p.queries) && p.queries > 0)) return "";
+  const pct = k => `${Math.round(100 * p[k])}%`;
+  return `Search Console queries by average position: ${pct("top3")} in the top 3 · ${pct("top10")} in the top 10 · ${pct("beyond")} beyond, of ${plural(p.queries, "query", "queries")}${raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : ""}`;
+};
 
 function overviewHtml() {
   if (!overall)

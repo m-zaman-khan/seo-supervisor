@@ -10,6 +10,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, wri
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
+import { proxyNote } from "./lib/proxy.mjs";
 import { SHARED_CLIENT } from "./lib/google-client.mjs";
 import { addTraffic, gscFindings } from "./gsc-import.mjs";
 
@@ -56,6 +57,18 @@ const ANOMALIES = [
   { from: "2026-08-13", to: "2026-08-13", type: "discover", what: DISCOVER_LOSS },
 ].map(a => ({ ...a, url: "https://support.google.com/webmasters/answer/6211453" }));
 export const anomaliesIn = (from, to, type) => ANOMALIES.filter(a => a.type === type && a.from <= to && a.to >= from);
+// Shares of queries, not of impressions, by average position; top10 includes top3.
+export function positionShares(queries) {
+  if (!queries.length) return null;
+  const share = n => Math.round((1000 * n) / queries.length) / 1000,
+    top10 = queries.filter(q => q.position <= 10).length;
+  return {
+    queries: queries.length,
+    top3: share(queries.filter(q => q.position <= 3).length),
+    top10: share(top10),
+    beyond: share(queries.length - top10),
+  };
+}
 
 class Fail extends Error {}
 const fail = msg => {
@@ -755,6 +768,7 @@ export async function fetchGoogle({
     period,
     traffic,
     queries,
+    positions: positionShares(queries),
     pageQueries,
     trafficChange,
     searchTypes,
@@ -1222,6 +1236,8 @@ const USAGE = `usage: node google.mjs connect [--client-file client_secret.json 
 // Exit codes as in connect-keys.mjs: 1 when Google refuses or can't be reached, or status finds nothing connected;
 // 2 on bad input or no usable sign-in.
 if (isMain(import.meta.url)) {
+  const note = proxyNote();
+  if (note) console.error("note: " + note); // stderr: connect --print-url keeps the link as stdout's first line
   const cmd = process.argv[2],
     args = {};
   for (let i = 3; i < process.argv.length; i++) {

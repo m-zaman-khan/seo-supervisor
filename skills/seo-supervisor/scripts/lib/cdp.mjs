@@ -2,9 +2,26 @@
 // fd 4 the replies, each JSON message ending in a NUL byte. Each launch gets a throwaway profile, removed on close;
 // the browser is killed on any failure and when this process exits or gets SIGINT or SIGTERM.
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { chromeProxyArgs } from "./proxy.mjs";
+
+// Chrome's sandbox won't start as root on Linux or in most containers, and a container's /dev/shm is often too small,
+// so there both are turned off and the page's scripts run with fewer protections. Container hints: /.dockerenv,
+// /run/.containerenv (Podman) and KUBERNETES_SERVICE_HOST (set in every pod).
+// https://docs.podman.io/en/latest/markdown/podman-run.1.html
+// https://kubernetes.io/docs/tasks/run-application/access-api-from-pod/
+export function containerArgs({
+  platform = process.platform,
+  uid = process.getuid?.(),
+  env = process.env,
+  exists = existsSync,
+} = {}) {
+  const inContainer =
+    uid === 0 || exists("/.dockerenv") || exists("/run/.containerenv") || !!env.KUBERNETES_SERVICE_HOST;
+  return platform === "linux" && inContainer ? ["--no-sandbox", "--disable-dev-shm-usage"] : [];
+}
 
 export async function launchChrome(browserPath, { headless = true, timeoutMs = 30000 } = {}) {
   const profile = mkdtempSync(join(tmpdir(), "seo-supervisor-cdp-"));
@@ -16,6 +33,8 @@ export async function launchChrome(browserPath, { headless = true, timeoutMs = 3
     "--disable-extensions",
     "--hide-scrollbars",
     "--mute-audio",
+    ...containerArgs(),
+    ...chromeProxyArgs(),
     `--user-data-dir=${profile}`,
     "--remote-debugging-pipe",
     "about:blank",

@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:https";
+import { createServer as createTlsServer } from "node:tls";
 import { join } from "node:path";
-import { CHECKS, checkLive, tlsCert } from "../skills/seo-supervisor/scripts/checks/tls.mjs";
-import { tmp } from "./helpers.mjs";
+import { CHECKS, checkLive, tlsCert, oldTlsVersions } from "../skills/seo-supervisor/scripts/checks/tls.mjs";
+import { SCRIPTS, tmp } from "./helpers.mjs";
 
 const DAY = 864e5,
   NOW = Date.parse("2026-11-18T12:00:00Z");
@@ -42,12 +43,13 @@ const fakeFetch =
     return redirect(hops[i], status);
   };
 // The keys raised (with `all`, "key url detail"), plus the notes and whether the host resolved.
-async function check(c, fetchOpts, { path, connect = async () => c, all } = {}) {
+async function check(c, fetchOpts, { path, connect = async () => c, oldTls = async () => [], all } = {}) {
   const found = [];
   const r = await checkLive("https://example.com", {
     add: (key, url, detail) => found.push(all ? `${key} ${url} ${detail ?? ""}`.trim() : key),
     now: NOW,
     connect,
+    oldTls,
     fetchFn: fakeFetch(fetchOpts),
     path,
   });
@@ -195,35 +197,38 @@ try {
 } catch {
   openssl = false;
 }
+const selfSigned = (days = 3) => {
+  const dir = tmp(),
+    key = join(dir, "key.pem"),
+    crt = join(dir, "cert.pem");
+  execFileSync(
+    "openssl",
+    [
+      "req",
+      "-x509",
+      "-newkey",
+      "rsa:2048",
+      "-nodes",
+      "-keyout",
+      key,
+      "-out",
+      crt,
+      "-days",
+      String(days),
+      "-subj",
+      "/CN=localhost",
+      "-addext",
+      "subjectAltName=DNS:localhost",
+    ],
+    { stdio: "ignore" },
+  );
+  return { key: readFileSync(key), cert: readFileSync(crt) };
+};
 test(
   "tlsCert reads a live certificate: dates, names and trust",
   { skip: !openssl && "openssl not installed" },
   async () => {
-    const dir = tmp(),
-      key = join(dir, "key.pem"),
-      crt = join(dir, "cert.pem");
-    execFileSync(
-      "openssl",
-      [
-        "req",
-        "-x509",
-        "-newkey",
-        "rsa:2048",
-        "-nodes",
-        "-keyout",
-        key,
-        "-out",
-        crt,
-        "-days",
-        "3",
-        "-subj",
-        "/CN=localhost",
-        "-addext",
-        "subjectAltName=DNS:localhost",
-      ],
-      { stdio: "ignore" },
-    );
-    const server = createServer({ key: readFileSync(key), cert: readFileSync(crt) }, (req, res) => res.end("ok"));
+    const server = createServer(selfSigned(), (req, res) => res.end("ok"));
     await new Promise(ok => server.listen(0, "127.0.0.1", ok));
     try {
       const c = await tlsCert("localhost", server.address().port);
@@ -234,5 +239,55 @@ test(
     } finally {
       await new Promise(ok => server.close(ok));
     }
+  },
+);
+
+// Node offers TLS 1.0 and 1.1 only at OpenSSL security level 0.
+// https://nodejs.org/api/tls.html#openssl-security-level
+test(
+  "old TLS versions are a low TRUST-01 finding only with --check-live",
+  { skip: !openssl && "openssl not installed" },
+  async () => {
+    assert.deepEqual(CHECKS["tls-old-versions"].slice(0, 2), ["TRUST-01", "low"]);
+    const pem = selfSigned(30),
+      listen = async opts => {
+        const s = createTlsServer({ ...pem, ...opts }, socket => socket.end());
+        await new Promise(ok => s.listen(0, "127.0.0.1", ok));
+        return s;
+      };
+    const old = await listen({ minVersion: "TLSv1", ciphers: "DEFAULT@SECLEVEL=0" }),
+      modern = await listen({});
+    try {
+      assert.deepEqual(
+        await oldTlsVersions("localhost", old.address().port),
+        ["TLSv1", "TLSv1.1"],
+        "a server that still accepts both",
+      );
+      assert.deepEqual(
+        await oldTlsVersions("localhost", modern.address().port),
+        [],
+        "Node's own default server (TLS 1.2 and up)",
+      );
+    } finally {
+      for (const s of [old, modern]) await new Promise(ok => s.close(ok));
+    }
+    assert.deepEqual(await run(cert(), {}, { all: true, oldTls: async () => ["TLSv1", "TLSv1.1"] }), [
+      "tls-old-versions https://example.com accepts TLS 1.0 and TLS 1.1",
+    ]);
+    assert.deepEqual(
+      await run(
+        null,
+        {},
+        {
+          connect: failing("ECONNREFUSED"),
+          oldTls: () => assert.fail("no old-version probe without an HTTPS connection"),
+        },
+      ),
+      ["https-unreachable"],
+    );
+    // checkLive is the only caller, and the crawler calls it only with --check-live.
+    const crawler = readFileSync(join(SCRIPTS, "seo-crawl.mjs"), "utf8");
+    assert.equal(crawler.match(/checkLive\(/g).length, 1);
+    assert.match(crawler, /=\s*CHECK_LIVE\s*&&[\s\S]*?await checkLive\(/);
   },
 );
