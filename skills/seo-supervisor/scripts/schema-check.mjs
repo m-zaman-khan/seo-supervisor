@@ -10,157 +10,38 @@ const bare = o => Object.assign(Object.create(null), o);
 const TYPES = bare(VOCAB.types),
   PROPS = bare(VOCAB.props);
 
-// Google's rich-result requirements; each rule's doc is its source. A rule covers its type and every subtype. A
-// missing required property is an error, a missing recommended one a warning; a nested list means "one of these".
-// except: a subtype it doesn't cover; under: only when nested in that type; top: only when not nested; standalone:
-// also required when not nested, or nested as the rule's `via` property; lastMayOmit: the last item of its list may
-// leave that one out; alsoOn: { prop: key }, the prop may sit on the object in that key instead (a breadcrumb's name
-// on its item).
-const G = "https://developers.google.com/search/docs/appearance/structured-data/";
+// The file's `about` explains each rule field. A missing required property is an error, a missing recommended one a
+// warning; a nested list means "one of these".
+// https://developers.google.com/search/docs/appearance/structured-data/search-gallery
+const GOOGLE = JSON.parse(readFileSync(new URL("./data/google-rich-results.json", import.meta.url), "utf8"));
 const RULES = [
-  {
-    type: "Product",
-    except: "ProductGroup",
-    for: "Google product snippets",
-    doc: G + "product-snippet",
-    required: ["name"],
-    standalone: [["offers", "review", "aggregateRating"]],
-    via: "hasVariant",
-    recommended: ["image", "description"],
-  },
-  {
-    type: "Offer",
-    except: "AggregateOffer",
-    under: "Product",
-    for: "Google merchant listings",
-    doc: G + "merchant-listing",
-    required: [
-      ["price", "priceSpecification"],
-      ["priceCurrency", "priceSpecification"],
-    ],
-    recommended: ["availability"],
-  },
-  {
-    type: "AggregateOffer",
-    under: "Product",
-    for: "Google product snippets",
-    doc: G + "product-snippet",
-    required: ["lowPrice", "priceCurrency"],
-    recommended: ["highPrice", "offerCount"],
-  },
-  {
-    type: "Review",
-    for: "Google review snippets",
-    doc: G + "review-snippet",
-    required: ["author", "reviewRating"],
-    standalone: ["itemReviewed"],
-    recommended: ["datePublished"],
-  },
-  {
-    type: "Rating",
-    under: "Review",
-    for: "Google review snippets",
-    doc: G + "review-snippet",
-    required: ["ratingValue"],
-  },
-  {
-    type: "AggregateRating",
-    for: "Google review snippets",
-    doc: G + "review-snippet",
-    required: ["ratingValue", ["ratingCount", "reviewCount"]],
-    standalone: ["itemReviewed"],
-    recommended: ["bestRating"],
-  },
-  {
-    type: "Article",
-    for: "Google article results",
-    doc: G + "article",
-    required: [],
-    recommended: ["headline", "image", "datePublished", "dateModified", "author"],
-  },
-  { type: "BreadcrumbList", for: "Google breadcrumbs", doc: G + "breadcrumb", required: ["itemListElement"] },
-  {
-    type: "ListItem",
-    under: "BreadcrumbList",
-    for: "Google breadcrumbs",
-    doc: G + "breadcrumb",
-    required: ["position", "name", "item"],
-    lastMayOmit: "item",
-    alsoOn: { name: "item" },
-  },
-  {
-    type: "Organization",
-    top: true,
-    for: "Google organization details",
-    doc: G + "organization",
-    required: [],
-    recommended: ["name", "url", "logo"],
-  },
-  {
-    type: "LocalBusiness",
-    for: "Google local business results",
-    doc: G + "local-business",
-    required: ["name", "address"],
-    recommended: ["telephone", "url", "geo", "openingHoursSpecification"],
-  },
-  {
-    type: "Event",
-    for: "Google event results",
-    doc: G + "event",
-    required: ["name", "startDate", "location"],
-    recommended: ["description", "endDate", "eventStatus", "image", "offers", "organizer", "performer"],
-  },
-  { type: "Place", under: "Event", for: "Google event results", doc: G + "event", required: ["address"] },
-  {
-    type: "JobPosting",
-    for: "Google job listings",
-    doc: G + "job-posting",
-    required: [
-      "title",
-      "datePosted",
-      "description",
-      "hiringOrganization",
-      ["jobLocation", "applicantLocationRequirements"],
-    ],
-    recommended: ["validThrough", "baseSalary", "employmentType"],
-  },
-  {
-    type: "Recipe",
-    for: "Google recipe results",
-    doc: G + "recipe",
-    required: ["name", "image"],
-    recommended: ["author", "datePublished", "description", "recipeIngredient", "recipeInstructions", "totalTime"],
-  },
-  {
-    type: "VideoObject",
-    for: "Google video results",
-    doc: G + "video",
-    required: ["name", "thumbnailUrl", "uploadDate"],
-    recommended: ["description", ["contentUrl", "embedUrl"], "duration"],
-  },
+  ...GOOGLE.supported,
   // Google ended FAQ rich results on 7 May 2026; Bing and AI engines still read FAQPage, so only its structure is
   // checked.
   {
     type: "FAQPage",
-    for: "a well-formed FAQPage (Google shows no FAQ rich results since May 2026)",
+    feature: "a well-formed FAQPage (Google shows no FAQ rich results since May 2026)",
     doc: "https://schema.org/FAQPage",
     required: ["mainEntity"],
   },
   {
     type: "Question",
     under: "FAQPage",
-    for: "a well-formed FAQPage (Google shows no FAQ rich results since May 2026)",
+    feature: "a well-formed FAQPage (Google shows no FAQ rich results since May 2026)",
     doc: "https://schema.org/FAQPage",
     required: ["name", "acceptedAnswer"],
   },
   {
     type: "Answer",
     under: "Question",
-    for: "a well-formed FAQPage or Q&A",
+    feature: "a well-formed FAQPage or Q&A",
     doc: "https://schema.org/Answer",
     required: ["text"],
   },
 ];
+const RETIRED = GOOGLE.retired.filter(r => !r.keep);
+const monthOf = d =>
+  new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 
 const cache = new Map();
 const ancestors = t =>
@@ -178,6 +59,7 @@ const hint = (lc, t) =>
   lc[t.toLowerCase()] && lc[t.toLowerCase()] !== t ? `; did you mean "${lc[t.toLowerCase()]}"?` : "";
 const term = s => s.replace(/^(?:https?:\/\/schema\.org\/|schema:)/, "");
 const has = (o, k) => o[k] != null && o[k] !== "" && !(Array.isArray(o[k]) && !o[k].length);
+const list = x => [].concat(x ?? []);
 const clip = s => (s.length > 60 ? s.slice(0, 57) + "…" : s);
 const ISO_DATE =
   /^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01])(T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?)?)?$/;
@@ -275,42 +157,78 @@ export function checkJsonLd(text) {
       );
   }
 
+  // A rule applies to its type and subtypes, minus `except`, nested `under` one of its types (through `as`), and only
+  // when the item has one of the `when` properties ("*": any value, else that value in any case, so false matches
+  // "False" and "https://schema.org/ReturnShippingFees" matches "ReturnShippingFees").
+  const applies = (r, v, known, parent, via) =>
+    known.some(t => isA(t, r.type) && !list(r.except).some(e => isA(t, e))) &&
+    (!r.under || !!parent?.some(p => list(r.under).some(u => isA(p, u)))) &&
+    !(r.top && parent) &&
+    !(r.as && via !== r.as) &&
+    (!r.when ||
+      Object.entries(r.when).some(([k, want]) =>
+        want === "*" ? has(v, k) : list(v[k]).some(x => String(x).toLowerCase() === String(want)),
+      ));
+
   function google(v, path, known, parent, last, via) {
-    const seen = new Set();
-    for (const r of RULES) {
-      if (
-        !known.some(t => isA(t, r.type) && !(r.except && isA(t, r.except))) ||
-        (r.under && !parent?.some(p => isA(p, r.under))) ||
-        (r.top && parent)
-      )
-        continue;
-      const need = [...r.required, ...(parent && via !== r.via ? [] : r.standalone || [])].filter(
-        x => !(last && x === r.lastMayOmit),
-      );
-      const present = k =>
-        has(v, k) ||
-        (r.alsoOn?.[k] && [].concat(v[r.alsoOn[k]] ?? []).some(o => o && typeof o === "object" && has(o, k)));
-      for (const [list, severity, verb] of [
-        [need, "error", "required"],
-        [r.recommended || [], "warning", "recommended"],
-      ])
-        for (const x of list) {
-          const label = []
-            .concat(x)
-            .map(k => `"${k}"`)
-            .join(" or ");
-          if ([].concat(x).some(present) || seen.has(label)) continue;
-          seen.add(label);
+    const seen = new Set(),
+      rules = RULES.filter(r => applies(r, v, known, parent, via));
+    const label = x =>
+      list(x)
+        .map(k => `"${k}"`)
+        .join(" or ");
+    // Every rule's required properties first, so one rule's recommended "name" never hides another's required one.
+    for (const verb of ["required", "recommended"])
+      for (const r of rules) {
+        const present = k =>
+          has(v, k) || (r.alsoOn?.[k] && list(v[r.alsoOn[k]]).some(o => o && typeof o === "object" && has(o, k)));
+        const props =
+          verb === "required"
+            ? [...r.required, ...(parent && via !== r.via ? [] : r.standalone || [])].filter(
+                x => !(last && x === r.lastMayOmit),
+              )
+            : r.recommended || [];
+        for (const x of props) {
+          if (list(x).some(present) || seen.has(label(x))) continue;
+          seen.add(label(x));
           add(
-            severity,
-            verb === "required" ? "required-missing" : "recommended-missing",
+            verb === "required" ? "error" : "warning",
+            `${verb}-missing`,
             path,
             known,
-            `missing ${label}, ${verb} for ${r.for}`,
+            `missing ${label(x)}, ${verb} for ${r.feature}`,
             { doc: r.doc },
           );
         }
-    }
+        // A rating can't be filled in like a missing name: it has to come from real reviews shown on the page.
+        if (
+          verb === "recommended" &&
+          r.needsRating &&
+          !r.needsRating.some(present) &&
+          !seen.has(label(r.needsRating))
+        ) {
+          seen.add(label(r.needsRating));
+          add(
+            "note",
+            "rating-missing",
+            path,
+            known,
+            `no ${label(r.needsRating)}: ${r.feature} show only with one. Add it only from real reviews shown on this page (SCHEMA-04); never make one up`,
+            { doc: r.doc },
+          );
+        }
+      }
+    // Exact types only: a Recipe is a HowTo in schema.org, and still earns recipe results.
+    for (const r of RETIRED)
+      if (known.includes(r.type) && !(r.top && parent))
+        add(
+          "warning",
+          "type-retired",
+          path,
+          known,
+          `Google retired ${r.feature} in ${monthOf(r.since)}, so "${r.type}" no longer earns a Google rich result. It does no harm: remove it, or keep it knowingly${r.note ? ` (${r.note})` : ""}`,
+          { doc: r.source, rule: "SCHEMA-05", key: r.type },
+        );
   }
 
   function walk(v, path, parent, last, via) {
@@ -544,6 +462,7 @@ if (isMain(import.meta.url)) {
           {
             tool: "schema-check",
             vocabulary: `schema.org ${VOCAB.version}`,
+            googleRulesChecked: GOOGLE.checked,
             files: r.files,
             items: r.items,
             errors,
@@ -558,7 +477,7 @@ if (isMain(import.meta.url)) {
     }
     if (!opts.quiet || errors) {
       console.log(
-        `schema-check: ${plural(r.files, "file")}, ${plural(r.items, "item")}, ${plural(errors, "error")}, ${plural(warnings, "warning")}${notes ? `, ${plural(notes, "note")}` : ""} · schema.org ${VOCAB.version}`,
+        `schema-check: ${plural(r.files, "file")}, ${plural(r.items, "item")}, ${plural(errors, "error")}, ${plural(warnings, "warning")}${notes ? `, ${plural(notes, "note")}` : ""} · schema.org ${VOCAB.version} · Google's rules as of ${GOOGLE.checked}`,
       );
       for (const i of r.issues) if (!opts.quiet || i.severity === "error") console.log(format(i));
     }

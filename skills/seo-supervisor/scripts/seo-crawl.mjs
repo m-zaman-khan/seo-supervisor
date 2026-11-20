@@ -73,6 +73,7 @@ const CHECK_LIVE = !!args["check-live"];
 const OUTSIDE = !!args.outside; // nothing leaves the machine without it
 const LIGHTHOUSE_ALL = args.lighthouse === "all" || !!args["lighthouse=all"]; // --lighthouse all, or --lighthouse=all
 const LIGHTHOUSE = !!args.lighthouse || LIGHTHOUSE_ALL;
+const DESKTOP = !!args.desktop; // a separate opt-in: it sends the sample URLs to Google a second time
 const OUT = resolve(typeof args.out === "string" ? args.out : "seo-audit/seo-crawl.json");
 let SITE_ORIGIN = typeof args["site-origin"] === "string" ? new URL(args["site-origin"]).origin : "";
 const notes = [];
@@ -1022,6 +1023,16 @@ Object.assign(CHECKS, AGENT_CHECKS);
 Object.assign(CHECKS, BUSINESS_CHECKS);
 
 Object.assign(CHECKS, TECH_CHECKS, OUTBOUND_CHECKS);
+
+Object.assign(CHECKS, {
+  "desc-starts-with-title": [
+    "META-02",
+    "low",
+    n => `${n} description(s) start by repeating the page title`,
+    "Search results show the title right above the description, so a description that opens with the title spends its first, most-read words saying it again.",
+    "Open the description with what the page offers or answers, and leave the title's words to the title.",
+  ],
+});
 
 const findings = new Map(); // key -> {evidence:[], count}
 function add(key, url, detail) {
@@ -3163,22 +3174,25 @@ let speed;
 let speedReason = OUTSIDE
   ? "Speed data needs the public, live site; pass --site-origin."
   : "Outside checks are off. With the owner's go-ahead, --outside fetches real-user speed data from Google PageSpeed Insights.";
-if (OUTSIDE && isPublic(EXPECT_ORIGIN)) {
-  const urls = sampleUrls(
-    htmlPages
-      .filter(p => indexable(p) && !p.clientOnly)
-      .map(p => {
-        const x = new URL(p.finalUrl);
-        return EXPECT_ORIGIN + x.pathname + x.search;
-      }),
-  );
-  const r = await checkSpeed(urls, {
-    add,
-    endpoint: typeof args["psi-endpoint"] === "string" ? args["psi-endpoint"] : PSI_ENDPOINT,
-    key: process.env.PSI_API_KEY,
-  });
+const SPEED_ON = OUTSIDE && isPublic(EXPECT_ORIGIN),
+  PSI_AT = typeof args["psi-endpoint"] === "string" ? args["psi-endpoint"] : PSI_ENDPOINT,
+  CRUX_AT = typeof args["crux-endpoint"] === "string" ? args["crux-endpoint"] : CRUX_HISTORY_ENDPOINT;
+const speedUrls = SPEED_ON
+  ? sampleUrls(
+      htmlPages
+        .filter(p => indexable(p) && !p.clientOnly)
+        .map(p => {
+          const x = new URL(p.finalUrl);
+          return EXPECT_ORIGIN + x.pathname + x.search;
+        }),
+    )
+  : [];
+let speedLimited = false;
+if (SPEED_ON) {
+  const r = await checkSpeed(speedUrls, { add, endpoint: PSI_AT, key: process.env.PSI_API_KEY });
   if (r.samples.length) speed = { strategy: "mobile", samples: r.samples };
   notes.push(...r.notes);
+  speedLimited = r.limited;
   // PERF-01 counts as checked only when real-user data came back for at least one page.
   if (r.samples.some(s => s.field)) {
     evalRules("PERF-01");
@@ -3191,11 +3205,10 @@ if (OUTSIDE && isPublic(EXPECT_ORIGIN)) {
 if (speedReason) notChecked.push({ rule: "PERF-01", area: `PERF-01 ${RULES["PERF-01"][0]}`, reason: speedReason });
 // The 25-week trend for the whole origin, only with a key (CRUX_API_KEY, or a PSI_API_KEY with the CrUX API enabled).
 const CRUX_KEY = process.env.CRUX_API_KEY || process.env.PSI_API_KEY;
-if (OUTSIDE && isPublic(EXPECT_ORIGIN) && CRUX_KEY) {
-  const t = await speedTrend(EXPECT_ORIGIN, {
-    key: CRUX_KEY,
-    endpoint: typeof args["crux-endpoint"] === "string" ? args["crux-endpoint"] : CRUX_HISTORY_ENDPOINT,
-  }).catch(e => ({ note: `CrUX history failed (${e.message}).` }));
+if (SPEED_ON && CRUX_KEY) {
+  const t = await speedTrend(EXPECT_ORIGIN, { key: CRUX_KEY, endpoint: CRUX_AT }).catch(e => ({
+    note: `CrUX history failed (${e.message}).`,
+  }));
   if (t.trend)
     speed = {
       ...(speed || { strategy: "mobile", samples: [] }),
@@ -3203,6 +3216,35 @@ if (OUTSIDE && isPublic(EXPECT_ORIGIN) && CRUX_KEY) {
       ...(t.lcpBreakdown ? { lcpBreakdown: t.lcpBreakdown } : {}),
     };
   if (t.note) notes.push(t.note);
+}
+// Desktop never makes a finding or counts in the score: PERF-01 is about phones, the version Google indexes.
+if (DESKTOP && !OUTSIDE)
+  notes.push(
+    "--desktop runs only with outside checks on (--outside): it sends the sample URLs to Google PageSpeed Insights again, for desktop. It didn't run.",
+  );
+else if (DESKTOP && SPEED_ON && !speedLimited) {
+  const d = await checkSpeed(speedUrls, {
+    add: () => {},
+    endpoint: PSI_AT,
+    key: process.env.PSI_API_KEY,
+    strategy: "desktop",
+  });
+  const t = CRUX_KEY
+    ? await speedTrend(EXPECT_ORIGIN, { key: CRUX_KEY, endpoint: CRUX_AT, formFactor: "DESKTOP" }).catch(e => ({
+        note: `CrUX history (desktop) failed (${e.message}).`,
+      }))
+    : {};
+  notes.push(...d.notes, ...(t.note ? [t.note] : []));
+  if (d.samples.length || t.trend)
+    speed = {
+      ...(speed || { strategy: "mobile", samples: [] }),
+      desktop: {
+        strategy: "desktop",
+        samples: d.samples,
+        ...(t.trend ? { trend: t.trend } : {}),
+        ...(t.lcpBreakdown ? { lcpBreakdown: t.lcpBreakdown } : {}),
+      },
+    };
 }
 
 // ---------- outside checks: what JavaScript changes ----------
@@ -3538,6 +3580,16 @@ if (OUTBOUND) {
     area: "CRAWL-07 Links to other sites",
     reason: `The pages link to ${outbound.size} address(es) on other sites, which weren't visited: that contacts other sites, so it needs the owner's own yes. With it, --outbound-links checks up to 100 of them, 4 at a time, for broken links.`,
   });
+
+// META-02: a description that opens with the page's title, all of it or its first 80%, ignoring case and spacing.
+// Titles under 20 characters ("Contact us") are skipped: a short title often starts a natural sentence.
+for (const p of htmlPages) {
+  if (!indexable(p) || !p.title || !p.description) continue;
+  const flat = s => s.toLowerCase().replace(/\s+/g, " ").trim(),
+    t = flat(p.title);
+  if (t.length >= 20 && flat(p.description).startsWith(t.slice(0, Math.ceil(t.length * 0.8))))
+    add("desc-starts-with-title", p.finalUrl, `“${p.description.slice(0, 80)}”`);
+}
 
 // ---------- what the crawler cannot check ----------
 // CRAWL-09 never passes here: a real Googlebot comes from Google's IP addresses, which no request from here can.

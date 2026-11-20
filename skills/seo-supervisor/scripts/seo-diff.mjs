@@ -27,13 +27,21 @@ const crossed = (o, n, worse) =>
   Object.entries(LIMITS).some(
     ([k, lim]) => o[k] != null && n[k] != null && (worse ? o[k] <= lim && n[k] > lim : o[k] > lim && n[k] <= lim),
   );
+const REAL_MOVE = { lcp: 300, inp: 50, cls: 0.05 };
+const realMove = (o, n) => {
+  const v = Object.entries(REAL_MOVE)
+    .filter(([k]) => o[k] != null && n[k] != null)
+    .map(([k, min]) => {
+      const d = n[k] - o[k];
+      return Math.abs(d) >= Math.max(min, o[k] * 0.2) ? -Math.sign(d) : 0;
+    });
+  return v.includes(-1) ? -1 : v.includes(1) ? 1 : 0;
+};
+const real = (o, n) => (crossed(o, n, true) ? -1 : realMove(o, n) || (crossed(o, n, false) ? 1 : 0));
+const field = samples => samples?.map(s => [s.url, s.field?.lcp != null ? s.field : null]);
 const SPEED = [
-  [
-    "real visitors",
-    r => r.speed?.samples?.map(s => [s.url, s.field?.lcp != null ? s.field : null]),
-    (o, n) => (crossed(o, n, true) ? -1 : lcpMove(o, n, 0.2, 300) || (crossed(o, n, false) ? 1 : 0)),
-    fmtCwv,
-  ],
+  ["real visitors", r => field(r.speed?.samples), real, fmtCwv],
+  ["real visitors, desktop", r => field(r.speed?.desktop?.samples), real, fmtCwv],
   [
     "lab test",
     r => r.labSpeed?.map(l => [l.url, l.lcp != null ? l : null]),

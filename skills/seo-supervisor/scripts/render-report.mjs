@@ -867,7 +867,31 @@ const writingMd = () =>
       ]
     : [];
 
-const desktopSpeedText = () => "";
+// --desktop: origin field data, else the first page's, each with Google's good / needs improvement / poor band, plus
+// the desktop trend.
+import { band } from "./checks/speed.mjs";
+function desktopSpeedText() {
+  const s = raw.speed?.desktop,
+    samples = s?.samples || [];
+  if (!s || (!samples.length && !s.trend)) return "";
+  const v = samples.find(x => x.origin)?.origin || samples.find(x => x.field)?.field;
+  const now = !samples.length
+    ? ""
+    : !v
+      ? "not enough visits for field data yet"
+      : [
+          `LCP ${(v.lcp / 1000).toFixed(1)} s (${band("lcp", v.lcp)})`,
+          v.inp != null && `INP ${Math.round(v.inp)} ms (${band("inp", v.inp)})`,
+          v.cls != null && `CLS ${Math.round(v.cls * 100) / 100} (${band("cls", v.cls)})`,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+  const l = s.trend?.lcp,
+    trend = l
+      ? `over ${s.trend.weeks} weeks: LCP ${(l[0] / 1000).toFixed(1)} → ${(l[1] / 1000).toFixed(1)} s (${l[1] < l[0] * 0.95 ? "better" : l[1] > l[0] * 1.05 ? "worse" : "steady"})`
+      : "";
+  return `Real-user speed (desktop): ${[now, trend].filter(Boolean).join(" · ")}`;
+}
 
 // Search Console positions (`positions`, google.mjs fetch) as shares of queries.
 const positionsText = () => {

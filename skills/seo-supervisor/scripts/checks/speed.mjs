@@ -23,9 +23,12 @@ const LCP_PARTS = {
 };
 
 // The origin's p75s over CrUX History's 25 weekly periods, as [first, last] per metric, plus the latest LCP parts
-// in ms.
+// in ms. formFactor is PHONE or DESKTOP.
 // https://developer.chrome.com/docs/crux/history-api
-export async function speedTrend(origin, { key, endpoint = CRUX_HISTORY_ENDPOINT, fetchFn = fetch }) {
+export async function speedTrend(
+  origin,
+  { key, endpoint = CRUX_HISTORY_ENDPOINT, fetchFn = fetch, formFactor = "PHONE" },
+) {
   const q = new URL(endpoint);
   q.searchParams.set("key", key);
   const r = await fetchFn(q.href, {
@@ -33,7 +36,7 @@ export async function speedTrend(origin, { key, endpoint = CRUX_HISTORY_ENDPOINT
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       origin,
-      formFactor: "PHONE",
+      formFactor,
       metrics: [
         "largest_contentful_paint",
         "interaction_to_next_paint",
@@ -45,7 +48,7 @@ export async function speedTrend(origin, { key, endpoint = CRUX_HISTORY_ENDPOINT
   });
   if (!r.ok)
     return {
-      note: `CrUX history: ${r.status === 404 ? "not enough Chrome visits to this site for a trend" : `answered ${r.status}${r.status === 403 ? " (enable the Chrome UX Report API for this key)" : ""}`}.`,
+      note: `CrUX history${formFactor === "PHONE" ? "" : ` (${formFactor.toLowerCase()})`}: ${r.status === 404 ? "not enough Chrome visits to this site for a trend" : `answered ${r.status}${r.status === 403 ? " (enable the Chrome UX Report API for this key)" : ""}`}.`,
     };
   const rec = (await r.json()).record || {},
     m = rec.metrics || {};
@@ -93,7 +96,12 @@ export function labLcpBreakdown(runs) {
     x = l.find(x => new URL(x.url).pathname === "/") || l[0];
   return x ? { source: "lab", url: x.url, ...x.lcpParts } : null;
 }
-export const LIMITS = { lcp: 2500, inp: 200, cls: 0.1 };
+// Good up to the first number, poor above the second, at p75 on phone and desktop alike.
+// https://web.dev/articles/defining-core-web-vitals-thresholds
+export const BANDS = { lcp: [2500, 4000], inp: [200, 500], cls: [0.1, 0.25] };
+export const LIMITS = Object.fromEntries(Object.entries(BANDS).map(([k, [good]]) => [k, good]));
+export const band = (metric, value) =>
+  value <= BANDS[metric][0] ? "good" : value <= BANDS[metric][1] ? "needs improvement" : "poor";
 
 // PageSpeed reports CLS as its percentile × 100.
 const cwv = m =>
@@ -128,9 +136,11 @@ export function sampleUrls(urls, max = 10) {
   return out.sort((a, b) => new URL(a).pathname.length - new URL(b).pathname.length).slice(0, max);
 }
 
+// For --desktop the crawler passes a no-op add, since PERF-01 judges phones.
 export async function checkSpeed(urls, { add, endpoint = PSI_ENDPOINT, key, fetchFn = fetch, strategy = "mobile" }) {
   const samples = [],
-    notes = [];
+    notes = [],
+    PSI = strategy === "mobile" ? "PageSpeed" : `PageSpeed (${strategy})`;
   let limited = false;
   for (const url of urls) {
     if (limited) break;
@@ -150,17 +160,17 @@ export async function checkSpeed(urls, { add, endpoint = PSI_ENDPOINT, key, fetc
         if (r.status === 429) {
           limited = true;
           notes.push(
-            `PageSpeed refused the request (rate limit${key ? "" : ": requests without an API key share a daily quota that is usually used up"}). Speed wasn't checked.`,
+            `${PSI} refused the request (rate limit${key ? "" : ": requests without an API key share a daily quota that is usually used up"}). Speed wasn't checked.`,
           );
           break;
         }
         if (!r.ok) {
-          notes.push(`PageSpeed: ${url} answered ${r.status}.`);
+          notes.push(`${PSI}: ${url} answered ${r.status}.`);
           break;
         }
         data = await r.json();
       } catch (e) {
-        notes.push(`PageSpeed: ${url} failed (${e.message}).`);
+        notes.push(`${PSI}: ${url} failed (${e.message}).`);
         break;
       }
     }
@@ -180,7 +190,7 @@ export async function checkSpeed(urls, { add, endpoint = PSI_ENDPOINT, key, fetc
     if (field && !passes(field)) add("cwv-fail", url, `${fmtCwv(field)} (75th percentile of real ${strategy} visits)`);
     else if (!field && lab.lcp != null)
       notes.push(
-        `PageSpeed: no real-user data for ${url} yet; lab run: LCP ${(lab.lcp / 1000).toFixed(1)} s, CLS ${Math.round((lab.cls || 0) * 100) / 100}, TBT ${Math.round(lab.tbt || 0)} ms.`,
+        `${PSI}: no real-user data for ${url} yet; lab run: LCP ${(lab.lcp / 1000).toFixed(1)} s, CLS ${Math.round((lab.cls || 0) * 100) / 100}, TBT ${Math.round(lab.tbt || 0)} ms.`,
       );
   }
   return { samples, notes, limited };

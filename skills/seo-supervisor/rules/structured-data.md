@@ -64,8 +64,9 @@ CollectionPage, ItemList, DefinedTerm, CreativeWork and Service earn no Google r
 - **Fix:** remove any rating that isn't sourced; that's a decision for the owner (`needs-decision`). Never invent one. Leaving the rating out keeps the markup valid; it just shows no stars. To earn stars honestly, collect ratings on the page (e.g. "Was this useful?"), show the average and count there, and build `aggregateRating` from that data. A fake rating can cost the whole site its rich results through a manual action.
 
 ### SCHEMA-05 · No schema kept for rich results that no longer exist · low
-- **Check:** crawler `deprecated-schema`.
-- **Fix:** remove HowTo and SearchAction, or keep them knowingly. Never promise these rich results.
+- **Check:** crawler `deprecated-schema` (HowTo, SearchAction). `scripts/schema-check.mjs` warns `type-retired`, with Google's source, for each type in the `retired` list of `scripts/data/google-rich-results.json`: HowTo (Sept 2023), SearchAction (the sitelinks search box, Nov 2024), and ClaimReview, SpecialAnnouncement and a top-level Occupation (estimated salary), phased out from June 2025. Google's Fact Check Explorer still reads ClaimReview. Types are matched exactly, so a Recipe, a kind of HowTo in schema.org, isn't flagged.
+- **Not flagged:** FAQPage, which Bing and AI engines still read: keep it where the FAQ is visible (SCHEMA-04). Course info, learning video, vehicle listing and practice problem results are gone too, but their types (Course, VideoObject, Quiz, Car) still serve live results or describe the item to other engines.
+- **Fix:** remove the markup, or keep it knowingly: it does no harm. Never promise these rich results.
 
 ### SCHEMA-06 · No visitor input in schema · high
 - **Check:** code: tool results, search terms or form values flowing into JSON-LD.
@@ -75,5 +76,8 @@ CollectionPage, ItemList, DefinedTerm, CreativeWork and Service earn no Google r
 - **Check:** crawler `breadcrumb-missing`, and URL-05.
 
 ### SCHEMA-08 · Every template is validated · medium
-- **Check:** `scripts/schema-check.mjs` on the built pages or a local URL, offline (schema.org vocabulary, value shapes, Google's required and recommended properties; FAQPage structure only). JSON-LD with template tags (`{{`, `{%`, `<%`) is a note to check the built output; ProductGroups and Products nested as `isSimilarTo`, `itemOffered` or `itemReviewed` don't need offers. Then one URL per template through Google's Rich Results Test. After launch, watch the enhancement reports in Search Console.
+- **Check:** `scripts/schema-check.mjs` on the built pages or a local URL, offline: the schema.org vocabulary, value shapes, and Google's required and recommended properties for every rich-result type in its search gallery (`scripts/data/google-rich-results.json`, with the date it was checked; FAQPage structure only). JSON-LD with template tags (`{{`, `{%`, `<%`) is a note to check the built output; ProductGroups and Products nested as `isSimilarTo`, `itemOffered` or `itemReviewed` don't need offers. Then one URL per template through Google's Rich Results Test. After launch, watch the enhancement reports in Search Console.
+- **What it never asks for:** recommended lists leave out what Google marks "if applicable" and every rating. A software app with no rating or review is a note (`rating-missing`), not an error, because Google shows the result only with one and it must come from real reviews shown on the page (SCHEMA-04).
+- **Copy-ready code:** the "Google rich results" section of `examples/snippets.md` has one snippet per type, each passing `schema-check.mjs`.
 - Facts that must match the visible page: phone, email, address, prices, hours.
+- **Refresh:** when the data file's `checked` date is more than about six months old, re-read the search gallery and each feature's page.

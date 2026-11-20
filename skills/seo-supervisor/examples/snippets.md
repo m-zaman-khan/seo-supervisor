@@ -117,6 +117,479 @@ curl -X POST "https://api.indexnow.org/indexnow" -H "Content-Type: application/j
   -d '{"host":"example.com","key":"<key>","keyLocation":"https://example.com/<key>.txt","urlList":["https://example.com/tools/dmarc-checker/"]}'
 ```
 
+## Google rich results (SCHEMA-03, SCHEMA-08)
+
+One snippet per result type Google still shows, from its search gallery (checked 20 Nov 2026; the full list with each type's required and recommended properties is in `scripts/data/google-rich-results.json`). Each one passes `scripts/schema-check.mjs` with no errors. Use only the parts that are true for the page, and run one URL per template through Google's Rich Results Test.
+
+Ratings and reviews: only real ones shown on the same page (SCHEMA-04). The numbers below are placeholders; if the page shows no ratings, leave `aggregateRating` and `review` out. FAQ, how-to, sitelinks search box, fact check, special announcement and estimated salary results are gone (SCHEMA-05), so they have no snippet here.
+
+### Product, merchant listing and review (SHOP-05)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Product",
+  "name": "Trail running shoe",
+  "image": ["https://example.com/photos/trail-shoe-1x1.jpg", "https://example.com/photos/trail-shoe-16x9.jpg"],
+  "description": "A light trail shoe with a grippy sole and a wide toe box.",
+  "sku": "TRS-042",
+  "brand": { "@type": "Brand", "name": "Brand" },
+  "offers": {
+    "@type": "Offer",
+    "url": "https://example.com/shoes/trail-shoe/",
+    "price": "89.00",
+    "priceCurrency": "GBP",
+    "availability": "https://schema.org/InStock",
+    "itemCondition": "https://schema.org/NewCondition",
+    "shippingDetails": {
+      "@type": "OfferShippingDetails",
+      "shippingRate": { "@type": "MonetaryAmount", "value": "4.95", "currency": "GBP" },
+      "shippingDestination": { "@type": "DefinedRegion", "addressCountry": "GB" },
+      "deliveryTime": {
+        "@type": "ShippingDeliveryTime",
+        "handlingTime": { "@type": "QuantitativeValue", "minValue": 0, "maxValue": 1, "unitCode": "DAY" },
+        "transitTime": { "@type": "QuantitativeValue", "minValue": 1, "maxValue": 3, "unitCode": "DAY" }
+      }
+    },
+    "hasMerchantReturnPolicy": {
+      "@type": "MerchantReturnPolicy",
+      "applicableCountry": "GB",
+      "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
+      "merchantReturnDays": 30,
+      "returnFees": "https://schema.org/FreeReturn"
+    }
+  },
+  "aggregateRating": { "@type": "AggregateRating", "ratingValue": "4.4", "reviewCount": "89", "bestRating": "5" },
+  "review": {
+    "@type": "Review",
+    "author": { "@type": "Person", "name": "Sam Lee" },
+    "datePublished": "2026-10-02",
+    "reviewRating": { "@type": "Rating", "ratingValue": "5", "bestRating": "5" }
+  }
+}
+```
+
+### Product variants (one page for all sizes and colours)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "ProductGroup",
+  "name": "Wool winter coat",
+  "description": "A warm wool coat in two sizes and two colours.",
+  "url": "https://example.com/coats/wool-coat/",
+  "brand": { "@type": "Brand", "name": "Brand" },
+  "productGroupID": "WC-01",
+  "variesBy": ["https://schema.org/size", "https://schema.org/color"],
+  "hasVariant": [
+    { "@type": "Product", "sku": "WC-01-S-GRN", "name": "Wool winter coat, small, green", "description": "Small green wool coat.", "size": "small", "color": "green",
+      "image": "https://example.com/photos/coat-small-green.jpg",
+      "offers": { "@type": "Offer", "url": "https://example.com/coats/wool-coat/?size=small&color=green", "price": "119.00", "priceCurrency": "GBP", "availability": "https://schema.org/InStock" } },
+    { "@type": "Product", "sku": "WC-01-L-BLU", "name": "Wool winter coat, large, blue", "description": "Large blue wool coat.", "size": "large", "color": "blue",
+      "image": "https://example.com/photos/coat-large-blue.jpg",
+      "offers": { "@type": "Offer", "url": "https://example.com/coats/wool-coat/?size=large&color=blue", "price": "129.00", "priceCurrency": "GBP", "availability": "https://schema.org/InStock" } }
+  ]
+}
+```
+
+### Store-wide returns, shipping and loyalty program (on the Organization, SHOP-05)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "@id": "https://example.com/#organization",
+  "name": "Brand",
+  "url": "https://example.com/",
+  "logo": "https://example.com/logo-512.png",
+  "hasMerchantReturnPolicy": {
+    "@type": "MerchantReturnPolicy",
+    "applicableCountry": "GB",
+    "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
+    "merchantReturnDays": 30,
+    "returnFees": "https://schema.org/FreeReturn",
+    "returnMethod": "https://schema.org/ReturnByMail"
+  },
+  "hasShippingService": {
+    "@type": "ShippingService",
+    "name": "Standard delivery",
+    "shippingConditions": {
+      "@type": "ShippingConditions",
+      "shippingDestination": { "@type": "DefinedRegion", "addressCountry": "GB" },
+      "shippingRate": { "@type": "MonetaryAmount", "value": "4.95", "currency": "GBP" }
+    }
+  },
+  "hasMemberProgram": {
+    "@type": "MemberProgram",
+    "name": "Brand Club",
+    "description": "Free to join: members get free delivery and earn points on every order.",
+    "url": "https://example.com/club/",
+    "hasTiers": {
+      "@type": "MemberProgramTier",
+      "@id": "https://example.com/club/#member",
+      "name": "Member",
+      "hasTierBenefit": "https://schema.org/TierBenefitLoyaltyPoints",
+      "hasTierRequirement": "Free sign-up",
+      "url": "https://example.com/club/"
+    }
+  }
+}
+```
+
+### Review of something you don't sell (review snippet)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Review",
+  "itemReviewed": { "@type": "Book", "name": "The Garden Year", "author": { "@type": "Person", "name": "Ana Ruiz" } },
+  "author": { "@type": "Person", "name": "Sam Lee" },
+  "datePublished": "2026-10-02",
+  "reviewRating": { "@type": "Rating", "ratingValue": "4", "bestRating": "5" },
+  "reviewBody": "Clear, practical and beautifully illustrated."
+}
+```
+
+### Employer rating (on a site that collects reviews of employers)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "EmployerAggregateRating",
+  "itemReviewed": { "@type": "Organization", "name": "Acme Builders", "sameAs": "https://acme-builders.example.com/" },
+  "ratingValue": "4.1",
+  "ratingCount": "212",
+  "bestRating": "5",
+  "worstRating": "1"
+}
+```
+
+### Local business (LOCAL-05)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Plumber",
+  "@id": "https://example.com/#business",
+  "name": "Brand Plumbing",
+  "url": "https://example.com/",
+  "logo": "https://example.com/logo-512.png",
+  "image": "https://example.com/photos/van.jpg",
+  "telephone": "+44 113 496 0000",
+  "priceRange": "££",
+  "address": { "@type": "PostalAddress", "streetAddress": "1 High Street", "addressLocality": "Leeds", "postalCode": "LS1 1AA", "addressCountry": "GB" },
+  "geo": { "@type": "GeoCoordinates", "latitude": 53.79648, "longitude": -1.54785 },
+  "openingHoursSpecification": [{ "@type": "OpeningHoursSpecification", "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], "opens": "08:00", "closes": "18:00" }]
+}
+```
+
+### Article, with the parts to read aloud (speakable)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Council approves new cycle lanes for the city centre",
+  "image": ["https://example.com/photos/cycle-lanes-16x9.jpg"],
+  "datePublished": "2026-11-18T08:00:00+00:00",
+  "dateModified": "2026-11-18T11:30:00+00:00",
+  "author": [{ "@type": "Person", "name": "Jo Patel", "url": "https://example.com/authors/jo-patel/" }],
+  "speakable": { "@type": "SpeakableSpecification", "cssSelector": [".headline", ".summary"] }
+}
+```
+
+### Article behind a paywall (so Google doesn't read it as cloaking)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "NewsArticle",
+  "headline": "What the new energy price cap means for your bills",
+  "image": ["https://example.com/photos/energy-bills-16x9.jpg"],
+  "datePublished": "2026-11-19T07:00:00+00:00",
+  "dateModified": "2026-11-19T07:00:00+00:00",
+  "author": [{ "@type": "Person", "name": "Jo Patel", "url": "https://example.com/authors/jo-patel/" }],
+  "isAccessibleForFree": false,
+  "hasPart": { "@type": "WebPageElement", "isAccessibleForFree": false, "cssSelector": ".paywall" }
+}
+```
+
+### Breadcrumb (SCHEMA-07)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Guides", "item": "https://example.com/guides/" },
+    { "@type": "ListItem", "position": 2, "name": "Heating", "item": "https://example.com/guides/heating/" },
+    { "@type": "ListItem", "position": 3, "name": "Bleeding a radiator" }
+  ]
+}
+```
+
+### Course list, shown as a carousel (at least three courses)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "item": { "@type": "Course", "url": "https://example.com/courses/plumbing-basics/", "name": "Plumbing basics", "description": "Pipes, joints and simple repairs, in six short lessons.", "provider": { "@type": "Organization", "name": "Brand", "sameAs": "https://example.com/" } } },
+    { "@type": "ListItem", "position": 2, "item": { "@type": "Course", "url": "https://example.com/courses/boiler-care/", "name": "Boiler care", "description": "Keep a gas boiler safe and efficient between services.", "provider": { "@type": "Organization", "name": "Brand", "sameAs": "https://example.com/" } } },
+    { "@type": "ListItem", "position": 3, "item": { "@type": "Course", "url": "https://example.com/courses/bathroom-fitting/", "name": "Bathroom fitting", "description": "Plan and fit a bathroom suite, from the first measurements to the last seal.", "provider": { "@type": "Organization", "name": "Brand", "sameAs": "https://example.com/" } } }
+  ]
+}
+```
+
+### Movie
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Movie",
+  "name": "The Long Winter",
+  "url": "https://example.com/films/the-long-winter/",
+  "image": "https://example.com/posters/the-long-winter.jpg",
+  "dateCreated": "2025-03-14",
+  "director": { "@type": "Person", "name": "Ana Ruiz" }
+}
+```
+
+### Event
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Event",
+  "name": "Winter craft fair",
+  "description": "Forty local makers selling prints, pottery, knitwear and food, with workshops for children.",
+  "startDate": "2026-12-05T10:00:00+00:00",
+  "endDate": "2026-12-05T16:00:00+00:00",
+  "eventStatus": "https://schema.org/EventScheduled",
+  "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+  "location": { "@type": "Place", "name": "Example Hall", "address": { "@type": "PostalAddress", "streetAddress": "1 High Street", "addressLocality": "Leeds", "postalCode": "LS1 1AA", "addressCountry": "GB" } },
+  "image": ["https://example.com/photos/craft-fair-16x9.jpg"],
+  "offers": { "@type": "Offer", "url": "https://example.com/events/craft-fair/", "price": "5.00", "priceCurrency": "GBP", "availability": "https://schema.org/InStock", "validFrom": "2026-11-01T09:00:00+00:00" },
+  "organizer": { "@type": "Organization", "name": "Brand", "url": "https://example.com/" },
+  "performer": { "@type": "PerformingGroup", "name": "Leeds Community Choir" }
+}
+```
+
+### Job posting
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "JobPosting",
+  "title": "Plumbing apprentice",
+  "description": "<p>Learn the trade on real jobs across Leeds, with a day a week at college. Full training, a van once you qualify, and a guaranteed job at the end.</p>",
+  "datePosted": "2026-11-15",
+  "validThrough": "2026-12-31T23:59:00+00:00",
+  "employmentType": "FULL_TIME",
+  "hiringOrganization": { "@type": "Organization", "name": "Brand", "sameAs": "https://example.com/", "logo": "https://example.com/logo-512.png" },
+  "jobLocation": { "@type": "Place", "address": { "@type": "PostalAddress", "streetAddress": "1 High Street", "addressLocality": "Leeds", "postalCode": "LS1 1AA", "addressCountry": "GB" } },
+  "baseSalary": { "@type": "MonetaryAmount", "currency": "GBP", "value": { "@type": "QuantitativeValue", "value": 24000, "unitText": "YEAR" } }
+}
+```
+
+### Recipe
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Recipe",
+  "name": "Leek and potato soup",
+  "image": ["https://example.com/photos/soup-1x1.jpg", "https://example.com/photos/soup-4x3.jpg", "https://example.com/photos/soup-16x9.jpg"],
+  "author": { "@type": "Person", "name": "Ana Ruiz" },
+  "datePublished": "2026-10-01",
+  "description": "A thick, comforting soup, ready in 40 minutes.",
+  "prepTime": "PT10M",
+  "cookTime": "PT30M",
+  "totalTime": "PT40M",
+  "recipeYield": "4",
+  "recipeCategory": "Soup",
+  "recipeCuisine": "British",
+  "keywords": "leek soup, potato soup",
+  "nutrition": { "@type": "NutritionInformation", "calories": "210 calories" },
+  "recipeIngredient": ["3 leeks, sliced", "2 potatoes, diced", "1 litre vegetable stock"],
+  "recipeInstructions": [
+    { "@type": "HowToStep", "text": "Soften the leeks in butter for 10 minutes." },
+    { "@type": "HowToStep", "text": "Add the potatoes and stock and simmer for 20 minutes." },
+    { "@type": "HowToStep", "text": "Blend until smooth and season to taste." }
+  ]
+}
+```
+
+### Video, with key moments
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "VideoObject",
+  "name": "How to bleed a radiator",
+  "description": "A two-minute guide to bleeding a radiator safely.",
+  "thumbnailUrl": ["https://example.com/video/bleed-radiator-16x9.jpg"],
+  "uploadDate": "2026-10-10T08:00:00+00:00",
+  "duration": "PT2M10S",
+  "contentUrl": "https://example.com/video/bleed-radiator.mp4",
+  "embedUrl": "https://example.com/embed/bleed-radiator",
+  "hasPart": [
+    { "@type": "Clip", "name": "Turn the heating off", "startOffset": 0, "endOffset": 25, "url": "https://example.com/video/bleed-radiator/?t=0" },
+    { "@type": "Clip", "name": "Open the bleed valve", "startOffset": 25, "endOffset": 80, "url": "https://example.com/video/bleed-radiator/?t=25" }
+  ]
+}
+```
+
+### Image licence details (Licensable badge in Google Images, MEDIA rules)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "ImageObject",
+  "contentUrl": "https://example.com/photos/black-labrador-puppy.jpg",
+  "license": "https://example.com/image-licence/",
+  "acquireLicensePage": "https://example.com/how-to-use-our-photos/",
+  "creditText": "Brand Photography",
+  "creator": { "@type": "Person", "name": "Ana Ruiz" },
+  "copyrightNotice": "© 2026 Brand"
+}
+```
+
+### Discussion forum thread
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "DiscussionForumPosting",
+  "headline": "Best way to bleed an old radiator?",
+  "text": "The valve on my 1970s radiator won't turn. Is there a safe way to free it?",
+  "url": "https://example.com/forum/threads/1234/",
+  "author": { "@type": "Person", "name": "PipeFixer", "url": "https://example.com/forum/users/pipefixer/" },
+  "datePublished": "2026-11-02T09:15:00+00:00",
+  "interactionStatistic": { "@type": "InteractionCounter", "interactionType": "https://schema.org/LikeAction", "userInteractionCount": 12 },
+  "comment": [{
+    "@type": "Comment",
+    "text": "Soak it in penetrating oil overnight, then use a proper bleed key.",
+    "author": { "@type": "Person", "name": "OldHand", "url": "https://example.com/forum/users/oldhand/" },
+    "datePublished": "2026-11-02T10:02:00+00:00"
+  }]
+}
+```
+
+### Q&A page (one question, answers from users)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "QAPage",
+  "mainEntity": {
+    "@type": "Question",
+    "name": "How often should a boiler be serviced?",
+    "text": "My gas boiler is three years old. How often does it need a service?",
+    "answerCount": 2,
+    "datePublished": "2026-10-20T10:00:00+00:00",
+    "author": { "@type": "Person", "name": "Chris", "url": "https://example.com/users/chris/" },
+    "acceptedAnswer": { "@type": "Answer", "text": "Once a year. Most warranties also require a yearly service by a Gas Safe engineer.", "datePublished": "2026-10-20T11:00:00+00:00", "upvoteCount": 14, "url": "https://example.com/questions/boiler-service/#answer-1", "author": { "@type": "Person", "name": "Jo Patel", "url": "https://example.com/users/jo/" } },
+    "suggestedAnswer": [{ "@type": "Answer", "text": "Every year, ideally before winter when engineers get busy.", "datePublished": "2026-10-21T09:00:00+00:00", "upvoteCount": 3, "url": "https://example.com/questions/boiler-service/#answer-2", "author": { "@type": "Person", "name": "Sam", "url": "https://example.com/users/sam/" } }]
+  }
+}
+```
+
+### Profile page (an author or member page)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "ProfilePage",
+  "dateCreated": "2024-06-01T09:00:00+00:00",
+  "dateModified": "2026-11-01T14:20:00+00:00",
+  "mainEntity": {
+    "@type": "Person",
+    "name": "Jo Patel",
+    "alternateName": "jopatel",
+    "identifier": "1234",
+    "description": "Heating engineer and writer of our boiler guides.",
+    "image": "https://example.com/authors/jo-patel.jpg",
+    "sameAs": ["https://www.linkedin.com/in/example"]
+  }
+}
+```
+
+### Software app (only with real ratings shown on the page)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Brand Budget",
+  "operatingSystem": "Android, iOS",
+  "applicationCategory": "FinanceApplication",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" },
+  "aggregateRating": { "@type": "AggregateRating", "ratingValue": "4.6", "ratingCount": "1250", "bestRating": "5" }
+}
+```
+
+### Vacation rental (Google also wants at least 8 photos: bedroom, bathroom and living area)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "VacationRental",
+  "additionalType": "Cottage",
+  "identifier": "COT-118",
+  "name": "Riverside cottage",
+  "url": "https://example.com/stays/riverside-cottage/",
+  "image": ["https://example.com/stays/riverside/1.jpg", "https://example.com/stays/riverside/2.jpg", "https://example.com/stays/riverside/3.jpg"],
+  "latitude": 54.37158,
+  "longitude": -2.91046,
+  "address": { "@type": "PostalAddress", "streetAddress": "2 River Lane", "addressLocality": "Ambleside", "postalCode": "LA22 0AA", "addressCountry": "GB" },
+  "checkinTime": "15:00:00+00:00",
+  "checkoutTime": "10:00:00+00:00",
+  "containsPlace": {
+    "@type": "Accommodation",
+    "additionalType": "EntirePlace",
+    "occupancy": { "@type": "QuantitativeValue", "value": 4 },
+    "numberOfBedrooms": 2,
+    "numberOfBathroomsTotal": 1,
+    "amenityFeature": [{ "@type": "LocationFeatureSpecification", "name": "wifi", "value": true }]
+  }
+}
+```
+
+### Dataset (Google Dataset Search only, not Google Search results)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Dataset",
+  "name": "Leeds household water use, 2020 to 2025",
+  "description": "Monthly household water use for each Leeds postcode district from 2020 to 2025, in litres per household per day, from smart meter readings.",
+  "url": "https://example.com/data/water-use/",
+  "identifier": "https://doi.org/10.1234/example.5678",
+  "keywords": ["water use", "households", "Leeds"],
+  "license": "https://creativecommons.org/licenses/by/4.0/",
+  "isAccessibleForFree": true,
+  "version": "2.1",
+  "creator": { "@type": "Organization", "name": "Brand", "url": "https://example.com/" },
+  "includedInDataCatalog": { "@type": "DataCatalog", "name": "Brand open data", "url": "https://example.com/data/" },
+  "distribution": [{ "@type": "DataDownload", "encodingFormat": "text/csv", "contentUrl": "https://example.com/data/water-use.csv" }]
+}
+```
+
+### Flashcards (education Q&A)
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Quiz",
+  "about": { "@type": "Thing", "name": "Blood" },
+  "educationalAlignment": [{ "@type": "AlignmentObject", "alignmentType": "educationalSubject", "targetName": "Biology" }],
+  "hasPart": [{
+    "@type": "Question",
+    "eduQuestionType": "Flashcard",
+    "text": "What carries oxygen in red blood cells?",
+    "acceptedAnswer": { "@type": "Answer", "text": "Haemoglobin" }
+  }]
+}
+```
+
+### Math solver
+```json
+{
+  "@context": "https://schema.org",
+  "@type": ["MathSolver", "LearningResource"],
+  "name": "Brand equation solver",
+  "url": "https://example.com/solver/",
+  "usageInfo": "https://example.com/privacy/",
+  "inLanguage": "en",
+  "learningResourceType": "Math Solver",
+  "potentialAction": [{
+    "@type": "SolveMathAction",
+    "target": "https://example.com/solver/?q={math_expression_string}",
+    "mathExpression-input": "required name=math_expression_string",
+    "eduQuestionType": ["Polynomial Equation", "Derivative"]
+  }]
+}
+```
+
 ## Quick checks with curl (REND-01, URL-02, CRAWL-03)
 ```bash
 URL=https://example.com/tools/dmarc-checker/
