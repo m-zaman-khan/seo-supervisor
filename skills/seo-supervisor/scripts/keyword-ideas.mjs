@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 import { addTraffic } from "./gsc-import.mjs";
-import { classify } from "./links-import.mjs";
+import { classify, withSiteName } from "./links-import.mjs";
 
 const USAGE =
   'usage: node keyword-ideas.mjs --google seo-audit/google.json | --gsc seo-audit/gsc.json [--crawl seo-audit/seo-crawl.json] [--brand "Acme"] [--extra seo-audit/keyword-extra.json] [--out seo-audit/keyword-ideas.json]';
@@ -56,10 +56,11 @@ const same = (a, b) => {
 // extra word is usually a place or a detail ("boiler servicing leeds" on a page titled "Boiler servicing").
 const covers = (pageWords, words) =>
   words.filter(w => pageWords.some(p => same(w, p))).length >= (words.length >= 3 ? words.length - 1 : words.length);
-// English question words followed by at least two more words ("can opener" isn't a question), or a question mark in
-// any language.
+// English question words followed by at least two more words ("how much" alone isn't a question), or a question mark in
+// any language. "can", "do", "is" and the like start a question only before a pronoun or an article, so "can opener
+// electric" and "do it yourself bathroom" aren't questions.
 const QUESTION =
-  /^(what|what['’]?s|how|why|when|where|who|whom|whose|which|can|could|does|do|did|is|are|should|would)\s+\S+\s+\S+|[?？¿]/i;
+  /^(?:(?:what|what['’]?s|how|why|when|where|who|whom|whose|which)\s+\S+\s+\S+|(?!do\s+it\s+yourself\b)(?:can|could|does|do|did|is|are|should|would|will)\s+(?:i|you|we|they|he|she|it|my|your|our|their|a|an|the|this|that|these|those|there|anyone|someone|people)\s+\S+)|[?？¿]/i;
 // The same escaping as render-report.mjs, which doesn't export it: a backslash before each special character.
 const md = s =>
   String(s ?? "")
@@ -107,29 +108,40 @@ export function keywordIdeas({ search, crawl = null, brand, extra = [] }) {
   const site = search.site || crawl?.siteOrigin,
     host = (() => {
       try {
-        return new URL(site).hostname.replace(/^www\./, "").split(".")[0];
+        return new URL(site).hostname;
       } catch {
         return "";
       }
     })();
-  const brandName = brand || crawl?.options?.brand || host;
+  const given = brand || crawl?.options?.brand,
+    brandName = host ? withSiteName(given, host) : given || "";
   notes.push(
     brandName
-      ? `Brand queries are left out using “${brandName}”${brand ? " (from --brand)" : crawl?.options?.brand ? " (the crawl's --brand)" : ", taken from the site's address. Pass --brand with the business name if it's different"}.`
+      ? `Brand queries are left out using “${brandName.split("|").join("” or “")}”${given ? ` (${brand ? "from --brand" : "the crawl's --brand"}${host ? " and the site's address" : ""})` : ", taken from the site's address. Pass --brand with the business name if it's different"}.`
       : "No brand name was given or found, so brand queries weren't left out. Pass --brand with the business name.",
   );
 
-  const pages = Array.isArray(crawl?.pages)
-    ? crawl.pages
-        .filter(p => p?.url)
-        .map(p => ({ path: pathOf(p.url), words: mainWords(`${p.title || ""} ${p.h1Text || ""}`) }))
-    : null;
+  // Pages with a title or H1 to compare. A crawl that stopped at its page limit, or whose pages have neither (blocked,
+  // or built in the browser), can't show that no page is about a query, so gaps aren't judged.
+  const crawled = Array.isArray(crawl?.pages) ? crawl.pages.filter(p => p?.url && (p.title || p.h1Text)) : null;
+  const pages =
+    crawled?.length && !crawl.stats?.capped
+      ? crawled.map(p => ({ path: pathOf(p.url), words: mainWords(`${p.title || ""} ${p.h1Text || ""}`) }))
+      : null;
   // The page whose title or H1 is about the phrase, null when none is, undefined when that can't be judged.
   const about = phrase =>
     !pages || NOSPACE.test(phrase) ? undefined : (pages.find(p => covers(p.words, mainWords(phrase)))?.path ?? null);
-  if (!pages)
+  if (!crawl)
     notes.push(
       "Without --crawl, page titles and H1s weren't read, so “shown for, but no page is about it” wasn't checked.",
+    );
+  else if (crawl.stats?.capped && crawled?.length)
+    notes.push(
+      "The crawl stopped at its page limit (--max), so a page it didn't reach may be about a query. “Shown for, but no page is about it” wasn't checked.",
+    );
+  else if (!pages)
+    notes.push(
+      "No crawled page has a title or H1 (the crawl may have been blocked, or the pages are built in the browser), so “shown for, but no page is about it” wasn't checked.",
     );
   const unjudged = pages ? rows.filter(r => NOSPACE.test(r.query)).length : 0;
   if (unjudged)
@@ -165,10 +177,11 @@ export function keywordIdeas({ search, crawl = null, brand, extra = [] }) {
         idea(
           a
             ? `Answer it in a short section or an FAQ on ${a}, which is already about this.`
-            : `${a === null ? "No page is about this yet. " : ""}Answer it in an FAQ or a section on the page that fits best.`,
+            : `${a === null && r.position > 10 ? "No page is about this yet. " : ""}Answer it in an FAQ or a section on the page that fits best.`,
         ),
       );
-    } else if (kind === "other" && gaps && about(r.query) === null) {
+    } else if (kind === "other" && gaps && r.position > 10 && about(r.query) === null) {
+      // On page one (position 10 or better), Google already sees a page as about the query, whatever its title says.
       gaps.push(
         idea("No page's title or H1 is about this. A new page, or a section on a related page, could answer it."),
       );
@@ -245,7 +258,7 @@ const GROUPS = [
   [
     "gaps",
     "Shown for, but no page is about it",
-    "Queries with impressions where no page's title or H1 holds the query's main words. Brand queries are left out.",
+    "Queries with impressions, below page one, where no page's title or H1 holds the query's main words. Brand queries are left out.",
   ],
   [
     "questions",

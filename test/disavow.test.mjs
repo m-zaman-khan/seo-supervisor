@@ -99,6 +99,21 @@ test("refuses the site itself, an empty list and malformed entries", async () =>
   ]);
 });
 
+test("refuses half-written URLs, and an old list that disavows the site itself", async () => {
+  await refused(["--urls", "u.txt"], { "u.txt": "http:spam.example\n" }, /isn't a web address/);
+  await refused(["--urls", "u.txt"], { "u.txt": "https:/spam.example/x\n" }, /isn't a web address/);
+  await refused(
+    ["--domains", "new.example", "--existing", "old.txt"],
+    { "old.txt": "domain:acme.com\n" },
+    /old\.txt line 1 .*your own site/,
+  );
+  await refused(
+    ["--domains", "new.example", "--existing", "old.txt"],
+    { "old.txt": "# x\nhttps://blog.acme.com/a\n" },
+    /old\.txt line 2 .*your own site/,
+  );
+});
+
 test("enforces Google's limits: 2,048-character URLs, 100,000 lines and 2 MB", async () => {
   const long = "https://spam.example/" + "a".repeat(2048 - 21);
   assert.equal(long.length, 2048);

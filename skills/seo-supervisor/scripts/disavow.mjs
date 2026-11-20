@@ -32,9 +32,11 @@ const hostOf = s => {
     return null;
   }
 };
+// http:// or https:// then a host. Node parses "http:spam.com" and "https:/spam.com", but the file keeps lines as
+// written, so those are refused.
 const isUrl = s => {
   try {
-    return /^https?:$/.test(new URL(s).protocol) && !/\s/.test(s);
+    return /^https?:\/\/[^/\\\s]/i.test(s) && !/\s/.test(s) && !!new URL(s).hostname;
   } catch {
     return false;
   }
@@ -112,9 +114,16 @@ function main(argv) {
   const old = str("existing") ? lines(args.existing) : [];
   old.forEach((raw, i) => {
     const l = raw.trim();
-    if (l && !l.startsWith("#") && !(isUrl(l) || (/^domain:/i.test(l) && hostOf(l.slice(7)))))
+    if (!l || l.startsWith("#")) return;
+    const h = isUrl(l) ? new URL(l).hostname : /^domain:/i.test(l) ? hostOf(l.slice(7)) : null;
+    if (!h)
       fail(
         `${args.existing} line ${i + 1} isn't a disavow line: "${l.slice(0, 100)}". Pass the disavow file for this property, as it is in Search Console.`,
+      );
+    // Disavowing the site itself is almost certainly a mistake that's hurting it, so it stops the run.
+    if (mine(h))
+      fail(
+        `${args.existing} line ${i + 1} disavows your own site (${site.host}): "${l.slice(0, 100)}". That's almost certainly a mistake. Remove that line from the file, run this again, and upload the new file.`,
       );
   });
   const seen = new Set(old.map(l => keyOf(l.trim()))),

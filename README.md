@@ -87,7 +87,7 @@ npx seo-supervisor        # then, in Claude Code: /seo-audit
   - Keyword ideas (`keyword-ideas.mjs`) from your own Search Console queries and crawl: queries almost on page one, queries no page is about, and real questions. With outside checks on, phrases from search results are added, each with its source. No made-up volumes, and you pick the targets.
   - Audience check: name up to 4 audiences in the profile, and the report lists what each key page gives them and what's missing, with evidence from the page. No score, and no invented personas.
   - Links worth a look, and a disavow helper. The Links panel lists links that stand out, with what to check, and no score. `disavow.mjs` writes a disavow file from the domains you pick, keeping your old list, for you to upload. It's only for real cases, such as a manual action or links you bought.
-  - Share previews: a share image without `twitter:card` (X then shows at most a small card), a `twitter:card` value X doesn't define, and pages with no description for shares.
+  - Share previews: a share image without `twitter:card` (X then shows at most a small card), and a `twitter:card` value X doesn't define.
 
 ## Install
 

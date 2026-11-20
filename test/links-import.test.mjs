@@ -319,6 +319,33 @@ test("a normal link profile has nothing worth a look", async () => {
   assert.doesNotMatch(JSON.stringify(r), /toxic/i);
 });
 
+test("links with no text (image links) aren't keyword text, and the same empty text from several sites isn't worth a look", async () => {
+  const { worthALook, anchorMix } = await import("../skills/seo-supervisor/scripts/links-import.mjs");
+  const texts = [
+    { text: "", links: 300 },
+    { text: "Acme", links: 40 },
+    ...Array.from({ length: 9 }, (_, i) => ({ text: `guide ${i}`, links: 1 })),
+  ];
+  const smp = ["a", "b", "c"].map(h => ({ url: `https://${h}.example/p`, anchorText: "" }));
+  assert.deepEqual(worthALook({ texts, sample: smp }, new URL("https://www.acme.com"), "Acme"), []);
+  assert.equal(anchorMix(texts, "Acme").other, 0.184, "shares are of links with text: 9 of 49");
+});
+
+test("the brand from the site's address: subdomains and IDN addresses give the real name, and legal endings or several names still match", async () => {
+  const { siteName, classify } = await import("../skills/seo-supervisor/scripts/links-import.mjs");
+  assert.deepEqual(["shop.acme.com", "www.acme.co.uk", "www.xn--bcher-kva.de", "acme.com", "localhost"].map(siteName), [
+    "acme",
+    "acme",
+    "bücher",
+    "acme",
+    "localhost",
+  ]);
+  assert.equal(classify("Acme Plumbing reviews", "Acme Plumbing Ltd"), "brand");
+  assert.equal(classify("Zeta heating", "Zeta Plumbing|Zeta"), "brand");
+  assert.equal(classify("Bücher kaufen", "bücher"), "brand");
+  assert.equal(classify("plumbing tips", "Zeta Plumbing|Zeta"), "other");
+});
+
 test("one site linking from many pages to few of yours is worth a look, calmly", async () => {
   const r = await importLinks({
     "sites.csv": siteRows([["footer.example", 600, 1], ["news.example", 40, 12], ["blog.acme.com", 900, 1], ...SMALL]),

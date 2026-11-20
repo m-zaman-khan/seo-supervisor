@@ -40,7 +40,7 @@ Build them from the site's own pages and real queries only: Search Console queri
 - **Almost there:** a query at position 8–20, and the page that shows for it. This is per query; the almost-page-one finding (INTENT-04) is per page. Don't report a query again as a finding.
 - **Shown for, but no page is about it:** no page's title or H1 holds the query's main words. It's a candidate for a cluster gap above, once the owner agrees.
 - **Questions people search:** material for "Questions to answer" in a brief.
-- **Ideas from search results and competitors:** only with outside checks on. Save the phrases you saw as `seo-audit/keyword-extra.json`, `[{ "phrase", "source" }]`, with the engine (or the competitor's page) and the date in each source, e.g. `"Google related searches, 2026-11-21"`, and pass `--extra`.
+- **Ideas from search results and competitors:** only with outside checks on and `intent` in `outsideChecks.approved`. Save the phrases you saw as `seo-audit/keyword-extra.json`, `[{ "phrase", "source" }]`, with the engine (or the competitor's page) and the date in each source, e.g. `"Google related searches, 2026-11-21"`, and pass `--extra`.
 
 Show the owner the list. Only the ideas the owner picks become target phrases, with their source.
 

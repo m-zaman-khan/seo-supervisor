@@ -44,6 +44,60 @@ test("a query whose main words are in a page's title or H1 isn't a gap; case, ac
   assert.ok(r.gaps[0].use);
 });
 
+test("a query already on page one isn't a gap, and a crawl with no titles, or one that stopped at its limit, judges no gaps", () => {
+  const data = search([q("boiler repair leeds", 100, 3), q("solar panel cleaning", 80, 30)]);
+  const ok = keywordIdeas({ search: data, crawl: { pages: [page("/", "Welcome")] } });
+  assert.deepEqual(
+    phrases(ok.gaps),
+    ["solar panel cleaning"],
+    "a page ranks at 3, so Google already sees one as about it",
+  );
+  for (const [crawl, why] of [
+    [{ pages: [] }, /no crawled page has a title or H1/i],
+    [{ pages: [page("/", null), page("/a/", "")] }, /no crawled page has a title or H1/i],
+    [{ pages: [page("/", "Welcome")], stats: { capped: true } }, /page limit/],
+  ]) {
+    const r = keywordIdeas({ search: data, crawl });
+    assert.equal(r.gaps, null, String(why));
+    assert.ok(
+      r.notes.some(n => why.test(n)),
+      String(why),
+    );
+  }
+});
+
+test("the brand: legal endings, several names and the site's own name count; subdomains and IDN addresses give the real name", () => {
+  const crawl = { pages: [page("/", "Home")] };
+  const r = keywordIdeas({
+    search: search([q("acme plumbing reviews", 90, 12), q("acme leeds", 90, 30), q("leak detection", 90, 30)]),
+    crawl,
+    brand: "Acme Plumbing Ltd",
+  });
+  assert.deepEqual(phrases(r.almostThere), [], "“Ltd” is dropped from the brand");
+  assert.deepEqual(phrases(r.gaps), ["leak detection"], "the site's own name counts as the brand too");
+  const sub = keywordIdeas({
+    search: { ...search([q("shoe shop leeds", 90, 30), q("acme careers", 90, 30)]), site: "https://shop.acme.com" },
+    crawl,
+  });
+  assert.equal(sub.brand, "acme");
+  assert.deepEqual(phrases(sub.gaps), ["shoe shop leeds"]);
+  const idn = keywordIdeas({
+    search: {
+      ...search([q("bücher online kaufen", 90, 30), q("gartenmöbel holz", 90, 30)]),
+      site: "https://www.xn--bcher-kva.de",
+    },
+    crawl,
+  });
+  assert.equal(idn.brand, "bücher");
+  assert.deepEqual(phrases(idn.gaps), ["gartenmöbel holz"]);
+  const two = keywordIdeas({
+    search: search([q("zeta heating leeds", 90, 30), q("leak detection", 90, 30)]),
+    crawl,
+    brand: "Zeta Plumbing|Zeta",
+  });
+  assert.deepEqual(phrases(two.gaps), ["leak detection"], "names separated by | all count");
+});
+
 test("queries in scripts without spaces never become gaps", () => {
   const crawl = { pages: [page("/", "Acme")] };
   const r = keywordIdeas({ search: search([q("東京 ホテル", 100, 30), q("โรงแรม กรุงเทพ", 100, 30)]), crawl });
@@ -137,6 +191,20 @@ test("questions are detected, in any language with a question mark", () => {
   );
   assert.ok(!phrases(r.gaps).includes("how much does a boiler cost"), "a query is listed in one group only");
   assert.ok(phrases(r.gaps).includes("can opener"), "a starter word with one more word isn't a question");
+  const more = keywordIdeas({
+    search: search([
+      q("can opener electric", 50, 30),
+      q("do it yourself bathroom", 50, 30),
+      q("is it safe to bleed a radiator", 50, 30),
+      q("can you freeze bread", 50, 30),
+    ]),
+    crawl,
+  });
+  assert.deepEqual(
+    phrases(more.questions).sort(),
+    ["can you freeze bread", "is it safe to bleed a radiator"],
+    "can, do and is start a question only before a pronoun or article",
+  );
 });
 
 test("--extra phrases keep their source labels; malformed entries are skipped with a note", () => {

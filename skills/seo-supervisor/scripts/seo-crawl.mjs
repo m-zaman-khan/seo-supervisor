@@ -561,8 +561,8 @@ const CHECKS = {
   "og-missing": [
     "META-04",
     "low",
-    n => `${n} page(s) lack og:title, og:image or any description for shares`,
-    "Without og:title and og:image, shared links on Slack, LinkedIn and X show a bare URL instead of a card. Without og:description or a meta description, the card has no line of text under its title.",
+    n => `${n} page(s) lack og:title or og:image`,
+    "Without og:title and og:image, shared links on Slack, LinkedIn and X show a bare URL instead of a card. Where og:description is listed too, the page has no description at all, so each platform guesses its text from the page or shows none.",
     "Emit Open Graph and Twitter tags from the metadata helper, with a default image and per-page images for key pages, and og:description from the page's meta description.",
   ],
   "og-image-broken": [
@@ -2722,13 +2722,11 @@ for (const p of htmlPages) {
     (descMap.get(p.description) || descMap.set(p.description, []).get(p.description)).push(u);
   }
   // og:description is optional (https://ogp.me), but X falls back only to it and LinkedIn requires it. None says
-  // whether the meta description stands in, so a missing one is flagged only when that's missing too.
-  const noOg = [
-    !p.ogTitle && "og:title",
-    !p.ogImage && "og:image",
-    !p.ogDescription && !p.description && "og:description",
-  ].filter(Boolean);
-  if (noOg.length) add("og-missing", u, noOg.join(", "));
+  // whether the meta description stands in, so it's listed only when that's missing too, and only beside a missing
+  // og:title or og:image: alone it's desc-missing's.
+  const noOg = [!p.ogTitle && "og:title", !p.ogImage && "og:image"].filter(Boolean);
+  if (noOg.length)
+    add("og-missing", u, [...noOg, !p.ogDescription && !p.description && "og:description"].filter(Boolean).join(", "));
   // Without twitter:card, X shows at most the small summary card. A page with no share image gets og-missing instead.
   // From X's cards markup guide, archived 30 May 2025; X has since taken its card docs down.
   const card = p.twitterCard?.trim().toLowerCase();

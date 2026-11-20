@@ -5,6 +5,7 @@
 // https://support.google.com/webmasters/answer/9049606
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { domainToUnicode } from "node:url";
 import { isMain } from "./lib/is-main.mjs";
 import { parseCsv } from "./lib/csv.mjs";
 
@@ -123,12 +124,21 @@ const norm = s =>
     .trim();
 // Anything shaped like a host name is an address, so "Node.js" counts as one. That's rare in link text.
 const ADDRESS = /^(https?:\/\/)?[\p{L}\p{N}-]+(\.[\p{L}\p{N}-]+)+(:\d+)?([/?#]\S*)?$/iu;
-// The brand when its words appear as whole words, also run together ("AcmePlumbing" for "Acme Plumbing", and back),
-// so "Ace" isn't found inside "space".
+// The brand when one of its names ("Acme Plumbing|Acme") appears as whole words, also run together ("AcmePlumbing" for
+// "Acme Plumbing", and back), so "Ace" isn't found inside "space". A legal ending ("Ltd", "Inc", "GmbH") isn't needed.
+const LEGAL = / (ltd|limited|inc|llc|llp|plc|gmbh|co|corp|company|pty|bv|ag|sa|srl|sarl)$/;
+const brandNames = brand =>
+  String(brand ?? "")
+    .split("|")
+    .map(b => {
+      let n = norm(b);
+      while (LEGAL.test(n)) n = n.replace(LEGAL, "");
+      return n.replace(/ /g, "");
+    })
+    .filter(Boolean);
 const hasBrand = (text, brand) => {
-  const w = norm(text).split(" "),
-    b = norm(brand).replace(/ /g, "");
-  return !!b && w.some((_, i) => w.slice(i).some((_, j) => w.slice(i, i + j + 1).join("") === b));
+  const w = norm(text).split(" ");
+  return brandNames(brand).some(b => w.some((_, i) => w.slice(i).some((_, j) => w.slice(i, i + j + 1).join("") === b)));
 };
 export const classify = (text, brand) =>
   ADDRESS.test(String(text).trim())
@@ -138,10 +148,33 @@ export const classify = (text, brand) =>
       : GENERIC.has(norm(text))
         ? "generic"
         : "other";
+// The site's name from its address, as Unicode: the label before the public suffix, so shop.acme.com and acme.co.uk
+// give "acme" and xn--bcher-kva.de gives "bücher". A two-letter country code after a label of 3 letters or fewer counts
+// as the suffix (co.uk, com.au). Use the Public Suffix List if a site's name comes out wrong.
+export const siteName = host => {
+  const l = domainToUnicode(bare(host)).split(".");
+  return (
+    l[Math.max(l.length >= 3 && l.at(-1).length === 2 && l.at(-2).length <= 3 ? l.length - 3 : l.length - 2, 0)] || ""
+  );
+};
+// The brand names to match: the given ones ("Acme Plumbing|Acme") plus the site's name, each once.
+export const withSiteName = (brand, host) => {
+  const seen = new Set();
+  return [...String(brand ?? "").split("|"), siteName(host)]
+    .map(s => s.trim())
+    .filter(s => {
+      const k = brandNames(s)[0];
+      return k && !seen.has(k) && seen.add(k);
+    })
+    .join("|");
+};
+// Links with no text (usually image links): Search Console exports them as empty rows. They have no words to judge.
+const hasText = t => norm(t ?? "") !== "";
 
 // Shares from 0 to 1 of the links with text: of links when the export counts them, else of the texts listed (Search
 // Console merges duplicates).
 export function anchorMix(texts, brand) {
+  texts = texts.filter(t => hasText(t.text));
   const w = texts.every(t => t.links != null) ? t => t.links : () => 1,
     total = texts.reduce((s, t) => s + w(t), 0);
   if (!total) return null;
@@ -179,15 +212,20 @@ export function worthALook({ sites = [], texts = [], sample = [] }, site, brand)
       why: `Links to you from ${s.links.toLocaleString("en-US")} of its pages, but to only ${s.targets} of yours: ${pct(s.links / total)} of all the links Search Console listed. A link on every page like this is usually in a footer or sidebar.`,
       look: `That's fine from a partner, a client, a supplier or another site you run. If you don't know the site, open a few of its pages and look at the link and its words. ${ONLY}`,
     });
-  // Link text: 3 in 4 descriptive (not brand, address or generic), from at least 10 texts.
-  const mix = texts.length >= 10 && anchorMix(texts, brand);
+  // Link text: 3 in 4 descriptive (not brand, address or generic), from at least 10 texts with words.
+  const named = texts.filter(t => hasText(t.text)),
+    mix = named.length >= 10 && anchorMix(named, brand);
   if (mix && mix.other >= 0.75)
     out.push({
       kind: "keyword-text",
       subject: "Link text to your site",
-      why: `${pct(mix.other)} of the link text is descriptive words, not your brand (read as “${brand}”) or your web address.`,
+      why: `${pct(mix.other)} of the link text is descriptive words, not your brand (read as “${String(brand)
+        .split("|")
+        .map(s => s.trim())
+        .filter(Boolean)
+        .join("” or “")}”) or your web address.`,
       look: `That's normal when people link to articles by their titles. It's worth a look if you, or someone you paid, placed links: ${SPAM} ${ONLY}`,
-      examples: texts
+      examples: named
         .filter(t => classify(t.text, brand) === "other")
         .slice(0, 5)
         .map(t => t.text),
@@ -202,7 +240,13 @@ export function worthALook({ sites = [], texts = [], sample = [] }, site, brand)
     } catch {
       continue;
     }
-    if (mine(h) || typeof l.anchorText !== "string" || classify(l.anchorText, brand) !== "other") continue;
+    if (
+      mine(h) ||
+      typeof l.anchorText !== "string" ||
+      !hasText(l.anchorText) ||
+      classify(l.anchorText, brand) !== "other"
+    )
+      continue;
     const k = norm(l.anchorText),
       g = same.get(k) || { text: l.anchorText.trim(), hosts: new Set(), urls: [] };
     g.hosts.add(h);
@@ -378,12 +422,10 @@ function main(argv) {
       `No Search Console links export was found in ${args.dir}${zips ? ` (${zips} zip file${zips === 1 ? " is" : "s are"} there: unzip ${zips === 1 ? "it" : "them"} first)` : ""}, so links from other sites weren't summarised this time. In Search Console, open Links, click More under Top linking sites, Top linking text and Top linked pages, and export each as CSV into that folder.`,
     );
 
-  const brand = str("brand") || bare(site.hostname).split(".")[0];
+  const brand = withSiteName(str("brand"), site.hostname);
   if (links?.texts.length)
     notes.push(
-      str("brand")
-        ? `Link text counts as your brand when it contains “${brand}” (from --brand).`
-        : `Link text counts as your brand when it contains “${brand}”, taken from the site's address. Pass --brand with the business name if it's different.`,
+      `Link text counts as your brand when it contains “${brand.split("|").join("” or “")}”${str("brand") ? " (from --brand and the site's address)" : ", taken from the site's address. Pass --brand with the business name if it's different"}.`,
     );
   const readJson = (f, what) => {
     try {

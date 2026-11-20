@@ -50,7 +50,7 @@ test("every rule file the skill links to exists", () => {
   for (const rel of new Set(linked)) assert.doesNotThrow(() => readFileSync(join(SKILL, rel)), `${rel} exists`);
 
   assert.match(skill, /`planning\.md`/, "SKILL.md points setup mode at planning.md");
-  for (const doc of ["planning.md", "report-format.md", "profile-template.md", "rewrite.md"])
+  for (const doc of ["planning.md", "report-format.md", "profile-template.md", "rewrite.md", "grow.md", "audience.md"])
     if (skill.includes("`" + doc + "`")) assert.doesNotThrow(() => readFileSync(join(SKILL, doc)), `${doc} exists`);
 });
 
@@ -165,6 +165,30 @@ test("rewrite mode: the agent rewrites, nothing changes without the owner's yes,
     "target phrases",
   ])
     assert.ok(rewrite.toLowerCase().includes(kept.toLowerCase()), `rewrite.md names ${kept}`);
+});
+
+test("keyword ideas from search results need the search-results check approved, and the grow command says what else gets written", () => {
+  const read = p => readFileSync(join(SKILL, p), "utf8");
+  const skill = read("SKILL.md"),
+    ideas = skill.split("**Keyword ideas** (brief")[1].split("\n### ")[0];
+  for (const [name, text] of [
+    ["SKILL.md", ideas],
+    ["strategy.md", read("strategy.md").split("Ideas from search results")[1].split("\n- ")[0]],
+    ["grow.md", read("grow.md")],
+  ])
+    assert.match(
+      text,
+      /`intent` in `outsideChecks\.approved`|`intent` is in `outsideChecks\.approved`/,
+      `${name}: only with \`intent\` in outsideChecks.approved`,
+    );
+  assert.match(ideas, /"Acme Plumbing\|Acme"/, "SKILL.md says how to pass several brand names");
+  const cmd = readFileSync(join(ROOT, "commands", "seo-grow.md"), "utf8");
+  assert.doesNotMatch(
+    cmd,
+    /Write only `seo-audit\/grow-plan\.md`/,
+    "keyword-ideas.mjs and the audience check write their own files",
+  );
+  assert.match(cmd, /keyword-ideas/);
 });
 
 test("the docs agree with the code and keep every outside or content step behind the owner", () => {

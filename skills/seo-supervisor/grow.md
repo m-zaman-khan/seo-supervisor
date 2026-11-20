@@ -97,7 +97,7 @@ The rules in SKILL.md apply throughout, most of all **Plain language (CONTENT-13
   node <skill-dir>/scripts/keyword-ideas.mjs --google seo-audit/google.json --crawl seo-audit/seo-crawl.json \
     --brand "<Brand>" --out seo-audit/keyword-ideas.json
   ```
-  Use `--gsc seo-audit/gsc.json` instead after a manual export. Phrases from search results come in through `--extra`. They're collected only with outside checks on, as `strategy.md` describes, naming the engine and the date.
+  Use `--gsc seo-audit/gsc.json` instead after a manual export. Phrases from search results come in through `--extra`. They're collected only with outside checks on and `intent` in `outsideChecks.approved`, as `strategy.md` describes, naming the engine and the date.
 - **No search data at all:** say "Without Search Console, this plan can't say what people search for." Point to Stage 0's table. The only phrases allowed then are ones the owner gives, labelled "owner".
 
 **Steps:**
@@ -114,7 +114,7 @@ The rules in SKILL.md apply throughout, most of all **Plain language (CONTENT-13
 - Give or estimate search volumes, difficulty, cost per click or traffic forecasts. They need paid data.
 - Make a phrase a target without the owner's pick.
 - Use a phrase without a labelled source.
-- Search the web for ideas while outside checks are off (`settings.json` `outsideChecks`).
+- Search the web for ideas unless outside checks are on and `intent` is in `outsideChecks.approved` (`settings.json`).
 - Target another company's brand name.
 - Plan pages that only swap a town or product name (SKILL.md, Never).
 

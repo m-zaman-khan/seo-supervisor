@@ -1020,12 +1020,17 @@ test("share previews: a share image without twitter:card, or with a card X doesn
   );
   assert.deepEqual(
     pathsOf(r, "og-missing"),
-    ["/no-desc/", "/no-image/"],
-    "a meta description stands in for og:description",
+    ["/no-image/"],
+    "a page missing only a description is desc-missing's, not flagged twice",
   );
+  assert.ok(pathsOf(r, "desc-missing").includes("/no-desc/"));
   const detail = (key, path) => findingOf(r, key).evidence.find(e => new URL(e.url).pathname === path).detail;
   assert.equal(detail("og-missing", "/no-image/"), "og:image");
-  assert.equal(detail("og-missing", "/no-desc/"), "og:description");
+  assert.doesNotMatch(
+    findingOf(r, "og-missing").why,
+    /no line of text/,
+    "Facebook guesses text from the page, so the card isn't said to be empty",
+  );
   assert.equal(detail("twitter-card-invalid", "/invalid/"), "“gallery”");
   for (const key of ["twitter-card-missing", "twitter-card-invalid"])
     assert.deepEqual([findingOf(r, key).rule, findingOf(r, key).severity], ["META-04", "low"], key);

@@ -245,7 +245,9 @@ Write one content brief for a topic or page, in the format `strategy.md` gives, 
 
 **Keyword ideas** (brief mode, and setup and grow mode when choosing target phrases). When `seo-audit/` has `google.json` or `gsc.json`:
 1. Run `node <skill-dir>/scripts/keyword-ideas.mjs --google seo-audit/google.json --crawl seo-audit/seo-crawl.json [--brand "<business name>"] [--extra seo-audit/keyword-extra.json] --out seo-audit/keyword-ideas.json` (or `--gsc seo-audit/gsc.json`). It reads local files only.
-2. Only with outside checks on, save the phrases you saw in search results or on competitors' pages to `seo-audit/keyword-extra.json` as `[{ "phrase", "source" }]`. Each source names the search engine (or the competitor's page) and the date, for example `"Google related searches, 2026-11-21"`.
+   - Give every name customers search for, separated by `|`, for example `--brand "Acme Plumbing|Acme"`. The site's own name is added for you.
+   - A legal ending such as "Ltd" isn't needed.
+2. Only with outside checks on and `intent` in `outsideChecks.approved`, save the phrases you saw in search results or on competitors' pages to `seo-audit/keyword-extra.json` as `[{ "phrase", "source" }]`. Each source names the search engine (or the competitor's page) and the date, for example `"Google related searches, 2026-11-21"`.
 3. Show the owner the ideas with their sources. Only the ones the owner picks become target phrases, kept with their source.
 
 Never add search volumes or difficulty.
