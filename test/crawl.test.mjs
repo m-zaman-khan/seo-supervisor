@@ -839,6 +839,36 @@ test("PERF-10 passes only on Chrome's own test: without it, it's listed as not c
   );
 });
 
+test("--desktop that can't run says why: the origin isn't public, or PageSpeed refused the phone requests", async () => {
+  const busy = await serve(tmp(), {
+    before(req, res) {
+      res.writeHead(429).end();
+      return true;
+    },
+  });
+  // No browser and no API keys: nothing here leaves the machine.
+  const env = { ...process.env, CHROME_PATH: process.execPath, PSI_API_KEY: "", CRUX_API_KEY: "" };
+  try {
+    const [local, limited] = await Promise.all([
+      crawlSite(two(), {}, "https://site.test", { args: [...OUTSIDE, "--desktop"], env }),
+      crawlSite(two(), {}, undefined, {
+        args: ["--outside", "--psi-endpoint", `${busy.url}/runPagespeed`, "--desktop"],
+        env,
+      }),
+    ]);
+    assert.ok(
+      local.notes.some(n => /--desktop/.test(n) && /public/.test(n)),
+      local.notes.join("\n"),
+    );
+    assert.ok(
+      limited.notes.some(n => /--desktop/.test(n) && /refused/.test(n)),
+      limited.notes.join("\n"),
+    );
+  } finally {
+    await busy.close();
+  }
+});
+
 test(
   "PERF-10 on a one-page site: Back needs a second page, so Chrome's test can't run",
   { skip: !findBrowser() && "Chrome not installed", timeout: 120000 },

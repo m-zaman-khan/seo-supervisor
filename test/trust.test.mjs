@@ -124,6 +124,23 @@ test("trust signals: each is found on a site that has it and missing on one that
   assert.ok(!full.findings.some(f => /trust/i.test(f.check)), "trust signals never become findings");
 });
 
+test("HTTPS isn't counted while a cookie or HSTS finding is open, though those checks run late in the crawl", async () => {
+  const r = await crawl(FULL, {
+    headers: { "/": { ...SECURITY, "Set-Cookie": "sid=abc; Path=/", "Strict-Transport-Security": "max-age=300" } },
+    args: ["--site-origin", "https://acme.example"],
+  });
+  assert.deepEqual(
+    r.findings
+      .filter(f => ["TRUST-01", "TRUST-07"].includes(f.rule))
+      .map(f => f.check)
+      .sort(),
+    ["cookie-flags", "hsts-short"],
+  );
+  const { https } = byId(r.trustSignals);
+  assert.equal(https.found, false, https.evidence);
+  assert.equal(https.evidence, "HTTPS, with open security findings");
+});
+
 const at = (url, html) => ({ finalUrl: url, trust: trustFeatures(html, url, url) });
 const SITE = origin => ({ origin, https: true, orgSchema: null, unsourcedStats: 0 });
 const count = signals => signals.filter(s => s.applies).length;

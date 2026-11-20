@@ -55,6 +55,18 @@ const img = (src, attrs = "") => `<img src="${src}" width="400" height="300" alt
 const NAV = '<a href="/images/">Images</a> <a href="/meta/">Meta</a>';
 const LONG = "https://example.com/images/?q=" + "a".repeat(2100);
 
+// Cookies a load balancer or CDN in front of the site sets, which the site can't change.
+const INFRA_COOKIES = [
+  "AWSALB=x1; Expires=Thu, 26 Nov 2026 00:00:00 GMT; Path=/",
+  "AWSALBCORS=x1; Path=/; SameSite=None",
+  "ARRAffinity=a1; Path=/; HttpOnly",
+  "BIGipServerpool_web=123.456.0000; path=/",
+  "__cf_bm=b1; path=/; Secure; SameSite=None",
+];
+// HTML a minifier wrote: no </head> or <body> (both optional), and the same with only </head>.
+const MINIFIED = (title, tail = "") =>
+  `<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content="width=device-width"><title>${title}</title><meta name=description content="What ${title} is about.">${tail}<h1>${title}</h1><p>A page with an icon <svg viewBox="0 0 1 1"><title>Menu</title></svg></p>`;
+
 // One planted problem per check, on the pages and sitemaps named in the tests below.
 let badRun, goodRun;
 const bad = () =>
@@ -94,7 +106,7 @@ const bad = () =>
         "/": {
           "Strict-Transport-Security": "max-age=86400",
           "Referrer-Policy": "no-referrer, unsafe-url",
-          "Set-Cookie": ["session=abc; Path=/", "prefs=dark; Path=/; HttpOnly; SameSite=Lax"],
+          "Set-Cookie": ["session=abc; Path=/", "prefs=dark; Path=/; HttpOnly; SameSite=Lax", ...INFRA_COOKIES],
         },
         "/sitemap.xml": { "Set-Cookie": "xmlcookie=1; Path=/" },
       },
@@ -106,8 +118,10 @@ const good = () =>
     {
       "/": page(
         "Home",
-        `${NAV} <a href="/caf%C3%A9/">Café</a> <a href=" /images/ ">Images again</a> <a href="https://bücher.example/">Books</a><script>document.cookie = "consent=yes"</script>`,
+        `${NAV} <a href="/caf%C3%A9/">Café</a> <a href=" /images/ ">Images again</a> <a href="https://bücher.example/">Books</a> <a href="/min/">Minified</a> <a href="/min-head/">Minified with a head</a><script>document.cookie = "consent=yes"</script>`,
       ),
+      "/min/": MINIFIED("Minified page"),
+      "/min-head/": MINIFIED("Minified page with a head", "</head>"),
       "/images/": page(
         "Images",
         [
@@ -130,7 +144,7 @@ const good = () =>
     {
       sitemaps: {
         "/index.xml": index(["/pages.xml", "/images.xml", "/video.xml"]),
-        "/pages.xml": urlset(["/", "/images/", "/meta/", "/images/?q=short"]),
+        "/pages.xml": urlset(["/", "/images/", "/meta/", "/min/", "/min-head/", "/images/?q=short"]),
         "/images.xml": urlset([
           "<url><loc>https://example.com/</loc><image:image><image:loc>https://example.com/i1.jpg</image:loc></image:image></url>",
         ]),
@@ -252,6 +266,17 @@ test("pages: two descriptions, viewports or og:titles, and headings that are onl
   );
 });
 
+test("pages: HTML that leaves out the optional </head> and <body> tags has each head tag counted once", async () => {
+  const ok = await good();
+  const min = ok.pages.filter(p => /\/min(-head)?\/$/.test(p.url));
+  assert.deepEqual(
+    min.map(p => p.description).sort(),
+    ["What Minified page is about.", "What Minified page with a head is about."],
+    "both pages were crawled and read",
+  );
+  assertNone(ok, ["duplicate-head-tags", "title-multiple"]);
+});
+
 test("security: HSTS under a year, Referrer-Policy unsafe-url (the last valid value counts) and cookies without HttpOnly or SameSite", async () => {
   const [r, ok] = await Promise.all([bad(), good()]);
   for (const c of ["hsts-short", "referrer-unsafe", "cookie-flags"])
@@ -281,6 +306,15 @@ test("cookies set by scripts aren't checked; Set-Cookie headers are", async () =
   assert.deepEqual(cookieProblems("__Host-id=1; Path=/; secure; httponly; samesite=strict", { https: true }), []);
   assert.deepEqual(cookieProblems("csrftoken=x; Path=/; Secure; SameSite=Lax", { https: true }), []);
   assert.deepEqual(cookieProblems("gone=; Expires=Thu, 01 Jan 1970 00:00:00 GMT", { https: true }), []);
+});
+
+test("cookies a load balancer or CDN sets (AWS, Azure, F5, Cloudflare) aren't flagged: the owner can't change them", async () => {
+  const f = finding(await bad(), "cookie-flags");
+  assert.deepEqual(
+    f.evidence.map(e => e.detail),
+    ["“session”: no HttpOnly, no SameSite"],
+  );
+  assert.doesNotMatch(JSON.stringify(f), /AWSALB|ARRAffinity|BIGipServer|__cf_bm/);
 });
 
 // One local server plays another site: hits counts every request it gets.

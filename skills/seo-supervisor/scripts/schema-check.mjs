@@ -40,7 +40,8 @@ const RULES = [
     required: ["text"],
   },
 ];
-const RETIRED = GOOGLE.retired.filter(r => !r.keep);
+const RETIRED = GOOGLE.retired.filter(r => !r.keep),
+  KEPT = GOOGLE.retired.filter(r => r.keep && r.note);
 const monthOf = d =>
   new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 
@@ -192,14 +193,25 @@ export function checkJsonLd(text) {
         for (const x of props) {
           if (list(x).some(present) || seen.has(label(x))) continue;
           seen.add(label(x));
-          add(
-            verb === "required" ? "error" : "warning",
-            `${verb}-missing`,
-            path,
-            known,
-            `missing ${label(x)}, ${verb} for ${r.feature}`,
-            { doc: r.doc },
-          );
+          // An item with r.elsewhere (a forum post's url) may stand for one shown in full on another page.
+          if (verb === "required" && Array.isArray(x) && r.elsewhere && has(v, r.elsewhere))
+            add(
+              "note",
+              "required-elsewhere",
+              path,
+              known,
+              `no ${label(x)}: fine if this item stands for one shown on another page, at its "${r.elsewhere}" (a category page, a thread's later pages); on its own page, ${r.feature} require one`,
+              { doc: r.doc },
+            );
+          else
+            add(
+              verb === "required" ? "error" : "warning",
+              `${verb}-missing`,
+              path,
+              known,
+              `missing ${label(x)}, ${verb} for ${r.feature}`,
+              { doc: r.doc },
+            );
         }
         // A rating can't be filled in like a missing name: it has to come from real reviews shown on the page.
         if (
@@ -227,7 +239,18 @@ export function checkJsonLd(text) {
           "type-retired",
           path,
           known,
-          `Google retired ${r.feature} in ${monthOf(r.since)}, so "${r.type}" no longer earns a Google rich result. It does no harm: remove it, or keep it knowingly${r.note ? ` (${r.note})` : ""}`,
+          `Google retired ${r.feature} in ${monthOf(r.since)}, so "${r.type}" no longer earns a Google rich result. It does no harm: remove it, or keep it knowingly`,
+          { doc: r.source, rule: "SCHEMA-05", key: r.type },
+        );
+    // A retired type still worth keeping gets a note, not a warning.
+    for (const r of KEPT)
+      if (known.includes(r.type) && !(r.top && parent))
+        add(
+          "note",
+          "type-kept",
+          path,
+          known,
+          `Google retired ${r.feature} in ${monthOf(r.since)}, but keep "${r.type}": ${r.note}`,
           { doc: r.source, rule: "SCHEMA-05", key: r.type },
         );
   }

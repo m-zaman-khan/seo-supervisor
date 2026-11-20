@@ -151,11 +151,10 @@ const RULES = {
   "PERF-08": ["Images are a sensible weight and in a modern format", "Performance"],
 };
 
-// Types whose Google rich result is retired, the list schema-check.mjs reads too. One marked keep (FAQPage) is never
-// flagged.
-const RETIRED = JSON.parse(
-  readFileSync(new URL("./data/google-rich-results.json", import.meta.url), "utf8"),
-).retired.filter(r => !r.keep);
+// Types whose Google rich result is retired. One marked keep (FAQPage) is never flagged, but its note still shows.
+const GONE = JSON.parse(readFileSync(new URL("./data/google-rich-results.json", import.meta.url), "utf8")).retired;
+const RETIRED = GONE.filter(r => !r.keep),
+  KEPT = GONE.filter(r => r.keep && r.note);
 
 // key -> [rule, severity, title(n), why, fix]
 const CHECKS = {
@@ -1259,11 +1258,15 @@ function analyze(url, html, headers, xRobotsLines) {
   const body = stripNonContent(bodyRaw);
   const text = textOf(body);
   const words = wordsOf(text).length;
-  // Next.js 15.2+ can stream metadata into <body> for non-bot visitors, so metas in the body count too.
-  const metas = [...tagsOf(head, "meta"), ...tagsOf(body, "meta")];
+  // Next.js 15.2+ can stream metadata into <body> for non-bot visitors, so metas after the head count too. Only what
+  // follows the head is read: </head> and <body> are optional, and minifiers drop them.
+  const metas = [
+    ...tagsOf(head, "meta"),
+    ...tagsOf(stripNonContent(html.slice(Math.max(head.length, bodyStart))), "meta"),
+  ];
   const meta = n => metas.find(m => (m.name || m.property || "").toLowerCase() === n)?.content;
   const titleM = head.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i) || body.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
-  const titleCount = (head.match(/<title\b/gi) || []).length;
+  const titleCount = (stripNonContent(head).match(/<title\b/gi) || []).length; // an inline SVG's <title> isn't one, nor is a script's
   const PH =
     /\b[Ll]orem [Ii]psum\b|\bTODO\b|\bTBD\b|\{\{\s*[\w.]+\s*\}\}|\[(?:[A-Z][A-Z _]{2,29})\]|�|\b(?:We|You|They|It|Don|Can|Isn|Won|Doesn|Didn|That|There)\?(?:ve|re|s|t|ll|d)\b/;
   const robotsTags = tagsOf(html, "meta").filter(m => ["robots", "googlebot"].includes((m.name || "").toLowerCase())); // Google honours robots meta in <body> too
@@ -1366,9 +1369,9 @@ function analyze(url, html, headers, xRobotsLines) {
     deepHas(n, o => "aggregateRating" in o || typesOf(o).some(t => t === "AggregateRating" || t === "Review")),
   );
   // Matched at any depth, as schema-check.mjs does; a `top` type (Occupation) only when not nested.
-  const deprecated = RETIRED.filter(r =>
-    r.top ? types.includes(r.type) : nodes.some(n => deepHas(n, o => typesOf(o).includes(r.type))),
-  ).map(r => r.type);
+  const uses = r => (r.top ? types.includes(r.type) : nodes.some(n => deepHas(n, o => typesOf(o).includes(r.type))));
+  const deprecated = RETIRED.filter(uses).map(r => r.type),
+    kept = KEPT.filter(uses).map(r => r.type);
   const phMatch = text.match(PH);
   const mainM = body.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
   const mainHtml = mainM ? mainM[1] : body.replace(/<(header|nav|footer|aside)\b[\s\S]*?<\/\1>/gi, " ");
@@ -1575,6 +1578,7 @@ function analyze(url, html, headers, xRobotsLines) {
     crumbs,
     hasRating,
     deprecated,
+    kept,
     emptyRoot,
     mainHrefs,
     banned: BANNED ? ctx(text, BANNED) : null,
@@ -2770,6 +2774,14 @@ for (const p of htmlPages) {
     if (t && t.status !== 200) add("breadcrumb-dead-level", u, `${b} → ${t.status}`);
   }
 }
+// A retired type worth keeping gets one note for the site, not a finding.
+for (const r of KEPT) {
+  const at = htmlPages.filter(p => p.kept.includes(r.type));
+  if (at.length)
+    notes.push(
+      `${r.type} on ${at.length} page(s), e.g. ${at[0].finalUrl}: Google retired ${r.feature} in ${r.since.slice(0, 4)}, but keep it: ${r.note}.`,
+    );
+}
 // Near-duplicate main content: sets of 5-word chunks compared by Dice similarity.
 {
   const cand = htmlPages.filter(p => p.shingles && !p.clientOnly && indexable(p)).slice(0, 400);
@@ -3226,7 +3238,13 @@ if (DESKTOP && !OUTSIDE)
   notes.push(
     "--desktop runs only with outside checks on (--outside): it sends the sample URLs to Google PageSpeed Insights again, for desktop. It didn't run.",
   );
-else if (DESKTOP && SPEED_ON && !speedLimited) {
+else if (DESKTOP && !SPEED_ON)
+  notes.push("--desktop didn't run: speed data needs the public, live site; pass --site-origin.");
+else if (DESKTOP && speedLimited)
+  notes.push(
+    "--desktop didn't run: PageSpeed refused the phone requests, so the desktop ones weren't sent. Set PSI_API_KEY (a free Google Cloud API key for the PageSpeed Insights API) and re-run.",
+  );
+else if (DESKTOP) {
   const d = await checkSpeed(speedUrls, {
     add: () => {},
     endpoint: PSI_AT,
@@ -3433,20 +3451,6 @@ for (let i = 0; i < botSample.length; i += CONC)
 // ---------- site-wide checks and data; data for the report goes on `extra` ----------
 const extra = {};
 
-// ---------- trust signals ----------
-// E-E-A-T signals for the trust view, never findings or scored. HTTPS counts with no open TRUST-01 or TRUST-07
-// finding, and is unknown without a public origin.
-extra.trustSignals = trustSignals(htmlPages, {
-  origin: EXPECT_ORIGIN,
-  https: !isPublic(EXPECT_ORIGIN)
-    ? null
-    : EXPECT_ORIGIN.startsWith("https:") &&
-      ![...findings.keys()].some(k => ["TRUST-01", "TRUST-07"].includes(CHECKS[k][0])),
-  orgSchema: (home?.html && home.trust.org) || htmlPages.find(p => p.trust.org)?.trust.org || null,
-  unsourcedStats: htmlPages.filter(p => p.trust.unsourcedStat).length,
-});
-
-// ---------- AI agents and writing ----------
 // Unnamed controls (AI-05 counts as checked once a page has a control), plus WebMCP tools, agent files and writing
 // notes for the report; writing notes for the 50 pages with the most.
 {
@@ -3516,11 +3520,16 @@ for (const p of htmlPages) {
 // or the meta tag. In the header the last valid value wins.
 // https://hstspreload.org
 // https://www.w3.org/TR/referrer-policy/#parse-referrer-policy-from-header
+// Load balancer and CDN cookies are skipped, since the site can't change their flags: AWS ALB and ELB stickiness,
+// Azure App Service's ARRAffinity, F5 BIG-IP's BIGipServer<pool>, and Cloudflare's own.
+// https://developers.cloudflare.com/fundamentals/reference/policies-compliances/cloudflare-cookies/
+const INFRA_COOKIE =
+  /^(AWSALB(TG)?(CORS)?|AWSALBAPP-\d+|AWSELB|ARRAffinity(SameSite)?|BIGipServer.*|__cf\w+|_cfuvid|cf_clearance|cf_ob_info|cf_use_ob|cf_chl_\w+)$/;
 const cookieSeen = new Set();
 for (const p of htmlPages)
   for (const c of p.headers.getSetCookie()) {
     const name = c.split(";")[0].split("=")[0].trim();
-    if (cookieSeen.has(name)) continue;
+    if (cookieSeen.has(name) || INFRA_COOKIE.test(name)) continue;
     cookieSeen.add(name);
     const problems = cookieProblems(c, { https: p.finalUrl.startsWith("https:") });
     if (problems.length) add("cookie-flags", p.finalUrl, `“${name}”: ${problems.join(", ")}`);
@@ -3594,6 +3603,18 @@ for (const p of htmlPages) {
   if (t.length >= 20 && flat(p.description).startsWith(t.slice(0, Math.ceil(t.length * 0.8))))
     add("desc-starts-with-title", p.finalUrl, `“${p.description.slice(0, 80)}”`);
 }
+
+// E-E-A-T signals for the trust view, never findings or scored; last, so the security findings are in. HTTPS counts
+// with no open TRUST-01 or TRUST-07 finding, and is unknown without a public origin.
+extra.trustSignals = trustSignals(htmlPages, {
+  origin: EXPECT_ORIGIN,
+  https: !isPublic(EXPECT_ORIGIN)
+    ? null
+    : EXPECT_ORIGIN.startsWith("https:") &&
+      ![...findings.keys()].some(k => ["TRUST-01", "TRUST-07"].includes(CHECKS[k][0])),
+  orgSchema: (home?.html && home.trust.org) || htmlPages.find(p => p.trust.org)?.trust.org || null,
+  unsourcedStats: htmlPages.filter(p => p.trust.unsourcedStat).length,
+});
 
 // ---------- what the crawler cannot check ----------
 // CRAWL-09 never passes here: a real Googlebot comes from Google's IP addresses, which no request from here can.

@@ -410,7 +410,55 @@ test("FAQPage on a page with a visible FAQ isn't flagged as retired", async () =
   assert.equal(howTo?.rule, "SCHEMA-05", "while HowTo is flagged");
 });
 
-test("the crawler flags every retired type in google-rich-results.json as deprecated-schema, but never FAQPage", async () => {
+test("ClaimReview is kept: schema-check shows its note as information, not a retired warning", () => {
+  const issues = checkJsonLd(
+    JSON.stringify({ ...CTX, "@type": "ClaimReview", claimReviewed: "The moon is cheese" }),
+  ).filter(i => i.rule === "SCHEMA-05");
+  assert.deepEqual(
+    issues.map(i => [i.severity, i.check]),
+    [["note", "type-kept"]],
+  );
+  assert.match(issues[0].message, /Fact Check Explorer still reads it/);
+});
+
+test("Google's rules: a Certification needs its name, and a forum post its text, image or video, which a url only excuses on another page", () => {
+  const issues = o => checkJsonLd(JSON.stringify({ ...CTX, ...o }));
+  const cert = issues({
+    "@type": "Product",
+    name: "Fridge",
+    hasCertification: {
+      "@type": "Certification",
+      issuedBy: { "@type": "Organization", name: "European_Commission" },
+      certificationIdentification: "123456",
+    },
+  });
+  assert.deepEqual(
+    cert.filter(i => i.path === "$.hasCertification").map(i => i.message),
+    ['missing "name", required for Google merchant listings (certifications)'],
+  );
+  const post = {
+    "@type": "DiscussionForumPosting",
+    author: { "@type": "Person", name: "PipeFixer" },
+    datePublished: "2026-11-02T09:15:00+00:00",
+  };
+  const content = i => /"text" or "image" or "video"/.test(i.message);
+  assert.deepEqual(
+    issues(post)
+      .filter(content)
+      .map(i => [i.severity, i.message]),
+    [["error", 'missing "text" or "image" or "video", required for Google discussion forums']],
+  );
+  const listed = issues({ ...post, url: "https://example.com/forum/threads/1234/" }).filter(content);
+  assert.deepEqual(
+    listed.map(i => i.severity),
+    ["note"],
+    "with a url it may be a post shown on another page, which Google doesn't hold to it",
+  );
+  assert.match(listed[0].message, /another page/);
+  assert.deepEqual(issues({ ...post, text: "Is there a safe way to free the valve?" }).filter(content), []);
+});
+
+test("the crawler flags every retired type in google-rich-results.json as deprecated-schema, but never FAQPage or ClaimReview", async () => {
   const dir = tmp(),
     out = join(tmp(), "crawl.json");
   const pageAt = (path, title, schema, links = "") => {
@@ -437,12 +485,18 @@ test("the crawler flags every retired type in google-rich-results.json as deprec
   } finally {
     await site.close();
   }
-  const f = JSON.parse(readFileSync(out, "utf8")).findings.find(x => x.check === "deprecated-schema");
+  const r = JSON.parse(readFileSync(out, "utf8")),
+    f = r.findings.find(x => x.check === "deprecated-schema");
   assert.deepEqual([f?.rule, f?.severity], ["SCHEMA-05", "low"]);
   assert.deepEqual(
     f.evidence.map(e => `${new URL(e.url).pathname} ${e.detail}`).sort(),
-    ["/ ClaimReview", "/notice/ SpecialAnnouncement"],
-    "FAQPage isn't flagged",
+    ["/notice/ SpecialAnnouncement"],
+    "FAQPage and ClaimReview aren't flagged",
+  );
+  assert.doesNotMatch(f.title + f.why, /ClaimReview|fact check/);
+  assert.ok(
+    r.notes.some(n => /^ClaimReview on 1 page\(s\)/.test(n) && /Fact Check Explorer still reads it/.test(n)),
+    r.notes.join("\n"),
   );
 });
 
