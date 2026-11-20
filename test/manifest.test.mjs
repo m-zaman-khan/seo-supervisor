@@ -30,6 +30,7 @@ test("the skill and every command are wired to the same skill name", () => {
     "seo-fix.md",
     "seo-launch.md",
     "seo-review.md",
+    "seo-rewrite.md",
     "seo-setup.md",
   ]);
   for (const c of commands) {
@@ -48,7 +49,7 @@ test("every rule file the skill links to exists", () => {
   for (const rel of new Set(linked)) assert.doesNotThrow(() => readFileSync(join(SKILL, rel)), `${rel} exists`);
 
   assert.match(skill, /`planning\.md`/, "SKILL.md points setup mode at planning.md");
-  for (const doc of ["planning.md", "report-format.md", "profile-template.md"])
+  for (const doc of ["planning.md", "report-format.md", "profile-template.md", "rewrite.md"])
     if (skill.includes("`" + doc + "`")) assert.doesNotThrow(() => readFileSync(join(SKILL, doc)), `${doc} exists`);
 });
 
@@ -129,6 +130,40 @@ test("2.0 is documented: untrusted content, outside checks, history, intent, bri
   );
   assert.match(brief, /seo-audit\/briefs\//);
   assert.match(readFileSync(join(ROOT, "NOTICE"), "utf8"), /MIT License/);
+});
+
+test("rewrite mode: the agent rewrites, nothing changes without the owner's yes, and facts stay as they are", () => {
+  const cmd = readFileSync(join(ROOT, "commands", "seo-rewrite.md"), "utf8"),
+    rewrite = readFileSync(join(SKILL, "rewrite.md"), "utf8");
+  assert.match(cmd, /^---\ndescription: "[^"\n]+"\nargument-hint: '\[page, file, or "writing notes"\]'\n---\n/);
+  assert.match(cmd, /\*\*rewrite\*\* mode/);
+  assert.match(cmd, /`rewrite\.md`/);
+  for (const re of [
+    /before → after/,
+    /owner's yes/,
+    /fix steps 3–4/,
+    /no API/i,
+    /Invent nothing/,
+    /`examples`/,
+    /re-crawl/i,
+    /English/,
+  ])
+    assert.match(rewrite, re);
+  for (const kept of [
+    "facts",
+    "numbers",
+    "prices",
+    "dates",
+    "names",
+    "legal",
+    "quotes",
+    "testimonials",
+    "code",
+    "URLs",
+    "links",
+    "target phrases",
+  ])
+    assert.ok(rewrite.toLowerCase().includes(kept.toLowerCase()), `rewrite.md names ${kept}`);
 });
 
 test("the docs agree with the code and keep every outside or content step behind the owner", () => {

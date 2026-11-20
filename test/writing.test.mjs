@@ -12,7 +12,21 @@ const LONG =
 const STOCK = "In today’s fast-paced world, we delve into what makes a real game changer for your home.";
 const PARA = "We fix boilers, taps and leaks across the whole city. ".repeat(16).trim(); // 160 words
 const SHORT = "We answer the phone fast. A real person picks up. We give a price before we start. ".repeat(4).trim();
-const NONE = { longSentences: 0, longestSentence: null, longParagraphs: 0, stockPhrases: [], readingEase: null };
+const NONE = {
+  longSentences: 0,
+  longestSentence: null,
+  longParagraphs: 0,
+  stockPhrases: [],
+  readingEase: null,
+  examples: [],
+};
+// What rewrite mode searches the source for: the first 12 words of a long sentence, and each stock phrase in context.
+const EXAMPLES = [
+  "This sentence keeps going with one more clause after another so that…",
+  "In today’s fast-paced world, we delve into what",
+  "today’s fast-paced world, we delve into what makes a real",
+  "what makes a real game changer for your home.",
+];
 
 test("long sentences, long paragraphs and stock phrases are noted, and reading ease shows for English", () => {
   const w = writingFeatures([STOCK, LONG, PARA].join("\n\n"), "en-GB");
@@ -34,6 +48,18 @@ test("long sentences, long paragraphs and stock phrases are noted, and reading e
   assert.equal(
     writingText(`<h1>Title</h1><p>One &amp; two.\n  Still one.</p><p>Address<br>Leeds<div>x</div><p>Last`),
     "One & two. Still one.\n\nAddress\nLeeds\n\nLast",
+  );
+});
+
+test("examples quote up to 3 long sentences, cut to 12 words, and each stock phrase with the words around it", () => {
+  assert.deepEqual(writingFeatures([STOCK, LONG, PARA].join("\n\n"), "en").examples, EXAMPLES);
+  const many = writingFeatures(Array(5).fill(LONG).join(" "), "en");
+  assert.equal(many.longSentences, 5);
+  assert.deepEqual(many.examples, Array(3).fill(EXAMPLES[0]), "capped at 3 sentences");
+  assert.deepEqual(
+    writingFeatures(`Our “game-changer” deal.\n\n${SHORT}`, "en").examples,
+    ["Our “game-changer” deal."],
+    "context stays in the phrase's own paragraph",
   );
 });
 
@@ -64,6 +90,7 @@ test("code, tables and non-English text don't produce notes or reading ease", as
     [n.longSentences, n.longParagraphs, n.stockPhrases, n.longestSentence],
     [1, 1, ["in today's fast-paced world", "delve into", "game-changer"], LONG],
   );
+  assert.deepEqual(n.examples, EXAMPLES, "the crawl passes the examples on");
   assert.ok(Number.isInteger(n.readingEase));
   assert.ok(
     !r.findings.some(f => /writing|sentence|paragraph|reading/i.test(f.check + f.title)),
@@ -139,6 +166,7 @@ test("writing notes and agent info never change the score", async () => {
         longParagraphs: 0,
         stockPhrases: [],
         readingEase: 55,
+        examples: [`Start ${evil}…`, { bad: evil }],
       },
     ],
     agents: {

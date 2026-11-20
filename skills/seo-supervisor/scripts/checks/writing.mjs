@@ -72,9 +72,24 @@ const syllables = w => {
   return Math.max(1, n);
 };
 const quote = s => (s.length > 300 ? s.slice(0, 299) + "…" : s);
+// A stock phrase with up to 4 words either side, inside its own paragraph, so rewrite mode can find it in the source.
+// The 100 characters before it keep the backward search short.
+const inContext = (para, re) => {
+  const m = re.exec(para);
+  const before = para.slice(Math.max(0, m.index - 100), m.index).match(/(?:\S+\s+){0,4}\S*$/)[0];
+  const after = para.slice(m.index + m[0].length).match(/^\S*(?:\s+\S+){0,4}/)[0];
+  return quote((before + m[0] + after).replace(/\s+/g, " "));
+};
 
 export function writingFeatures(text, lang) {
-  const none = { longSentences: 0, longestSentence: null, longParagraphs: 0, stockPhrases: [], readingEase: null };
+  const none = {
+    longSentences: 0,
+    longestSentence: null,
+    longParagraphs: 0,
+    stockPhrases: [],
+    readingEase: null,
+    examples: [],
+  };
   // English only: the thresholds, the phrases and the formula are all English ones.
   if (!/^en(?![a-z])/i.test(lang || "")) return none;
   const paras = String(text || "")
@@ -95,12 +110,20 @@ export function writingFeatures(text, lang) {
     206.835 -
     1.015 * (words.length / sentences.length) -
     84.6 * (words.reduce((n, w) => n + syllables(w), 0) / words.length);
-  const flat = paras.join(" ");
+  const stock = STOCK_RE.flatMap(([p, re]) => {
+    const para = paras.find(x => re.test(x));
+    return para ? [[p, inContext(para, re)]] : [];
+  });
   return {
     longSentences: long.length,
     longestSentence: longest ? quote(longest[0]) : null,
     longParagraphs: paras.filter(p => wordsOf(p).length > 150).length,
-    stockPhrases: STOCK_RE.filter(([, re]) => re.test(flat)).map(([p]) => p),
+    stockPhrases: stock.map(([p]) => p),
     readingEase: words.length >= 100 ? Math.max(0, Math.min(100, Math.round(ease))) : null, // too few words make it noise
+    // The first 12 words of up to 3 long sentences, then each stock phrase in context.
+    examples: [
+      ...long.slice(0, 3).map(([s]) => quote(s.split(" ").slice(0, 12).join(" ") + "…")),
+      ...stock.map(([, c]) => c),
+    ],
   };
 }

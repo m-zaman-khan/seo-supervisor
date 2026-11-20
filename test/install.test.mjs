@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { ROOT, node, tmp } from "./helpers.mjs";
 
 const BIN = join(ROOT, "bin", "seo-supervisor.mjs");
-const COMMANDS = ["seo-audit", "seo-fix", "seo-review", "seo-launch", "seo-setup", "seo-brief"];
+const COMMANDS = ["seo-audit", "seo-fix", "seo-review", "seo-launch", "seo-setup", "seo-brief", "seo-rewrite"];
 const withHome = home => {
   const env = { ...process.env, HOME: home, USERPROFILE: home };
   for (const k of ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME", "APPDATA", "GROK_HOME"]) delete env[k];
@@ -20,6 +20,7 @@ test("npx seo-supervisor installs, updates and uninstalls cleanly", async () => 
   assert.ok(existsSync(join(skill, "SKILL.md")));
   assert.ok(existsSync(join(skill, "scripts", "seo-crawl.mjs")));
   assert.ok(existsSync(join(skill, "scripts", "fonts", "geist.woff2")));
+  assert.ok(existsSync(join(skill, "rewrite.md")), "rewrite mode's instructions");
   for (const c of COMMANDS) assert.ok(existsSync(join(home, ".claude", "commands", `${c}.md`)), `/${c}`);
 
   await node([BIN], withHome(home)); // running it again updates in place
