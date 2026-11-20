@@ -1066,6 +1066,43 @@ test("submit-bing is a dry run without --yes, stays within the quota and refuses
   }
 });
 
+test("submit-bing --from-diff leaves out robots.txt and pages whose links or sitemap listing changed but not the page", async () => {
+  const home = tmp(),
+    diff = join(tmp(), "seo-diff.json");
+  writeFileSync(
+    diff,
+    JSON.stringify({
+      regressions: [
+        { path: "/a/", kind: "lost-internal-links" },
+        { path: "/b/", kind: "left-sitemap" },
+        { path: "/c/", kind: "content-shrunk" },
+      ],
+      improvements: [
+        { path: "/d/", kind: "joined-sitemap" },
+        { path: "/e/", kind: "status-fixed" },
+      ],
+      changed: [
+        { path: "/robots.txt", kind: "robots-changed" },
+        { path: "/g/", kind: "redirect-changed" },
+      ],
+      added: ["/new/"],
+    }),
+  );
+  const srv = await fake({ bing: BING });
+  try {
+    const dry = await cli(
+      ["submit-bing", "--site", SITE, "--from-diff", diff],
+      envFor(home, srv, { BING_WEBMASTER_KEY: "b-key-0001" }),
+    );
+    assert.deepEqual(
+      dry.stdout.match(/^ {2}https:\S+/gm).map(u => u.trim()),
+      ["/c/", "/e/", "/g/", "/new/"].map(p => SITE + p),
+    );
+  } finally {
+    await srv.close();
+  }
+});
+
 test("a Matomo or PostHog server that can't be reached says to check the address", async () => {
   const gone = await serve(tmp());
   await gone.close();

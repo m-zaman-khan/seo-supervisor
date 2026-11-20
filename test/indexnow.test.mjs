@@ -274,7 +274,45 @@ test("--from-diff takes regressions, improvements, changes and added pages, but 
     await submit(srv, dir, ["--from-diff", diff]);
     assert.deepEqual(
       dryRun(dir).urls,
-      ["/r/", "/i/", "/c/?page=2", "/new/"].map(p => srv.url + p),
+      ["/i/", "/r/", "/c/?page=2", "/new/"].map(p => srv.url + p),
+      "/r/ for its new schema, not for going noindex",
+    );
+  } finally {
+    await srv.close();
+  }
+});
+
+test("--from-diff leaves out robots.txt and pages whose links or sitemap listing changed but not the page", async () => {
+  const srv = await fake(),
+    dir = tmp(),
+    diff = join(dir, "seo-diff.json");
+  writeFileSync(
+    diff,
+    JSON.stringify({
+      regressions: [
+        { path: "/a/", kind: "lost-internal-links" },
+        { path: "/b/", kind: "left-sitemap" },
+        { path: "/c/", kind: "content-shrunk" },
+        { path: "/s/", kind: "speed-slower" },
+      ],
+      improvements: [
+        { path: "/d/", kind: "joined-sitemap" },
+        { path: "/e/", kind: "canonical-changed" },
+        { path: "/f/", kind: "schema-fields-added" },
+      ],
+      changed: [
+        { path: "/robots.txt", kind: "robots-changed" },
+        { path: "/g/", kind: "redirect-added" },
+        { path: "/h/", kind: "description-changed" },
+      ],
+      added: ["/new/"],
+    }),
+  );
+  try {
+    await submit(srv, dir, ["--from-diff", diff]);
+    assert.deepEqual(
+      dryRun(dir).urls,
+      ["/c/", "/e/", "/f/", "/g/", "/h/", "/new/"].map(p => srv.url + p),
     );
   } finally {
     await srv.close();

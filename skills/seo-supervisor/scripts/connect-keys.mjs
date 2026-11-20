@@ -11,6 +11,7 @@ import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { isMain } from "./lib/is-main.mjs";
 import { proxyNote } from "./lib/proxy.mjs";
+import { changedPages } from "./seo-diff.mjs";
 
 const setLine = id => `node connect-keys.mjs set ${id}`;
 const PASTE =
@@ -963,13 +964,7 @@ async function main(argv) {
         if (e instanceof Fail) throw e;
         fail(`${args["from-diff"]} isn't a seo-diff.json (run seo-diff.mjs first).`);
       }
-      // Changed and added pages, as indexnow.mjs sends: not removed ones or pages that now fail.
-      found.push(
-        ...[...(d.regressions || []), ...(d.improvements || []), ...(d.changed || [])]
-          .filter(c => c?.kind !== "status-error")
-          .map(c => c?.path),
-        ...(d.added || []),
-      );
+      found.push(...changedPages(d));
     }
     // Bing takes only the site's own URLs, so anything off-origin is dropped before sending.
     const kept = new Set(),

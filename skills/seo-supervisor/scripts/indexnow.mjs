@@ -7,6 +7,7 @@ import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, statSy
 import { randomBytes } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { proxyNote } from "./lib/proxy.mjs";
+import { changedPages } from "./seo-diff.mjs";
 {
   const n = proxyNote();
   if (n) console.error("note: " + n);
@@ -134,14 +135,8 @@ async function submit() {
       if (e instanceof Fail) throw e;
       fail(`${args["from-diff"]} isn't a seo-diff.json (run seo-diff.mjs first).`);
     }
-    // A page that fails in the new crawl (status-error) isn't one to announce. seo-diff already leaves failing URLs out
-    // of added.
-    found.push(
-      ...[...(d.regressions || []), ...(d.improvements || []), ...(d.changed || [])]
-        .filter(c => c.kind !== "status-error")
-        .map(c => c.path),
-      ...(d.added || []),
-    );
+    // seo-diff already leaves failing URLs out of the added pages.
+    found.push(...changedPages(d));
   }
   if (str("from-sitemap")) found.push(...(await sitemapLocs(args["from-sitemap"])));
 

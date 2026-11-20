@@ -117,6 +117,35 @@ const target = r => {
 };
 const redirectText = r => (target(r) == null ? "a redirect loop" : `${r.status} to ${target(r)}`);
 
+// Kinds where the page itself changed, so search engines should fetch it again. Links, sitemap listing, speed and pages
+// that now fail or are noindex don't count.
+const RECRAWL = new Set([
+  "status-fixed",
+  "noindex-removed",
+  "canonical-changed",
+  "title-changed",
+  "description-changed",
+  "h1-added",
+  "h1-removed",
+  "og-added",
+  "og-removed",
+  "content-shrunk",
+  "content-grew",
+  "schema-added",
+  "schema-removed",
+  "schema-fields-added",
+  "schema-fields-removed",
+  "redirect-added",
+  "redirect-changed",
+  "redirect-removed",
+]);
+// Paths to resubmit: those changes plus added pages. Used by indexnow.mjs and connect-keys.mjs submit-bing.
+export const changedPages = d =>
+  [...(d.regressions || []), ...(d.improvements || []), ...(d.changed || [])]
+    .filter(c => RECRAWL.has(c?.kind))
+    .map(c => c.path)
+    .concat(d.added || []);
+
 export function diffCrawls(oldReport, newReport) {
   // Working pages plus the crawl's error records, so a page that now fails is a status change, not "gone".
   const index = r => new Map([...(r.pages || []), ...(r.errors || [])].map(p => [pathOf(p.url), p]));
