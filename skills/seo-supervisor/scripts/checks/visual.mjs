@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launchChrome, containerArgs } from "../lib/cdp.mjs";
 import { redact } from "../lib/redact.mjs";
-import { addressCheck } from "./render.mjs";
+import { addressCheck, startGuard } from "./render.mjs";
 
 export const CHECKS = {
   "mobile-content-missing": [
@@ -167,9 +167,8 @@ async function evaluate(page, expression) {
 
 // Every request the tab makes is held until checkAddress (checks/render.mjs) clears its host. Service workers are off:
 // their requests aren't the tab's, and one would serve the next load from its cache. WebSockets stay for Chrome's
-// back/forward cache test.
-// Limit: a cross-site frame runs in its own process, whose requests this tab doesn't see, and WebSockets aren't
-// checked. Launching Chrome with the render guard's proxy (startGuard) covers both once lib/cdp.mjs takes extra flags.
+// back/forward cache test. Cross-site frames and WebSockets, which the tab doesn't see, go through the guard's proxy
+// (startGuard) instead.
 const NO_SW = "delete Navigator.prototype.serviceWorker";
 async function guardTab(page, checkAddress) {
   page.on("Fetch.requestPaused", ({ requestId, request }) => {
@@ -287,7 +286,9 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
   let checked = 0,
     bfTested = 0;
   if (screenshotDir) mkdirSync(screenshotDir, { recursive: true });
-  const chrome = await launchChrome(browser);
+  // The render guard's proxy also covers what the tab can't see: other-site frames and WebSockets.
+  const guard = urls.length ? await startGuard(urls[0]) : null;
+  const chrome = await launchChrome(browser, { args: guard?.args || [] });
   try {
     const { userAgent: ua } = await chrome.send("Browser.getVersion");
     const desktopUa = ua.replace("HeadlessChrome/", "Chrome/");
@@ -411,6 +412,7 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
     }
   } finally {
     await chrome.close();
+    await guard?.close();
   }
   if (checked)
     notes.push(
@@ -904,8 +906,9 @@ export async function checkMore(
   if (!list.length && !chosen) return { checked, pages, chosen: picked, notes };
   if (screenshotDir) mkdirSync(screenshotDir, { recursive: true });
   // The same guard as checkVisual: every request is checked against the site's own addresses.
-  const checkAddress = await addressCheck(list[0] ?? chosen.url);
-  const chrome = await launchChrome(browser);
+  const checkAddress = await addressCheck(list[0] ?? chosen.url),
+    guard = await startGuard(list[0] ?? chosen.url);
+  const chrome = await launchChrome(browser, { args: guard?.args || [] });
   try {
     const ua = await userAgents(chrome);
     for (const url of list) {
@@ -1058,6 +1061,7 @@ export async function checkMore(
     }
   } finally {
     await chrome.close();
+    await guard?.close();
   }
   if (checked)
     notes.push(
