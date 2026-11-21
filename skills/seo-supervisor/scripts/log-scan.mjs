@@ -7,6 +7,7 @@ import { createGunzip } from "node:zlib";
 import { createInterface } from "node:readline";
 import { basename, dirname, join, resolve } from "node:path";
 import { BlockList, isIP } from "node:net";
+import { promises as dns } from "node:dns";
 
 const args = { log: [] };
 for (let i = 2; i < process.argv.length; i++) {
@@ -221,13 +222,43 @@ if (args["verify-ips"] !== undefined) {
       .filter(([, bls]) => bls.length),
   );
 }
+// The log's client address, an IPv4-mapped IPv6 one read as IPv4; null when the line has none.
+const addrOf = ip => {
+  const a = String(ip ?? "")
+    .trim()
+    .replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/i, "");
+  return isIP(a) ? a : null;
+};
+const family = a => (isIP(a) === 6 ? "ipv6" : "ipv4");
 // true when ip is in the bot's lists, false when it isn't, null when the line has no address.
 const fromVendor = (name, ip) => {
-  const a = String(ip ?? "")
-      .trim()
-      .replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/i, ""),
-    v = isIP(a);
-  return v ? ipLists.get(name).some(bl => bl.check(a, v === 6 ? "ipv6" : "ipv4")) : null;
+  const a = addrOf(ip);
+  return a ? ipLists.get(name).some(bl => bl.check(a, family(a))) : null;
+};
+// Yandex publishes no IP list: a reverse lookup must give a yandex.ru, .net or .com name whose forward lookup gives
+// the address back. https://yandex.com/support/webmaster/en/robot-workings/check-yandex-robots
+// Lookups use this computer's DNS server, once per distinct address, at most 200 a bot, busiest first. With a folder
+// (OFFLINE) nothing is contacted, so those bots get a note instead.
+const DNS_CHECK = { YandexBot: /(^|\.)yandex\.(ru|net|com)\.?$/i },
+  DNS_MAX = 200;
+// true: the names lead back to the address; false: no name on those domains, or it doesn't lead back; null: no
+// answer.
+const byDns = async (re, a) => {
+  try {
+    const bl = new BlockList();
+    bl.addAddress(a, family(a));
+    for (const name of (await dns.reverse(a)).filter(n => re.test(n))) {
+      try {
+        if ((await dns.lookup(name, { all: true })).some(x => bl.check(x.address, x.family === 6 ? "ipv6" : "ipv4")))
+          return true;
+      } catch (e) {
+        if (e.code !== "ENOTFOUND" && e.code !== "ENODATA") return null;
+      }
+    }
+    return false;
+  } catch (e) {
+    return e.code === "ENOTFOUND" || e.code === "ENODATA" ? false : null;
+  }
 };
 const AI_REFERRERS = [
   "chatgpt.com",
@@ -392,7 +423,11 @@ const handle = raw => {
         c = (b.ip ||= { verified: 0, other: 0, unknown: 0, refused: 0 });
       c[ok === null ? "unknown" : ok ? "verified" : "other"]++;
       if (ok && (r.status === 401 || r.status === 403)) c.refused++;
-    }
+    } else if (ipLists && DNS_CHECK[bot.name]) {
+      const a = addrOf(r.ip) ?? "",
+        m = (b.dns ||= new Map());
+      m.set(a, (m.get(a) || 0) + 1);
+    } // checked after reading
     const cls = `${Math.floor(r.status / 100)}xx`;
     if (cls in b.status) b.status[cls]++;
     const p = b.paths.get(path) || b.paths.set(path, { n: 0, s5xx: 0, s404: 0, refused: 0, realRefused: 0 }).get(path);
@@ -438,6 +473,26 @@ if (!stats.parsed && !stats.beforeSince && !stats.undated)
   fail(
     `${named} isn't an access log: none of its ${stats.lines} line(s) is Apache/Nginx combined or common log format, or JSON lines with a time, path or url, status and user agent.`,
   );
+// The DNS check, 10 addresses at a time. noAnswer counts requests whose lookup got no answer, or past DNS_MAX. A
+// batch with no answer at all means the DNS server is out of reach, so the rest aren't asked (each would time out).
+for (const b of Object.values(bots))
+  if (b.dns) {
+    const c = (b.ip = { verified: 0, other: 0, unknown: 0, refused: 0 }),
+      list = [...b.dns].sort((x, y) => y[1] - x[1]);
+    let down = false;
+    b.noAnswer = 0;
+    for (let i = 0; i < list.length; i += 10) {
+      const batch = list.slice(i, i + 10),
+        oks = await Promise.all(
+          batch.map(([a], j) => (a && !down && i + j < DNS_MAX ? byDns(DNS_CHECK[b.bot.name], a) : null)),
+        );
+      batch.forEach(([a, n], j) => {
+        c[oks[j] === null ? "unknown" : oks[j] ? "verified" : "other"] += n;
+        if (a && oks[j] === null) b.noAnswer += n;
+      });
+      down ||= batch.some(([a]) => a) && oks.every(ok => ok === null);
+    }
+  }
 
 // ---------- summary ----------
 const top = (map, value, n) =>
@@ -597,7 +652,7 @@ findings.forEach((f, i) => {
 
 notes.unshift(
   ipLists
-    ? "User agents can be spoofed, so every count here is requests claiming to be that bot; ipCheck says how many came from the vendor's published addresses."
+    ? "User agents can be spoofed, so every count here is requests claiming to be that bot; ipCheck says how many came from the vendor's published addresses (for YandexBot, addresses a DNS check confirms are Yandex's)."
     : "User agents can be spoofed, so every count here is requests claiming to be that bot. Before acting on one bot's numbers, check its IPs against the vendor's published IP list: --verify-ips does that.",
 );
 if (ipLists) {
@@ -606,13 +661,17 @@ if (ipLists) {
     .map(b => `${b.bot.name} ${b.ip.other} of ${b.requests}`);
   if (fakes.length)
     notes.push(
-      `Some requests claiming to be a known bot came from addresses outside the vendor's published list, so they're most likely fakes (or the log records a proxy's or CDN's address instead of the visitor's): ${fakes.join(", ")}. The finding about refused AI crawlers counts only requests from the vendors' addresses.`,
+      `Some requests claiming to be a known bot came from addresses outside the vendor's published list (for YandexBot, addresses whose DNS name isn't Yandex's or doesn't lead back to them), so they're most likely fakes (or the log records a proxy's or CDN's address instead of the visitor's): ${fakes.join(", ")}. The finding about refused AI crawlers counts only requests from the vendors' addresses.`,
     );
   const noIp = Object.values(bots)
-    .filter(b => b.ip && !checked(b))
+    .filter(b => b.ip && !checked(b) && !b.noAnswer)
     .map(b => b.bot.name);
   if (noIp.length)
     notes.push(`The log lines for ${noIp.join(", ")} carry no client address, so --verify-ips couldn't check them.`);
+  for (const b of Object.values(bots).filter(b => b.noAnswer))
+    notes.push(
+      `${b.noAnswer} ${b.bot.name} request(s) couldn't be checked in DNS, so they're counted as unknown: the DNS server gave no answer${b.dns.size > DNS_MAX ? `, or they came from beyond the ${DNS_MAX} busiest addresses, the most looked up` : ""}. Yandex Webmaster's IP address check tool (Tools → IP address check) checks one address at a time by hand.`,
+    );
   const unlisted = Object.keys(bots).filter(n => IP_LISTS[n] && !ipLists.has(n));
   if (unlisted.length) notes.push(`No IP list loaded for ${unlisted.join(", ")}, so those requests weren't checked.`);
   const unreadable = Object.keys(bots).filter(n => UNREADABLE[n]);

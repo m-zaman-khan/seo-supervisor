@@ -424,7 +424,7 @@ export async function fetchGoogle({
     prevEnd = day(days + 3);
   if (2 * days + 2 > 482)
     notes.push(
-      "Search Console keeps 16 months of data, so a period longer than 240 days has no full period before it to compare with; the change in search clicks was left out.",
+      "Search Console keeps 16 months of data, so a period longer than 240 days has no full period before it to compare with; the change in search clicks and the new searches were left out.",
     );
   // Without this period's pages every page would look like a drop to 0.
   else if (!pagesRead)
@@ -458,6 +458,24 @@ export async function fetchGoogle({
         },
         drops,
       };
+    });
+
+  // Queries with no row in the period before. Rows stop at 25,000 and leave out rare (anonymized) queries, so a
+  // search listed may have had a few impressions before.
+  // https://developers.google.com/webmaster-tools/v1/searchanalytics/query
+  let newQueries = null;
+  if (2 * days + 2 <= 482 && queriesRead)
+    await attempt(`the searches for ${prop} in Search Console for the period before`, SC_API, async () => {
+      const before = await rowsFor(["query"], { startDate: prevStart, endDate: prevEnd }),
+        had = new Set(before.map(r => r.keys[0]));
+      newQueries = queries
+        .filter(q => q.impressions > 0 && !had.has(q.query))
+        .sort((a, b) => b.impressions - a.impressions || b.clicks - a.clicks)
+        .slice(0, 50);
+      if (before.length >= 25000 && newQueries.length)
+        notes.push(
+          "Only the period before's top 25,000 searches could be read, so some of the new searches may have been searched then too.",
+        );
     });
 
   // Only the page dimension, which every type allows: Discover and Google News have no queries. Totals are the
@@ -891,6 +909,7 @@ export async function fetchGoogle({
     siteTotals,
     pageQueries,
     trafficChange,
+    newQueries,
     searchTypes,
     byDevice,
     byCountry,

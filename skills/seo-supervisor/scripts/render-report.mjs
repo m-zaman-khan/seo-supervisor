@@ -2196,8 +2196,24 @@ const crawlLinksHtml = () => "",
   crawlLinksMd = () => [];
 const hygieneHtml = () => "",
   hygieneMd = () => [];
-const dataHtml = () => "",
-  dataMd = () => [];
+// newQueries: searches with no row in the previous period, the first 10 as given (most impressions first). Search
+// text is third-party, escaped where shown.
+const newSearchLine = () => {
+  const q = (Array.isArray(raw.newQueries) ? raw.newQueries : [])
+    .filter(x => obj(x) && typeof x.query === "string" && x.query && Number.isFinite(x.impressions))
+    .slice(0, 10);
+  return q.length
+    ? `New searches this period, with no impressions in the period before: ${q.map(x => `${x.query} (${num(x.impressions)} impressions)`).join(" · ")}. Google hides searches very few people make, so a few of these may have shown the site before. Information only.`
+    : "";
+};
+const dataHtml = () => {
+  const l = newSearchLine();
+  return l ? `\n    <p class="quiet">${esc(l)}</p>` : "";
+};
+const dataMd = () => {
+  const l = newSearchLine();
+  return l ? ["## New searches", "", noteMd(l), ""] : [];
+};
 const flowHtml = () => "",
   flowMd = () => [];
 const panelsHtml = () =>

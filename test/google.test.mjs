@@ -1070,6 +1070,7 @@ test("fetch from the CLI writes seo-audit/google.json", async () => {
       "siteTotals",
       "pageQueries",
       "trafficChange",
+      "newQueries",
       "searchTypes",
       "byDevice",
       "byCountry",

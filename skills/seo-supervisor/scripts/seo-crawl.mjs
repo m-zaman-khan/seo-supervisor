@@ -1285,6 +1285,13 @@ import { CHECKS as PAGE_CHECKS, ugcLinks, backTrap, paywallLeak, lateHead, ident
 Object.assign(CHECKS, PAGE_CHECKS);
 RULES["CONTENT-11"] ??= ["Nothing breaks Google's spam policies", "Headings & content"]; // never passed: see NOT_CRAWLABLE
 
+CHECKS["markdown-differs"] = [
+  "AI-05",
+  "low",
+  () => "The Markdown version of a page says something different from the page",
+  "AI agents that ask for Markdown read this version instead of the page. Markdown made from the page as it's served (Cloudflare's Markdown for Agents works this way) says the same thing, so a big difference usually means a Markdown copy written by hand that has fallen behind the page. Agents then quote old or missing facts.",
+  "Make the Markdown from the page itself, when the page is built or served, so the two can't drift apart. If it's written by hand on purpose, update it every time the page changes.",
+];
 // keyword-ideas.mjs's own word rules, so the words file matches its searches exactly.
 import { mainWords as pickMainWords } from "./keyword-ideas.mjs";
 
@@ -2014,6 +2021,16 @@ function analyze(url, html, headers, xRobotsLines) {
     late: lateHead(html),
     identity: { org: idNodes(t => ORG_RE.test(t) && t !== "Service"), site: idNodes(t => t === "WebSite") },
   };
+
+  // Words for the Markdown comparison: the main text, and all a reader sees (body, title, description). Only the start
+  // page, the only one asked for Markdown.
+  if (url === START.href) {
+    const w = s => pickMainWords(s.replace(NOSPACE_RUN, " "));
+    rec.markdownWords = {
+      main: w(textOf(mainHtml)),
+      all: new Set(w([rec.title, rec.description, rec.ogTitle, rec.ogDescription, text].join(" "))),
+    };
+  }
 
   // Words of the title, H1s and main text, for keyword-ideas.mjs. Runs of a script written without spaces are dropped
   // (no words to match), and a page mostly in one is marked, so no missing search is claimed for it.
@@ -4546,6 +4563,38 @@ if (robots) {
   if (ai.usage.length) extra.contentUsage = ai.usage;
   if (/^\s*#\s*BEGIN Cloudflare Bot Preference Sync\b/im.test(robotsRes.body)) extra.botPreferenceSync = true;
 }
+
+// Compares the Markdown the start page serves for Accept: text/markdown with the page's own words. Cloudflare's
+// conversion drops header, footer and nav, adds front matter and appends the JSON-LD in a ```json block, so a
+// converted copy still matches.
+// https://developers.cloudflare.com/fundamentals/reference/markdown-for-agents/
+// Flagged when the Markdown lacks over half the main text's words or over half its words aren't on the page. The
+// half-the-words lines and the 50-word minimum are local; a few words would swing the share.
+// This asks for the start page a second time; fold it into the probe's request if that one keeps its body.
+if (home?.markdownWords && home.markdownWords.main.length >= 50)
+  try {
+    const res = await fetch(START.href, {
+      redirect: "manual",
+      headers: { "user-agent": UA, accept: "text/markdown" },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (res.status !== 200 || !/^text\/markdown/i.test(res.headers.get("content-type") || "")) await res.body?.cancel();
+    else {
+      const md = (await res.text())
+        .replace(/```json[\s\S]*?```|!\[[^\]]*\]\([^)]*\)|<[^>]*>|https?:\/\/\S+/g, " ")
+        .replace(/\]\([^)]*\)/g, "]");
+      const words = new Set(pickMainWords(md.replace(NOSPACE_RUN, " "))),
+        { main, all } = home.markdownWords;
+      const kept = main.filter(w => words.has(w)).length / main.length,
+        extra = words.size ? [...words].filter(w => !all.has(w)).length / words.size : 0;
+      if (kept < 0.5 || extra > 0.5)
+        add(
+          "markdown-differs",
+          START.href,
+          `the Markdown has ${Math.round(100 * kept)}% of the page's main words, and ${Math.round(100 * extra)}% of its own words aren't on the page; our own limit is half`,
+        );
+    }
+  } catch {}
 
 // Each indexable page's words and links (as indexes into the same list, redirects followed) for keyword-ideas.mjs.
 // A file of its own, so seo-crawl.json doesn't grow: a few KB a page, some 10–25 MB for 5,000 pages. seo-crawl.json
