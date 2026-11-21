@@ -125,6 +125,15 @@ npx seo-supervisor        # then, in Claude Code: /seo-audit
   - Domain age from RDAP.
   - Optional Moz and YouTube keys.
   - Property totals and the "AI Assistant" channel from Google, more from Bing, Matomo and PostHog, and imports of Google's and Bing's AI reports.
+- **Shops, images, phones, local, AI and the report:**
+  - Shop checks for a missing product image, a price of 0, a price end date that has passed, a currency that isn't an ISO code, a stock status schema.org doesn't list, an "N/A" brand, unlabelled adult products and one H1 shared by many product pages. The report counts which products give a brand, GTIN, SKU, colour, size, material and category.
+  - Image checks: weak alt text, extra image preloads, images over 500 KB, and a main image without `fetchpriority`. Image credits and AI labels are read from the files, and `images.mjs --label-ai` adds the AI label without re-encoding the image.
+  - More real-user speed detail: the share of good and poor visits, FCP and TTFB, the data's period, 4-week averages, and tablet and home-page trends. Server response time per page, and Lighthouse on as many pages as you name.
+  - With outside checks on, the browser loads each sample page again: browser errors, text only JavaScript adds, what's on the first screen, the phone menu, ads, hidden text and jump links. Whole-page, 1920×1080 and tablet screenshots, and `--render-page` renders a page you pick.
+  - Tells a storefront from a business that goes to its customers, and doesn't ask the second for a street address. With your yes, it adds nearby competitors and an address check from OpenStreetMap: free, no key.
+  - A table of which AI crawlers robots.txt lets in, a check of where Content-Signal lines sit, and, with your yes, a test of whether a firewall turns AI search crawlers away. The log scan knows more Google and OpenAI bots, and can check visits against the vendors' published addresses.
+  - "Since last audit" now covers H1 and H2 text, hreflang, more share tags, retired schema and shrunk sections. It keeps a timeline of every crawl and can run on a schedule.
+  - A PDF report (`render-report.mjs --pdf`), a score per page, `npx seo-supervisor doctor` when something fails, `npx seo-supervisor dashboard` for several sites, and per-client logins for agencies (`SEO_SUPERVISOR_CLIENT`). `--with-browser` adds Chrome for containers and CI, and `--zip` makes a zip to upload to claude.ai (Customize → Skills, with code execution on).
 
 ## Install
 
@@ -261,13 +270,13 @@ Logins and keys stay in `~/.seo-supervisor/` on your computer, never in your pro
 
 ## What it checks
 
-**122 core rules**, up to date as of November 2026:
+**124 core rules**, up to date as of November 2026:
 
 | Area | Rules | Examples |
 | --- | ---: | --- |
 | Crawling & indexing | 12 | robots.txt, noindex, soft 404s, status codes, redirect chains, AI crawlers |
 | URLs & canonicals | 9 | one URL per page, trailing slashes, canonicals on the right host, old URLs with 301s |
-| Rendering | 10 | content in the server HTML, not only in JavaScript; links crawlers can follow; doctype, charset and mobile viewport; obsolete tags |
+| Rendering | 11 | content in the server HTML, not only in JavaScript; links crawlers can follow; doctype, charset and mobile viewport; obsolete tags; phone menus and ads |
 | Metadata | 10 | titles (and whether they match the page), descriptions, Open Graph, robots meta, the favicon in results |
 | Headings & content | 13 | one H1, heading order, thin or templated pages, placeholder text, banned claims, plain language |
 | Structured data | 8 | valid JSON-LD that matches the page; which rich results still exist |
@@ -276,11 +285,11 @@ Logins and keys stay in `~/.seo-supervisor/` on your computer, never in your pro
 | Performance | 10 | Core Web Vitals (LCP, INP, CLS) and what slows LCP, the first image, image weight and format, page size, next-page preloading, instant Back and Forward |
 | Trust & security | 7 | security headers, security.txt, who's behind the site, the HTTPS certificate |
 | AI search | 6 | being cited in ChatGPT, Perplexity and Google's AI answers, and what doesn't work |
-| Media | 6 | alt text, file names, video and image discovery |
+| Media | 7 | alt text, file names, video and image discovery, image credits and AI labels |
 | Launch & monitoring | 8 | the indexing switch, Search Console, post-deploy checks |
 | Search intent | 5 | the right kind of page for each phrase, one page per query, low click rates, pages almost on page one |
 
-**Plus 49 rules for your type of site:**
+**Plus 55 rules for your type of site:**
 - interactive tools
 - local businesses
 - blogs and content sites

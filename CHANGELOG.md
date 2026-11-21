@@ -212,6 +212,54 @@ Deeper checks, optional real-world data and search intent. Everything still work
   - LOCAL-06 never asks a service-area business for its home address.
   - Claude-User honours robots.txt.
   - `indexnow.mjs` reads gzipped sitemaps.
+- **Shop.**
+  - Merchant-listing checks (SHOP-05): `product-image-missing`, `product-price-zero`, `product-price-expired` (a `priceValidUntil` in the past), `product-currency-invalid` (not ISO 4217), `product-availability-invalid` (not one of schema.org's values), `product-brand-placeholder` ("N/A" and the like) and `product-adult-unlabelled`.
+  - `product-h1-reused` (CONTENT-04): 3 or more product pages share an H1 that names none of their products.
+  - `schema-check.mjs` notes EU energy labels without their EPREL code.
+  - `productFields` counts the products that give each recommended field, information only.
+  - New SHOP-09 (product pages answer the buyer's questions). SHOP-08 covers the feed's AI-content fields, ACP and x402.
+- **Images and speed.**
+  - New checks: `img-alt-quality` (CONTENT-08), `image-preloads` and `hero-no-fetchpriority` (PERF-03), `prerender-hint` (PERF-09) and `image-over-500kb` (PERF-08, medium; `heavy-image` now covers 200–500 KB).
+  - New MEDIA-07: image credits and AI labels, read from the files. `images.mjs --label-ai` writes the IPTC AI label without re-encoding the image, as a dry run until `--yes`.
+  - `media`: the lab LCP element, server response times, deep or wide pages, image credits and caching, and Lighthouse medians.
+  - `speed` adds each metric's share of good and poor visits, FCP, TTFB, the data's period, 4-week averages, and tablet and home-page trends. `lighthouse` adds passed counts and the version, and `--lighthouse 20` runs it on that many pages.
+  - All of it shows in a collapsed "Speed and image details" panel, information only.
+- **Rendering.**
+  - With outside checks on, the render sample is loaded again: `render-adds-text` (REND-01), and new REND-11 with `mobile-menu-closed` and `mobile-ad-density`.
+  - Browser errors, the H1 and a button on the first screen, hidden text and jump links go in `renderSample`, information only. Login and paywall screens aren't compared.
+  - Whole-page, 1920×1080 and tablet screenshots, and `--clean-screenshots` for copies without cookie bars.
+  - `--render-page` with `--render-steps` renders one page the owner picks (`renderedPage`). It only scrolls, clicks and waits.
+  - A collapsed "What the browser saw" panel.
+- **Local businesses.**
+  - The crawl tells a storefront from a service-area or hybrid business (`localBusiness`). `nap-not-shown` skips a street address a service-area business hides.
+  - New `osm.mjs`: businesses of the same kind nearby (Overpass) and an address check (Nominatim), from OpenStreetMap with its credit. No key, and a dry run until `--yes`.
+  - New LOCAL-15 (a page for every location, linked from the store locator) and LOCAL-16 (opening hours on the page).
+  - Business Profile guidance on descriptions, attributes, links, video and performance numbers, the FTC review rule and review replies that keep clients' secrets.
+- **AI search.**
+  - `aiBots`: each AI crawler allowed or blocked by robots.txt. `content-signal-placement` (MAP-06, low) flags Content-Signal lines crawlers won't read.
+  - `click-only-elements` (AI-05, low), and `landmarks` lists pages without main, nav, header or footer.
+  - The AI agents note lists OAuth metadata files (RFC 9728, RFC 8414).
+  - `--ai-bot-probe` (its own yes) asks a few pages again as AI search crawlers. A refusal is `ai-bot-refused` (MAP-06, needs-decision).
+  - `log-scan.mjs` knows OAI-AdsBot, Google-Agent, Google-GeminiNotebook, Google-CloudVertexBot and GoogleMessages. `--verify-ips` (its own yes) checks visits against the vendors' published IP lists (`ipCheck`).
+  - Lighthouse 13.3's Agentic browsing checks (`lighthouse[].agentic`), information only.
+  - All of it shows in a collapsed "AI crawlers and agents" panel.
+- **Since last audit, history and schedules.**
+  - `seo-diff.mjs --history` compares with the newest crawl in `seo-audit/history/`, files the new one there, and adds a `timeline` of every crawl. `--fail-on-regressions` exits 1 for scheduled runs.
+  - New kinds: `h1-changed`, `h2-changed`, `hreflang-changed`, `schema-retired-removed` and `section-shrunk`.
+  - A section crawl no longer lists the pages it left out as gone or added.
+  - Smaller page-length changes count: 50 words and a third fewer, or half as many again.
+  - `google-updates.mjs --blog` adds the Search Central blog's posts in the period.
+  - New `examples/scheduled-runs.md`.
+- **Report and setup.**
+  - `render-report.mjs --pdf` prints a PDF with the installed Chrome or Edge.
+  - A score for each page, labelled as SEO Supervisor's own, not Google's. "How this score works" says the same of the site score.
+  - The renderer ends with a receipt for the chat.
+  - New `dashboard.mjs` (`npx seo-supervisor dashboard`) puts several sites' scores side by side.
+  - New `doctor.mjs` (`npx seo-supervisor doctor`), a read-only readiness check, and `troubleshooting.md`.
+  - `SEO_SUPERVISOR_HOME` moves the settings folder, and `SEO_SUPERVISOR_CLIENT` keeps each client's logins apart.
+  - `google.mjs connect --paste` signs in on a server.
+  - `npx seo-supervisor --with-browser` adds Chrome for Testing, and `--zip` makes a zip to upload to claude.ai.
+  - The profile gains Goals and Connections sections.
 - **Share previews.** New checks `twitter-card-missing` and `twitter-card-invalid` (META-04, low). `og-missing` also names `og:description` when a page has no description at all.
 - Setup and fix offer each connection once; a skip is listed under Limits and never changes the score. Keys are typed at a hidden prompt in the owner's own terminal, never in chat; Google sign-in prints its link for agents (`--print-url`, `~/.seo-supervisor/pending-signin.txt`). Search Console findings flag only pages Google really excluded; pages Google doesn't know yet are notes.
 - **Fewer false findings:** the log scan needs 5 server errors and 1% before a finding, and repeated 404s become findings only for pages the site links to; sitemap priority/changefreq tags are a note; IndexNow refuses a key file that redirects to another host.
