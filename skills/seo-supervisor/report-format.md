@@ -1,9 +1,9 @@
 # Report format
 
-The audit is one JSON file, `seo-audit/seo-audit.json`. The same file carries the fix history, so a later fix run updates it instead of starting over. `scripts/render-report.mjs` turns it into two files:
+The audit is one JSON file, `seo-audit/seo-audit.json`. The same file carries the fix history, so a later fix run updates it instead of starting over. `scripts/render-report.mjs` turns it into two files, and a third on request:
 - **`seo-audit/seo-audit.html`:** a self-contained page (offline, light and dark, phone, print). The Overview tab shows the health score, area scores, charts and "Fix first". The Findings, Decisions, Changes, Passed and Limits tabs hold the detail, showing up to 10 evidence rows per finding.
 - **`seo-audit/seo-audit.md`:** the full report as Markdown, with every evidence row. Use it for reading in an editor, diffing between runs, and pasting into tickets.
-- **`seo-audit/seo-audit.pdf`,** only with `--pdf`: the HTML report printed by the installed Chrome or Edge, every tab in turn, for a client or a manager. Without a browser it says so and writes the other two.
+- **`seo-audit/seo-audit.pdf`,** only with `--pdf`: the HTML report printed by the installed Chrome or Edge, every tab in turn with every collapsed panel opened, for a client or a manager. Without a browser it says so and writes the other two.
 
 The renderer ends with a short receipt: the score and band, what fixing the blockers unlocks, the open counts and the files written. Repeat it in chat.
 

@@ -103,7 +103,11 @@ test("the live demo and the bundled sample are up to date (run `npm run demo` af
 
 test("printing opens every plan row so the planned titles and drafts are on paper", async () => {
   const { html } = await renderWithPlan({ status: "proposed", pages: twoRows });
-  assert.match(html, /addEventListener\('beforeprint',function\(\)\{[^}]*\.prow[^}]*open=true/);
+  assert.match(
+    html,
+    /addEventListener\('beforeprint',function\(\)\{[^}]*'details'[^}]*open=true/,
+    "every <details>, plan rows included",
+  );
 });
 
 const renderAuthority = async (authority, attribution) => {

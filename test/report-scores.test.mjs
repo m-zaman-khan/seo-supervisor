@@ -523,3 +523,24 @@ test(
     }
   },
 );
+
+// ---------- printing, page matching, image counts and Markdown headings ----------
+test("printing (and --pdf) shows the score's explanation and every collapsed panel, opened", async () => {
+  const { html } = await renderAudit(JSON.parse(readFileSync(SAMPLE, "utf8")));
+  const print = html.match(/@media print\{([\s\S]*?)\}\}/)?.[1] || "";
+  assert.ok(print, "there is a print style");
+  assert.doesNotMatch(
+    print.match(/^[^{]*\{[^}]*\}([^{]*)\{display:none\}/)?.[1] || "",
+    /\.how\b/,
+    "the .how panels aren't hidden in print",
+  );
+  assert.match(html, /beforeprint[\s\S]{0,200}details/, "every <details> is opened before printing");
+});
+
+test("page scores match pages by path, so a local crawl's evidence still counts", async () => {
+  const data = JSON.parse(readFileSync(SAMPLE, "utf8"));
+  const local = JSON.parse(JSON.stringify(data).split(new URL(data.site.url).origin).join("http://localhost:3000"));
+  local.site.url = data.site.url;
+  const { html } = await renderAudit(local);
+  assert.match(html, /Page scores/, "the panel shows for a local crawl too");
+});

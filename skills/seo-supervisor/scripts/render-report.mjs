@@ -1887,8 +1887,14 @@ const hostOf = u => {
 };
 const pageScores = (() => {
   if (!overall) return [];
-  const pages = new Map(),
-    home = hostOf(site.url);
+  // The site's own pages: its public host and subdomains (staging.), or a local build the crawl ran on (localhost, a
+  // LAN address, .local or .test). Pages are keyed by path, as elsewhere in the report. A preview on another domain
+  // (a vercel.app link) isn't recognised.
+  const home = hostOf(site.url),
+    LOCAL =
+      /^(localhost|127\.[\d.]+|0\.0\.0\.0|\[::1\]|10\.[\d.]+|192\.168\.[\d.]+|172\.(1[6-9]|2\d|3[01])\.[\d.]+)(:\d+)?$|\.(local|test|localhost)(:\d+)?$/i;
+  const own = h => !home || h === home || h.endsWith("." + home) || LOCAL.test(h);
+  const pages = new Map();
   for (const f of open)
     for (const e of f.evidence || []) {
       let u;
@@ -1897,7 +1903,7 @@ const pageScores = (() => {
       } catch {
         continue;
       }
-      if (!/^https?:$/.test(u.protocol) || (home && hostOf(u.href) !== home) || PAGE_FILE.test(u.pathname)) continue;
+      if (!/^https?:$/.test(u.protocol) || !own(hostOf(u.href)) || PAGE_FILE.test(u.pathname)) continue;
       const p = u.pathname + u.search;
       (pages.get(p) || pages.set(p, new Set()).get(p)).add(f);
     }
@@ -2600,7 +2606,7 @@ footer .wrap{padding-block:20px 40px;display:flex;flex-wrap:wrap;gap:6px 18px;ju
 .f-body{padding:4px 14px 18px}.fixfirst ol a{grid-template-columns:14px minmax(0,1fr) 16px}.fixfirst .sev-t,.fixfirst .c{display:none}
 .lim li{grid-template-columns:1fr;gap:4px}.showing{margin-left:0;width:100%}.cards,.pgrid{grid-template-columns:1fr}.changes li{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
-@media print{body{background:#fff}.tabs,.toolbar,.how,.theme-btn,footer .wrap>:last-child{display:none}html.js .tp[hidden]{display:grid}.tp+.tp{margin-top:28px}.f-body{display:grid!important}.chev{display:none}.panel,.f{box-shadow:none;break-inside:avoid}.flist.focus .f{background:#fff}}
+@media print{body{background:#fff}.tabs,.toolbar,.theme-btn,footer .wrap>:last-child{display:none}html.js .tp[hidden]{display:grid}.tp+.tp{margin-top:28px}.f-body{display:grid!important}.chev{display:none}.panel,.f{box-shadow:none;break-inside:avoid}.flist.focus .f{background:#fff}}
 `;
 
 const JS = `
@@ -2638,7 +2644,7 @@ const JS = `
     history.replaceState(null,'','#findings');show('findings');window.scrollTo(0,0);});});
   function route(e){var h=decodeURIComponent(location.hash.slice(1));if(!h){show(DEFAULT_TAB);return;}
     if(show(h))return;var f=d.getElementById(h);if(f&&f.classList.contains('f')){show('findings');f.hidden=false;setOpen(f,true);f.scrollIntoView({block:'start'});if(e)f.querySelector('.f-head').focus({preventScroll:true});}else show(DEFAULT_TAB);}
-  window.addEventListener('beforeprint',function(){[].forEach.call(d.querySelectorAll('.prow'),function(r){r.open=true;});});
+  window.addEventListener('beforeprint',function(){[].forEach.call(d.querySelectorAll('details'),function(r){r.open=true;});});
   window.addEventListener('hashchange',route);route();
 })();
 `;
@@ -2880,6 +2886,10 @@ async function printPdf(htmlPath, pdf) {
     await page.send("Page.navigate", { url: pathToFileURL(htmlPath).href });
     await loaded;
     await page.send("Runtime.evaluate", { expression: "document.fonts.ready.then(() => true)", awaitPromise: true });
+    // Every collapsed panel opens, as a browser's own print does (beforeprint), so the PDF holds them all.
+    await page.send("Runtime.evaluate", {
+      expression: "document.querySelectorAll('details').forEach(d => { d.open = true; })",
+    });
     const { data } = await page.send("Page.printToPDF", {
       printBackground: true,
       paperWidth: 8.27,
