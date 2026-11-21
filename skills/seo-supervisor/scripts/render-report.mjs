@@ -1161,7 +1161,7 @@ const landmarkLine = () =>
   `${num(bare.count)} of ${num(bare.checked)} pages lack one or more landmarks (main, nav, header, footer), which screen readers and AI agents use to find their way around a page (AI-05).`;
 const agenticRow = a =>
   `${num(a.passed)} of ${num(a.total)} checks passed${a.failed.length ? `; failing: ${a.failed.map(f => f.title).join("; ")}` : ""}`;
-const aiCrawlersOn = () => bots.length || bare || agenticRows.length || trainingLine();
+const aiCrawlersOn = () => bots.length || bare || agenticRows.length || trainingLine() || aiPrefsOn();
 const aiCrawlersHtml = () =>
   aiCrawlersOn()
     ? `\n    <details class="how aibots"><summary>AI crawlers and agents</summary>` +
@@ -1169,6 +1169,7 @@ const aiCrawlersHtml = () =>
         ? `<p>${esc(AI_INTRO)}</p><div class="tablewrap"><table><thead><tr><th scope="col">Crawler</th><th scope="col">Vendor</th><th scope="col">Kind</th><th scope="col">robots.txt</th></tr></thead><tbody>${bots.map(b => `<tr><td><code>${esc(b.bot)}</code></td><td>${esc(b.vendor)}</td><td>${esc(AI_KIND[b.kind] || b.kind)}</td><td>${inl(aiBotStatus(b))}</td></tr>`).join("")}</tbody></table></div>`
         : "") +
       (trainingLine() ? `<p>${inl(trainingLine())}</p>` : "") +
+      aiPartsHtml() +
       (bare
         ? `<p>${esc(landmarkLine())}</p><ul class="lim">${bare.pages.map(p => `<li><b><code>${esc(notePath(p.url))}</code></b><span>no ${esc(p.missing.join(", "))}</span></li>`).join("")}</ul>`
         : "") +
@@ -1196,6 +1197,7 @@ const aiCrawlersMd = () =>
             ]
           : []),
         ...(trainingLine() ? [trainingLine(), ""] : []),
+        ...aiPartsMd(),
         ...(bare
           ? [
               landmarkLine(),
@@ -2041,6 +2043,56 @@ const reportMd = () =>
 // Optional report sections, each an HTML and a Markdown function; an empty pair adds nothing.
 const pageHtml = () => "",
   pageMd = () => [];
+// Shown inside the "AI crawlers and agents" panel above, so the pair below stays empty: Brave's Googlebot fallback,
+// Cloudflare's Bot Preference Sync block (`botPreferenceSync`), aipref Content-Usage lines as written
+// (`contentUsage`) and pages that answered the AI probe with a 402 (`aiBotPaid`), as Cloudflare's pay per crawl does.
+// Crawled text is escaped.
+// https://search.brave.com/help/brave-search-crawler
+// https://blog.cloudflare.com/bot-preference-sync/
+const usage = (Array.isArray(raw.contentUsage) ? raw.contentUsage : [])
+  .filter(u => obj(u) && typeof u.rule === "string")
+  .slice(0, 20);
+const paid = (Array.isArray(raw.aiBotPaid) ? raw.aiBotPaid : [])
+  .filter(p => obj(p) && typeof p.url === "string" && typeof p.bot === "string")
+  .slice(0, 20);
+const sync = raw.botPreferenceSync === true;
+const BRAVE_LINE =
+  "Brave Search's crawler has no user agent of its own, so robots.txt can't name it, and it won't crawl a page Googlebot can't. Brave says robots.txt doesn't keep a page out of its results: a `noindex` robots meta tag does.";
+const SYNC_LINE =
+  "This robots.txt has a block that Cloudflare adds, marked `# BEGIN Cloudflare Bot Preference Sync`. Cloudflare's Bot Preference Sync (announced 21 Aug 2026) writes the AI crawler choices made in Cloudflare's dashboard into the live robots.txt, in front of the site's own lines. So the robots.txt the site serves can differ from the one in the code: change those crawlers in Cloudflare's dashboard, as editing the file in the code won't change that block.";
+const USAGE_INTRO =
+  "Content-Usage lines in robots.txt, shown as written. They come from the IETF's AI preferences drafts (August and September 2026), which aren't final, so the crawl doesn't judge them.";
+const PAID_INTRO =
+  "Asked as an AI search crawler, these pages answered 402 Payment Required: the site asks crawlers to pay for the page. Cloudflare's pay per crawl answers this way, with the price in a crawler-price header. That's paid access, not a refusal, so it isn't a finding.";
+const paidRow = p => `${p.bot}${typeof p.price === "string" ? ` · crawler-price: ${p.price}` : ""}`;
+const aiPrefsOn = () => usage.length || paid.length || sync;
+const aiPartsHtml = () =>
+  (bots.length ? `<p>${inl(BRAVE_LINE)}</p>` : "") +
+  (sync ? `<p>${inl(SYNC_LINE)}</p>` : "") +
+  (usage.length
+    ? `<p>${esc(USAGE_INTRO)}</p><ul class="lim">${usage.map(u => `<li><b>${typeof u.agents === "string" ? `<code>User-agent: ${esc(u.agents)}</code>` : "No group (above the first User-agent line)"}</b><span><code>Content-Usage: ${esc(u.rule)}</code></span></li>`).join("")}</ul>`
+    : "") +
+  (paid.length
+    ? `<p>${esc(PAID_INTRO)}</p><ul class="lim">${paid.map(p => `<li><b><code>${esc(notePath(p.url))}</code></b><span>${esc(paidRow(p))}</span></li>`).join("")}</ul>`
+    : "");
+const aiPartsMd = () => [
+  ...(bots.length ? [BRAVE_LINE, ""] : []),
+  ...(sync ? [SYNC_LINE, ""] : []),
+  ...(usage.length
+    ? [
+        USAGE_INTRO,
+        "",
+        ...usage.map(
+          u =>
+            `- ${typeof u.agents === "string" ? noteCode(`User-agent: ${u.agents}`) : "No group (above the first User-agent line)"}: ${noteCode(`Content-Usage: ${u.rule}`)}`,
+        ),
+        "",
+      ]
+    : []),
+  ...(paid.length
+    ? [PAID_INTRO, "", ...paid.map(p => `- ${noteCode(notePath(p.url))} ${noteMd(paidRow(p))}`), ""]
+    : []),
+];
 const aiPrefsHtml = () => "",
   aiPrefsMd = () => [];
 // linkIdeas and queryGaps (keyword-ideas.mjs), copied into the audit as they are. Searches and paths are escaped. Up

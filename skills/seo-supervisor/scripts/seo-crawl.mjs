@@ -65,7 +65,7 @@ import { isPublic as publicAddress, guarded } from "./checks/outbound.mjs";
 import { otherSiteTargets, linksBack } from "./checks/hreflang.mjs";
 import { parseCsv } from "./lib/csv.mjs";
 
-import { AI_BOTS, signalPlacement, bingAiRules, BING_PREFS, VALUED } from "./checks/agents.mjs";
+import { AI_BOTS, signalPlacement, bingAiRules, BING_PREFS, VALUED, aiRobots } from "./checks/agents.mjs";
 
 import { SUPERSEDED, placeholderIn } from "./schema-check.mjs";
 
@@ -4502,6 +4502,17 @@ for (const p of htmlPages) {
   const bad = prefs.filter(x => !BING_PREFS[x.name].includes(x.value));
   if (bad.length) add("ai-preference-invalid", p.finalUrl, bad.map(x => `${x.name}:${x.value}`).join(", "));
 }
+// AI crawler rules in robots.txt that contradict each other (MAP-06, needs-decision), aipref Content-Usage lines, and
+// Cloudflare's Bot Preference Sync block, which Cloudflare prepends to robots.txt between "# BEGIN Cloudflare Bot
+// Preference Sync" and "# END Cloudflare Bot Preference Sync".
+// https://blog.cloudflare.com/bot-preference-sync
+if (robots) {
+  const ai = aiRobots(robotsRes.body, allowedBy);
+  for (const c of ai.conflicts) add("ai-robots-conflict", START_ORIGIN + "/robots.txt", c);
+  if (ai.usage.length) extra.contentUsage = ai.usage;
+  if (/^\s*#\s*BEGIN Cloudflare Bot Preference Sync\b/im.test(robotsRes.body)) extra.botPreferenceSync = true;
+}
+
 // Each indexable page's words and links (as indexes into the same list, redirects followed) for keyword-ideas.mjs.
 // A file of its own, so seo-crawl.json doesn't grow: a few KB a page, some 10–25 MB for 5,000 pages. seo-crawl.json
 // names the file and both carry the crawl's start time, so keyword-ideas can tell a file left from another crawl.
@@ -4572,15 +4583,39 @@ else if (AI_PROBE)
       if (busy(vr)) vr = await askAgain(u, PHONE_UA);
       if (!pageOf(vr)) return; // a visitor doesn't get the page now either: nothing to compare
       const got = [];
+      let fightMode = false;
       for (let [i, br] of brs.entries()) {
         if (busy(br)) br = await askAgain(u, uas[i][1]);
-        const challenge = challenged(br) && !challenged(vr);
+        // A 402 is Cloudflare's pay per crawl asking for payment, priced in crawler-price: paid access, not a refusal.
+        // https://developers.cloudflare.com/ai-crawl-control/features/pay-per-crawl/use-pay-per-crawl-as-ai-owner/crawl-pages/
+        if (br.status === 402) {
+          const price = br.headers.get("crawler-price");
+          (extra.aiBotPaid ??= []).push({
+            url: vr.finalUrl,
+            bot: uas[i][0],
+            ...(price ? { price: price.slice(0, 100) } : {}),
+          });
+          continue;
+        }
+        // A Cloudflare challenge points to Bot Fight Mode, which custom firewall rules can't skip (sources at
+        // ai-bot-refused in checks/agents.mjs).
+        const challenge = challenged(br) && !challenged(vr),
+          cf =
+            challenge &&
+            (/^challenge$/i.test(br.headers.get("cf-mitigated") || "") ||
+              /\/cdn-cgi\/challenge-platform\//.test(br.body || ""));
+        fightMode ||= cf;
         if (challenge || br.status >= 400 || br.status === 0)
           got.push(
-            `${uas[i][0]} got ${challenge ? `a bot challenge (${br.status})` : br.status || `no answer (${br.error})`}`,
+            `${uas[i][0]} got ${challenge ? `a ${cf ? "Cloudflare " : ""}bot challenge (${br.status})` : br.status || `no answer (${br.error})`}`,
           );
       }
-      if (got.length) add("ai-bot-refused", vr.finalUrl, `${got.join("; ")}, a visitor 200`);
+      if (got.length)
+        add(
+          "ai-bot-refused",
+          vr.finalUrl,
+          `${got.join("; ")}, a visitor 200${fightMode ? ". Cloudflare's Bot Fight Mode is a likely cause: custom firewall rules can't make an exception to it" : ""}`,
+        );
     }),
   );
 

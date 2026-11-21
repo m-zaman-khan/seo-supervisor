@@ -15,12 +15,25 @@ export const CHECKS = {
     "A Content-Signal line applies to the user-agent group it sits in, as every example on contentsignals.org places it. One above the first `User-agent:` line belongs to no group. A crawler reads only the group that names it (or the `*` group when none does), so a group without its own Content-Signal line gives its crawlers no signal.",
     "Put a Content-Signal line in each group that lets crawlers in, right under its `User-agent:` lines, for example `User-agent: *` then `Content-Signal: search=yes, ai-train=no` then `Allow: /`. A group that blocks its crawlers with `Disallow: /` needs none.",
   ],
+  // WAF custom rules can't skip Bot Fight Mode, but an IP Access rule matches before it, and Super Bot Fight Mode
+  // allows Skip rules. Perplexity warns it can still challenge their bots.
+  // https://developers.cloudflare.com/bots/get-started/bot-fight-mode/
+  // https://docs.perplexity.ai/guides/bots
   "ai-bot-refused": [
     "MAP-06",
     "needs-decision",
     n => `${n} page(s) turn away requests that claim to be an AI search crawler`,
     "Asked with the user agent of OAI-SearchBot, Claude-SearchBot or PerplexityBot, these pages answered with an error or a bot challenge, while the same request as a visitor got the page. A firewall, CDN bot setting or security plugin usually does this, and robots.txt doesn't show it, so the site can be left out of ChatGPT, Claude or Perplexity answers without anyone deciding that. A firewall that checks the vendor's IP addresses is right to refuse this test, which doesn't come from them, so the test can't tell the two apart.",
-    "Decide whether these crawlers should reach the site, and record it in the profile (MAP-06). To let them in, allow the vendors' published IP ranges (openai.com/searchbot.json, claude.com/crawling/bots.json, perplexity.ai/perplexitybot.json) or the CDN's verified-bots list in the firewall rules, not the user agent alone. Then run log-scan.mjs with --verify-ips on the server logs to see what the real crawlers get.",
+    "Decide whether these crawlers should reach the site, and record it in the profile (MAP-06). To let them in, allow the vendors' published IP ranges (openai.com/searchbot.json, claude.com/crawling/bots.json, perplexity.ai/perplexitybot.json) or the CDN's verified-bots list in the firewall rules, not the user agent alone. Then run log-scan.mjs with --verify-ips on the server logs to see what the real crawlers get. When the evidence names Cloudflare's Bot Fight Mode: custom firewall rules can't skip it, so let the vendors' IP ranges in with an IP Access rule, which Cloudflare checks first, or use Super Bot Fight Mode, which allows Skip rules.",
+  ],
+  // needs-decision, not low: either line may be a deliberate exception (one vendor licensed to train), which the
+  // crawl can't tell.
+  "ai-robots-conflict": [
+    "MAP-06",
+    "needs-decision",
+    n => `robots.txt has ${n} AI crawler rule(s) that contradict each other`,
+    "Some robots.txt lines for AI crawlers say opposite things: a vendor's AI search crawler let in while its fetcher for pages a person asks about is kept out (or the reverse), a Content-Signal line that says the opposite of its group's Allow and Disallow lines, or the shared AI-training opt-out set while a training crawler's own group lets it in. Each crawler follows the group that names it, so the site may not get the policy the owner meant. Blocking training crawlers while letting AI search in is a valid policy and isn't flagged.",
+    "Decide what each AI crawler should do, record it in the profile (MAP-06) and make the lines agree: give a vendor's search crawler and its fetcher the same rule unless they should differ, keep each Content-Signal line in step with its group's Allow and Disallow lines, and with the shared training opt-out set, remove the Allow lines for training crawlers that shouldn't train on the site.",
   ],
   // Bing's new AI directives and its noarchive cut-over dates; Amazon reads noarchive as a training opt-out.
   // https://blogs.bing.com/search/2026/10/your-content-your-choice-clearer-preferences-for-training-and-grounding/
@@ -285,47 +298,192 @@ export function bingAiRules(metas, headerLines) {
 // each group without one that still lets crawlers in. blocksAll gets a group as { rules: [{ allow, path }] }.
 // https://contentsignals.org
 export function signalPlacement(txt, blocksAll) {
-  const out = [],
-    groups = [];
-  let cur = null;
-  txt.split(/\r?\n/).forEach((raw, i) => {
-    const line = raw.replace(/#.*/, "").trim(),
-      c = line.indexOf(":");
-    if (c < 0) return;
-    const k = line.slice(0, c).trim().toLowerCase(),
-      v = line.slice(c + 1).trim();
-    if (k === "user-agent") {
-      if (!cur || cur.rules.length) groups.push((cur = { agents: [], rules: [], signal: false }));
-      cur.agents.push(v);
-    } else if (k === "content-signal") {
-      if (cur) cur.signal = true;
-      else out.push(`line ${i + 1}: Content-Signal comes before any User-agent line, so it belongs to no group`);
-    } else if ((k === "allow" || k === "disallow") && cur) cur.rules.push({ allow: k === "allow", path: v });
-  });
+  const { groups, loose } = robotsGroups(txt);
+  const out = loose
+    .filter(l => l.k === "content-signal")
+    .map(l => `line ${l.line}: Content-Signal comes before any User-agent line, so it belongs to no group`);
   // A crawler reads every group naming it as one, and Cloudflare's managed block often sits in front of the site's
   // own `User-agent: *` group, so groups are merged per crawler first.
   // https://www.rfc-editor.org/rfc/rfc9309#section-2.2.1
   const byAgent = new Map();
   for (const g of groups)
     for (const a of g.agents) {
-      const k = a.toLowerCase(),
+      const k = agentKey(a),
         m = byAgent.get(k) || byAgent.set(k, { agents: [a], rules: [], signal: false }).get(k);
       m.rules.push(...g.rules);
-      m.signal ||= g.signal;
+      m.signal ||= g.signals.length > 0;
     }
   const unsignalled = a => {
-      const m = byAgent.get(a.toLowerCase());
+      const m = byAgent.get(agentKey(a));
       return !m.signal && !blocksAll(m);
     },
     told = new Set();
-  if (groups.some(g => g.signal))
+  if (groups.some(g => g.signals.length))
     for (const g of groups) {
-      const names = g.agents.filter(a => unsignalled(a) && !told.has(a.toLowerCase()));
-      names.forEach(a => told.add(a.toLowerCase()));
+      const names = g.agents.filter(a => unsignalled(a) && !told.has(agentKey(a)));
+      names.forEach(a => told.add(agentKey(a)));
       if (names.length)
         out.push(`the User-agent: ${names.join(", ")} group has no Content-Signal line, though other groups do`);
     }
   return out;
+}
+
+// The crawler name parseRobots matches on: the leading letters, "_" and "-", lowercased.
+const agentKey = a => (a.startsWith("*") ? "*" : (/^[A-Za-z_-]+/.exec(a)?.[0] || a).toLowerCase());
+// robots.txt groups as parseRobots forms them, with the lines it skips: Content-Signal and aipref Content-Usage lines
+// (rules inside a group, draft-ietf-aipref-attach-05) go on their group's signals and usage, or on loose before the
+// first User-agent line; line is 1-based.
+/** @param {string} txt */
+function robotsGroups(txt) {
+  /** @type {{ agents: string[], rules: { allow: boolean, path: string }[], signals: { line: number, k: string, v: string }[], usage: { line: number, k: string, v: string }[] }[]} */
+  const groups = [];
+  const loose = [];
+  let cur = null;
+  String(txt || "")
+    .split(/\r?\n/)
+    .forEach((raw, i) => {
+      const line = raw.replace(/#.*/, "").trim(),
+        c = line.indexOf(":");
+      if (c < 0) return;
+      const k = line.slice(0, c).trim().toLowerCase(),
+        v = line.slice(c + 1).trim();
+      if (k === "user-agent") {
+        if (!cur || cur.rules.length) groups.push((cur = { agents: [], rules: [], signals: [], usage: [] }));
+        cur.agents.push(v);
+      } else if (k === "content-signal" || k === "content-usage")
+        (cur ? cur[k === "content-signal" ? "signals" : "usage"] : loose).push({ line: i + 1, k, v });
+      else if ((k === "allow" || k === "disallow") && cur) cur.rules.push({ allow: k === "allow", path: v });
+    });
+  return { groups, loose };
+}
+
+// AI crawler rules in one robots.txt that contradict each other, as sentences, and aipref Content-Usage lines as
+// written: the aipref drafts aren't final, so those are shown, not judged. Groups naming the same crawler read as one.
+// Blocking training while letting search in is a policy, not a contradiction, and is never flagged.
+// https://datatracker.ietf.org/doc/draft-ietf-aipref-attach/
+// https://datatracker.ietf.org/doc/draft-ietf-aipref-vocab/
+/** @param {string} txt @param {(group: { rules: { allow: boolean, path: string }[] }, path: string) => boolean} allowed */
+export function aiRobots(txt, allowed) {
+  const { groups, loose } = robotsGroups(txt),
+    out = [];
+  const merged = key => {
+    const gs = groups.filter(g => g.agents.some(a => agentKey(a) === key));
+    return gs.length ? { rules: gs.flatMap(g => g.rules) } : null;
+  };
+  const list = a => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
+  // 1. A vendor's search crawler against its user fetchers.
+  const star = merged("*"),
+    status = bot => {
+      const own = merged(bot.toLowerCase()),
+        g = own || star;
+      return !g || allowed(g, "/") ? "" : own ? "its own group" : "the `User-agent: *` group";
+    };
+  for (const [s, vendor] of AI_BOTS.filter(b => b[2] === "search"))
+    for (const [u] of AI_BOTS.filter(b => b[1] === vendor && b[2] === "user")) {
+      const [bs, bu] = [status(s), status(u)],
+        S = `${s}, ${vendor}'s AI search crawler,`,
+        U = `${u}, which fetches pages a person asks ${vendor}'s assistant for,`;
+      if (!bs !== !bu)
+        out.push(
+          bu ? `${S} is allowed, but ${U} is blocked by ${bu}.` : `${U} is allowed, but ${S} is blocked by ${bs}.`,
+        );
+    }
+  // 2. Content-Signal lines against their group, per set of crawlers sharing the same groups: a yes where Disallow
+  // keeps them out, a no to the one use a search-only or training-only group exists for, or two lines disagreeing.
+  // In a training-only group only ai-train counts; a copied search=yes says nothing about those crawlers.
+  const shared = merged("__usage_ai-training"),
+    optOut = !shared
+      ? ""
+      : !allowed(shared, "/")
+        ? "blocked"
+        : shared.rules.some(x => !x.allow && x.path)
+          ? ""
+          : "allowed";
+  const kindOf = key =>
+    AI_BOTS.find(([n, , , , { alias } = {}]) => n.toLowerCase() === key || alias?.toLowerCase() === key)?.[2];
+  const sets = new Map();
+  for (const key of new Set(groups.flatMap(g => g.agents.map(agentKey)))) {
+    if (key === "__usage_ai-training") continue;
+    const idx = groups.flatMap((g, i) => (g.agents.some(a => agentKey(a) === key) ? [i] : [])),
+      id = idx.join();
+    const set =
+      sets.get(id) ||
+      sets
+        .set(id, {
+          names: [],
+          kinds: new Set(),
+          rules: idx.flatMap(i => groups[i].rules),
+          signals: idx.flatMap(i => groups[i].signals),
+        })
+        .get(id);
+    set.names.push(groups[idx[0]].agents.find(a => agentKey(a) === key).replace(/`/g, ""));
+    set.kinds.add(kindOf(key));
+  }
+  for (const { names, kinds, rules, signals } of sets.values()) {
+    const g = { rules },
+      label = `\`User-agent: ${names.join(", ")}\``,
+      kind = kinds.size === 1 ? [...kinds][0] : undefined,
+      seen = new Map();
+    for (const { v } of signals) {
+      const m = /^(\/\S*)\s+(.*)$/.exec(v),
+        path = m ? m[1] : "/",
+        at = path === "/" ? "" : ` for ${path}`,
+        open = allowed(g, path);
+      const pairs = Object.fromEntries(
+        (m ? m[2] : v)
+          .split(",")
+          .map(p => p.split("=").map(x => x.trim().toLowerCase()))
+          .filter(([k, x]) => /^(search|ai-input|ai-train)$/.test(k) && /^(yes|no)$/.test(x)),
+      );
+      const yes = Object.keys(pairs).filter(k => pairs[k] === "yes" && (kind !== "training" || k === "ai-train"));
+      if (!open && yes.length)
+        out.push(
+          `The ${label} group's Content-Signal line says ${yes.map(k => `${k}=yes`).join(", ")}${at}, but its Disallow lines keep those crawlers out of ${at ? path : "the whole site"}.`,
+        );
+      const own = { search: "search", training: "ai-train" }[kind];
+      if (open && own && pairs[own] === "no")
+        out.push(
+          `The ${label} group lets its crawlers in${at}, but its Content-Signal line says ${own}=no${at}, though these are AI ${kind} crawlers.`,
+        );
+      for (const [k, x] of Object.entries(pairs)) {
+        const was = seen.get(path + " " + k);
+        if (was === undefined) seen.set(path + " " + k, x);
+        else if (was !== x && was !== "told") {
+          out.push(`The ${label} group says ${k}=${was} in one Content-Signal line and ${k}=${x} in another${at}.`);
+          seen.set(path + " " + k, "told");
+        }
+      }
+      if (open && !at && optOut && pairs["ai-train"] === (optOut === "blocked" ? "yes" : "no"))
+        out.push(
+          `The shared AI-training opt-out (\`User-agent: __usage_ai-training\`) ${optOut === "blocked" ? "refuses" : "allows"} training for the whole site, but the Content-Signal line in the ${label} group says ai-train=${pairs["ai-train"]}.`,
+        );
+    }
+  }
+  // 3. The shared opt-out against training crawlers their own group lets in: the draft lets specific rules win
+  // (section 4.5), and Anthropic follows a group that names ClaudeBot.
+  // https://datatracker.ietf.org/doc/draft-kelley-aipref-training-preference-signal/
+  // https://support.claude.com/en/articles/8896518
+  const open =
+    optOut === "blocked"
+      ? AI_BOTS.filter(
+          b => b[2] === "training" && merged(b[0].toLowerCase()) && allowed(merged(b[0].toLowerCase()), "/"),
+        ).map(b => b[0])
+      : [];
+  if (open.length)
+    out.push(
+      `The shared AI-training opt-out (\`User-agent: __usage_ai-training\`) refuses training for the whole site, but ${list(open)} ${open.length > 1 ? "have their own groups that let them" : "has its own group that lets it"} in. A crawler's own group can win over the shared one: Anthropic says it follows rules that name ClaudeBot first.`,
+    );
+  const usage = [
+    ...loose.filter(l => l.k === "content-usage").map(l => ({ agents: null, rule: l.v })),
+    ...groups.flatMap(g => g.usage.map(l => ({ agents: g.agents.join(", "), rule: l.v }))),
+  ];
+  return {
+    conflicts: out,
+    usage: usage
+      .filter(u => u.rule)
+      .slice(0, 20)
+      .map(u => ({ agents: u.agents?.slice(0, 200) ?? null, rule: u.rule.slice(0, 200) })),
+  };
 }
 
 // An RFC 9727 API catalog (a linkset), an A2A Agent Card (A2A 1.0.0 section 8.2), and OAuth metadata, whose required
