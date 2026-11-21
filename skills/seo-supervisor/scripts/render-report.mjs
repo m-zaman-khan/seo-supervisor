@@ -2373,6 +2373,8 @@ const flowMd = () => [
       ]
     : []),
 ];
+const scoreHtml = () => "",
+  scoreMd = () => [];
 const panelsHtml = () =>
   [
     secHtml,
@@ -2396,6 +2398,7 @@ const panelsHtml = () =>
     hygieneHtml,
     dataHtml,
     flowHtml,
+    scoreHtml,
   ]
     .map(f => f())
     .join("");
@@ -2422,6 +2425,7 @@ const panelsMd = () =>
     hygieneMd,
     dataMd,
     flowMd,
+    scoreMd,
   ].flatMap(f => f());
 
 // audiences (audience.md) is written into seo-audit.json and may quote page text, so every string is escaped.
