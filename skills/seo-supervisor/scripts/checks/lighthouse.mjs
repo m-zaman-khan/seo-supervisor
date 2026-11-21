@@ -10,6 +10,7 @@ import { containerArgs } from "../lib/cdp.mjs";
 import { chromeProxyArgs } from "../lib/proxy.mjs";
 import { redact } from "../lib/redact.mjs";
 import { startGuard } from "./render.mjs";
+import { toolsDir } from "../lib/settings-dir.mjs";
 
 const CATEGORIES = {
   performance: "performance",
@@ -33,7 +34,7 @@ export function findLighthouse(env = process.env, home = homedir(), platform = p
     .filter(Boolean)
     .map(d => join(d, exe));
   return (
-    [env.LIGHTHOUSE_PATH, join(home, ".seo-supervisor", "tools", "node_modules", ".bin", exe), ...path].find(
+    [env.LIGHTHOUSE_PATH, join(toolsDir(env, home), "node_modules", ".bin", exe), ...path].find(
       p => p && existsSync(p),
     ) || null
   );

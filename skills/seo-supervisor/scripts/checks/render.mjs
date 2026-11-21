@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { containerArgs } from "../lib/cdp.mjs";
 import { chromeProxyArgs } from "../lib/proxy.mjs";
 import { redact } from "../lib/redact.mjs";
+import { installedBrowser } from "../lib/settings-dir.mjs";
 import { privateIp } from "./outbound.mjs";
 
 export const CHECKS = {
@@ -57,7 +58,8 @@ export function findBrowser(env = process.env, platform = process.platform, exis
         "/snap/bin/chromium",
       ],
     }[platform] || [];
-  return [env.CHROME_PATH, ...candidates].find(p => p && exists(p)) || null;
+  // Last, the browser `npx seo-supervisor --with-browser` installed in the settings folder.
+  return [env.CHROME_PATH, ...candidates].find(p => p && exists(p)) || installedBrowser(env) || null;
 }
 
 // Why Chrome showed something other than the site's page, or null. Compared as is, an error page would read as a

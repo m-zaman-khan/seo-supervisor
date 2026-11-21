@@ -12,9 +12,9 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
+import { toolsDir } from "./lib/settings-dir.mjs";
 import { AI_SOURCES, imageMeta } from "./lib/image-size.mjs";
 
 // Rough saving in bytes. Lossy WebP is 25–34% smaller than JPEG at the same SSIM and lossless WebP 26% smaller than
@@ -166,7 +166,8 @@ async function main() {
       `${modern} heavy image(s) are already WebP, AVIF or another format; resize or compress those where they're made.`,
     );
 
-  const SHARP = join(homedir(), ".seo-supervisor", "tools", "node_modules", "sharp");
+  // sharp is an optional add-on kept in the tools folder, never in the project.
+  const SHARP = join(toolsDir(), "node_modules", "sharp");
   const installed = existsSync(SHARP);
   if (todo.length && args.yes !== true) {
     console.log(
