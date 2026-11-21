@@ -2192,8 +2192,32 @@ const changeMd = () => {
   const l = changeLine();
   return l ? ["## Change check", "", noteMd(l), ""] : [];
 };
-const crawlLinksHtml = () => "",
-  crawlLinksMd = () => [];
+// Indexable pages with exactly one internal link in: the first 20, capped when the crawl stopped at --max. Paths are
+// escaped.
+const once = (o =>
+  o && countOf(o.count) && Array.isArray(o.pages)
+    ? {
+        ...o,
+        pages: o.pages.filter(p => obj(p) && typeof p.url === "string" && typeof p.from === "string").slice(0, 20),
+      }
+    : null)(obj(raw.linkedOnce));
+const onceIntro = () =>
+  `${plural(once.count, "page")} that can be indexed ${once.count === 1 ? "has" : "have"} only one other page linking to ${once.count === 1 ? "it" : "them"}${once.count > once.pages.length ? `; the first ${num(once.pages.length)} are below` : ""}. A page linked from one place is easy to miss: visitors find it only if they open that one page, and crawlers, which find pages by following links, have a single way in, so the page is cut off if that link goes. A link from a hub or a related page helps both.${once.capped === true ? " The crawl stopped at --max, so links on pages it didn't read aren't counted." : ""} Information only: it doesn't change the score.`;
+const crawlLinksHtml = () =>
+  once?.pages.length
+    ? `\n    <details class="how linkedonce"><summary>Pages with one incoming link</summary><p>${esc(onceIntro())}</p><ul class="lim">${once.pages.map(p => `<li><b><code>${esc(notePath(p.url))}</code></b><span>linked only from <code>${esc(notePath(p.from))}</code></span></li>`).join("")}</ul></details>`
+    : "";
+const crawlLinksMd = () =>
+  once?.pages.length
+    ? [
+        "## Pages with one incoming link",
+        "",
+        noteMd(onceIntro()),
+        "",
+        ...once.pages.map(p => `- ${noteCode(notePath(p.url))} linked only from ${noteCode(notePath(p.from))}`),
+        "",
+      ]
+    : [];
 const hygieneHtml = () => "",
   hygieneMd = () => [];
 // newQueries: searches with no row in the previous period, the first 10 as given (most impressions first). Search

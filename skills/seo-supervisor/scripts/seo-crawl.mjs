@@ -20,7 +20,7 @@ import {
   CRUX_HISTORY_ENDPOINT,
   labLcpBreakdown,
 } from "./checks/speed.mjs";
-import { CHECKS as RENDER_CHECKS, findBrowser, renderPage, compareRendered } from "./checks/render.mjs";
+import { CHECKS as RENDER_CHECKS, findBrowser, renderPage, compareRendered, changesHead } from "./checks/render.mjs";
 import { CHECKS as VISUAL_CHECKS, checkVisual } from "./checks/visual.mjs";
 import { checkLighthouse, findLighthouse } from "./checks/lighthouse.mjs";
 import { imageSize } from "./lib/image-size.mjs";
@@ -1285,6 +1285,9 @@ import { CHECKS as PAGE_CHECKS, ugcLinks, backTrap, paywallLeak, lateHead, ident
 Object.assign(CHECKS, PAGE_CHECKS);
 RULES["CONTENT-11"] ??= ["Nothing breaks Google's spam policies", "Headings & content"]; // never passed: see NOT_CRAWLABLE
 
+import { CHECKS as CRAWL_CHECKS, brake, fragmentLinks, hasName, slowNote } from "./checks/crawl.mjs";
+Object.assign(CHECKS, CRAWL_CHECKS);
+
 CHECKS["markdown-differs"] = [
   "AI-05",
   "low",
@@ -1348,10 +1351,12 @@ async function offLimits(u) {
   if (why) blocked.set(u, why);
   return why;
 }
-// A 429 pauses every request to the site for its Retry-After, seconds or a date (local cap 30 s, 2 s when absent),
-// then retries once.
+// A 429 pauses every request to the site for its Retry-After (local cap 30 s, 2 s when absent), then retries once.
+// Own-site requests also pause on a 503, Google's other temporary brake, and for 2 s on no answer. Bot comparisons
+// retry busy answers themselves, and a 503 to a bot may be a firewall, so only a 429 pauses them. brake() caps the
+// pauses at 2 minutes in all.
 // https://developers.google.com/search/docs/crawling-indexing/http-network-errors
-let calmUntil = 0;
+const slow = brake();
 const retryAfter = v => {
   const ms = /^\d+$/.test(v?.trim() || "") ? v * 1000 : Date.parse(v ?? "") - Date.now();
   return Number.isFinite(ms) ? Math.min(Math.max(ms, 0), 30000) : 2000;
@@ -1359,20 +1364,22 @@ const retryAfter = v => {
 // manual: false goes through follow(), so each hop passes the guard.
 async function get(url, { manual = true, text = true, ua = UA } = {}) {
   if (!manual) return follow(url, ua);
+  const own = ua === UA && urlOr(url)?.origin === START_ORIGIN;
   let waited = false;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      if (calmUntil > Date.now()) await sleep(calmUntil - Date.now());
+      if (slow.until > Date.now()) await sleep(slow.until - Date.now());
       const t = performance.now(); // ms: the time to the response headers
       const res = await fetch(url, {
         redirect: "manual",
         headers: { "user-agent": ua, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
         signal: AbortSignal.timeout(20000),
       });
-      if (res.status === 429 && !waited) {
+      if ((res.status === 429 || (res.status === 503 && own)) && !waited) {
         waited = true;
         attempt--;
-        calmUntil = Math.max(calmUntil, Date.now() + retryAfter(res.headers.get("retry-after")));
+        slow.busy++;
+        slow.pause(retryAfter(res.headers.get("retry-after")));
         await res.arrayBuffer().catch(() => {});
         continue;
       }
@@ -1384,7 +1391,10 @@ async function get(url, { manual = true, text = true, ua = UA } = {}) {
       return { status: res.status, headers: res.headers, ct, body, location: res.headers.get("location"), ms };
     } catch (e) {
       if (attempt === 1) return { status: 0, error: String(e.message || e), headers: new Headers(), ct: "", body: "" };
-      await sleep(500);
+      if (own) {
+        slow.silent++;
+        slow.pause(2000);
+      } else await sleep(500);
     }
   }
 }
@@ -2021,6 +2031,24 @@ function analyze(url, html, headers, xRobotsLines) {
     late: lateHead(html),
     identity: { org: idNodes(t => ORG_RE.test(t) && t !== "Service"), site: idNodes(t => t === "WebSite") },
   };
+
+  // Fragment targets (every id, and <a name>) and the links that jump to one, for checks/crawl.mjs.
+  rec.anchorIds = new Set(
+    [
+      ...html
+        .replace(/<(script|style|template)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi, " ")
+        .matchAll(/<([a-z][\w-]*)\s[^>]*\b(?:id|name)\s*=[^>]*>/gi),
+    ]
+      .flatMap(m => {
+        const a = attrs(m[0]);
+        return [a.id, m[1].toLowerCase() === "a" ? a.name : null];
+      })
+      .filter(Boolean),
+  );
+  rec.fragLinks = fragmentLinks(
+    [...body.matchAll(/<a\b[^>]*>/gi)].map(m => attrs(m[0])),
+    rec.base,
+  ).map(([u, name]) => [clean(toCrawl(u)), name]);
 
   // Words for the Markdown comparison: the main text, and all a reader sees (body, title, description). Only the start
   // page, the only one asked for Markdown.
@@ -3861,7 +3889,7 @@ if (browser) {
       rendered++;
       const d = compareRendered(rawRes.body, dom),
         say = x => `${x.field}: “${x.raw ?? "none"}” → “${x.rendered ?? "none"}”`;
-      const head = d.filter(x => ["title", "canonical", "robots"].includes(x.field)),
+      const head = d.filter(changesHead),
         body = d.filter(x => !head.includes(x));
       if (head.length) add("render-changes-head", u, head.map(say).join("; "));
       if (body.length) add("render-adds-content", u, body.map(say).join("; "));
@@ -4562,6 +4590,40 @@ if (robots) {
   for (const c of ai.conflicts) add("ai-robots-conflict", START_ORIGIN + "/robots.txt", c);
   if (ai.usage.length) extra.contentUsage = ai.usage;
   if (/^\s*#\s*BEGIN Cloudflare Bot Preference Sync\b/im.test(robotsRes.body)) extra.botPreferenceSync = true;
+}
+
+{
+  // Indexable pages exactly one other page links to, the first 20 listed. A one-section crawl doesn't know the links
+  // from pages it leaves out, so it's skipped there.
+  if (!SECTION) {
+    const from = new Map();
+    for (const p of htmlPages)
+      for (const l of p.links) {
+        const f = finalOf(l.url);
+        if (f !== p.finalUrl) (from.get(f) || from.set(f, new Set()).get(f)).add(p.finalUrl);
+      }
+    const once = htmlPages.filter(p => indexable(p) && !isHome(p) && from.get(p.finalUrl)?.size === 1);
+    if (once.length)
+      extra.linkedOnce = {
+        count: once.length,
+        pages: once.slice(0, 20).map(p => ({ url: p.finalUrl, from: [...from.get(p.finalUrl)][0] })),
+        ...(capped ? { capped: true } : {}),
+      };
+  }
+  // A page#name link whose target lacks that id or <a name>, once each. Pages built only in the browser get their ids
+  // from JavaScript, so they aren't judged, nor are pages the crawl didn't read.
+  const done = new Set();
+  for (const p of htmlPages)
+    for (const [to, name] of p.fragLinks || []) {
+      const t = byPage.get(finalOf(to)),
+        key = t && `${t.finalUrl}#${name}`;
+      if (!t || t.clientOnly || done.has(key) || hasName(t.anchorIds, name)) continue;
+      done.add(key);
+      add("link-fragment-missing", key, `linked from ${p.finalUrl}`);
+    }
+  // One note if the crawler slowed down. The AI-bot probe below can still pause it.
+  const slowed = slowNote(slow);
+  if (slowed) notes.push(slowed);
 }
 
 // Compares the Markdown the start page serves for Accept: text/markdown with the page's own words. Cloudflare's

@@ -15,12 +15,14 @@ import { installedBrowser } from "../lib/settings-dir.mjs";
 import { privateIp } from "./outbound.mjs";
 
 export const CHECKS = {
+  // Google asks sites not to change the canonical with JavaScript, and not all bots run it.
+  // https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics
   "render-changes-head": [
     "REND-06",
     "high",
-    n => `JavaScript changes the title, canonical or robots tag on ${n} page(s)`,
-    "Search engines read the raw HTML first and the rendered page later. When the two disagree, which value wins isn't predictable, and a robots or canonical change can drop a page.",
-    "Output the final title, canonical and robots tag in the server HTML and don't change them in client code.",
+    n => `JavaScript changes the title, canonical, robots tag, meta description or H1 on ${n} page(s)`,
+    "Search engines read the raw HTML first and the rendered page later. When the two disagree, which value wins isn't predictable, and a robots or canonical change can drop a page. Crawlers that don't run JavaScript, most AI crawlers among them, only ever see the raw title, description and H1.",
+    "Output the final title, canonical, robots tag, meta description and H1 in the server HTML and don't change them in client code.",
   ],
   "render-adds-content": [
     "REND-01",
@@ -371,6 +373,9 @@ function read(html) {
         .find(m => (m.name || "").toLowerCase() === "robots")
         ?.content?.toLowerCase()
         .replace(/\s+/g, "") ?? null,
+    description: (c => (c == null ? null : decode(c)))(
+      tags("meta").find(m => (m.name || "").toLowerCase() === "description")?.content,
+    ),
     h1: h1 ? decode(h1[1].replace(/<[^>]+>/g, " ")) : null,
     jsonld: (html.match(/<script\b[^>]*application\/ld\+json/gi) || []).length,
     links: (html.match(/<a\b[^>]*\bhref\s*=/gi) || []).length,
@@ -381,7 +386,7 @@ export function compareRendered(rawHtml, renderedHtml) {
   const a = read(rawHtml),
     b = read(renderedHtml),
     out = [];
-  for (const field of ["title", "canonical", "robots", "h1"]) {
+  for (const field of ["title", "canonical", "robots", "description", "h1"]) {
     const same =
       field === "canonical" && a.canonical && b.canonical
         ? sameUrl(a.canonical, b.canonical)
@@ -394,6 +399,9 @@ export function compareRendered(rawHtml, renderedHtml) {
     out.push({ field: "link-count", raw: a.links, rendered: b.links });
   return out;
 }
+// An H1 only JavaScript adds is render-adds-content's, with the JSON-LD, words and link count.
+export const changesHead = x =>
+  ["title", "canonical", "robots", "description"].includes(x.field) || (x.field === "h1" && !!x.raw);
 
 // A login screen or paywall where the page should be, or null; never filled in or clicked through. A login needs the
 // title or H1 to say so, so a login box in the header doesn't count. tp-modal and tp-backdrop are Piano's paywall.
