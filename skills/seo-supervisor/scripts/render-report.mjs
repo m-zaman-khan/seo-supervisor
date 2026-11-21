@@ -3055,8 +3055,57 @@ const unknownText = (why, which) =>
       ? `${which === "gone" ? "This crawl" : "The last crawl"} stopped at its page limit (--max), so pages it didn't reach aren't listed as ${which}.`
       : "";
 const unknownLines = d => [unknownText(d.removedUnknown, "gone"), unknownText(d.addedUnknown, "added")].filter(Boolean);
+// seo-diff.mjs's addedBurst, a local threshold (50 pages and 20%). It shows the count and where the pages are, never
+// what they're about, and paths and titles come from the crawl, so they're escaped. HACKED_HELP is Search Console
+// Help's "Hacked: URL injection" page.
+const HACKED_HELP = "https://support.google.com/webmasters/answer/9044101#hacked-url-injection";
+const BURST_NOTE =
+  "Our own line: this shows when at least 50 pages are new and they add at least 20% to the pages the last audit found. Information only: it doesn't change the score.";
+const burst = (b =>
+  b && asInt(b.pages) && asInt(b.before) && b.before > 0
+    ? {
+        pages: b.pages,
+        before: b.before,
+        sections: (Array.isArray(b.sections) ? b.sections : []).filter(
+          s => typeof s?.path === "string" && asInt(s.pages),
+        ),
+        examples: (Array.isArray(b.examples) ? b.examples : []).filter(e => typeof e?.path === "string").slice(0, 10),
+      }
+    : null)(obj(diff?.addedBurst));
+const burstText = () =>
+  `${num(burst.pages)} new pages appeared since the last audit${diff.since ? ` (on ${fmtDate(diff.since)})` : ""}, ${Math.round((100 * burst.pages) / burst.before)}% more than the ${num(burst.before)} pages it found. If you didn't add them, check for hacked or spam pages`;
+// "/blog/ 12 · /cheap-pills/ 180"; folders past seo-diff's top 20 are summed into one count.
+const burstFolders = code => {
+  const other = burst.pages - burst.sections.reduce((n, s) => n + s.pages, 0);
+  return `New pages by folder: ${burst.sections.map(s => `${code(s.path)}${s.path === "/" ? " (top level)" : ""} ${num(s.pages)}`).join(" · ")}${other > 0 ? ` · other folders ${num(other)}` : ""}`;
+};
+const burstHtml = () =>
+  burst
+    ? `<section class="panel"><h2>Many new pages<span class="mono quiet"> ${num(burst.pages)}</span></h2><p>${esc(burstText())}: see <a href="${HACKED_HELP}" rel="noopener">Google's help on hacked content</a>.</p>${burst.sections.length ? `<p class="quiet">${burstFolders(esc)}</p>` : ""}${burst.examples.length ? `<p class="quiet">Some of them, from different folders:</p><ul class="lim">${burst.examples.map(e => `<li><b><code>${esc(e.path)}</code></b><span>${esc(e.title || "no title")}</span></li>`).join("")}</ul>` : ""}<p class="quiet">${BURST_NOTE}</p></section>
+  `
+    : "";
+const burstMd = () =>
+  burst
+    ? [
+        "### Many new pages",
+        "",
+        `${noteMd(burstText())}: see Google's help on hacked content, ${HACKED_HELP}`,
+        "",
+        ...(burst.sections.length ? [burstFolders(noteCode), ""] : []),
+        ...(burst.examples.length
+          ? [
+              "Some of them, from different folders:",
+              "",
+              ...burst.examples.map(e => `- ${noteCode(e.path)} ${e.title ? noteMd(e.title) : "no title"}`),
+              "",
+            ]
+          : []),
+        BURST_NOTE,
+        "",
+      ]
+    : [];
 const diffHtml = () => `<div class="limits">
-  <p class="quiet">Compared with the crawl of ${esc(fmtDate(diff.since))}. Pages are matched by path.${unknownLines(
+  ${burstHtml()}<p class="quiet">Compared with the crawl of ${esc(fmtDate(diff.since))}. Pages are matched by path.${unknownLines(
     diff,
   )
     .map(t => ` ${t}`)
@@ -3505,7 +3554,7 @@ function markdown() {
   }
   if (plan) L.push(...planMarkdown(plan));
   if (diff) {
-    L.push("## Since last audit", "", `Compared with the crawl of ${fmtDate(diff.since)}.`, "");
+    L.push("## Since last audit", "", ...burstMd(), `Compared with the crawl of ${fmtDate(diff.since)}.`, "");
     if (googleUpdatesText()) L.push(googleUpdatesText(), "");
     if (googlePostsText()) L.push(googlePostsText(), "");
     for (const [h, list] of diffSections(diff))

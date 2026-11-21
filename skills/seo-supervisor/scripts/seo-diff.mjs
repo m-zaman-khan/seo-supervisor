@@ -168,6 +168,41 @@ export const changedPages = d =>
     .map(c => c.path)
     .concat(d.added || []);
 
+// A burst of new pages can mean a hack (URL injection).
+// https://support.google.com/webmasters/answer/9044101#hacked-url-injection
+// 50 pages is more than a site usually publishes between audits; 20% of the last crawl keeps a big shop's routine
+// products out. Folders follow the crawler's `sections` rule, and examples rotate across them, largest first, so a new
+// folder stands out. The topic is never judged: a casino site's casino pages are normal.
+function addedBurst(added, before, after) {
+  const was = [...before.values()].filter(p => ok(p.status)).length;
+  if (!was || added.length < 50 || added.length < was / 5) return null;
+  const parts = p => p.split("?")[0].split("/").filter(Boolean);
+  const folders = new Set(
+      [...after]
+        .filter(([, n]) => ok(n.status))
+        .map(([p]) => parts(p))
+        .filter(s => s.length > 1)
+        .map(s => s[0]),
+    ),
+    groups = new Map();
+  for (const p of added) {
+    const s = parts(p)[0],
+      key = folders.has(s) ? `/${s}/` : "/";
+    groups.set(key, [...(groups.get(key) || []), p]);
+  }
+  const sorted = [...groups].sort((a, b) => b[1].length - a[1].length || (a[0] < b[0] ? -1 : 1)),
+    examples = [];
+  for (let i = 0; examples.length < Math.min(10, added.length); i++)
+    for (const [, l] of sorted) if (l[i] && examples.length < 10) examples.push(l[i]);
+  return {
+    pages: added.length,
+    before: was,
+    share: Math.round((1000 * added.length) / was) / 1000,
+    sections: sorted.slice(0, 20).map(([path, l]) => ({ path, pages: l.length })),
+    examples: examples.map(path => ({ path, title: after.get(path).title ?? null })),
+  };
+}
+
 export function diffCrawls(oldReport, newReport) {
   // Working pages plus the crawl's error records, so a page that now fails is a status change, not "gone".
   const index = r => new Map([...(r.pages || []), ...(r.errors || [])].map(p => [pathOf(p.url), p]));
@@ -417,19 +452,22 @@ export function diffCrawls(oldReport, newReport) {
         regressions.push({ path: s.path, kind: "section-shrunk", before: s.pages, after: n });
     }
   }
-  return {
-    regressions,
-    improvements,
-    changed,
-    compared: [...compared], // the optional fields both crawls recorded, so the report claims only those
-    // Only new pages that load: a new URL in the error list is a broken link target, not an added page. A page the last
-    // crawl didn't reach (it stopped at --max, or covered another section) isn't known to be new.
-    added: addedUnknown
+  // Only new pages that load: a new URL in the error list is a broken link target, not an added page. A page the last
+  // crawl didn't reach (it stopped at --max, or covered another section) isn't known to be new.
+  const added = addedUnknown
       ? []
       : [...after]
           .filter(([p, n]) => !before.has(p) && ok(n.status))
           .map(([p]) => p)
           .sort(),
+    burst = addedBurst(added, before, after);
+  return {
+    regressions,
+    improvements,
+    changed,
+    compared: [...compared], // the optional fields both crawls recorded, so the report claims only those
+    added,
+    ...(burst ? { addedBurst: burst } : {}),
     // A page that now redirects is redirect-added; a URL that failed last time and isn't met now was never a page.
     // A page this crawl didn't reach isn't known to be gone. The reason is true (--max) or "section".
     removed: goneUnknown
