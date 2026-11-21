@@ -102,6 +102,44 @@ function parse(lhr, url) {
   };
 }
 
+// ---------- the Agentic browsing category ----------
+// Lighthouse 13.3 added the experimental agentic-browsing category: it needs Chrome 150 or later and has no 0–100
+// score. Lighthouse refuses a category it doesn't know, so it's asked for only when the package.json above the bin's
+// script says 13.3 or later.
+// https://developer.chrome.com/docs/lighthouse/agentic-browsing
+import { realpathSync } from "node:fs";
+const AGENTIC = "agentic-browsing";
+export function agenticFlag(bin) {
+  try {
+    for (let dir = dirname(realpathSync(command(bin)[1][0] ?? bin)), i = 0; i < 4; i++, dir = dirname(dir)) {
+      const p = join(dir, "package.json");
+      const pkg = existsSync(p) && JSON.parse(readFileSync(p, "utf8"));
+      if (pkg?.name !== "lighthouse") continue;
+      const [major, minor] = String(pkg.version).split(".").map(Number);
+      return major > 13 || (major === 13 && minor >= 3) ? "," + AGENTIC : "";
+    }
+  } catch {}
+  return "";
+}
+/** Checks passed out of those that count, and the failed ones, as Lighthouse's report-utils.js counts them: a pass is
+ * 0.9 or more, and manual, not-applicable and informative audits don't count. Null without the category. It's removed
+ * from lhr so its audits don't join the scored categories' failed audits. */
+export function takeAgentic(lhr) {
+  const c = lhr?.categories?.[AGENTIC];
+  if (!c) return null;
+  delete lhr.categories[AGENTIC];
+  const counted = (c.auditRefs || [])
+    .filter(r => r.group !== "hidden")
+    .map(r => ({ id: r.id, ...lhr.audits?.[r.id] }))
+    .filter(a => !["manual", "notApplicable", "informative"].includes(a.scoreDisplayMode));
+  const failed = counted.filter(a => a.scoreDisplayMode === "error" || !(Number(a.score) >= 0.9));
+  return {
+    passed: counted.length - failed.length,
+    total: counted.length,
+    failed: failed.map(a => ({ id: a.id, title: String(a.title ?? a.id) })),
+  };
+}
+
 /** One Lighthouse run on its defaults (mobile, simulated throttling) with a throwaway Chrome profile. Chrome gets
  * launchChrome's container flags and the render guard instead of proxy flags, so the page can't steer it to a private
  * or cloud-metadata address; with a configured proxy, that proxy's flags instead. host ({ platform, uid, env, exists })
@@ -124,7 +162,7 @@ export async function runLighthouse(bin, url, { chromePath, timeoutMs = 90000, h
     `--output-path=${report}`,
     "--quiet",
     `--chrome-flags=${chromeFlags}`,
-    "--only-categories=performance,seo,accessibility,best-practices",
+    `--only-categories=performance,seo,accessibility,best-practices${agenticFlag(bin)}`,
   ];
   const env = chromePath ? { ...process.env, CHROME_PATH: chromePath } : process.env;
   // A timeout kills Lighthouse but can leave its Chrome running on Windows, and the profile then stays in the temp
@@ -141,7 +179,10 @@ export async function runLighthouse(bin, url, { chromePath, timeoutMs = 90000, h
         } catch {}
         const why = lhr?.runtimeError?.message || (err && (String(stderr).trim().split("\n").pop() || err.message));
         if (why || !lhr) fail(new Error(redact(String(why || "Lighthouse wrote no report")).slice(0, 200)));
-        else ok(parse(lhr, url));
+        else {
+          const agentic = takeAgentic(lhr);
+          ok({ ...parse(lhr, url), ...(agentic ? { agentic } : {}) });
+        }
       }),
     );
   } finally {

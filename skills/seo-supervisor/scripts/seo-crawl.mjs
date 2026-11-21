@@ -63,6 +63,8 @@ import { isPublic as publicAddress, guarded } from "./checks/outbound.mjs";
 import { otherSiteTargets, linksBack } from "./checks/hreflang.mjs";
 import { parseCsv } from "./lib/csv.mjs";
 
+import { AI_BOTS, signalPlacement } from "./checks/agents.mjs";
+
 import { SUPERSEDED, placeholderIn } from "./schema-check.mjs";
 
 import { merchantProblems, sellsWithOffer } from "./schema-check.mjs";
@@ -1160,6 +1162,7 @@ const INCLUDE = pathList("include"),
   SECTION = INCLUDE.length > 0 || EXCLUDE.length > 0;
 const inSection = path =>
   (!INCLUDE.length || INCLUDE.some(p => path.startsWith(p))) && !EXCLUDE.some(p => path.startsWith(p));
+const AI_PROBE = !!args["ai-bot-probe"];
 
 Object.assign(CHECKS, {
   "schema-placeholder": [
@@ -4328,6 +4331,79 @@ if (blocked.size)
       .slice(0, 3)
       .map(([u, why]) => `${u} (${why})`)
       .join("; ")}. A redirect there is reported as the redirect itself.`,
+  );
+
+// ---------- AI crawlers: site-wide ----------
+// Each AI bot's access in agents.mjs's list: its own group, else `User-agent: *`. Then Content-Signal lines crawlers
+// won't read (MAP-06, low).
+// https://www.rfc-editor.org/rfc/rfc9309#section-2.2.1
+if (robots) {
+  extra.aiBots = AI_BOTS.map(([bot, vendor, kind, mayIgnore]) => {
+    const own = groupFor(robots, bot),
+      g = own || star;
+    return {
+      bot,
+      vendor,
+      kind,
+      robots: !g || allowedBy(g, "/") ? "allowed" : own ? "blocked" : "blocked-by-star",
+      ...(mayIgnore ? { mayIgnore } : {}),
+    };
+  });
+  for (const d of signalPlacement(robotsRes.body, g => !allowedBy(g, "/")))
+    add("content-signal-placement", START_ORIGIN + "/robots.txt", d);
+}
+// Click-only elements (AI-05) and missing main, nav, header or footer landmarks on the pages the per-page checks read;
+// the first 20 lacking a landmark are listed.
+{
+  const bare = [];
+  let checked = 0;
+  for (const p of htmlPages) {
+    if (!p.agent || !indexable(p) || p.clientOnly) continue;
+    checked++;
+    const { clickOnly, landmarksMissing } = p.agent;
+    if (clickOnly.length)
+      add("click-only-elements", p.finalUrl, `${clickOnly.length} element(s), e.g. \`${clickOnly[0]}\``);
+    if (landmarksMissing.length) bare.push({ url: p.finalUrl, missing: landmarksMissing });
+  }
+  if (bare.length) extra.landmarks = { checked, count: bare.length, pages: bare.slice(0, 20) };
+}
+// The Googlebot comparison with AI search crawlers' user agents, on the home page and up to 2 more sample pages, a
+// 429 or 5xx asked once more. Posing as another company's crawler counts as outside contact, so it needs --outside
+// as well as --ai-bot-probe. An error or challenge the visitor didn't get is a decision (MAP-06): a firewall checking
+// the vendor's IPs is right.
+// User agents as the vendors publish them; Anthropic names only the Claude-SearchBot token, so its string is built
+// around that.
+// https://developers.openai.com/api/docs/bots
+// https://docs.perplexity.ai/guides/bots
+// https://support.claude.com/en/articles/8896518
+const AI_PROBE_UAS = {
+  "OAI-SearchBot":
+    "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; OAI-SearchBot/1.4; +https://openai.com/searchbot",
+  "Claude-SearchBot": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-SearchBot/1.0)",
+  PerplexityBot: "Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)",
+};
+if (AI_PROBE && !OUTSIDE)
+  notes.push(
+    "--ai-bot-probe runs only with outside checks on (--outside) and the owner's own yes: it asks a few pages again as OAI-SearchBot, Claude-SearchBot and PerplexityBot. It didn't run.",
+  );
+else if (AI_PROBE)
+  await Promise.all(
+    botSample.slice(0, 3).map(async u => {
+      const uas = Object.entries(AI_PROBE_UAS);
+      let [vr, ...brs] = await Promise.all([follow(u, PHONE_UA), ...uas.map(([, ua]) => follow(u, ua))]);
+      if (busy(vr)) vr = await askAgain(u, PHONE_UA);
+      if (!pageOf(vr)) return; // a visitor doesn't get the page now either: nothing to compare
+      const got = [];
+      for (let [i, br] of brs.entries()) {
+        if (busy(br)) br = await askAgain(u, uas[i][1]);
+        const challenge = challenged(br) && !challenged(vr);
+        if (challenge || br.status >= 400 || br.status === 0)
+          got.push(
+            `${uas[i][0]} got ${challenge ? `a bot challenge (${br.status})` : br.status || `no answer (${br.error})`}`,
+          );
+      }
+      if (got.length) add("ai-bot-refused", vr.finalUrl, `${got.join("; ")}, a visitor 200`);
+    }),
   );
 
 // ---------- structured data: site-wide ----------

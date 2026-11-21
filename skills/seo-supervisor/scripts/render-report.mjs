@@ -1103,8 +1103,84 @@ const crawlScopeMd = () => {
     : [];
 };
 
-const aiCrawlersHtml = () => "",
-  aiCrawlersMd = () => [];
+// From the crawler: each AI crawler robots.txt allows or blocks (`aiBots`), pages without landmarks (`landmarks`) and
+// Lighthouse's experimental Agentic browsing checks (`lighthouse[].agentic`). Text is escaped.
+const AI_KIND = { search: "AI search", training: "Training", user: "Fetches for a user", other: "Other" };
+const AI_STATUS = { allowed: "Allowed", blocked: "Blocked", "blocked-by-star": "Blocked by `User-agent: *`" };
+const bots = (Array.isArray(raw.aiBots) ? raw.aiBots : []).filter(
+  b => obj(b) && typeof b.bot === "string" && Object.hasOwn(AI_STATUS, b.robots),
+);
+const bare = (l =>
+  l && [l.checked, l.count].every(countOf) && Array.isArray(l.pages)
+    ? { ...l, pages: l.pages.filter(p => obj(p) && typeof p.url === "string" && Array.isArray(p.missing)) }
+    : null)(obj(raw.landmarks));
+const agenticRows = (Array.isArray(raw.lighthouse) ? raw.lighthouse : [])
+  .filter(
+    x => obj(x) && typeof x.url === "string" && obj(x.agentic) && [x.agentic.passed, x.agentic.total].every(countOf),
+  )
+  .map(x => ({
+    path: notePath(x.url),
+    passed: x.agentic.passed,
+    total: x.agentic.total,
+    failed: (Array.isArray(x.agentic.failed) ? x.agentic.failed : []).filter(
+      f => obj(f) && typeof f.title === "string",
+    ),
+  }));
+const AI_INTRO =
+  "Information only: none of this changes the score. The table shows whether robots.txt lets each AI crawler in, by its own group or, when it has none, by the User-agent: * group. Fetchers for a user get a page a person asked for, and some vendors say robots.txt may not apply to them.";
+const AGENTIC_INTRO =
+  "Lighthouse's Agentic browsing checks (experimental; Lighthouse 13.3 or later with Chrome 150 or later): whether AI agents can read and use the page. There's no 0–100 score, only the checks passed.";
+const aiBotStatus = b => AI_STATUS[b.robots] + (b.mayIgnore ? " (may ignore robots.txt)" : "");
+const landmarkLine = () =>
+  `${num(bare.count)} of ${num(bare.checked)} pages lack one or more landmarks (main, nav, header, footer), which screen readers and AI agents use to find their way around a page (AI-05).`;
+const agenticRow = a =>
+  `${num(a.passed)} of ${num(a.total)} checks passed${a.failed.length ? `; failing: ${a.failed.map(f => f.title).join("; ")}` : ""}`;
+const aiCrawlersOn = () => bots.length || bare || agenticRows.length;
+const aiCrawlersHtml = () =>
+  aiCrawlersOn()
+    ? `\n    <details class="how aibots"><summary>AI crawlers and agents</summary>` +
+      (bots.length
+        ? `<p>${esc(AI_INTRO)}</p><div class="tablewrap"><table><thead><tr><th scope="col">Crawler</th><th scope="col">Vendor</th><th scope="col">Kind</th><th scope="col">robots.txt</th></tr></thead><tbody>${bots.map(b => `<tr><td><code>${esc(b.bot)}</code></td><td>${esc(b.vendor)}</td><td>${esc(AI_KIND[b.kind] || b.kind)}</td><td>${inl(aiBotStatus(b))}</td></tr>`).join("")}</tbody></table></div>`
+        : "") +
+      (bare
+        ? `<p>${esc(landmarkLine())}</p><ul class="lim">${bare.pages.map(p => `<li><b><code>${esc(notePath(p.url))}</code></b><span>no ${esc(p.missing.join(", "))}</span></li>`).join("")}</ul>`
+        : "") +
+      (agenticRows.length
+        ? `<p>${esc(AGENTIC_INTRO)}</p><ul class="lim">${agenticRows.map(a => `<li><b><code>${esc(a.path)}</code></b><span>${esc(agenticRow(a))}</span></li>`).join("")}</ul>`
+        : "") +
+      `</details>`
+    : "";
+const aiCrawlersMd = () =>
+  aiCrawlersOn()
+    ? [
+        "## AI crawlers and agents",
+        "",
+        ...(bots.length
+          ? [
+              AI_INTRO,
+              "",
+              "| Crawler | Vendor | Kind | robots.txt |",
+              "| --- | --- | --- | --- |",
+              ...bots.map(
+                b =>
+                  `| ${cellMd(noteMd(b.bot))} | ${cellMd(noteMd(b.vendor))} | ${cellMd(noteMd(AI_KIND[b.kind] || b.kind))} | ${cellMd(aiBotStatus(b))} |`,
+              ),
+              "",
+            ]
+          : []),
+        ...(bare
+          ? [
+              landmarkLine(),
+              "",
+              ...bare.pages.map(p => `- ${noteCode(notePath(p.url))} no ${noteMd(p.missing.join(", "))}`),
+              "",
+            ]
+          : []),
+        ...(agenticRows.length
+          ? [AGENTIC_INTRO, "", ...agenticRows.map(a => `- ${noteCode(a.path)} ${noteMd(agenticRow(a))}`), ""]
+          : []),
+      ]
+    : [];
 
 const schemaHtml = () => "",
   schemaMd = () => [];

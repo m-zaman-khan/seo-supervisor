@@ -1,7 +1,28 @@
-// Agent readiness: what AI agents can use on a page, and the agent files a site publishes. Links with no name are
-// LINK-05's link-no-text, so they aren't counted here.
+// Agent readiness: what AI agents can use on a page, the agent files a site publishes, AI crawler rules, and the AI
+// bot list. Links with no name are LINK-05's link-no-text, so they aren't counted here.
 
 export const CHECKS = {
+  "click-only-elements": [
+    "AI-05",
+    "low",
+    n => `${n} page(s) have elements that only a mouse click works on`,
+    "A `<div>`, `<span>` or table row with an `onclick` and no role is clickable with a mouse, but nothing tells a screen reader or an AI agent that browses the site for someone that it does anything: it isn't in the page's list of buttons and links, and the Tab key skips it. Agents act on what the accessibility tree calls a button or a link.",
+    'Use a real `<button type="button">` for an action and an `<a href>` for a link to another page. If the element must stay a `<div>`, give it `role="button"`, `tabindex="0"` and a key handler for Enter and Space.',
+  ],
+  "content-signal-placement": [
+    "MAP-06",
+    "low",
+    n => `robots.txt has ${n} Content-Signal line(s) or group(s) that crawlers won't read a signal from`,
+    "A Content-Signal line applies to the user-agent group it sits in, as every example on contentsignals.org places it. One above the first `User-agent:` line belongs to no group. A crawler reads only the group that names it (or the `*` group when none does), so a group without its own Content-Signal line gives its crawlers no signal.",
+    "Put a Content-Signal line in each group that lets crawlers in, right under its `User-agent:` lines, for example `User-agent: *` then `Content-Signal: search=yes, ai-train=no` then `Allow: /`. A group that blocks its crawlers with `Disallow: /` needs none.",
+  ],
+  "ai-bot-refused": [
+    "MAP-06",
+    "needs-decision",
+    n => `${n} page(s) turn away requests that claim to be an AI search crawler`,
+    "Asked with the user agent of OAI-SearchBot, Claude-SearchBot or PerplexityBot, these pages answered with an error or a bot challenge, while the same request as a visitor got the page. A firewall, CDN bot setting or security plugin usually does this, and robots.txt doesn't show it, so the site can be left out of ChatGPT, Claude or Perplexity answers without anyone deciding that. A firewall that checks the vendor's IP addresses is right to refuse this test, which doesn't come from them, so the test can't tell the two apart.",
+    "Decide whether these crawlers should reach the site, and record it in the profile (MAP-06). To let them in, allow the vendors' published IP ranges (openai.com/searchbot.json, claude.com/crawling/bots.json, perplexity.ai/perplexitybot.json) or the CDN's verified-bots list in the firewall rules, not the user agent alone. Then run log-scan.mjs with --verify-ips on the server logs to see what the real crawlers get.",
+  ],
   // Links with no name are LINK-05's link-no-text, so they aren't counted here.
   "controls-no-name": [
     "AI-05",
@@ -150,17 +171,89 @@ export function agentFeatures(html) {
       const own = /^\s*\{/.test(call) && /["']?\bname["']?\s*:\s*(["'`])([^"'`\n]{1,100})\1/.exec(topLevel(call));
       tools.push(own ? own[2] : "a tool set up by a script");
     }
-  return { unnamedFields, unnamedButtons, webmcpTools: [...new Set(tools)], controls };
+  // Click-only: an onclick on a non-interactive tag with no role. A landmark counts as its tag or its ARIA role.
+  const clickOnly = [...shown.matchAll(/<([a-z][\w-]*)\b[^>]*>/gi)]
+    .map(m => [m[1].toLowerCase(), attrs(m[0])])
+    .filter(([tag, a]) => "onclick" in a && !("role" in a) && !INTERACTIVE.test(tag))
+    .map(([tag, a]) => describe(tag, a));
+  const landmarksMissing = Object.entries(LANDMARKS)
+    .filter(([tag, role]) => !new RegExp(`<${tag}(?=[\\s>/])|\\srole\\s*=\\s*["']?${role}\\b`, "i").test(doc))
+    .map(([tag]) => tag);
+  return { unnamedFields, unnamedButtons, webmcpTools: [...new Set(tools)], controls, clickOnly, landmarksMissing };
+}
+const INTERACTIVE = /^(a|area|button|input|select|textarea|summary|label|option|details)$/;
+const LANDMARKS = { main: "main", nav: "navigation", header: "banner", footer: "contentinfo" };
+
+// The AI crawlers and fetchers in the robots table, as [token, vendor, kind, mayIgnore]. kind: search, training, user
+// (fetches a page a person asked for) or other; mayIgnore: the vendor says robots.txt may not apply. Rows follow the
+// vendors' pages below or are tokens the crawl already checks. Cohere runs no crawler, so it isn't listed.
+// https://developers.openai.com/api/docs/bots
+// https://docs.perplexity.ai/guides/bots
+// https://support.claude.com/en/articles/8896518
+// https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers
+// https://developers.google.com/search/docs/crawling-indexing/google-user-triggered-fetchers
+// https://docs.cohere.com/docs/cohere-web-crawlers
+export const AI_BOTS = [
+  ["OAI-SearchBot", "OpenAI", "search"],
+  ["Claude-SearchBot", "Anthropic", "search"],
+  ["PerplexityBot", "Perplexity", "search"],
+  ["GPTBot", "OpenAI", "training"],
+  ["ClaudeBot", "Anthropic", "training"],
+  ["Google-Extended", "Google", "training"],
+  ["Applebot-Extended", "Apple", "training"],
+  ["CCBot", "Common Crawl", "training"],
+  ["Bytespider", "ByteDance", "training"],
+  ["meta-externalagent", "Meta", "training"],
+  ["ChatGPT-User", "OpenAI", "user", true],
+  ["Claude-User", "Anthropic", "user"],
+  ["Perplexity-User", "Perplexity", "user", true],
+  ["Google-Agent", "Google", "user", true],
+  ["Google-GeminiNotebook", "Google", "user", true],
+  ["OAI-AdsBot", "OpenAI", "other"],
+  ["Google-CloudVertexBot", "Google", "other"],
+];
+
+// Content-Signal lines crawlers won't read: one above the first User-agent line and, once any group has a signal,
+// each group without one that still lets crawlers in. blocksAll gets a group as { rules: [{ allow, path }] }.
+// https://contentsignals.org
+export function signalPlacement(txt, blocksAll) {
+  const out = [],
+    groups = [];
+  let cur = null;
+  txt.split(/\r?\n/).forEach((raw, i) => {
+    const line = raw.replace(/#.*/, "").trim(),
+      c = line.indexOf(":");
+    if (c < 0) return;
+    const k = line.slice(0, c).trim().toLowerCase(),
+      v = line.slice(c + 1).trim();
+    if (k === "user-agent") {
+      if (!cur || cur.rules.length) groups.push((cur = { agents: [], rules: [], signal: false }));
+      cur.agents.push(v);
+    } else if (k === "content-signal") {
+      if (cur) cur.signal = true;
+      else out.push(`line ${i + 1}: Content-Signal comes before any User-agent line, so it belongs to no group`);
+    } else if ((k === "allow" || k === "disallow") && cur) cur.rules.push({ allow: k === "allow", path: v });
+  });
+  if (groups.some(g => g.signal))
+    for (const g of groups)
+      if (!g.signal && !blocksAll(g))
+        out.push(`the User-agent: ${g.agents.join(", ")} group has no Content-Signal line, though other groups do`);
+  return out;
 }
 
-// An RFC 9727 API catalog (a linkset) and an A2A Agent Card (A2A 1.0.0 section 8.2), plus a UCP business profile, a
-// JSON object with a `ucp` member. Only /.well-known/ paths on the origin are asked for, and a file counts only when
-// it parses as what it should be, so a soft 404 doesn't.
+// An RFC 9727 API catalog (a linkset), an A2A Agent Card (A2A 1.0.0 section 8.2), and OAuth metadata, whose required
+// members are `resource` (RFC 9728) and `issuer` (RFC 8414), plus a UCP business profile, a JSON object with a `ucp`
+// member. Only /.well-known/ paths on the origin are asked for, and a file counts only when it parses as what it
+// should be, so a soft 404 doesn't.
 // https://www.rfc-editor.org/rfc/rfc9727
+// https://www.rfc-editor.org/rfc/rfc9728
+// https://www.rfc-editor.org/rfc/rfc8414
 // https://ucp.dev/latest/specification/overview
 const AGENT_FILES = [
   ["/.well-known/api-catalog", j => Array.isArray(j?.linkset)],
   ["/.well-known/agent-card.json", j => filled(j?.name)],
+  ["/.well-known/oauth-protected-resource", j => filled(j?.resource)],
+  ["/.well-known/oauth-authorization-server", j => filled(j?.issuer)],
 ];
 // Only /.well-known/ paths on the origin are asked for. A file counts only when it parses as what it should be, so a
 // soft 404 doesn't, and each is capped at 1 MB unpacked against huge files and gzip bombs.

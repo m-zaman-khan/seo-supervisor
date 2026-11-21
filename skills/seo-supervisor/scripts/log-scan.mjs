@@ -6,7 +6,8 @@ import { createReadStream, existsSync, statSync, readdirSync, mkdirSync, readFil
 import { pipeline } from "node:stream";
 import { createGunzip } from "node:zlib";
 import { createInterface } from "node:readline";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import { BlockList, isIP } from "node:net";
 
 const args = { log: [] };
 for (let i = 2; i < process.argv.length; i++) {
@@ -21,7 +22,7 @@ const fail = msg => {
 };
 if (!args.log.length || args.log.some(v => typeof v !== "string")) {
   console.error(
-    "usage: node log-scan.mjs --log access.log [--log logs/] [--since YYYY-MM-DD] [--site-origin https://x] [--crawl seo-audit/seo-crawl.json] [--out seo-audit/log-scan.json]",
+    "usage: node log-scan.mjs --log access.log [--log logs/] [--since YYYY-MM-DD] [--site-origin https://x] [--crawl seo-audit/seo-crawl.json] [--verify-ips [folder]] [--out seo-audit/log-scan.json]",
   );
   process.exit(2);
 }
@@ -39,9 +40,36 @@ if (typeof args["site-origin"] === "string") {
 }
 
 // [user-agent token, vendor, group, what the vendor says the bot is for]. Matched as a case-insensitive User-Agent
-// substring and the first match wins. Google-Extended and Applebot-Extended are robots.txt tokens, not user agents:
-// Google and Apple crawl as Googlebot and Applebot and apply them to later use of the content, so logs can't show them.
+// substring and the first match wins, so Google's other agents sit above Googlebot. Google-Extended and
+// Applebot-Extended are robots.txt tokens, not user agents: Google and Apple crawl as Googlebot and Applebot and apply
+// them to later use of the content, so logs can't show them. Google-NotebookLM, Google-GeminiNotebook's former name,
+// is supported until August 2026. cohere-ai isn't here: Cohere runs no crawler.
+// https://developers.openai.com/api/docs/bots
+// https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers
+// https://developers.google.com/search/docs/crawling-indexing/google-user-triggered-fetchers
+// https://docs.cohere.com/docs/cohere-web-crawlers
 const BOTS = [
+  [
+    "Google-CloudVertexBot",
+    "Google",
+    "other",
+    "Crawls a site only when its owner sets up a Vertex AI agent on it; no effect on Google Search",
+  ],
+  [
+    "Google-Agent",
+    "Google",
+    "ai-search",
+    "Browses pages and acts on them for a user, from agents on Google's servers; robots.txt may not apply",
+  ],
+  ["Google-GeminiNotebook", "Google", "ai-search", "Fetches a page a Gemini Notebook user added as a source"],
+  [
+    "Google-NotebookLM",
+    "Google",
+    "ai-search",
+    "Fetches a page a NotebookLM user added as a source (the former name of Google-GeminiNotebook)",
+  ],
+  ["GoogleMessages", "Google", "other", "Builds link previews for URLs sent in Google Messages chats"],
+  ["OAI-AdsBot", "OpenAI", "other", "Checks landing pages submitted as ChatGPT ads; not used for training"],
   ["Googlebot", "Google", "search", "Crawls for Google Search, including AI Overviews and AI Mode"],
   ["Bingbot", "Microsoft", "search", "Crawls for Bing; Copilot answers are grounded in Bing's index"],
   ["Applebot", "Apple", "search", "Crawls for Siri, Spotlight and Safari suggestions"],
@@ -71,6 +99,68 @@ const BOTS = [
     "Crawls for Amazon's services, including Alexa answers and training Amazon's AI models",
   ],
 ].map(([name, vendor, group, purpose]) => ({ name, token: name.toLowerCase(), vendor, group, purpose }));
+// Every vendor list uses the { prefixes: [{ ipv4Prefix | ipv6Prefix }] } format. Google doesn't tie Gemini Notebook
+// or Messages to one of its two user-triggered files, so either counts.
+// https://developers.google.com/search/docs/crawling-indexing/verifying-googlebot
+const G = "https://developers.google.com/static/crawling/ipranges/",
+  GOOGLE_USER = [G + "user-triggered-fetchers-google.json", G + "user-triggered-fetchers.json"],
+  CLAUDE = ["https://claude.com/crawling/bots.json"];
+const IP_LISTS = {
+  Googlebot: [G + "common-crawlers.json"],
+  "Google-CloudVertexBot": [G + "common-crawlers.json"],
+  "Google-Agent": [G + "user-triggered-agents.json"],
+  "Google-GeminiNotebook": GOOGLE_USER,
+  "Google-NotebookLM": GOOGLE_USER,
+  GoogleMessages: GOOGLE_USER,
+  Bingbot: ["https://www.bing.com/toolbox/bingbot.json"],
+  Applebot: ["https://search.developer.apple.com/applebot.json"],
+  CCBot: ["https://index.commoncrawl.org/ccbot.json"],
+  "OAI-SearchBot": ["https://openai.com/searchbot.json"],
+  "ChatGPT-User": ["https://openai.com/chatgpt-user.json"],
+  GPTBot: ["https://openai.com/gptbot.json"],
+  "OAI-AdsBot": ["https://openai.com/adsbot.json"],
+  "Claude-SearchBot": CLAUDE,
+  "Claude-User": CLAUDE,
+  ClaudeBot: CLAUDE,
+  PerplexityBot: ["https://www.perplexity.ai/perplexitybot.json"],
+  "Perplexity-User": ["https://www.perplexity.ai/perplexity-user.json"],
+};
+// bot name -> the BlockLists of its lists that loaded; null without --verify-ips. A folder holds lists saved under
+// their own file names (searchbot.json, common-crawlers.json …); a list that's missing or unreadable is skipped.
+// Downloading sends one GET per list and nothing about the site.
+let ipLists = null;
+if (args["verify-ips"] !== undefined) {
+  const from = args["verify-ips"],
+    loaded = new Map();
+  for (const u of new Set(Object.values(IP_LISTS).flat())) {
+    try {
+      const j =
+        typeof from === "string"
+          ? JSON.parse(readFileSync(join(from, basename(new URL(u).pathname)), "utf8"))
+          : await (await fetch(u, { signal: AbortSignal.timeout(20000) })).json();
+      const bl = new BlockList();
+      for (const p of j.prefixes || []) {
+        const [net, bits] = String(p.ipv4Prefix || p.ipv6Prefix || "").split("/"),
+          v = isIP(net);
+        if (v) bl.addSubnet(net, Number(bits ?? (v === 6 ? 128 : 32)), v === 6 ? "ipv6" : "ipv4");
+      }
+      loaded.set(u, bl);
+    } catch {}
+  }
+  ipLists = new Map(
+    Object.entries(IP_LISTS)
+      .map(([bot, us]) => [bot, us.filter(u => loaded.has(u)).map(u => loaded.get(u))])
+      .filter(([, bls]) => bls.length),
+  );
+}
+// true when ip is in the bot's lists, false when it isn't, null when the line has no address.
+const fromVendor = (name, ip) => {
+  const a = String(ip ?? "")
+      .trim()
+      .replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/i, ""),
+    v = isIP(a);
+  return v ? ipLists.get(name).some(bl => bl.check(a, v === 6 ? "ipv6" : "ipv4")) : null;
+};
 const AI_REFERRERS = [
   "chatgpt.com",
   "chat.openai.com",
@@ -116,10 +206,21 @@ const parse = line => {
       status: Number(pick(o, "status", "status_code", "EdgeResponseStatus")),
       ua: pick(o, "ua", "user_agent", "userAgent", "http_user_agent", "ClientRequestUserAgent"),
       referer: pick(o, "referer", "referrer", "http_referer", "ClientRequestReferer"),
+      ip: pick(o, "ip", "remote_addr", "client_ip", "clientIp", "ClientIP", "remote_ip", "remoteIp"),
     };
   }
   const m = CLF.exec(line);
-  return m && { time: clfTime(m[1]), target: m[2].split(" ")[1], status: Number(m[3]), ua: m[5], referer: m[4] };
+  // The client address is the third field before [time] (host ident user), whatever comes before it.
+  return (
+    m && {
+      time: clfTime(m[1]),
+      target: m[2].split(" ")[1],
+      status: Number(m[3]),
+      ua: m[5],
+      referer: m[4],
+      ip: /(\S+) \S+ \S+ \[/.exec(line)?.[1],
+    }
+  );
 };
 // Path plus query, whether the log wrote "/a?b" or "https://host/a?b".
 const pathOf = t => {
@@ -207,8 +308,15 @@ const handle = raw => {
       paths: new Map(),
       first: null,
       last: null,
+      ip: null,
     });
     b.requests++;
+    if (ipLists?.has(bot.name)) {
+      const ok = fromVendor(bot.name, r.ip),
+        c = (b.ip ||= { verified: 0, other: 0, unknown: 0, refused: 0 });
+      c[ok === null ? "unknown" : ok ? "verified" : "other"]++;
+      if (ok && (r.status === 401 || r.status === 403)) c.refused++;
+    }
     const cls = `${Math.floor(r.status / 100)}xx`;
     if (cls in b.status) b.status[cls]++;
     const p = b.paths.get(path) || b.paths.set(path, { n: 0, s5xx: 0, s404: 0, refused: 0 }).get(path);
@@ -273,6 +381,7 @@ const botsOut = Object.fromEntries(
         topPaths: top(b.paths, v => v.n, 10).map(([path, v]) => ({ path, requests: v.n })),
         firstSeen: iso(b.first),
         lastSeen: iso(b.last),
+        ...(b.ip ? { ipCheck: { verified: b.ip.verified, other: b.ip.other, unknown: b.ip.unknown } } : {}),
       },
     ]),
 );
@@ -315,7 +424,10 @@ const crawlers = Object.values(bots).filter(b => b.requests >= 5);
 
 // A few server errors are noise; a pattern is at least 5 errors and 1% of the bot's requests.
 const failingBots = Object.values(bots).filter(
-  b => b.bot.group !== "ai-training" && b.status["5xx"] >= 5 && b.status["5xx"] / b.requests >= 0.01,
+  b =>
+    (b.bot.group === "search" || b.bot.group === "ai-search") &&
+    b.status["5xx"] >= 5 &&
+    b.status["5xx"] / b.requests >= 0.01,
 );
 const errors = failingBots.map(b => {
   const failing = top(b.paths, v => v.s5xx, 3).map(([p, v]) => [p, v.s5xx]);
@@ -376,11 +488,16 @@ if (repeated404s.length)
     `${repeated404s.length} URL(s) keep returning 404 to search crawlers (listed under repeated404s)${CRAWLED ? " and the site doesn't link to them" : ""}. A 404 is the right answer for a removed page; if one moved, 301 it to its new home${CRAWLED ? "." : ", and pass --crawl seo-audit/seo-crawl.json to see which are linked from the site."}`,
   );
 
+// With --verify-ips, only requests from the vendor's addresses count (a fake is rightly refused), once any line had
+// one.
+const checked = b => b.ip && b.ip.verified + b.ip.other > 0;
 const refused = crawlers
-  .filter(b => b.bot.group === "ai-search" && b.refused / b.requests > 0.5)
-  .map(b => ({
+  .filter(b => b.bot.group === "ai-search")
+  .map(b => [b, ...(checked(b) ? [b.ip.refused, b.ip.verified] : [b.refused, b.requests])])
+  .filter(([, n, of]) => of >= 5 && n / of > 0.5)
+  .map(([b, n, of]) => ({
     url: url(top(b.paths, v => v.refused, 1)[0][0]),
-    detail: `${b.bot.name}: ${b.refused} of ${b.requests} requests (${pct(b.refused / b.requests)}) refused with 403 or 401`,
+    detail: `${b.bot.name}: ${n} of ${of} requests${checked(b) ? ` from ${b.bot.vendor}'s addresses` : ""} (${pct(n / of)}) refused with 403 or 401`,
   }));
 finding(
   "ai-bots-blocked-in-practice",
@@ -397,8 +514,26 @@ findings.forEach((f, i) => {
 });
 
 notes.unshift(
-  "User agents can be spoofed, so every count here is requests claiming to be that bot. Before acting on one bot's numbers, check its IPs with a reverse DNS lookup or against the vendor's published IP list.",
+  ipLists
+    ? "User agents can be spoofed, so every count here is requests claiming to be that bot; ipCheck says how many came from the vendor's published addresses."
+    : "User agents can be spoofed, so every count here is requests claiming to be that bot. Before acting on one bot's numbers, check its IPs against the vendor's published IP list: --verify-ips does that.",
 );
+if (ipLists) {
+  const fakes = Object.values(bots)
+    .filter(b => b.ip?.other)
+    .map(b => `${b.bot.name} ${b.ip.other} of ${b.requests}`);
+  if (fakes.length)
+    notes.push(
+      `Some requests claiming to be a known bot came from addresses outside the vendor's published list, so they're most likely fakes (or the log records a proxy's or CDN's address instead of the visitor's): ${fakes.join(", ")}. The finding about refused AI crawlers counts only requests from the vendors' addresses.`,
+    );
+  const noIp = Object.values(bots)
+    .filter(b => b.ip && !checked(b))
+    .map(b => b.bot.name);
+  if (noIp.length)
+    notes.push(`The log lines for ${noIp.join(", ")} carry no client address, so --verify-ips couldn't check them.`);
+  const unlisted = Object.keys(bots).filter(n => IP_LISTS[n] && !ipLists.has(n));
+  if (unlisted.length) notes.push(`No IP list loaded for ${unlisted.join(", ")}, so those requests weren't checked.`);
+}
 if (stats.parsed && !sawUa)
   notes.push(
     "These logs don't record user agents, so bots can't be told apart. Log in the combined format (or JSON with the user agent) to see crawler activity.",
