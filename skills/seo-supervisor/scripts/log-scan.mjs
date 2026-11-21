@@ -39,13 +39,19 @@ if (typeof args["site-origin"] === "string") {
 }
 
 // [user-agent token, vendor, group, what the vendor says the bot is for]. Matched as a case-insensitive User-Agent
-// substring and the first match wins, so Google's other agents sit above Googlebot. Google-Extended and
-// Applebot-Extended are robots.txt tokens, not user agents: Google and Apple crawl as Googlebot and Applebot and apply
-// them to later use of the content, so logs can't show them. Google-NotebookLM, Google-GeminiNotebook's former name,
-// is supported until August 2026. cohere-ai isn't here: Cohere runs no crawler.
+// substring and the first match wins, so Google's other agents sit above Googlebot. Google-Extended,
+// Applebot-Extended and YandexAdditionalBot are robots.txt tokens, not user agents, so logs can't show them.
+// Google-NotebookLM, Google-GeminiNotebook's former name, is supported until August 2026. cohere-ai isn't here:
+// Cohere runs no crawler.
 // https://developers.openai.com/api/docs/bots
 // https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers
 // https://developers.google.com/search/docs/crawling-indexing/google-user-triggered-fetchers
+// https://docs.mistral.ai/robots
+// https://duckduckgo.com/duckduckgo-help-pages/results/duckassistbot
+// https://developer.amazon.com/amazonbot
+// https://developers.facebook.com/docs/sharing/webmasters/web-crawlers
+// https://support.apple.com/en-us/119829
+// https://support.claude.com/en/articles/18234133
 // https://docs.cohere.com/docs/cohere-web-crawlers
 const BOTS = [
   [
@@ -71,8 +77,49 @@ const BOTS = [
   ["OAI-AdsBot", "OpenAI", "other", "Checks landing pages submitted as ChatGPT ads; not used for training"],
   ["Googlebot", "Google", "search", "Crawls for Google Search, including AI Overviews and AI Mode"],
   ["Bingbot", "Microsoft", "search", "Crawls for Bing; Copilot answers are grounded in Bing's index"],
-  ["Applebot", "Apple", "search", "Crawls for Siri, Spotlight and Safari suggestions"],
+  [
+    "Applebot",
+    "Apple",
+    "search",
+    "Crawls for Apple's search features (Siri, Spotlight, Safari) and AI answers; may also be used to train Apple's models",
+  ],
   ["DuckDuckBot", "DuckDuckGo", "search", "Crawls for DuckDuckGo search"],
+  [
+    "DuckAssistBot",
+    "DuckDuckGo",
+    "ai-search",
+    "Fetches pages in real time for DuckDuckGo's AI-assisted answers; not used to train AI models",
+  ],
+  [
+    "Claude-Agent",
+    "Anthropic",
+    "ai-search",
+    "An Anthropic-hosted browser acting for a user; it keeps the browser's own user agent and adds this token",
+  ],
+  [
+    "Amzn-SearchBot",
+    "Amazon",
+    "ai-search",
+    "Crawls for search in Amazon's products, including Alexa; not used to train AI models",
+  ],
+  [
+    "Amzn-User",
+    "Amazon",
+    "ai-search",
+    "Fetches a page for a live user request, such as an Alexa question; may not follow all robots.txt rules",
+  ],
+  [
+    "Meta-ExternalFetcher",
+    "Meta",
+    "ai-search",
+    "Fetches a link at a user's request for Meta's AI features, including AI agents browsing sites; may bypass robots.txt",
+  ],
+  [
+    "MistralAI-Index",
+    "Mistral AI",
+    "ai-search",
+    "Crawls to index pages for Mistral's search, which answers questions in Vibe; not used for training",
+  ],
   ["YandexBot", "Yandex", "search", "Crawls for Yandex search"],
   ["OAI-SearchBot", "OpenAI", "ai-search", "Crawls so sites can be shown and linked in ChatGPT search"],
   ["ChatGPT-User", "OpenAI", "ai-search", "Fetches a page when a ChatGPT user's request needs it"],
@@ -80,7 +127,12 @@ const BOTS = [
   ["Claude-User", "Anthropic", "ai-search", "Fetches a page when a Claude user's request needs it"],
   ["PerplexityBot", "Perplexity", "ai-search", "Crawls so sites can be shown and linked in Perplexity answers"],
   ["Perplexity-User", "Perplexity", "ai-search", "Fetches a page when a Perplexity user's request needs it"],
-  ["MistralAI-User", "Mistral AI", "ai-search", "Fetches a page when a Le Chat user's request needs it"],
+  [
+    "MistralAI-User",
+    "Mistral AI",
+    "ai-search",
+    "Fetches a page when a Vibe user's question needs it, and links the source in the answer",
+  ],
   ["GPTBot", "OpenAI", "ai-training", "Collects content to train OpenAI's models"],
   ["ClaudeBot", "Anthropic", "ai-training", "Collects content to train Anthropic's models"],
   ["CCBot", "Common Crawl", "ai-training", "Builds the open Common Crawl dataset, widely used to train AI models"],
@@ -92,10 +144,16 @@ const BOTS = [
     "Collects content to train Meta's AI models and index it for Meta's products",
   ],
   [
+    "MistralAI-Training",
+    "Mistral AI",
+    "ai-training",
+    "Collects content to train Mistral's models; not used for search or live answers",
+  ],
+  [
     "Amazonbot",
     "Amazon",
     "ai-training",
-    "Crawls for Amazon's services, including Alexa answers and training Amazon's AI models",
+    "Crawls to improve Amazon's products and services; may be used to train Amazon's AI models",
   ],
 ].map(([name, vendor, group, purpose]) => ({ name, token: name.toLowerCase(), vendor, group, purpose }));
 // Every vendor list uses the { prefixes: [{ ipv4Prefix | ipv6Prefix }] } format. Google doesn't tie Gemini Notebook
@@ -123,6 +181,17 @@ const IP_LISTS = {
   ClaudeBot: CLAUDE,
   PerplexityBot: ["https://www.perplexity.ai/perplexitybot.json"],
   "Perplexity-User": ["https://www.perplexity.ai/perplexity-user.json"],
+  // Same format. Claude-Agent's list is a draft TOML file and Amazon's three agents' are web pages, so those can't be
+  // read here; UNREADABLE names them in a note.
+  DuckAssistBot: ["https://duckduckgo.com/duckassistbot.json"],
+  "MistralAI-User": ["https://mistral.ai/mistralai-user-ips.json"],
+  "MistralAI-Index": ["https://mistral.ai/mistralai-index-ips.json"],
+};
+const UNREADABLE = {
+  "Claude-Agent": "claude.com/.well-known/sail, in a draft format",
+  Amazonbot: "developer.amazon.com/amazonbot, as web pages",
+  "Amzn-SearchBot": "developer.amazon.com/amazonbot, as web pages",
+  "Amzn-User": "developer.amazon.com/amazonbot, as web pages",
 };
 // bot name -> the BlockLists of its lists that loaded; null without --verify-ips. A folder holds lists saved under
 // their own file names (searchbot.json, common-crawlers.json …); a list that's missing or unreadable is skipped.
@@ -168,6 +237,13 @@ const AI_REFERRERS = [
   "gemini.google.com",
   "copilot.microsoft.com",
 ];
+// Google Search, Images and Discover send a Google domain or the Android app as Referer. Only landing pages count:
+// Google Images loads full-size files with the same Referer.
+// https://developers.google.com/search/docs/monitor-debug/identify-google-search-traffic
+// Known limit: a page path ending in a short extension (/notes.post) reads as a file.
+const GOOGLE_HOST = /^(www\.)?google\.(com|[a-z]{2}|com?\.[a-z]{2})$/,
+  GOOGLE_APP = /^android-app:\/\/com\.google\.android\.googlequicksearchbox(\/|$)/i;
+const FILE = /\.(?!html?$|php$|aspx?$)[a-z0-9]{1,5}$/i;
 
 // ---------- parsing ----------
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
@@ -266,6 +342,7 @@ if (!files.length) fail(`no files in ${args.log.join(", ")}.`);
 // One Map entry per distinct path per bot, held in memory: fine for a few million paths. Stream to disk past that.
 const bots = {},
   referrals = {},
+  google = new Map(),
   period = { from: null, to: null },
   notes = [];
 const stats = { files: files.length, lines: 0, parsed: 0, unparsed: 0, beforeSince: 0, undated: 0 };
@@ -335,14 +412,16 @@ const handle = raw => {
   }
   if (r.status < 200 || r.status >= 300) return; // a redirect and the page it leads to would be two visits
   const host = hostOf(r.referer),
+    page = path.split("?")[0],
     source =
       AI_REFERRERS.find(d => host === d || host.endsWith("." + d)) ||
       (/[?&]utm_source=chatgpt\.com(&|$)/i.test(path) ? "chatgpt.com" : null);
   if (source) {
-    const pages = (referrals[source] ||= new Map()),
-      page = path.split("?")[0];
+    const pages = (referrals[source] ||= new Map());
     pages.set(page, (pages.get(page) || 0) + 1);
   }
+  if ((GOOGLE_HOST.test(host) || GOOGLE_APP.test(String(r.referer ?? ""))) && !FILE.test(page))
+    google.set(page, (google.get(page) || 0) + 1);
 };
 for (const f of files) {
   const input = f.endsWith(".gz") ? pipeline(createReadStream(f), createGunzip(), () => {}) : createReadStream(f);
@@ -536,6 +615,11 @@ if (ipLists) {
     notes.push(`The log lines for ${noIp.join(", ")} carry no client address, so --verify-ips couldn't check them.`);
   const unlisted = Object.keys(bots).filter(n => IP_LISTS[n] && !ipLists.has(n));
   if (unlisted.length) notes.push(`No IP list loaded for ${unlisted.join(", ")}, so those requests weren't checked.`);
+  const unreadable = Object.keys(bots).filter(n => UNREADABLE[n]);
+  if (unreadable.length)
+    notes.push(
+      `These vendors publish their addresses in a form --verify-ips can't read yet, so these bots weren't checked: ${unreadable.map(n => `${n} (${UNREADABLE[n]})`).join("; ")}.`,
+    );
 }
 if (stats.parsed && !sawUa)
   notes.push(
@@ -548,6 +632,16 @@ else if (!Object.values(bots).some(b => b.bot.group === "ai-search"))
       .join(
         ", ",
       )}) in these logs. That's common and not a problem by itself; if the site wants to be cited in AI answers, check robots.txt and the firewall let them in (MAP-06).`,
+  );
+const googleReferrals = google.size
+  ? {
+      visits: [...google.values()].reduce((a, b) => a + b, 0),
+      topPages: top(google, v => v, 10).map(([path, visits]) => ({ path, visits })),
+    }
+  : null;
+if (!googleReferrals)
+  notes.push(
+    "No visits with a Google Search referrer in these logs. Browsers and apps often drop the referrer (private browsing, some new tabs, apps), and common log format doesn't record it, so Search Console's clicks are the real number.",
   );
 if (!Object.keys(aiReferrals).length)
   notes.push(
@@ -565,6 +659,7 @@ writeFileSync(
       stats,
       bots: botsOut,
       aiReferrals,
+      googleReferrals,
       repeated404s,
       notes,
       findings,

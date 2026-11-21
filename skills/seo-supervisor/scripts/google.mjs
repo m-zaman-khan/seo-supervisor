@@ -444,8 +444,9 @@ export async function fetchGoogle({
   // Only the page dimension, which every type allows: Discover and Google News have no queries. Totals are the
   // property's, other subdomains included.
   const searchTypes = {};
-  await attempt("the image, video, news and Discover results in Search Console", SC_API, async () => {
-    for (const type of ["image", "video", "news", "googleNews", "discover"]) {
+  // webMultimodal is Google Lens, Circle to Search and image uploads.
+  await attempt("the image, video, news, Discover and Lens results in Search Console", SC_API, async () => {
+    for (const type of ["image", "video", "news", "googleNews", "discover", "webMultimodal"]) {
       const t = (await sa({ type })).rows?.[0];
       if (!t?.impressions) continue;
       const pages = {};
@@ -470,6 +471,24 @@ export async function fetchGoogle({
       .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions)
       .slice(0, 10))
       byCountry[r.keys[0]] = ci(r);
+  });
+
+  // brandedClassification has data from 21 Feb 2026, only for top-level properties with enough searches; others get
+  // no rows. It can't be combined with a query filter.
+  // https://developers.google.com/search/blog/2026/11/search-analytics-api-update
+  let brandSplit = null;
+  await attempt("the brand and non-brand split in Search Console", SC_API, async () => {
+    const rows = (await sa({ dimensions: ["brandedClassification"] })).rows || [],
+      side = k => rows.find(r => r.keys?.[0] === k);
+    if (side("BRANDED") || side("NON_BRANDED"))
+      brandSplit = {
+        branded: ci(side("BRANDED") || { clicks: 0, impressions: 0 }),
+        nonBranded: ci(side("NON_BRANDED") || { clicks: 0, impressions: 0 }),
+      };
+    else
+      notes.push(
+        "Search Console labels brand searches only for top-level properties with enough searches (data from 21 Feb 2026), and this property isn't eligible, so there's no brand and non-brand split.",
+      );
   });
 
   // inspect replaces the default sample: the home page, up to 10 crawled pages (shallowest, most linked), then top
@@ -856,6 +875,7 @@ export async function fetchGoogle({
     searchTypes,
     byDevice,
     byCountry,
+    brandSplit,
     inspection,
     sitemaps,
     analytics,

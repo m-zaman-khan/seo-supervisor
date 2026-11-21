@@ -1073,6 +1073,7 @@ test("fetch from the CLI writes seo-audit/google.json", async () => {
       "searchTypes",
       "byDevice",
       "byCountry",
+      "brandSplit",
       "inspection",
       "sitemaps",
       "analytics",
@@ -1110,6 +1111,7 @@ test("fetch: image, video, news, Google News and Discover totals and top pages, 
       "image",
       "news",
       "video",
+      "webMultimodal",
     ]);
     assert.ok(
       typed.every(h => ["", "page"].includes(h.body.dimensions.join())),
@@ -1128,6 +1130,66 @@ test("fetch: image, video, news, Google News and Discover totals and top pages, 
     );
   } finally {
     await g.close();
+  }
+});
+
+// brandedClassification (BRANDED, NON_BRANDED; no rows for ineligible properties) and the webMultimodal type.
+// https://developers.google.com/search/blog/2026/11/search-analytics-api-update
+test("fetch: Google's own brand vs non-brand split, and Google Lens and Circle to Search results", async () => {
+  const SITE = "/webmasters/v3/sites/sc-domain:example.com",
+    base = apiRoutes()[`POST ${SITE}/searchAnalytics/query`];
+  const brand = [
+    { keys: ["BRANDED"], clicks: 80, impressions: 1200, ctr: 0.067, position: 1.4 },
+    { keys: ["NON_BRANDED"], clicks: 75, impressions: 5000, ctr: 0.015, position: 9.1 },
+    { keys: ["SOMETHING_NEW"], clicks: 1, impressions: 2, ctr: 0.5, position: 3 },
+  ];
+  const lens = { "": TOTAL(6, 400), page: [PAGE("https://www.example.com/a/", 6, 300, 0)] };
+  const routes = rows =>
+    apiRoutes({
+      [`POST ${SITE}/searchAnalytics/query`]: hit =>
+        hit.body.dimensions?.join() === "brandedClassification"
+          ? [200, { rows }]
+          : hit.body.type === "webMultimodal"
+            ? [200, { rows: lens[hit.body.dimensions.join(",")] || [] }]
+            : base(hit),
+    });
+  const g = await fakeGoogle(routes(brand)),
+    home = tmp();
+  store(home);
+  try {
+    const r = await fetchWith(g, home, { ga4Property: "222" });
+    assert.deepEqual(
+      r.brandSplit,
+      { branded: { clicks: 80, impressions: 1200 }, nonBranded: { clicks: 75, impressions: 5000 } },
+      "an unknown label is left out",
+    );
+    assert.deepEqual(r.searchTypes.webMultimodal, {
+      clicks: 6,
+      impressions: 400,
+      pages: { "/a/": { clicks: 6, impressions: 300 } },
+    });
+    const asked = g.hits.find(h => h.body.dimensions?.join() === "brandedClassification").body;
+    assert.equal(asked.type, "web");
+    assert.equal(
+      asked.dimensionFilterGroups,
+      undefined,
+      "Google doesn't allow it with a query filter, so none is sent",
+    );
+  } finally {
+    await g.close();
+  }
+  const none = await fakeGoogle(routes([])),
+    home2 = tmp();
+  store(home2);
+  try {
+    const r = await fetchWith(none, home2, { ga4Property: "222" });
+    assert.equal(r.brandSplit, null);
+    assert.ok(
+      r.notes.some(n => /brand/i.test(n) && /eligible/.test(n)),
+      r.notes.join("\n"),
+    );
+  } finally {
+    await none.close();
   }
 });
 

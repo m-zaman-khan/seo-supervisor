@@ -22,6 +22,23 @@ export const CHECKS = {
     "Asked with the user agent of OAI-SearchBot, Claude-SearchBot or PerplexityBot, these pages answered with an error or a bot challenge, while the same request as a visitor got the page. A firewall, CDN bot setting or security plugin usually does this, and robots.txt doesn't show it, so the site can be left out of ChatGPT, Claude or Perplexity answers without anyone deciding that. A firewall that checks the vendor's IP addresses is right to refuse this test, which doesn't come from them, so the test can't tell the two apart.",
     "Decide whether these crawlers should reach the site, and record it in the profile (MAP-06). To let them in, allow the vendors' published IP ranges (openai.com/searchbot.json, claude.com/crawling/bots.json, perplexity.ai/perplexitybot.json) or the CDN's verified-bots list in the firewall rules, not the user agent alone. Then run log-scan.mjs with --verify-ips on the server logs to see what the real crawlers get.",
   ],
+  // Bing's new AI directives and its noarchive cut-over dates; Amazon reads noarchive as a training opt-out.
+  // https://blogs.bing.com/search/2026/10/your-content-your-choice-clearer-preferences-for-training-and-grounding/
+  // https://developer.amazon.com/amazonbot
+  "ai-legacy-noarchive": [
+    "AI-03",
+    "needs-decision",
+    n => `${n} page(s) still use noarchive or nocache, which Bing stops reading as AI controls on 1 Mar 2027`,
+    "Bing reads noarchive and nocache as AI controls today: noarchive keeps a page out of Copilot's answers and out of training. That ends soon. Bing honours its new `ai-grounding` and `ai-training` directives from 1 Feb 2027, and from 1 Mar 2027 noarchive and nocache no longer control training or grounding, so a page kept out of Copilot today goes back in unless it gets the new directive. Bing search itself isn't affected either way. Amazon reads noarchive as \"don't use this page to train AI models\".",
+    'Decide what these pages should allow. To keep a page out of AI answers and training, add `<meta name="bingbot" content="ai-grounding:disallow, ai-training:disallow">` (or the same in an `X-Robots-Tag: bingbot:` header); `ai-grounding:disallowextended` keeps it in Microsoft\'s own Copilot but out of grounding services Microsoft sells to other companies. If noarchive was never meant to keep the page out of AI answers, remove it. From 15 Dec 2026, sites that use noarchive or nocache can set a temporary preference in Bing Webmaster Tools, which expires on 30 Sep 2027.',
+  ],
+  "ai-preference-invalid": [
+    "AI-03",
+    "low",
+    n => `${n} page(s) give Bing an ai-grounding or ai-training value it doesn't list`,
+    "Bing lists `allow`, `disallow` and `disallowextended` for ai-grounding, and `allow` and `disallow` for ai-training. A value outside those isn't one Bing documents, so the page may not get the setting the owner meant.",
+    "Use one of Bing's values: `ai-grounding:disallow` (or `disallowextended`, or `allow`) and `ai-training:disallow` (or `allow`).",
+  ],
   // Links with no name are LINK-05's link-no-text, so they aren't counted here.
   "controls-no-name": [
     "AI-05",
@@ -183,19 +200,34 @@ export function agentFeatures(html) {
 const INTERACTIVE = /^(a|area|button|input|select|textarea|summary|label|option|details)$/;
 const LANDMARKS = { main: "main", nav: "navigation", header: "banner", footer: "contentinfo" };
 
-// The AI crawlers and fetchers in the robots table, as [token, vendor, kind, mayIgnore]. kind: search, training, user
-// (fetches a page a person asked for) or other; mayIgnore: the vendor says robots.txt may not apply. Rows follow the
-// vendors' pages below or are tokens the crawl already checks. Cohere runs no crawler, so it isn't listed.
+// The AI crawlers and fetchers in the robots table, as [token, vendor, kind, mayIgnore, { alias, fallback }]. kind:
+// search, training, user (fetches a page a person asked for) or other; mayIgnore: the vendor says robots.txt may not
+// apply; alias: a second accepted name; fallback: the group it follows when unnamed. Rows follow the vendors' pages
+// below or are tokens the crawl already checks. Cohere runs no crawler, and Claude-Agent is left out since its page
+// doesn't say how robots.txt applies.
 // https://developers.openai.com/api/docs/bots
 // https://docs.perplexity.ai/guides/bots
 // https://support.claude.com/en/articles/8896518
+// https://support.claude.com/en/articles/18234133
 // https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers
 // https://developers.google.com/search/docs/crawling-indexing/google-user-triggered-fetchers
+// https://docs.mistral.ai/robots
+// https://duckduckgo.com/duckduckgo-help-pages/results/duckassistbot
+// https://developer.amazon.com/amazonbot
+// https://yandex.com/support/webmaster/en/yandex-ai
+// https://developers.facebook.com/docs/sharing/webmasters/web-crawlers
+// https://support.apple.com/en-us/119829
 // https://docs.cohere.com/docs/cohere-web-crawlers
+/** @type {[string, string, string, boolean?, { alias?: string, fallback?: string }?][]} */
 export const AI_BOTS = [
   ["OAI-SearchBot", "OpenAI", "search"],
   ["Claude-SearchBot", "Anthropic", "search"],
   ["PerplexityBot", "Perplexity", "search"],
+  ["MistralAI-Index", "Mistral", "search"],
+  ["DuckAssistBot", "DuckDuckGo", "search"],
+  ["Amzn-SearchBot", "Amazon", "search"],
+  ["YandexAdditionalBot", "Yandex", "search", false, { alias: "YandexAdditional" }],
+  ["Applebot", "Apple", "search", false, { fallback: "Googlebot" }],
   ["GPTBot", "OpenAI", "training"],
   ["ClaudeBot", "Anthropic", "training"],
   ["Google-Extended", "Google", "training"],
@@ -203,14 +235,51 @@ export const AI_BOTS = [
   ["CCBot", "Common Crawl", "training"],
   ["Bytespider", "ByteDance", "training"],
   ["meta-externalagent", "Meta", "training"],
+  ["MistralAI-Training", "Mistral", "training"],
+  ["Amazonbot", "Amazon", "training"],
   ["ChatGPT-User", "OpenAI", "user", true],
   ["Claude-User", "Anthropic", "user"],
   ["Perplexity-User", "Perplexity", "user", true],
   ["Google-Agent", "Google", "user", true],
   ["Google-GeminiNotebook", "Google", "user", true],
+  ["MistralAI-User", "Mistral", "user"],
+  ["Amzn-User", "Amazon", "user", true],
+  ["Meta-ExternalFetcher", "Meta", "user", true],
   ["OAI-AdsBot", "OpenAI", "other"],
   ["Google-CloudVertexBot", "Google", "other"],
 ];
+
+// Bing's AI rules from robots meta contents and X-Robots-Tag lines. A "<crawler>:" prefix holds for the rules after
+// it; VALUED names take a value after the colon, so they aren't prefixes. legacy holds noarchive and nocache, which
+// Bing reads as AI controls until 1 Mar 2027.
+// https://blogs.bing.com/search/2026/10/your-content-your-choice-clearer-preferences-for-training-and-grounding/
+export const VALUED = /^(max-snippet|max-image-preview|max-video-preview|unavailable_after|ai-grounding|ai-training)$/;
+export const BING_PREFS = {
+  "ai-grounding": ["allow", "disallow", "disallowextended"],
+  "ai-training": ["allow", "disallow"],
+};
+/** @param {string[]} metas @param {string[]} headerLines */
+export function bingAiRules(metas, headerLines) {
+  const legacy = [],
+    prefs = [];
+  const read = (s, where) => {
+    let agent = null;
+    for (let t of String(s || "")
+      .toLowerCase()
+      .split(",")) {
+      const m = /^\s*([a-z][\w-]*)\s*:\s*(.*)$/.exec(t);
+      if (m && !VALUED.test(m[1])) [, agent, t] = m;
+      t = t.trim().replace(/\s*:\s*/, ":");
+      if (!t || (agent && agent !== "bingbot")) continue;
+      if (t === "noarchive" || t === "nocache") legacy.push({ rule: t, where });
+      const p = /^(ai-grounding|ai-training):(.*)$/.exec(t);
+      if (p) prefs.push({ name: p[1], value: p[2] });
+    }
+  };
+  metas.forEach(s => read(s, "meta"));
+  headerLines.forEach(s => read(s, "header"));
+  return { legacy, prefs };
+}
 
 // Content-Signal lines crawlers won't read: one above the first User-agent line and, once any group has a signal,
 // each group without one that still lets crawlers in. blocksAll gets a group as { rules: [{ allow, path }] }.

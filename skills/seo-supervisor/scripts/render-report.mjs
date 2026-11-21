@@ -328,7 +328,10 @@ const GTYPE = {
   video: "Video search",
   news: "the News tab",
   googleNews: "Google News",
+  webMultimodal: "Google Lens and Circle to Search",
 };
+// Google's own brand label from the Search Analytics API: numbers only, both sides or nothing.
+const brandSide = x => (obj(x) && Number.isFinite(x.clicks) && Number.isFinite(x.impressions) ? x : null);
 function googleLines() {
   const n = (x, k) => Number(x?.[k]) || 0,
     isDay = s => /^\d{4}-\d{2}-\d{2}$/.test(s),
@@ -360,6 +363,9 @@ function googleLines() {
       `Clicks from other Google results: ${types.map(([k, v]) => `${GTYPE[k]} ${num(n(v, "clicks"))}`).join(" · ")}${per}`,
     devices.length &&
       `Search by device: ${devices.map(([k, v]) => `${k.toLowerCase()} ${num(n(v, "clicks"))} clicks · ${num(n(v, "impressions"))} impressions`).join("; ")}${per}`,
+    brandSide(raw.brandSplit?.branded) &&
+      brandSide(raw.brandSplit?.nonBranded) &&
+      `Brand searches, as Google labels them: ${num(raw.brandSplit.branded.clicks)} clicks · ${num(raw.brandSplit.branded.impressions)} impressions; other searches: ${num(raw.brandSplit.nonBranded.clicks)} clicks · ${num(raw.brandSplit.nonBranded.impressions)} impressions${per}`,
     countries.length &&
       `Search clicks by country: ${countries.map(([k, v]) => `${k.toUpperCase()} ${num(n(v, "clicks"))}`).join(" · ")}${per}`,
     anomalies.length &&
@@ -1110,7 +1116,23 @@ const crawlScopeMd = () => {
 // From the crawler: each AI crawler robots.txt allows or blocks (`aiBots`), pages without landmarks (`landmarks`) and
 // Lighthouse's experimental Agentic browsing checks (`lighthouse[].agentic`). Text is escaped.
 const AI_KIND = { search: "AI search", training: "Training", user: "Fetches for a user", other: "Other" };
-const AI_STATUS = { allowed: "Allowed", blocked: "Blocked", "blocked-by-star": "Blocked by `User-agent: *`" };
+const AI_STATUS = {
+  allowed: "Allowed",
+  blocked: "Blocked",
+  "blocked-by-star": "Blocked by `User-agent: *`",
+  "blocked-by-googlebot": "Blocked by the Googlebot group (Apple follows it when Applebot isn't named)",
+};
+// The shared AI-training opt-out (`trainingOptOut`); an unknown value shows nothing.
+const TRAINING = {
+  "not-set": "not in robots.txt. A `User-agent: *` group doesn't cover it",
+  blocked: "set: it refuses AI training for the whole site",
+  partly: "set for some paths only",
+  allowed: "set, and it allows AI training",
+};
+const trainingLine = () =>
+  Object.hasOwn(TRAINING, raw.trainingOptOut)
+    ? `Shared AI-training opt-out (\`User-agent: __usage_ai-training\`, an IETF draft): ${TRAINING[raw.trainingOptOut]}. Anthropic honours it since 30 Oct 2026, and Bing from 1 Feb 2027; Google plans to in 2027.`
+    : "";
 const bots = (Array.isArray(raw.aiBots) ? raw.aiBots : []).filter(
   b => obj(b) && typeof b.bot === "string" && Object.hasOwn(AI_STATUS, b.robots),
 );
@@ -1139,13 +1161,14 @@ const landmarkLine = () =>
   `${num(bare.count)} of ${num(bare.checked)} pages lack one or more landmarks (main, nav, header, footer), which screen readers and AI agents use to find their way around a page (AI-05).`;
 const agenticRow = a =>
   `${num(a.passed)} of ${num(a.total)} checks passed${a.failed.length ? `; failing: ${a.failed.map(f => f.title).join("; ")}` : ""}`;
-const aiCrawlersOn = () => bots.length || bare || agenticRows.length;
+const aiCrawlersOn = () => bots.length || bare || agenticRows.length || trainingLine();
 const aiCrawlersHtml = () =>
   aiCrawlersOn()
     ? `\n    <details class="how aibots"><summary>AI crawlers and agents</summary>` +
       (bots.length
         ? `<p>${esc(AI_INTRO)}</p><div class="tablewrap"><table><thead><tr><th scope="col">Crawler</th><th scope="col">Vendor</th><th scope="col">Kind</th><th scope="col">robots.txt</th></tr></thead><tbody>${bots.map(b => `<tr><td><code>${esc(b.bot)}</code></td><td>${esc(b.vendor)}</td><td>${esc(AI_KIND[b.kind] || b.kind)}</td><td>${inl(aiBotStatus(b))}</td></tr>`).join("")}</tbody></table></div>`
         : "") +
+      (trainingLine() ? `<p>${inl(trainingLine())}</p>` : "") +
       (bare
         ? `<p>${esc(landmarkLine())}</p><ul class="lim">${bare.pages.map(p => `<li><b><code>${esc(notePath(p.url))}</code></b><span>no ${esc(p.missing.join(", "))}</span></li>`).join("")}</ul>`
         : "") +
@@ -1172,6 +1195,7 @@ const aiCrawlersMd = () =>
               "",
             ]
           : []),
+        ...(trainingLine() ? [trainingLine(), ""] : []),
         ...(bare
           ? [
               landmarkLine(),

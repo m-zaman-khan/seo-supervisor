@@ -65,7 +65,7 @@ import { isPublic as publicAddress, guarded } from "./checks/outbound.mjs";
 import { otherSiteTargets, linksBack } from "./checks/hreflang.mjs";
 import { parseCsv } from "./lib/csv.mjs";
 
-import { AI_BOTS, signalPlacement } from "./checks/agents.mjs";
+import { AI_BOTS, signalPlacement, bingAiRules, BING_PREFS, VALUED } from "./checks/agents.mjs";
 
 import { SUPERSEDED, placeholderIn } from "./schema-check.mjs";
 
@@ -197,6 +197,7 @@ const RULES = {
   "TRUST-07": ["The HTTPS certificate is trusted, covers every host and renews in time", "Trust & security"],
   "URL-03": ["One host, HTTPS only", "URLs & canonicals"],
   "AI-01": ["Pages are eligible for snippets and AI answers", "AI search"],
+  "AI-03": ["Bing/Copilot preferences use the new directives", "AI search"],
   "AI-05": ["Pages work for AI agents that browse", "AI search"],
   "REND-06": ["JavaScript doesn't fight the HTML", "Rendering"],
   "REND-07": ["Mobile shows the same content as desktop", "Rendering"],
@@ -1531,7 +1532,6 @@ const ORG_RE =
 // Google's rules from one robots meta content or X-Robots-Tag line. A "<crawler>:" prefix holds for the rules after it,
 // and only unprefixed and googlebot rules count. "none" is noindex plus nofollow.
 // https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag
-const VALUED = /^(max-snippet|max-image-preview|max-video-preview|unavailable_after|ai-grounding|ai-training)$/;
 const agentRule = t => {
   const m = /^\s*([a-z][\w-]*)\s*:\s*(.*)$/.exec(t);
   return m && !VALUED.test(m[1]) ? m : null;
@@ -1993,6 +1993,17 @@ function analyze(url, html, headers, xRobotsLines) {
       [...anchors.map(a => a.href), ...imgs.map(i => i.src)].filter(h => h?.trim() && !urlOr(h.trim(), rec.base)),
     ),
   ];
+
+  // Bing's AI rules (AI-03), kept only on pages that have any.
+  {
+    const b = bingAiRules(
+      tagsOf(html, "meta")
+        .filter(m => /^(robots|bingbot)$/i.test(m.name || ""))
+        .map(m => m.content || ""),
+      xRobotsLines?.length ? xRobotsLines : [headers.get("x-robots-tag") || ""],
+    );
+    if (b.legacy.length || b.prefs.length) rec.bingAi = b;
+  }
 
   // JSON-LD placeholders, deprecated types (at any JSON-LD depth, and in Microdata or RDFa) and schema image URLs:
   // image, logo and thumbnailUrl, as a string or an ImageObject's contentUrl or url.
@@ -4428,19 +4439,56 @@ if (blocked.size)
 // won't read (MAP-06, low).
 // https://www.rfc-editor.org/rfc/rfc9309#section-2.2.1
 if (robots) {
-  extra.aiBots = AI_BOTS.map(([bot, vendor, kind, mayIgnore]) => {
-    const own = groupFor(robots, bot),
-      g = own || star;
+  // A second name the vendor accepts counts as the bot's own group. A fallback group comes before `User-agent: *`:
+  // Applebot follows Googlebot's when it isn't named. https://support.apple.com/en-us/119829
+  extra.aiBots = AI_BOTS.map(([bot, vendor, kind, mayIgnore, { alias, fallback } = {}]) => {
+    const own = groupFor(robots, bot) || (alias ? groupFor(robots, alias) : null),
+      via = !own && fallback ? groupFor(robots, fallback) : null,
+      g = own || via || star;
     return {
       bot,
       vendor,
       kind,
-      robots: !g || allowedBy(g, "/") ? "allowed" : own ? "blocked" : "blocked-by-star",
+      robots:
+        !g || allowedBy(g, "/")
+          ? "allowed"
+          : own
+            ? "blocked"
+            : via
+              ? `blocked-by-${fallback.toLowerCase()}`
+              : "blocked-by-star",
       ...(mayIgnore ? { mayIgnore } : {}),
     };
   });
+  // The shared AI-training opt-out (IETF draft-kelley-aipref-training-preference-signal) matches only its own group.
+  const shared = groupFor(robots, "__usage_ai-training");
+  extra.trainingOptOut = !shared
+    ? "not-set"
+    : !allowedBy(shared, "/")
+      ? "blocked"
+      : shared.rules.some(x => !x.allow && x.path)
+        ? "partly"
+        : "allowed";
   for (const d of signalPlacement(robotsRes.body, g => !allowedBy(g, "/")))
     add("content-signal-placement", START_ORIGIN + "/robots.txt", d);
+}
+// Bing's AI preferences (AI-03). An indexable page still on noarchive or nocache without the new directive needs a
+// decision before 1 Mar 2027; a value Bing doesn't list is flagged. Pages Bing can't index don't matter.
+evalRules("AI-03");
+for (const p of htmlPages) {
+  if (!p.bingAi || !indexable(p)) continue;
+  const { legacy, prefs } = p.bingAi,
+    at = w => [...new Set(legacy.filter(l => l.where === w).map(l => l.rule))].join(" and ");
+  if (legacy.length && !prefs.length)
+    add(
+      "ai-legacy-noarchive",
+      p.finalUrl,
+      [at("meta") && `${at("meta")} in a meta tag`, at("header") && `${at("header")} in the X-Robots-Tag header`]
+        .filter(Boolean)
+        .join("; "),
+    );
+  const bad = prefs.filter(x => !BING_PREFS[x.name].includes(x.value));
+  if (bad.length) add("ai-preference-invalid", p.finalUrl, bad.map(x => `${x.name}:${x.value}`).join(", "));
 }
 // Click-only elements (AI-05) and missing main, nav, header or footer landmarks on the pages the per-page checks read;
 // the first 20 lacking a landmark are listed.
