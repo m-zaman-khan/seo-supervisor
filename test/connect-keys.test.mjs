@@ -233,7 +233,7 @@ test("set, status and remove keep keys in the home folder, private, and never in
 
   await assert.rejects(
     cli(["set", "majestic", "x"], env),
-    e => e.code === 2 && /bing, openpagerank, ahrefs, matomo, posthog, moz or youtube/.test(e.stderr),
+    e => e.code === 2 && /bing, openpagerank, ahrefs, matomo, posthog, moz, youtube or clarity/.test(e.stderr),
   );
   await assert.rejects(cli(["set"], env), e => e.code === 2 && /usage/i.test(e.stderr));
 });
@@ -255,11 +255,11 @@ test("names that only exist on every object, like toString, aren't services", as
   const env = envFor(tmp());
   await assert.rejects(
     cli(["set", "toString", "k-123456"], env),
-    e => e.code === 2 && /bing, openpagerank, ahrefs, matomo, posthog, moz or youtube/.test(e.stderr),
+    e => e.code === 2 && /bing, openpagerank, ahrefs, matomo, posthog, moz, youtube or clarity/.test(e.stderr),
   );
   await assert.rejects(
     cli(["guide", "constructor"], env),
-    e => e.code === 2 && /bing, openpagerank, ahrefs, matomo, posthog, moz or youtube/.test(e.stderr),
+    e => e.code === 2 && /bing, openpagerank, ahrefs, matomo, posthog, moz, youtube or clarity/.test(e.stderr),
   );
 });
 

@@ -250,6 +250,51 @@ const trafficHtml = f => {
   const t = trafficOf(f);
   return t ? `<p class="quiet">${esc(t.text)} on <code>${esc(t.path)}</code></p>` : "";
 };
+// Microsoft Clarity (`clarity`, connect-keys.mjs) covers only the last 1 to 3 days, so it gets its own line under the
+// traffic line. A share shows only when it's above zero.
+const clarity = obj(raw.clarity),
+  share = v => typeof v === "number" && v >= 0 && v <= 100;
+const sharePct = v => `${v > 0 && v < 1 ? "under 1" : Math.round(v)}%`;
+const clarityWhen = () => {
+  const n = [1, 2, 3].includes(clarity?.days) ? clarity.days : 3,
+    d = /^\d{4}-\d{2}-\d{2}$/.test(clarity?.read) ? fmtDate(clarity.read) : "";
+  return d ? `the ${n === 1 ? "day" : `${n} days`} before ${d}` : `last ${n === 1 ? "day" : `${n} days`}`;
+};
+const clarityPages = () =>
+  Object.entries(obj(clarity?.traffic) || {}).filter(
+    ([, c]) => obj(c) && Number.isInteger(c.sessions) && c.sessions > 0,
+  );
+const clarityFor = u => {
+  const c = byPath(clarity?.traffic, u);
+  if (!c || !Number.isInteger(c.sessions) || c.sessions <= 0) return null;
+  const of = (k, w) => share(c[k]) && c[k] > 0 && `${w} in ${sharePct(c[k])} of sessions`;
+  return `Microsoft Clarity (${clarityWhen()}): ${[plural(c.sessions, "session"), share(c.scrollDepth) && `average scroll depth ${sharePct(c.scrollDepth)}`, of("quickBacks", "quick backs"), of("rageClicks", "rage clicks"), of("deadClicks", "dead clicks"), of("excessiveScroll", "excessive scrolling")].filter(Boolean).join(" · ")}`;
+};
+const clarityOf = f => {
+  const e = (f.evidence || []).find(x => x.url && clarityFor(x.url));
+  return e && { text: clarityFor(e.url), path: new URL(e.url, "https://site.invalid").pathname };
+};
+const clarityHtml = f => {
+  const t = clarityOf(f);
+  return t ? `<p class="quiet">${esc(t.text)} on <code>${esc(t.path)}</code></p>` : "";
+};
+// The Overview line. Top pages need 10 or more sessions, a local cut-off, so one visit's quick back can't top the list.
+const clarityLine = () => {
+  const pages = clarityPages();
+  if (!pages.length) return null;
+  const most = (k, w) => {
+    const top = pages
+      .filter(([, c]) => c.sessions >= 10 && share(c[k]) && c[k] > 0)
+      .sort((a, b) => b[1][k] - a[1][k])
+      .slice(0, 3);
+    return top.length && `most ${w}: ${top.map(([p, c]) => `${p} ${sharePct(c[k])}`).join(", ")}`;
+  };
+  const tops = [most("quickBacks", "quick backs"), most("rageClicks", "rage clicks")].filter(Boolean);
+  return `Microsoft Clarity (${clarityWhen()}): ${plural(
+    pages.reduce((s, [, c]) => s + c.sessions, 0),
+    "session",
+  )} on ${plural(pages.length, "page")}${tops.length ? ` · ${tops.join(" · ")} (pages with 10 or more sessions)` : ""}`;
+};
 // Site-wide totals for the Overview: Bing's clicks, impressions and linked pages, and GA4's, Matomo's and PostHog's
 // organic visits. Third-party data, escaped where shown.
 const sum = (map, k) => Object.values(obj(map) || {}).reduce((s, t) => s + (Number(t?.[k]) || 0), 0);
@@ -335,6 +380,7 @@ function searchLines() {
       `Google Analytics: ${plural(sum(analytics, "sessions"), "organic visit")} to ${plural(ga, "landing page")}${raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : ""}`,
     visitsLine("Matomo", matomo),
     visitsLine("PostHog", posthog),
+    clarityLine(),
   ].filter(Boolean);
 }
 const linkCount = p => plural(Number(p.count) || 0, "link");
@@ -2195,7 +2241,7 @@ function findingHtml(f) {
           ${isFixed && f.fixed ? `<div class="donebox"><h4>What was done</h4><p>${inl(f.fixed.summary || "")}</p>${(f.fixed.files || []).length ? `<p class="files">${f.fixed.files.map(x => `<code>${esc(x)}</code>`).join(" ")}</p>` : ""}${f.fixed.verified ? `<p class="quiet">${ICON.check} ${inl(f.fixed.verified)}</p>` : ""}</div>` : ""}
         </div>
       </div>
-      ${trafficHtml(f)}${evidenceHtml(f)}
+      ${trafficHtml(f)}${clarityHtml(f)}${evidenceHtml(f)}
     </div>
   </article>`;
 }
@@ -2852,6 +2898,8 @@ function markdown() {
       );
     const t = trafficOf(f);
     if (t) L.push(`${t.text} on \`${t.path}\``, "");
+    const c = clarityOf(f);
+    if (c) L.push(`${c.text} on \`${c.path}\``, "");
     if ((f.evidence || []).length) {
       L.push("| Where | Detail |", "| --- | --- |");
       for (const e of f.evidence)
