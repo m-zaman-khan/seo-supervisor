@@ -1295,6 +1295,29 @@ RULES["CONTENT-11"] ??= ["Nothing breaks Google's spam policies", "Headings & co
 import { CHECKS as CRAWL_CHECKS, brake, fragmentLinks, hasName, slowNote } from "./checks/crawl.mjs";
 Object.assign(CHECKS, CRAWL_CHECKS);
 
+// Every finding's URL and detail also has any secret key masked, so no key reaches the crawl file through another
+// check's evidence.
+import {
+  CHECKS as HYGIENE_CHECKS,
+  HIDDEN_MIN,
+  PDF_PAGES,
+  APP_FILES,
+  analyticsTwice,
+  secretsIn,
+  maskKeys,
+  hiddenLinks,
+  appPromo,
+  appFile,
+} from "./checks/hygiene.mjs";
+import { reviewEventProblems } from "./schema-check.mjs";
+Object.assign(CHECKS, HYGIENE_CHECKS);
+RULES["LAUNCH-04"] ??= ["Measure what visitors do", "Launch & monitoring"]; // only failed here: the rest needs a read of the analytics setup
+// @ts-expect-error TS2630: add is a function declaration; this wraps it as the redaction above does.
+{
+  const raw = add;
+  add = (key, url, detail) => raw(key, url && maskKeys(url), detail == null ? detail : maskKeys(String(detail)));
+}
+
 CHECKS["markdown-differs"] = [
   "AI-05",
   "low",
@@ -2056,6 +2079,28 @@ function analyze(url, html, headers, xRobotsLines) {
     [...body.matchAll(/<a\b[^>]*>/gi)].map(m => attrs(m[0])),
     rec.base,
   ).map(([u, name]) => [clean(toCrawl(u)), name]);
+
+  // Inputs for checks/hygiene.mjs. A secret key leaves analyze only as its type and first characters; its words are
+  // kept just to scrub them from the words file.
+  {
+    const keys = secretsIn(html),
+      navHrefs = [...body.matchAll(/<nav\b[\s\S]*?<\/nav>/gi)].flatMap(m => tagsOf(m[0], "a").map(a => a.href));
+    const pdfOf = h => {
+      const x = urlOr((h || "").trim(), rec.base),
+        c = x && /^https?:$/.test(x.protocol) ? clean(toCrawl(x.href)) : null;
+      return c && new URL(c).origin === START_ORIGIN && /\.pdf$/i.test(new URL(c).pathname) ? c : null;
+    };
+    rec.hygieneSignals = {
+      analytics: analyticsTwice(html),
+      keys: keys.map(k => `${k.label} (${k.shown})`),
+      scrub: keys.flatMap(k => pickMainWords(k.raw)),
+      hidden: hiddenLinks(body),
+      app: appPromo(html),
+      schema: reviewEventProblems(nodes),
+      pdfs: [...new Set(anchors.map(a => pdfOf(a.href)).filter(Boolean))],
+      navPdfs: [...new Set(navHrefs.map(pdfOf).filter(Boolean))],
+    };
+  }
 
   // Words for the Markdown comparison: the main text, and all a reader sees (body, title, description). Only the start
   // page, the only one asked for Markdown.
@@ -4633,6 +4678,80 @@ if (robots) {
   // One note if the crawler slowed down. The AI-bot probe below can still pause it.
   const slowed = slowNote(slow);
   if (slowed) notes.push(slowed);
+}
+
+// Analytics IDs set up twice (LAUNCH-04) and secret keys (TRUST-01) are checked on every page read, since both
+// matter on pages search engines skip too; hidden links (CONTENT-11), nested reviews naming another item (SCHEMA-01)
+// and online-only events (SCHEMA-05) only on indexable pages. A key's words leave the page's words before the words
+// file is written. App link files are asked only of the crawled origin, without following redirects: neither file
+// may be served through one. PDFs linked from a menu or PDF_PAGES+ indexable pages are listed; Microsoft advises
+// against relying on PDFs for core content.
+// https://about.ads.microsoft.com/en/blog/post/october-2025/optimizing-your-content-for-inclusion-in-ai-search-answers
+{
+  const read = htmlPages.filter(p => p.hygieneSignals);
+  for (const p of read) {
+    const h = p.hygieneSignals,
+      u = p.finalUrl;
+    if (h.analytics.length) add("analytics-tag-twice", u, h.analytics.join("; "));
+    if (h.keys.length) add("secret-key-exposed", u, h.keys.join("; "));
+    if (h.scrub.length && typeof p.mainWordsText === "string") {
+      const drop = new Set(h.scrub);
+      p.mainWordsText = p.mainWordsText
+        .split(" ")
+        .filter(w => !drop.has(w))
+        .join(" ");
+    }
+    if (!indexable(p) || p.clientOnly) continue;
+    const away = h.hidden.filter(x => {
+      const y = urlOr(x);
+      return y && !selfHosts.has(bareHost(y.host));
+    });
+    if (away.length >= HIDDEN_MIN)
+      add("hidden-links", u, `${away.length} hidden link(s) to other sites, e.g. ${away[0]}`);
+    if (h.schema.events.length) add("event-online", u, h.schema.events.map(e => `“${e}”`).join(", "));
+    if (h.schema.reviews.length) add("review-target-conflict", u, h.schema.reviews.join("; "));
+  }
+  const apps = [];
+  for (const [k, platform] of [
+    ["android", "Android"],
+    ["ios", "iOS"],
+  ]) {
+    const page = read
+      .filter(p => p.hygieneSignals.app[k])
+      .map(p => p.finalUrl)
+      .sort()[0];
+    if (!page) continue;
+    let res = { status: 0, type: "", body: "" };
+    try {
+      const r = await fetch(START_ORIGIN + APP_FILES[k], {
+        redirect: "manual",
+        headers: { "user-agent": UA, accept: "application/json" },
+        signal: AbortSignal.timeout(15000),
+      });
+      res = {
+        status: r.status,
+        type: r.headers.get("content-type") || "",
+        body: r.status === 200 && r.body ? (await upTo(r.body, 1 << 18)).toString("utf8") : "",
+      };
+      if (r.status !== 200) await r.body?.cancel();
+    } catch {}
+    const bad = appFile(k, res);
+    if (bad) apps.push({ platform, file: APP_FILES[k], page, ...bad });
+  }
+  if (apps.length) extra.appLinks = apps;
+  const pdfs = new Map(); // crawl URL -> { pages, menu }
+  for (const p of read)
+    if (indexable(p) && !p.clientOnly)
+      for (const x of p.hygieneSignals.pdfs) {
+        const e = pdfs.get(x) || pdfs.set(x, { pages: 0, menu: false }).get(x);
+        e.pages++;
+        e.menu ||= p.hygieneSignals.navPdfs.includes(x);
+      }
+  const listed = [...pdfs]
+    .filter(([, e]) => e.menu || e.pages >= PDF_PAGES)
+    .sort(([a, x], [b, y]) => Number(y.menu) - Number(x.menu) || y.pages - x.pages || a.localeCompare(b));
+  if (listed.length)
+    extra.pdfLinks = { count: listed.length, pdfs: listed.slice(0, 20).map(([url, e]) => ({ url, ...e })) };
 }
 
 // Compares the Markdown the start page serves for Accept: text/markdown with the page's own words. Cloudflare's

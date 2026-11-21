@@ -160,6 +160,72 @@ const BRACKET =
 const REPLACE = /\bREPLACE_[A-Z0-9_]*|\bREPLACE[_ ]?ME\b/;
 export const placeholderIn = s => (BRACKET.exec(s) || REPLACE.exec(s))?.[0] ?? null;
 const docOf = type => GOOGLE.supported.find(r => r.type === type).doc;
+
+// A nested review or rating should leave out itemReviewed, as the parent is the item reviewed, and since 12 Nov 2025
+// Google asks sites not to name it more than one way. Only a different item is flagged, told apart by @id when both
+// have one, else by name.
+// https://developers.google.com/search/updates
+const REVIEW_DOC = "https://developers.google.com/search/docs/appearance/structured-data/review-snippet";
+const nameKey = s => (typeof s === "string" ? s.replace(/\s+/g, " ").trim().toLowerCase() : "");
+/** The other item a review or rating nested in `parent` names in itemReviewed (its name or @id), or null. */
+export function otherReviewed(parent, child) {
+  if (!parent || typeof parent !== "object" || !child || typeof child !== "object") return null;
+  const own = [parent["@id"], parent.url, parent.name].map(nameKey).filter(Boolean);
+  for (const it of list(child.itemReviewed)) {
+    if (typeof it === "string") {
+      if (it.trim() && own.length && !own.includes(nameKey(it))) return it.trim();
+      continue;
+    }
+    if (!it || typeof it !== "object") continue;
+    if (typeof it["@id"] === "string" && typeof parent["@id"] === "string") {
+      if (it["@id"].trim() !== parent["@id"].trim()) return nameKey(it.name) ? it.name.trim() : it["@id"].trim();
+    } else if (nameKey(it.name) && nameKey(parent.name) && nameKey(it.name) !== nameKey(parent.name))
+      return it.name.trim();
+  }
+  return null;
+}
+// Google's event results need a physical location; the online event properties went on 5 Jun 2025. Online mode with no
+// other place, or only VirtualLocations, is online only; Mixed or Offline mode, a Place or a text address isn't.
+const EVENT_DOC = "https://developers.google.com/search/docs/appearance/structured-data/event";
+/** True when an Event has no real-world place. */
+export function onlineOnly(e) {
+  const mode = list(e?.eventAttendanceMode).map(x =>
+    term(String((x && typeof x === "object" ? x["@id"] : x) ?? "").trim()),
+  );
+  if (mode.some(m => /^(Offline|Mixed)EventAttendanceMode$/.test(m))) return false;
+  const locs = list(e?.location).filter(l => l != null && l !== ""),
+    virtual = l => typeIs(l, "VirtualLocation");
+  return mode.includes("OnlineEventAttendanceMode") ? locs.every(virtual) : locs.length > 0 && locs.every(virtual);
+}
+/** For the crawler: the names of online-only events and each nested review or rating naming another item, at any
+ *  depth. */
+export function reviewEventProblems(nodes) {
+  const events = [],
+    reviews = [],
+    seen = new Set();
+  const walk = (o, d) => {
+    if (!o || typeof o !== "object" || d > 12 || seen.has(o)) return;
+    seen.add(o);
+    if (Array.isArray(o)) return o.forEach(x => walk(x, d + 1));
+    const types = list(o["@type"])
+      .filter(t => typeof t === "string")
+      .map(term)
+      .filter(t => TYPES[t]);
+    if (types.some(t => isA(t, "Event")) && onlineOnly(o))
+      events.push(typeof o.name === "string" && o.name.trim() ? o.name.trim() : "an event");
+    for (const k of ["review", "aggregateRating"])
+      for (const c of list(o[k])) {
+        const other = otherReviewed(o, c);
+        if (other)
+          reviews.push(
+            `${k === "review" ? "a review" : "a rating"} in “${nameKey(o.name) ? o.name.trim() : types[0] || "an item"}” names “${other}”`,
+          );
+      }
+    Object.values(o).forEach(x => walk(x, d + 1));
+  };
+  nodes.forEach(n => walk(n, 0));
+  return { events, reviews };
+}
 const monthOf = d =>
   new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 
@@ -520,6 +586,19 @@ export function checkJsonLd(text) {
           );
         } else for (const x of [].concat(val)) shape(key, k, x, path, known);
       }
+      if (known.length && (k === "review" || k === "aggregateRating"))
+        for (const c of list(val)) {
+          const other = otherReviewed(v, c);
+          if (other)
+            add(
+              "warning",
+              "review-target-conflict",
+              `${path}.${key}`,
+              known,
+              `this nested ${k === "review" ? "review" : "rating"} names "${clip(other)}" in "itemReviewed", but Google takes the item it sits in as the one reviewed; leave "itemReviewed" out, or move the review out on its own`,
+              { doc: REVIEW_DOC, key: "itemReviewed" },
+            );
+        }
       walk(val, `${path}.${key}`, known.length ? known : parent, true, k);
     }
     if (known.length) {
@@ -527,6 +606,15 @@ export function checkJsonLd(text) {
       business(v, path, known);
       merchant(v, path, known);
     }
+    if (known.some(t => isA(t, "Event")) && onlineOnly(v))
+      add(
+        "warning",
+        "event-online",
+        path,
+        known,
+        `this event is online only; since 5 Jun 2025 Google's event results need a physical location, so it can't show there. It does no harm: keep it for other engines, or remove it`,
+        { doc: EVENT_DOC, rule: "SCHEMA-05", key: "eventAttendanceMode" },
+      );
   }
 
   const typedIds = new Set(),

@@ -2220,8 +2220,47 @@ const crawlLinksMd = () =>
         "",
       ]
     : [];
-const hygieneHtml = () => "",
-  hygieneMd = () => [];
+// App link files missing or broken on a site that promotes an app, and PDFs that several pages or the menu link to,
+// which Microsoft Advertising advised against for core information (8 Oct 2025). Crawled text is escaped.
+// https://developers.google.com/search/blog/2025/05/app-deep-links
+const apps = (Array.isArray(raw.appLinks) ? raw.appLinks : [])
+  .filter(a => obj(a) && ["Android", "iOS"].includes(a.platform) && asString(a.file) && asString(a.problem))
+  .slice(0, 2);
+const pdfLinkFiles = (l =>
+  l && Array.isArray(l.pdfs) ? l.pdfs.filter(p => obj(p) && asString(p.url) && asInt(p.pages)).slice(0, 20) : [])(
+  obj(raw.pdfLinks),
+);
+const APP_INTRO =
+  "The site links to its app. Phones open the site's links in the app only when a file on the site names the app. Google's post on app deep links (2 May 2025) says they don't change how Google ranks or shows pages: they take people from search results straight into the app. Information only: none of this changes the score.";
+const appTail = a =>
+  `${a.problem}. ${a.missing === true ? "That's fine if the app doesn't open the site's links." : `${a.platform === "iOS" ? "iPhones" : "Android phones"} won't open the site's links in the app until it's fixed.`}`;
+const PDF_INTRO =
+  "PDFs on the site that 3 or more pages link to (our own cut-off), or that the menu links to. Microsoft Advertising's guide to AI search answers (8 Oct 2025) says to avoid relying on PDFs for core information: search engines can read text PDFs, but they often lack the headings and other structure HTML gives. If any of these hold something important, such as prices, a menu, specifications or opening hours, put it on an HTML page too. Information only: none of this changes the score.";
+const pdfTail = p => `linked from ${plural(p.pages, "page")}${p.menu === true ? ", including the menu" : ""}`;
+const hygieneHtml = () =>
+  apps.length || pdfLinkFiles.length
+    ? `\n    <details class="how hygiene"><summary>App links and PDFs</summary>` +
+      (apps.length
+        ? `<p>${esc(APP_INTRO)}</p><ul class="lim">${apps.map(a => `<li><b>${esc(a.platform)}</b><span><code>${esc(a.file)}</code> ${esc(appTail(a))}</span></li>`).join("")}</ul>`
+        : "") +
+      (pdfLinkFiles.length
+        ? `<p>${esc(PDF_INTRO)}</p><ul class="lim">${pdfLinkFiles.map(p => `<li><b><code>${esc(notePath(p.url))}</code></b><span>${esc(pdfTail(p))}</span></li>`).join("")}</ul>`
+        : "") +
+      `</details>`
+    : "";
+const hygieneMd = () =>
+  apps.length || pdfLinkFiles.length
+    ? [
+        "## App links and PDFs",
+        "",
+        ...(apps.length
+          ? [APP_INTRO, "", ...apps.map(a => `- ${noteMd(a.platform)}: ${noteCode(a.file)} ${noteMd(appTail(a))}`), ""]
+          : []),
+        ...(pdfLinkFiles.length
+          ? [PDF_INTRO, "", ...pdfLinkFiles.map(p => `- ${noteCode(notePath(p.url))} ${noteMd(pdfTail(p))}`), ""]
+          : []),
+      ]
+    : [];
 // newQueries: searches with no row in the previous period, the first 10 as given (most impressions first). Search
 // text is third-party, escaped where shown.
 const newSearchLine = () => {
