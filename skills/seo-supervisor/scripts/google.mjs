@@ -70,7 +70,7 @@ export function positionShares(queries) {
   };
 }
 
-class Fail extends Error {}
+export class Fail extends Error {}
 const fail = msg => {
   throw new Fail(msg);
 };
@@ -265,6 +265,40 @@ async function pickProperty(g, origin, who) {
     );
   return prop;
 }
+// A Search Console address as a path on the site's host, else null. www and apex count as one host, as in gsc-import.
+const bare = x => x.replace(/^www\./, "");
+export const pagePath = (u, host) => {
+  try {
+    const x = new URL(u);
+    return bare(x.hostname) === bare(host) ? x.pathname + x.search : null;
+  } catch {
+    return null;
+  }
+};
+// Fails early when Search Console access wasn't granted at sign-in.
+function scSession(opts) {
+  const g = session(opts),
+    s = g.store(),
+    scope = s.scope || SCOPES.join(" ");
+  if (!scope.includes(SC))
+    fail(
+      "google: Search Console access wasn't granted when you signed in. Run node google.mjs connect again and leave the Search Console box ticked.",
+    );
+  return { g, scope, who: whoOf(s) };
+}
+// The site's property and a Search Analytics query on it for other scripts, with token renewal and plain errors.
+/** @param {{ site?: string, home?: string, endpoints?: any }} [opts] */
+export async function searchConsole({ site, home, endpoints } = {}) {
+  const origin = httpUrl(site, "--site must be the site's address", "https://www.example.com");
+  const { g, who } = scSession({ home, endpoints }),
+    prop = await pickProperty(g, origin, who);
+  return {
+    origin,
+    prop,
+    query: body => g.call(`${g.E.searchConsole}/sites/${encodeURIComponent(prop)}/searchAnalytics/query`, body),
+    explain: e => explain(e, `${prop} in Search Console`, SC_API, who),
+  };
+}
 // A domain property covers its subdomains; a URL-prefix property only addresses that start with it.
 const inProperty = (prop, u) => {
   const d = prop.startsWith("sc-domain:") && prop.slice(10);
@@ -288,16 +322,9 @@ export async function fetchGoogle({
   const origin = httpUrl(site, "--site must be the site's address", "https://www.example.com");
   days = Math.round(Number(days));
   if (!(days >= 1 && days <= 480)) fail("google: --days must be between 1 and 480 (Search Console keeps 16 months).");
-  const g = session({ home, endpoints }),
+  const { g, scope, who } = scSession({ home, endpoints }),
     { E } = g,
-    notes = [],
-    s0 = g.store();
-  const who = whoOf(s0);
-  const scope = s0.scope || SCOPES.join(" ");
-  if (!scope.includes(SC))
-    fail(
-      "google: Search Console access wasn't granted when you signed in. Run node google.mjs connect again and leave the Search Console box ticked.",
-    );
+    notes = [];
   // A failed section becomes a note. A fatal one stops the pull, except on 429: a used-up quota is still only a note.
   const attempt = async (what, api, fn, fatal = false) => {
     try {
@@ -319,16 +346,8 @@ export async function fetchGoogle({
     h = origin.hostname;
   const scBase = `${E.searchConsole}/sites/${encodeURIComponent(prop)}`;
 
-  // www and apex count as one host, as in gsc-import; other subdomains of a domain property are left out.
-  const bare = x => x.replace(/^www\./, "");
-  const pathOf = u => {
-    try {
-      const x = new URL(u);
-      return bare(x.hostname) === bare(h) ? x.pathname + x.search : null;
-    } catch {
-      return null;
-    }
-  };
+  // www and apex count as one host; other subdomains of a domain property are left out.
+  const pathOf = u => pagePath(u, h);
   const metrics = r => ({
     clicks: r.clicks,
     impressions: r.impressions,

@@ -2045,8 +2045,43 @@ const aiPrefsHtml = () => "",
   aiPrefsMd = () => [];
 const linkIdeasHtml = () => "",
   linkIdeasMd = () => [];
-const changeHtml = () => "",
-  changeMd = () => [];
+// changeCheck, from change-check.mjs: one clicks line, never offered as a cause. Numbers are validated; the callers
+// escape text.
+const changeLine = () => {
+  const c = obj(raw.changeCheck),
+    m = obj(c?.clicks),
+    g = obj(c?.groups),
+    int = Number.isInteger;
+  const ranged = m && [m.percent, m.low, m.high].every(int);
+  if (
+    !c ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(c.changeDate) ||
+    !["likely up", "likely down", "inconclusive"].includes(m?.verdict) ||
+    (!ranged && m.verdict !== "inconclusive")
+  )
+    return "";
+  const signed = p => `${p > 0 ? "+" : p < 0 ? "−" : ""}${num(Math.abs(p))}%`,
+    changed = obj(g?.changed)?.pages,
+    control = obj(g?.control)?.pages;
+  const when = new Date(c.changeDate + "T00:00:00Z").toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  const what = ranged
+    ? `${m.verdict}, about ${signed(m.percent)} compared with ${asInt(control) ? plural(control, "similar unchanged page") : "similar unchanged pages"} (likely range ${signed(m.low)} to ${signed(m.high)}${m.verdict === "inconclusive" ? ", which includes no change" : ""})`
+    : `inconclusive${asString(m.reason) ? `, ${m.reason}` : ""}`;
+  return `Change check, ${asInt(changed) ? plural(changed, "page") : "the pages"} changed on ${when}${asInt(c.days) ? `, ${c.days} days before and after` : ""}: Google Search clicks ${what}. This shows what happened to the numbers, not why. Information only.`;
+};
+const changeHtml = () => {
+  const l = changeLine();
+  return l ? `\n    <p class="quiet">${esc(l)}</p>` : "";
+};
+const changeMd = () => {
+  const l = changeLine();
+  return l ? ["## Change check", "", noteMd(l), ""] : [];
+};
 const panelsHtml = () =>
   [
     secHtml,
