@@ -66,6 +66,7 @@ node <skill-dir>/scripts/seo-crawl.mjs --url http://localhost:3000 \
 - **Build with production values:** site URL and other env values are often baked in at build time. If you can't, say so in `notes`.
 - **Starting and stopping the server:** start it directly so it stops cleanly, e.g. `node node_modules/next/dist/bin/next start -p 3123` rather than `npx`. Always stop it when you're done.
 - Crawler findings are evidence, not verdicts. Check each against the profile (a noindex page may be intended), adjust severity, or drop it with a reason.
+- **Leaked keys:** a `secret-key-exposed` finding is an emergency. Tell the owner at once to revoke the key with its provider, before any other fix. Never copy the key into chat, notes or the report: the evidence shows only its type and first characters.
 - If the site can't run, audit statically and list the crawler checks under `notChecked`. Never present guesses as crawl results.
 - **History:** after the crawl, run this. It compares the crawl with the newest one filed in `seo-audit/history/`, adds a timeline of all of them, and files this crawl there. It never overwrites a filed crawl, and the first crawl is only filed. The crawler itself files the old `seo-audit/seo-crawl.json` there before it replaces it, so an audit from before this step isn't lost. Put the output in `seo-audit.json` as `diff`; the report then gets a "Since last audit" tab. It compares status, indexing, canonical, title, description, H1 and H2 text, hreflang, schema, Open Graph tags, sections and big word-count changes.
   ```bash
@@ -96,7 +97,7 @@ Ask the owner once, naming each of them. Store the answer in `seo-audit/settings
 
 **Two scripts also need the owner's yes.** Ask about each once, saying what it sends where:
 - **`osm.mjs` (local businesses):** `node <skill-dir>/scripts/osm.mjs --crawl seo-audit/seo-crawl.json [--type <id>] [--near lat,lon] [--radius 2000] --out seo-audit/osm.json` is a dry run; add `--yes` once the owner agrees. Ask: "This sends the business's address to OpenStreetMap to check it, and asks for similar businesses nearby. OK?" A service-area business's street is never sent. Copy `nearby` and `geocode` into `seo-audit.json`; they're information only, credited to OpenStreetMap. For commercial use, set `OSM_OVERPASS` to a paid or self-hosted Overpass server.
-- **`log-scan.mjs --verify-ips`:** downloads the vendors' public IP lists to tell real bot visits from fakes. Pass the flag only after a yes. Ask: "This downloads Google's, Bing's, OpenAI's, Anthropic's, Perplexity's, Apple's, Common Crawl's, DuckDuckGo's and Mistral's public lists of crawler addresses. Nothing about your site is sent. OK?" `--verify-ips <folder>` reads saved copies instead and downloads nothing.
+- **`log-scan.mjs --verify-ips`:** downloads the vendors' public IP lists to tell real bot visits from fakes, and checks YandexBot's addresses in DNS, since Yandex publishes no list. Pass the flag only after a yes. Ask: "This downloads Google's, Bing's, OpenAI's, Anthropic's, Perplexity's, Apple's, Common Crawl's, DuckDuckGo's and Mistral's public lists of crawler addresses, and asks this computer's DNS server for the names of the addresses claiming to be YandexBot. Nothing about your site is sent. OK?" `--verify-ips <folder>` reads saved copies of the lists instead and contacts nothing, so YandexBot is left unchecked, with a note.
 
 **Crawl options:**
 - `--include /blog/ --exclude /blog/tag/` audits one section. The depth and orphan checks are then listed as not checked, and "Since last audit" treats the crawl as partial.
@@ -124,7 +125,7 @@ Merge its `traffic` and `period` into `seo-audit.json` as `traffic` and `traffic
   - `connect-keys.mjs test matomo|posthog` checks a connection, as a dry run until `--yes`.
 - **Domain age (no key):** `node <skill-dir>/scripts/rdap.mjs --site <origin> --competitors <a.com,b.com> --out seo-audit/rdap.json` is a dry run until `--yes`, since the domain names go to each registry's RDAP server. Copy `domainAge`.
 - **Link ideas and missing searches:** with `google.json` (or `gsc.json` made with `--page-queries`) and the crawl, run `keyword-ideas.mjs` as in **Keyword ideas** step 1, and copy its `linkIdeas` and `queryGaps` into `seo-audit.json` as they are. Information only.
-- **From google.json, also:** copy `siteTotals` (property totals), `analyticsDetail` (users, sessions per day, device, country and the "AI Assistant" channel) and `brandSplit` (Google's own brand and non-brand label; null, with a note, for properties Google doesn't label).
+- **From google.json, also:** copy `siteTotals` (property totals), `analyticsDetail` (users, sessions per day, device, country and the "AI Assistant" channel) and `brandSplit` (Google's own brand and non-brand label; null, with a note, for properties Google doesn't label), and `newQueries` (searches with impressions this period that had none in the period before, the top 50; null when not compared).
 - **Google's and Bing's AI reports:** `gsc-import.mjs --ai-google <csv> --ai-bing <csv>` reads their exports. Copy `aiReports`.
 - **Matomo or PostHog:** offer it only if the site uses one (`_paq` or `matomo.js`, or `posthog.init`, in the code). It adds visits from search engines for each page, from the site's own analytics. `connect-keys.mjs guide matomo|posthog` says where to find each value. The owner runs `! node <skill-dir>/scripts/connect-keys.mjs set matomo` (or `set posthog`) in their own terminal: the address and ID are asked in plain view, the token or key at a hidden prompt. Pass the address and ID you found in the code as `--url`/`--site-id` or `--host`/`--project-id`, so the owner only types the secret. The same `fetch` (give it google.mjs's `--days` if that was changed) adds `matomo` and `posthog`, including site-wide search visits by device and for the top 10 countries (`byDevice`, `byCountry`); copy them as they are. If the site uses one and the owner skips it, add a Limits line saying so.
 - **Microsoft Clarity:** offer it only if the site uses Clarity (`clarity.ms/tag` in the code). It adds what real visitors did on each page in the last 3 days: sessions, scroll depth, quick backs, rage clicks and dead clicks. `connect-keys.mjs guide clarity` shows where the token is (a project admin makes it under Settings → Data Export); the owner runs `! node <skill-dir>/scripts/connect-keys.mjs set clarity` in their own terminal and pastes it at the hidden prompt. The same `fetch` adds `clarity`; copy it as it is. Only the token is sent, and Clarity allows 10 requests a day per project, so fetch once per audit. Tell the owner the notes, including any metric left out because Clarity sent it in another form. Heat maps and recordings stay in Clarity's dashboard: point the owner there for a page whose quick backs or rage clicks stand out. If the site uses Clarity and the owner skips it, add a Limits line saying so.
@@ -179,7 +180,7 @@ node <skill-dir>/scripts/content-scan.mjs --in seo-audit/content.json --items pa
 
 Write `seo-audit/seo-audit.json` exactly as `report-format.md` describes. Merge the crawler and content-scan findings into it, with one finding per root cause. Copy these as they are:
 - from the crawl: `speed`, `labSpeed`, `lighthouse`, `trustSignals`, `agents`, `writingNotes`, `businessType`, `outboundLinks` and `images`
-- from the crawl, when present: `hstsPreload`, `sections`, `siteSize`, `indexing`, `templatedDescriptions`, `keywordUse`, `linksToOtherSites`, `productFields`, `media`, `renderSample`, `renderedPage`, `localBusiness`, `aiBots`, `trainingOptOut`, `contentUsage`, `botPreferenceSync`, `aiBotPaid` and `landmarks`
+- from the crawl, when present: `hstsPreload`, `sections`, `siteSize`, `indexing`, `templatedDescriptions`, `keywordUse`, `linksToOtherSites`, `productFields`, `media`, `renderSample`, `renderedPage`, `localBusiness`, `aiBots`, `trainingOptOut`, `contentUsage`, `botPreferenceSync`, `aiBotPaid`, `landmarks`, `linkedOnce`, `appLinks` and `pdfLinks`
 - the `diff` and the Search Console `traffic`
 - when you have them: `googleUpdates`, `backlinks`, `matomo`, `posthog`, `clarity`, `commonCrawl`, `nearby`, `geocode`, and the `links-import.mjs` fields
 
@@ -199,6 +200,8 @@ Add `--pdf` if the owner wants a PDF too (`seo-audit.pdf`, printed by the instal
 
 The score is computed by the renderer from findings and passed rules; the model is in `report-format.md`. Never type a score by hand.
 
+**Check settings.** If the owner wants a check off for this project, or at another severity, put it in `seo-audit/settings.json` as `"checks": { "off": ["no-hsts"], "severity": { "img-alt-quality": "medium" } }`, using the finding's `check` id, and keep `check` on findings you copy from the crawl. The renderer applies it before the score and lists it in the report; tell the owner in chat. Blockers can't be turned off or lowered there: drop a blocker only per run, with the reason in `notes`.
+
 **Who fixes it.** Set `fixBy: "owner"` on every finding only the owner can resolve:
 - content or facts you must not invent (local proof, reviews, photos, credentials, prices)
 - edits in a CMS or content database
@@ -209,6 +212,8 @@ The score is computed by the renderer from findings and passed rules; the model 
 The report labels these **Needs you**. While blockers are open, the score panel shows the score the site reaches once they are fixed, so the owner sees what their part unlocks.
 
 In chat, give: the score and band, and while blockers are open, the score fixing them unlocks and who has to do it. Then the verdict (the first sentence of `summary`), counts by severity, the top three problems, both report paths, and an offer to fix. If the site has almost no SEO in place (no titles, sitemap or schema on most pages), offer `/seo-setup` as well: it plans everything first. Ask before committing `seo-audit/`.
+
+**GitHub issues (optional).** If the owner asks for issues, run `node <skill-dir>/scripts/issues.mjs --audit seo-audit/seo-audit.json [--ids F-001,F-002] [--repo owner/name]` and show the dry run. Only after their yes, run it again with `--yes`; it uses their own `gh` login and skips findings already filed.
 
 ### 5. Fix (fix mode only)
 
@@ -259,6 +264,8 @@ List the changed routes, templates and content. Apply only the rules they touch.
 Run the audit, with `--check-live` once the production origin answers. Launch passes only with **zero open blockers** and **zero open high findings** in the CRAWL, URL, REND, MAP and TRUST-07 rules, plus the steps in `rules/launch-monitoring.md`. A certificate blocker fails the launch.
 
 Launch mode edits nothing. Among the launch-day steps, list IndexNow: once the site is live, `/seo-fix` writes the key file (with the owner's yes, fix step 10), the owner deploys, and `indexnow.mjs submit --site <origin> --key <key> --from-sitemap <origin>/sitemap.xml --yes` tells Bing and the others about every page. It refuses to send until `<origin>/<key>.txt` serves the key.
+
+After launch, suggest `node <skill-dir>/scripts/deploy-check.mjs --site <origin>` (or `npx seo-supervisor deploy-check --site <origin>`) as a CI step after each deploy: about ten seconds, exit 1 on a blocker (home page down or noindex, robots.txt blocking the site or failing, the certificate expired or about to). It doesn't replace the audit.
 
 ### 8. Setup mode
 

@@ -28,6 +28,7 @@
 ### LAUNCH-04 · Measure what visitors do · medium
 - Analytics events on the actions that matter (form submit, tool run, call click, add to cart, next-step link clicks). Never send what a visitor typed, secrets or scanned domains. Tool sites: use the event list in TOOL-12.
 - **Consent Mode (EU):** with Google's Consent Mode, a visitor who declines analytics cookies isn't counted like the others. The basic setup blocks the Google tag until consent, so nothing is collected. The advanced setup sends cookieless pings, which Analytics models only when the property qualifies (support.google.com/analytics/answer/9976101). Either way, Analytics counts fewer search visits from the EU than Search Console counts clicks. Compare trends, not totals, and don't read the gap as lost traffic.
+- **Crawler (`analytics-tag-twice`, low):** the same GA4 ID set up in two scripts, or one Tag Manager container loaded twice. Google says the same Google tag configured twice "may cause duplicate data or mixed settings"; fine when the tag's "Ignore duplicate instances of on-page configuration" setting is on. Tags inside Tag Manager aren't seen.
 
 ### LAUNCH-05 · Watch Search Console every week · medium
 - **Pages report:** "Crawled, currently not indexed" on templated pages usually means thin or duplicate content (CONTENT-04/05).

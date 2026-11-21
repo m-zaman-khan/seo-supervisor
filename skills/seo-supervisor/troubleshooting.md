@@ -27,7 +27,7 @@ It lists Node, Chrome or Edge, the optional add-ons, the settings folder, what's
 | --- | --- | --- |
 | A pre-launch site looks clean | Per-page checks skip noindex pages | Crawl again with `--ignore-noindex`. |
 | "Crawl stopped at 1000 pages (--max)" | The page limit | Raise `--max`. |
-| Many 403, 429 or 503 answers, or a bot challenge | Bot protection or a rate limit on the server | Crawl a local production build instead. On production, use `--concurrency 2`. The crawler waits out a 429's Retry-After (30 s at most) by itself. A firewall that turns away Googlebot is its own finding (CRAWL-09). |
+| Many 403, 429 or 503 answers, or a bot challenge | Bot protection or a rate limit on the server | Crawl a local production build instead. On production, use `--concurrency 2`. The crawler waits out a 429's or 503's Retry-After (30 s at most), and pauses after a dropped connection, by itself; the pauses stop at 2 minutes in all. A firewall that turns away Googlebot is its own finding (CRAWL-09). |
 | Canonicals point at production while you crawl localhost | Expected | Pass `--site-origin` with the public address; the crawler maps it. |
 | "PageSpeed refused the requests" | Google refuses almost every request without a key | Set a free PageSpeed Insights key in `PSI_API_KEY`. Until then PERF-01 is under Limits. |
 
