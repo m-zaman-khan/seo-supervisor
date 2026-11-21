@@ -79,7 +79,13 @@ import {
   keywordUse,
   isGuide,
   newestDate,
-} from "./checks/content.mjs"; // once, before any request
+} from "./checks/content.mjs";
+
+import { localFeatures, judgeLocal } from "./checks/local.mjs";
+// The site's local business (storefront, service-area or hybrid), judged once from every page when the address check
+// or the site-wide block first asks.
+let localJudged;
+const localBusiness = () => (localJudged === undefined ? (localJudged = judgeLocal(htmlPages, shows)) : localJudged); // once, before any request
 
 const VERSION = "2.0.0";
 const UA = "seo-supervisor-crawler/" + VERSION;
@@ -2011,6 +2017,9 @@ function analyze(url, html, headers, xRobotsLines) {
     ? keywordUse({ title: rec.title, headings, description: rec.description || "", text: textOf(mainHtml) })
     : null;
 
+  // Local business schema, plus "we come to you" wording in the text.
+  rec.local = localFeatures(nodes, text);
+
   return rec;
 }
 
@@ -3169,7 +3178,12 @@ for (const p of htmlPages) {
   if (p.deprecated.length) add("deprecated-schema", u, p.deprecated.join(", "));
   if (p.hasRating) add("rating-review", u);
   if (p.nap.length) evalRules("LOCAL-05");
-  const napGone = p.nap.filter(f => ![p, home?.html && home].some(r => r && shows(r, f)));
+  // A service-area business may hide its street address (LOCAL-06), so it isn't asked to show it.
+  const napGone = p.nap.filter(
+    f =>
+      ![p, home?.html && home].some(r => r && shows(r, f)) &&
+      !(f.kind === "street address" && localBusiness()?.kind === "service-area"),
+  );
   if (napGone.length)
     add(
       "nap-not-shown",
@@ -4426,6 +4440,18 @@ if (blocked.size)
       ),
       pages: kw.filter(k => k.verdict !== "natural").slice(0, 50),
     };
+}
+
+// ---------- local business: site-wide ----------
+// A service-area business whose schema gives a street address no page shows gets a note instead of the address
+// finding.
+{
+  const lb = localBusiness();
+  if (lb) extra.localBusiness = lb;
+  if (lb?.streetHidden)
+    notes.push(
+      `The business schema gives the street address “${lb.address?.streetAddress || lb.address?.text}”, but no page shows it, and the site says the business goes to its customers, so the address check skipped it. If customers don't come to that address, take it out of the schema too and keep the town, region and postcode (LOCAL-06). If they do, show it on the site (LOCAL-05).`,
+    );
 }
 
 // ---------- links to other sites ----------

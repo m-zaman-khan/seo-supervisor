@@ -1224,8 +1224,89 @@ const contentMd = () =>
       ]
     : [];
 
-const localHtml = () => "",
-  localMd = () => [];
+// OpenStreetMap's credit goes wherever its data shows (ODbL). Names, addresses and evidence come from the site or
+// from OpenStreetMap, so each is escaped.
+// https://osmfoundation.org/wiki/Licence/Attribution_Guidelines
+const lbRaw = obj(raw.localBusiness),
+  nbRaw = obj(raw.nearby),
+  gcRaw = obj(raw.geocode);
+const LOCAL_KIND = {
+  storefront: "Customers come to the business's address: a storefront.",
+  "service-area":
+    "The business goes to its customers: a service-area business. It may hide its street address, so the address check doesn't ask for it (LOCAL-06).",
+  hybrid:
+    "Customers come to the business's address, and it also goes to them. Keep the address on the site and in the schema, and list the towns it serves as areaServed (LOCAL-12).",
+};
+const OSM_CREDIT =
+  "Map data © OpenStreetMap contributors, under the Open Database License (https://www.openstreetmap.org/copyright).";
+const lcFin = x => typeof x === "number" && Number.isFinite(x);
+const lcDist = m => (m < 1000 ? `${num(Math.round(m))} m` : `${+(m / 1000).toFixed(1)} km`);
+const lcStr = x => typeof x === "string" && x.trim() !== "";
+// [text, list of [name, detail]] blocks, and whether OpenStreetMap's data is shown.
+const localLines = () => {
+  const L = [];
+  if (lbRaw && LOCAL_KIND[lbRaw.kind])
+    L.push([
+      LOCAL_KIND[lbRaw.kind],
+      (Array.isArray(lbRaw.evidence) ? lbRaw.evidence.filter(lcStr) : []).slice(0, 6).map(e => [e, ""]),
+    ]);
+  const nb = nbRaw && [nbRaw.count, nbRaw.radiusM, nbRaw.perKm2].every(lcFin) ? nbRaw : null;
+  if (nb)
+    L.push([
+      `OpenStreetMap lists ${plural(nb.count, "other place")} of the same kind (${lcStr(nb.label) ? nb.label : "the business's type"}) within ${lcDist(nb.radiusM)} of ${lcStr(nb.centerFrom) ? nb.centerFrom : "the business"}: about ${nb.perKm2} per km². Context only: volunteers keep OpenStreetMap, so it can miss businesses or list closed ones.`,
+      (Array.isArray(nb.places) ? nb.places : [])
+        .filter(p => obj(p) && lcStr(p.name) && lcFin(p.distanceM))
+        .slice(0, 10)
+        .map(p => [p.name, lcDist(p.distanceM)]),
+    ]);
+  const g = gcRaw && lcStr(gcRaw.query) ? gcRaw : null,
+    f = obj(g?.found);
+  if (g && !f)
+    L.push([
+      `OpenStreetMap's Nominatim couldn't find “${g.query}”. If the address is right, it may just be missing from OpenStreetMap; that's not a problem with the site.`,
+      [],
+    ]);
+  else if (g && lcFin(f.lat) && lcFin(f.lon)) {
+    if (lcFin(g.distanceM))
+      L.push([
+        g.distanceM > 250
+          ? `OpenStreetMap's Nominatim places “${g.query}” ${lcDist(g.distanceM)} from the schema's geo. Check which is right on a map: geo should mark the business's own door (LOCAL-06).`
+          : `OpenStreetMap's Nominatim places “${g.query}” ${lcDist(g.distanceM)} from the schema's geo, so the two agree.`,
+        [],
+      ]);
+    else if (g.suggestGeo === true)
+      L.push([
+        `The schema has no geo. OpenStreetMap's Nominatim places “${g.query}” at ${f.lat.toFixed(5)}, ${f.lon.toFixed(5)}. Check the point on a map, then add it to the business schema as geo, with latitude and longitude (LOCAL-06).`,
+        [],
+      ]);
+  }
+  return { L, osm: !!nb || !!g };
+};
+const LOCAL_INTRO = "Information only: none of this changes the score. 250 m is our own line for the address check.";
+const localHtml = () => {
+  const { L, osm } = localLines();
+  return L.length
+    ? `\n    <details class="how local"><summary>Local business</summary><p>${esc(LOCAL_INTRO)}</p>${L.map(([t, list]) => `<p>${esc(t)}</p>${list.length ? `<ul class="lim">${list.map(([k, v]) => `<li><b>${esc(k)}</b>${v ? `<span>${esc(v)}</span>` : ""}</li>`).join("")}</ul>` : ""}`).join("")}${osm ? `<p class="quiet">Map data <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>, under the Open Database License.</p>` : ""}</details>`
+    : "";
+};
+const localMd = () => {
+  const { L, osm } = localLines();
+  return L.length
+    ? [
+        "## Local business",
+        "",
+        LOCAL_INTRO,
+        "",
+        ...L.flatMap(([t, list]) => [
+          noteMd(t),
+          "",
+          ...list.map(([k, v]) => `- ${noteMd(k)}${v ? ` ${noteMd(v)}` : ""}`),
+          ...(list.length ? [""] : []),
+        ]),
+        ...(osm ? [noteMd(OSM_CREDIT), ""] : []),
+      ]
+    : [];
+};
 
 // More about links, in one collapsed panel on the Overview (a section in the Markdown). Names, addresses and link
 // text come from other sites, so each is escaped (code spans in the Markdown).
