@@ -8,7 +8,8 @@ import { dirname, resolve, basename } from "node:path";
 import { planStats, planHtml, planMarkdown, PLAN_CSS } from "./report-plan.mjs";
 import { fmtCwv, passes } from "./checks/speed.mjs";
 import { VERSION } from "./update-check.mjs";
-import { SEV, EARN, isOpen, normalise, buildRules as rulesOf, score, bandOf, OWN_SCORE } from "./lib/score.mjs";
+import { SEV, EARN, isOpen, findingsOf, buildRules as rulesOf, score, bandOf, OWN_SCORE } from "./lib/score.mjs";
+import { recheckOf, RECHECK_NOTE } from "./lib/recheck.mjs";
 
 const argv = process.argv.slice(2);
 const inPath = argv.find(a => !a.startsWith("--"));
@@ -62,7 +63,8 @@ const STATUS_LABEL = {
   "needs-decision": "Needs decision",
   "in-progress": "In progress",
 };
-const findings = normalise(raw.findings);
+// The check settings (settings.json beside the audit file) apply before the score.
+const { findings, ...checkSettings } = findingsOf(raw, dirname(resolve(inPath)));
 findings.sort(
   (a, b) =>
     Number(!isOpen(a)) - Number(!isOpen(b)) ||
@@ -2238,8 +2240,100 @@ const dataMd = () => {
   const l = newSearchLine();
   return l ? ["## New searches", "", noteMd(l), ""] : [];
 };
-const flowHtml = () => "",
-  flowMd = () => [];
+// Every turned-off check, changed severity and warning about settings.json, so a setting is never silent. Ids and
+// warnings come from the user's file, so they're escaped.
+const SETTINGS_INTRO =
+  "From seo-audit/settings.json, this project's own settings. A check turned off is left out of the findings, and the score leaves turned-off checks out, as if they hadn't run. A changed severity counts in the score too. Blockers can't be turned off or lowered there.";
+const settingRows = () => [
+  ...checkSettings.off.map(o => [
+    o.check,
+    `Turned off: ${o.count ? `${plural(o.count, "finding")} left out` : "no findings this run"}.`,
+  ]),
+  ...checkSettings.changed.map(c => [
+    c.check,
+    `Severity set to ${c.to === "needs-decision" ? "decision needed" : c.to}: ${c.count ? `${plural(c.count, "finding")} changed` : "no findings this run"}.`,
+  ]),
+];
+const settingsSummary = () =>
+  [
+    checkSettings.off.length && `${plural(checkSettings.off.length, "check")} turned off`,
+    checkSettings.changed.length && `${plural(checkSettings.changed.length, "severity", "severities")} changed`,
+    checkSettings.warnings.length && plural(checkSettings.warnings.length, "warning"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+// One note on the re-check commands the finding cards show.
+const anyRecheck = () => findings.some(f => recheckOf(f));
+// lighthouse.mjs keeps each failed audit with its category title, "Accessibility" in the English runs it starts.
+// Accessibility audits are pass or fail, and some checks, such as trapped focus, need a manual review.
+// https://developer.chrome.com/docs/lighthouse/accessibility/scoring
+const a11yRuns = (Array.isArray(raw.lighthouse) ? raw.lighthouse : [])
+  .filter(x => obj(x) && typeof x.url === "string" && Array.isArray(x.detail))
+  .map(x => ({
+    path: notePath(x.url),
+    score: Number.isInteger(x.scores?.accessibility) ? x.scores.accessibility : null,
+    audits: x.detail
+      .filter(a => obj(a) && typeof a.title === "string" && a.category === "Accessibility")
+      .map(a => ({
+        title: a.title,
+        items: (Array.isArray(a.items) ? a.items : []).filter(s => typeof s === "string" && s).slice(0, 10),
+      })),
+  }))
+  .filter(x => x.audits.length);
+const A11Y_INTRO =
+  "Lighthouse's own accessibility checks that failed on each page it ran, with the page elements it names (10 at most). Each check is pass or fail. They're Lighthouse's checks, not SEO Supervisor's, and they can't find everything: some problems, such as keyboard focus that gets trapped, only a person can check. Information only: they don't change the score.";
+const a11yHead = x =>
+  `${x.score != null ? `Accessibility ${x.score} · ` : ""}${plural(x.audits.length, "failed check")}`;
+const flowHtml = () =>
+  [
+    settingRows().length || checkSettings.warnings.length
+      ? `\n    <details class="how checksettings"><summary>Check settings: ${esc(settingsSummary())}</summary><p>${esc(SETTINGS_INTRO)}</p><ul class="lim">${settingRows()
+          .map(([id, t]) => `<li><b><code>${esc(id)}</code></b><span>${esc(t)}</span></li>`)
+          .join(
+            "",
+          )}${checkSettings.warnings.map(w => `<li><b>Warning</b><span>${esc(w)}</span></li>`).join("")}</ul></details>`
+      : "",
+    anyRecheck() ? `\n    <p class="quiet">${esc(RECHECK_NOTE)}</p>` : "",
+    a11yRuns.length
+      ? `\n    <details class="how a11y"><summary>Lighthouse's accessibility checks · ${plural(a11yRuns.length, "page")} with failed checks</summary><p>${esc(A11Y_INTRO)}</p>${a11yRuns
+          .slice(0, 10)
+          .map(
+            x =>
+              `<details><summary><code>${esc(x.path)}</code> · ${esc(a11yHead(x))}</summary><ul class="lim">${x.audits.map(a => `<li><b>${inl(a.title)}</b><span>${a.items.map(s => `<code>${esc(s)}</code>`).join(", ")}</span></li>`).join("")}</ul></details>`,
+          )
+          .join(
+            "",
+          )}${a11yRuns.length > 10 && mdFile ? `<p>All ${num(a11yRuns.length)} pages are listed in <code>${esc(mdFile)}</code>.</p>` : ""}</details>`
+      : "",
+  ].join("");
+const flowMd = () => [
+  ...(settingRows().length || checkSettings.warnings.length
+    ? [
+        "## Check settings",
+        "",
+        SETTINGS_INTRO,
+        "",
+        ...settingRows().map(([id, t]) => `- ${noteCode(id)} ${noteMd(t)}`),
+        ...checkSettings.warnings.map(w => `- Warning: ${noteMd(w)}`),
+        "",
+      ]
+    : []),
+  ...(anyRecheck() ? ["## Checking a fix yourself", "", RECHECK_NOTE, ""] : []),
+  ...(a11yRuns.length
+    ? [
+        "## Lighthouse's accessibility checks",
+        "",
+        A11Y_INTRO,
+        "",
+        ...a11yRuns.flatMap(x => [
+          `### ${noteCode(x.path)} (${a11yHead(x)})`,
+          "",
+          ...x.audits.map(a => `- ${noteMd(a.title)}${a.items.length ? `: ${a.items.map(noteCode).join(", ")}` : ""}`),
+          "",
+        ]),
+      ]
+    : []),
+];
 const panelsHtml = () =>
   [
     secHtml,
@@ -2447,6 +2541,13 @@ function overviewHtml() {
 const EFFORT = { quick: "under 30 minutes", hours: "an hour or two", "half-day": "half a day or more" };
 const effortOf = f =>
   typeof f.effort === "string" && Object.hasOwn(EFFORT, f.effort) ? `Effort: ${EFFORT[f.effort]}` : "";
+// The re-check command's URL may come from the crawl, so it's escaped.
+const recheckHtml = f => {
+  const r = recheckOf(f);
+  return r
+    ? `<div class="ev recheck"><h4>Check the fix yourself</h4><p><code>${esc(r.command)}</code></p><p class="quiet">${esc(r.hint)}</p></div>`
+    : "";
+};
 function evidenceHtml(f) {
   const ev = f.evidence || [];
   if (!ev.length) return "";
@@ -2483,7 +2584,7 @@ function findingHtml(f) {
           ${isFixed && f.fixed ? `<div class="donebox"><h4>What was done</h4><p>${inl(f.fixed.summary || "")}</p>${(f.fixed.files || []).length ? `<p class="files">${f.fixed.files.map(x => `<code>${esc(x)}</code>`).join(" ")}</p>` : ""}${f.fixed.verified ? `<p class="quiet">${ICON.check} ${inl(f.fixed.verified)}</p>` : ""}</div>` : ""}
         </div>
       </div>
-      ${trafficHtml(f)}${clarityHtml(f)}${evidenceHtml(f)}
+      ${trafficHtml(f)}${clarityHtml(f)}${evidenceHtml(f)}${recheckHtml(f)}
     </div>
   </article>`;
 }
@@ -3151,6 +3252,8 @@ function markdown() {
       if (f.count > f.evidence.length) L.push("", `${f.count - f.evidence.length} more cases not listed.`);
       L.push("");
     }
+    const rc = recheckOf(f);
+    if (rc) L.push(`**Check the fix yourself.** ${mdCode(rc.command)} ${rc.hint}`, "");
   }
   if (passed.length) {
     L.push("## Passed checks", "");
@@ -3233,6 +3336,9 @@ console.log(
     unlock &&
       `Fixing the ${openBlockers.length === 1 ? "blocker" : `${openBlockers.length} blockers`} raises it to ${unlock.value}/100 (${bandOf(unlock.value)[1]}).`,
     `Open: ${open.length} (${SEV.map(s => `${countSev(s)} ${SEV_LABEL[s].toLowerCase()}`).join(", ")}) · fixed: ${fixed.length}${overall ? ` · rules passing: ${overall.passing} of ${overall.rules}` : ""}`,
+    settingRows().length &&
+      `Check settings (settings.json): ${settingsSummary()}. The score leaves turned-off checks out.`,
+    ...checkSettings.warnings.map(w => `Settings warning: ${w}`),
     `Wrote: ${[outPath, mdPath, pdfPath && !pdfError && pdfPath].filter(Boolean).join(", ")}`,
   ]
     .filter(Boolean)

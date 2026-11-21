@@ -3,7 +3,7 @@
 // Several sites at a glance from local audits. Scores come from lib/score.mjs, so they match each seo-audit.html.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
-import { buildRules, bandOf, isOpen, normalise, score, OWN_SCORE } from "./lib/score.mjs";
+import { buildRules, bandOf, isOpen, findingsOf, score, OWN_SCORE } from "./lib/score.mjs";
 import { isMain } from "./lib/is-main.mjs";
 
 const fmtDate = d => {
@@ -23,7 +23,7 @@ export function summaryOf(dir) {
   } catch {
     return { dir, problem: `${file} can't be read as JSON` };
   }
-  const findings = normalise(raw.findings),
+  const { findings } = findingsOf(raw, dirname(file)),
     passed = Array.isArray(raw.passed) ? raw.passed : [],
     open = findings.filter(isOpen);
   const s = score(buildRules(findings, passed)),
