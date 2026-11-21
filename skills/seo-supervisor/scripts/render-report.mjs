@@ -2545,9 +2545,15 @@ const grid = (g => {
     })
     .filter(k => k.points === n * n); // a grid with holes would mislead, so it isn't drawn
   if (!keywords.length) return null;
+  // The run's own notes, including any third-party credit Google returned, which its terms require showing.
+  const notes = (Array.isArray(g.notes) ? g.notes : [])
+    .filter(t => typeof t === "string" && t.trim())
+    .slice(0, 6)
+    .map(t => t.trim().slice(0, 400));
   return {
     n,
     keywords,
+    notes,
     km: Number.isFinite(g.spacingKm) && g.spacingKm > 0 && g.spacingKm <= 50 ? g.spacingKm : null,
     date: /^\d{4}-\d{2}-\d{2}$/.test(g.date) ? g.date : null,
   };
@@ -2600,7 +2606,7 @@ const gridHtml = () =>
             `</div><p class="gg-credit">Places data: Google Maps</p></figure>`,
         )
         .join("") +
-      `</div></details>`
+      `</div>${grid.notes.map(t => `<p>${esc(t)}</p>`).join("")}</details>`
     : "";
 const gridMd = () =>
   grid
@@ -2629,6 +2635,7 @@ const gridMd = () =>
         ]),
         "Places data: Google Maps",
         "",
+        ...grid.notes.flatMap(t => [noteMd(t), ""]),
       ]
     : [];
 const panelsHtml = () =>

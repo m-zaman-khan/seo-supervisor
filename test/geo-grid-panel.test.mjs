@@ -74,6 +74,19 @@ test("the geo-grid panel draws each keyword's grid with positions, the centre ou
   assert.deepEqual(scores(html), scores(before.html), "information only: no score moves");
 });
 
+test("the geo-grid panel shows the run's notes, which carry any third-party credit Google's terms require, escaped", async () => {
+  const credit = `Google's results include data from ${XSS} (https://example.org/). Show this credit next to "Google Maps" wherever the grid is shown.`;
+  const { html, md } = await render({ geoGrid: { ...GRID, notes: [credit, 42, "Stopped after 30 of 50 searches."] } });
+  const panel = html.slice(
+    html.indexOf('class="how geogrid"'),
+    html.indexOf("</details>", html.indexOf('class="how geogrid"')),
+  );
+  assert.match(panel, /Google&#39;s results include data from &lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.match(panel, /Stopped after 30 of 50 searches\./);
+  assert.doesNotMatch(panel, /<img src=x|>42</, "escaped, and only text notes");
+  assert.match(md, /Google's results include data from \\<img src=x onerror=alert\(1\)\\>/);
+});
+
 test("the geo-grid panel shows nothing for data it can't trust", async () => {
   for (const geoGrid of [
     { ...GRID, size: 6 },
