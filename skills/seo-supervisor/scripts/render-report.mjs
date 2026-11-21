@@ -1040,8 +1040,58 @@ const analyticsSplitLines = () =>
 const secHtml = () => "",
   secMd = () => [];
 
-const crawlScopeHtml = () => "",
-  crawlScopeMd = () => [];
+// Pages per top-level section show only with two or more; siteSize is set when the crawl stopped at --max, and
+// indexing is Search Console's indexed count. Paths are escaped.
+const countOf = x => Number.isInteger(x) && x >= 0;
+const crawlSections = (Array.isArray(raw.sections) ? raw.sections : [])
+  .filter(s => obj(s) && typeof s.path === "string" && countOf(s.pages) && Number.isFinite(s.share))
+  .slice(0, 20);
+const crawlLines = () => {
+  const z = obj(raw.siteSize),
+    i = obj(raw.indexing);
+  return [
+    z &&
+      [z.crawled, z.known, z.sitemapUrls].every(countOf) &&
+      `The crawl stopped at ${num(z.crawled)} pages (--max). It knew of ${num(z.known)} URLs on the site from links and sitemaps (the sitemaps list ${num(z.sitemapUrls)}), so the site has at least ${num(Math.max(z.known, z.sitemapUrls))} URLs.`,
+    i &&
+      [i.indexed, i.notIndexed, i.crawlIndexable].every(countOf) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(i.date) &&
+      `Search Console counted ${num(i.indexed)} indexed pages (and ${num(i.notIndexed)} not indexed) on ${i.date}; this crawl found ${num(i.crawlIndexable)} pages meant to be indexed${i.capped ? " before it stopped at --max" : ""}. Information only: it doesn't change the score.`,
+  ].filter(Boolean);
+};
+const SECTIONS_INTRO =
+  "How the crawled pages split across the site's top-level folders. Pages with nothing below them count as top-level pages (/). Information only.";
+const pctOf = s => `${Math.round(s * 100)}%`;
+const crawlScopeHtml = () =>
+  crawlLines()
+    .map(t => `\n    <p class="quiet">${esc(t)}</p>`)
+    .join("") +
+  (crawlSections.length > 1
+    ? `\n    <details class="how sections"><summary>Site sections</summary><p>${esc(SECTIONS_INTRO)}</p><div class="tablewrap"><table><thead><tr><th scope="col">Section</th><th scope="col">Pages</th><th scope="col">Share</th></tr></thead><tbody>${crawlSections.map(s => `<tr><td><code>${esc(s.path)}</code></td><td>${num(s.pages)}</td><td>${pctOf(s.share)}</td></tr>`).join("")}</tbody></table></div></details>`
+    : "");
+const crawlScopeMd = () => {
+  const lines = crawlLines(),
+    table = crawlSections.length > 1;
+  return lines.length || table
+    ? [
+        "## Crawl coverage",
+        "",
+        ...lines.flatMap(t => [t, ""]),
+        ...(table
+          ? [
+              "### Site sections",
+              "",
+              SECTIONS_INTRO,
+              "",
+              "| Section | Pages | Share |",
+              "| --- | ---: | ---: |",
+              ...crawlSections.map(s => `| ${cellMd(noteCode(s.path))} | ${num(s.pages)} | ${pctOf(s.share)} |`),
+              "",
+            ]
+          : []),
+      ]
+    : [];
+};
 
 const aiCrawlersHtml = () => "",
   aiCrawlersMd = () => [];

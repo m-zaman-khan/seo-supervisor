@@ -37,7 +37,7 @@ Google renders JavaScript, but later and not always. Most AI crawlers (GPTBot, C
 
 ### REND-08 · HTML stays under Googlebot's 2 MB limit · high
 - **Check:** crawler `html-size` (flags anything over 500 KB; over 2 MB is high).
-- **Pass:** Googlebot reads only the first 2 MB of each HTML response; content past that isn't indexed. Keep the title, meta, canonical and JSON-LD early in `<head>`, and move huge inline JSON (hydration data, big lists) out of the document.
+- **Pass:** Googlebot reads only the first 2 MB of each HTML response; content past that isn't indexed. A PDF gets more: Googlebot reads its first 64 MB (Google's Googlebot docs). Keep the title, meta, canonical and JSON-LD early in `<head>`, and move huge inline JSON (hydration data, big lists) out of the document.
 
 ### REND-05 · One title, canonical, robots tag and schema graph per page · high
 - **Check:** crawler `title-multiple`, `canonical-multiple`. Code: layouts that hard-code a title, or two SEO plugins or helpers both writing tags.

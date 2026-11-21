@@ -42,6 +42,7 @@ Can search engines reach the pages, and are they allowed to index the right ones
 ### CRAWL-07 · No internal links to broken pages · high
 - **Check:** crawler `broken-internal-link`. Code: generated link blocks (related, next, breadcrumbs, footer).
 - **Fix:** fix or remove the link, and filter generated links through the set of live pages (LINK-04).
+- **Unreadable addresses:** `url-malformed` (medium) lists link hrefs and image srcs that aren't valid URLs at all, such as `https://` with no host or a host with a space in it. Browsers and crawlers can't follow them; a template usually built them from an empty setting.
 - **Links to other sites:** only with `--outbound-links`, its own owner opt-in, since it visits other sites. Up to 100 distinct outside URLs, 4 at a time, HEAD then GET, 15 s each, and never a private or local address (checked on every redirect and at connect time). `outbound-broken` (low) is a 404 or 410. A refusal (403, 429), a server error or no answer is "couldn't check": it's in the notes and in `outboundLinks`, never counted as broken. Without the flag, Limits lists the outside links as not checked.
 - **Check (logs):** `log-scan.mjs --crawl seo-audit/seo-crawl.json` `bot-404s`: URLs the site itself links to (or lists in its sitemap) that search crawlers requested 5 or more times and got a 404. Other repeated 404s are only listed (`repeated404s`), and probe paths such as `/.env` or `/wp-*` are ignored. A 404 or 410 for pages gone for good is fine.
 
@@ -49,7 +50,7 @@ Can search engines reach the pages, and are they allowed to index the right ones
 - **Check:** crawler `redirect-chain`, `link-to-redirect`. Code: redirect config, middleware, nginx/CDN rules.
 - **Pass:** every old URL goes straight to its final destination. Internal links already point at final URLs, usually with the right trailing slash.
 - **Fix:** collapse the chains. Watch frameworks whose trailing-slash redirect runs before custom redirects: put legacy redirects at the edge so they cover both slash forms in one hop.
-- **Crawler:** also flags meta refresh redirects (`meta-refresh`, medium); replace them with a server-side 301/308.
+- **Crawler:** also flags meta refresh redirects (`meta-refresh`, medium); replace them with a server-side 301/308. A redirect (or a sitemap) that leaves the crawled site for a private, local or cloud-metadata address isn't fetched; the crawl keeps the redirect as the answer and says so in a note. The crawled site itself is never blocked, so a localhost or LAN server crawls as usual.
 - **http:// links:** on an HTTPS site, `link-http` (medium) flags pages linking to the site's own host (with or without `www`) as `http://`: each click and crawl takes a redirect hop first. Use `https://` or relative paths. Insecure resources on HTTPS pages are TRUST-01's `mixed-content`.
 
 ### CRAWL-09 · Bot protection doesn't block real search crawlers · high
@@ -64,7 +65,7 @@ Can search engines reach the pages, and are they allowed to index the right ones
 - **Fix:** exempt HTML routes and verified bots. Under load, answer crawlers with 503 or 429 for hours (at most 1–2 days), never 403 or a challenge page. Verify Googlebot by IP using Google's published ranges (now under `developers.google.com/crawling/`). After launch, confirm a 200 with Search Console's URL Inspection live test.
 
 ### CRAWL-10 · Parameter, filter, search and result pages stay out of the index · medium
-- **Check:** crawler with `--include-query` on a sample. Code: how list filters, sorting, internal search and shareable results build URLs.
+- **Check:** crawler `parameter-page-indexable` (medium), on parameter URLs the crawl meets (from the sitemap, or links with `--include-query`): a page whose URL adds parameters to a page the crawl also found without them, and that has no canonical or one that keeps the parameters. Tracking parameters (`utm_*`, `gclid`, `fbclid`, `msclkid` and other click IDs) and paging ones (`page`, `p`, `paged`, `offset`, `start`) are left out, since paginated pages stay indexable (URL-08). CRAWL-10 counts as checked only once such a page was crawled. Code: how list filters, sorting, internal search and shareable results build URLs.
 - **Pass:** each page type sends one signal, not both:
   - Filter and sort versions of a list send a canonical to the clean URL.
   - Internal search and shareable results send `noindex, follow` and no canonical to another page.
@@ -75,6 +76,10 @@ Can search engines reach the pages, and are they allowed to index the right ones
 ### CRAWL-12 · Crawl budget, only for large sites · low (high on large sites)
 - **Applies when:** roughly 1M+ pages changing weekly, 10k+ changing daily, or many "Discovered – currently not indexed" URLs (Google says these aren't exact thresholds). Below that, don't raise crawl budget.
 - **Pass:** removed pages return 404/410; no soft 404s or redirect chains; accurate lastmod; `304 Not Modified` supported; facet URLs that shouldn't be in Search are blocked in robots.txt (noindex does **not** save crawl budget); few 5xx or 429 responses.
+- **No crawl-rate setting:** Google retired Search Console's crawl rate limiter on 8 January 2024 (Search Central blog, November 2023), so the rate can't be set by hand. To slow Googlebot for a while, answer with 503 or 429 (see CRAWL-09).
+- **Crawler:** the audit's own crawler backs off too. On a 429 it pauses every request to the site for the `Retry-After` time (30 s at most, our own cap; 2 s when none is given), then asks once more.
+- **Big sites:** when the crawl stops at `--max`, a note (and `siteSize` in `seo-crawl.json`) gives the URLs it knew of from links and sitemaps, a floor for the site's size. To audit one part of a big site, use `--include` and `--exclude` (comma-separated path prefixes, such as `--include /blog/ --exclude /blog/tag/`); the start page is still the way in, robots.txt and the sitemaps are still read whole, and LINK-01 and LINK-02 are then listed as not checked, since links from the pages left out aren't known.
+- **Indexed vs intended:** with `--gsc-indexing <Chart.csv>`, the chart table of Search Console's Page indexing export (Indexing → Pages → Export, unzipped, in English), the crawl notes Google's latest indexed and not-indexed counts beside its own count of pages meant to be indexed (`indexing` in `seo-crawl.json`). Information only, never scored: Google counts every URL it knows, so the two rarely match exactly, but a big gap either way is worth a look.
 
 ### CRAWL-11 · Unreleased content is unreachable · high
 - **Check:** code: draft/publish/release flags in the content layer, and whether routes, static params, the sitemap and link blocks all respect them.

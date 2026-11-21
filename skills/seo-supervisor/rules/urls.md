@@ -22,6 +22,7 @@
 - **Check:** crawler `canonical-missing`, `canonical-multiple`, `canonical-not-self`, `canonical-query`, `canonical-origin`, `canonical-bad-target`. Code: the metadata helper.
 - **Pass:** exactly one canonical, absolute, on the production origin, with the right slash style and no query string, pointing at a 200 page. Variants (parameters, prefill links, product variants) canonicalize to the master page.
 - **Fix:** build canonicals from the clean path plus one base-URL setting. Never build them from the request URL, which leaks `?utm_` tags.
+- **After a fix:** Google may keep pages in a duplicate cluster for up to two weeks after the fix ("Fix canonicalization issues", Google Search Central), so URL Inspection can still show the old canonical for a while. Don't change the canonical again in the meantime.
 - **Site-wide:** when the canonical is missing on at least 80% of indexable pages (and at least 3), the crawler reports one `*-sitewide` finding as a **blocker**, not one high per page. Keep it a blocker: it's the usual sign of a site with no SEO work.
 
 ### URL-05 · Breadcrumbs are visible, match their schema, and every level is a real page · high

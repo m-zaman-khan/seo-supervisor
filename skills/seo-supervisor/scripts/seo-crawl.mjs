@@ -53,6 +53,12 @@ import { renderAll } from "./checks/render.mjs";
 
 import { createHash } from "node:crypto";
 
+import { lookup } from "node:dns";
+import { promisify } from "node:util";
+import { isPublic as publicAddress, guarded } from "./checks/outbound.mjs";
+import { otherSiteTargets, linksBack } from "./checks/hreflang.mjs";
+import { parseCsv } from "./lib/csv.mjs";
+
 import { SUPERSEDED, placeholderIn } from "./schema-check.mjs";
 
 import {
@@ -1084,6 +1090,38 @@ Object.assign(CHECKS, {
   ],
 });
 
+RULES["CRAWL-10"] = ["Parameter, filter, search and result pages stay out of the index", "Crawling & indexing"];
+Object.assign(CHECKS, {
+  "parameter-page-indexable": [
+    "CRAWL-10",
+    "medium",
+    n => `${n} page(s) with URL parameters can be indexed as copies of another page`,
+    "These URLs add parameters (a filter, a sort order, an option) to a page the crawl also found without them, and nothing keeps them out of the index: they have no canonical, or one that keeps the parameters. Google then has several URLs for one page, crawls them all and picks a canonical itself, which may not be the one you want.",
+    "Give each parameter version a canonical to the clean URL (or noindex, follow for search and result pages), built from the path, never the request URL. Don't give them a canonical to themselves.",
+  ],
+  "url-malformed": [
+    "CRAWL-07",
+    "medium",
+    n => `${n} page(s) have links or images whose address can't be read`,
+    "A link or image address that isn't a valid URL, such as `https://` with no host or a host with a space in it, leads nowhere: browsers and crawlers can't follow the link or load the image. It's usually a template that built the address from an empty or wrong setting.",
+    "Fix the template or content that builds these addresses so each is a full URL (`https://www.example.com/page/`) or a path (`/page/`).",
+  ],
+});
+// --include and --exclude: comma-separated path prefixes, so one crawl can cover one section such as /blog/.
+const pathList = k =>
+  typeof args[k] === "string"
+    ? args[k]
+        .split(",")
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(s => "/" + s.replace(/^\/+/, ""))
+    : [];
+const INCLUDE = pathList("include"),
+  EXCLUDE = pathList("exclude"),
+  SECTION = INCLUDE.length > 0 || EXCLUDE.length > 0;
+const inSection = path =>
+  (!INCLUDE.length || INCLUDE.some(p => path.startsWith(p))) && !EXCLUDE.some(p => path.startsWith(p));
+
 Object.assign(CHECKS, {
   "schema-placeholder": [
     "SCHEMA-01",
@@ -1133,14 +1171,58 @@ const slashOnly = (a, b) => {
     x.origin === y.origin && x.search === y.search && x.pathname.replace(/\/$/, "") === y.pathname.replace(/\/$/, "")
   );
 };
+// The private-address guard. The crawled origin is never guarded, so a localhost or LAN site can be crawled. A
+// fetch that leaves it (a redirect, a sitemap on another host, an hreflang page on another site) is blocked only when
+// it goes to a private, local, reserved or cloud-metadata address (169.254.169.254): checks/outbound.mjs's test on
+// the URL, then on the name's DNS answer.
+// Limit: the DNS answer is checked before fetch() looks the name up again, so a name that changes its answer in
+// between (DNS rebinding) gets through. Connecting through node:http with guarded(), as backlinks.mjs does, closes it.
+const blocked = new Map(); // URL -> why it wasn't fetched
+const publicLookup = promisify(guarded(lookup));
+async function offLimits(u) {
+  let x;
+  try {
+    x = new URL(u);
+  } catch {
+    return null;
+  }
+  if (x.origin === START_ORIGIN) return null;
+  const why = !publicAddress(u)
+    ? `${x.host} isn't a public address`
+    : await publicLookup(x.hostname, { all: true }).then(
+        () => null,
+        e => (e.code === "ENOTPUBLIC" ? e.message : null),
+      );
+  if (why) blocked.set(u, why);
+  return why;
+}
+// A 429 pauses every request to the site for its Retry-After, seconds or a date (local cap 30 s, 2 s when absent),
+// then retries once.
+// https://developers.google.com/search/docs/crawling-indexing/http-network-errors
+let calmUntil = 0;
+const retryAfter = v => {
+  const ms = /^\d+$/.test(v?.trim() || "") ? v * 1000 : Date.parse(v ?? "") - Date.now();
+  return Number.isFinite(ms) ? Math.min(Math.max(ms, 0), 30000) : 2000;
+};
+// manual: false goes through follow(), so each hop passes the guard.
 async function get(url, { manual = true, text = true, ua = UA } = {}) {
+  if (!manual) return follow(url, ua);
+  let waited = false;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
+      if (calmUntil > Date.now()) await sleep(calmUntil - Date.now());
       const res = await fetch(url, {
-        redirect: manual ? "manual" : "follow",
+        redirect: "manual",
         headers: { "user-agent": ua, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
         signal: AbortSignal.timeout(20000),
       });
+      if (res.status === 429 && !waited) {
+        waited = true;
+        attempt--;
+        calmUntil = Math.max(calmUntil, Date.now() + retryAfter(res.headers.get("retry-after")));
+        await res.arrayBuffer().catch(() => {});
+        continue;
+      }
       const ct = res.headers.get("content-type") || "";
       let body = "";
       if (text && res.status < 300 && /html|xml|text\/plain/.test(ct)) body = await res.text();
@@ -1152,14 +1234,19 @@ async function get(url, { manual = true, text = true, ua = UA } = {}) {
     }
   }
 }
+// A blocked redirect ends the chain at the redirect itself, which is what the server answered.
 async function follow(url, ua) {
   const chain = [];
-  let cur = url;
+  let cur = url,
+    why = await offLimits(cur);
+  if (why) return { status: 0, error: why, chain, finalUrl: cur, headers: new Headers(), ct: "", body: "" };
   for (let i = 0; i < 6; i++) {
     const r = await get(cur, { ua });
     chain.push({ url: cur, status: r.status });
     if (r.status >= 300 && r.status < 400 && r.location) {
-      cur = new URL(r.location, cur).href;
+      const next = new URL(r.location, cur).href;
+      if ((why = await offLimits(next))) return { ...r, chain, finalUrl: cur };
+      cur = next;
       continue;
     }
     return { ...r, chain, finalUrl: cur };
@@ -1752,6 +1839,13 @@ function analyze(url, html, headers, xRobotsLines) {
     .map(h => `H${h.level} “${h.text}”`);
   rec.referrerMeta = meta("referrer") ?? null;
 
+  // Hrefs and srcs no URL parser can read, which the crawl would otherwise skip silently.
+  rec.badUrls = [
+    ...new Set(
+      [...anchors.map(a => a.href), ...imgs.map(i => i.src)].filter(h => h?.trim() && !urlOr(h.trim(), rec.base)),
+    ),
+  ];
+
   // JSON-LD placeholders, deprecated types (at any JSON-LD depth, and in Microdata or RDFa) and schema image URLs:
   // image, logo and thumbnailUrl, as a string or an ImageObject's contentUrl or url.
   rec.schemaPlaceholder = placeholderIn(JSON.stringify(nodes));
@@ -1783,10 +1877,15 @@ function analyze(url, html, headers, xRobotsLines) {
 }
 
 // ---------- robots ----------
+// A user-agent counts by its name up to the first character other than a letter, "_" or "-", so "GPTBot/1.1" is
+// GPTBot, as in Google's open-source parser and RFC 9309. versioned: the lines that carried more, for a note.
+// https://github.com/google/robotstxt
+// https://www.rfc-editor.org/rfc/rfc9309#section-2.2.1
 function parseRobots(txt) {
   const groups = [];
   let cur = null;
-  const sitemaps = [];
+  const sitemaps = [],
+    versioned = [];
   for (const raw of txt.split(/\r?\n/)) {
     const line = raw.replace(/#.*/, "").trim();
     if (!line) continue;
@@ -1800,12 +1899,14 @@ function parseRobots(txt) {
     }
     if (k === "user-agent") {
       if (!cur || cur.rules.length) groups.push((cur = { agents: [], rules: [] }));
-      cur.agents.push(v.toLowerCase());
+      const name = v.startsWith("*") ? "*" : /^[A-Za-z_-]+/.exec(v)?.[0] || v;
+      if (name !== v && name !== "*") versioned.push(v);
+      cur.agents.push(name.toLowerCase());
       continue;
     }
     if ((k === "allow" || k === "disallow") && cur) cur.rules.push({ allow: k === "allow", path: v });
   }
-  return { groups, sitemaps };
+  return { groups, sitemaps, versioned };
 }
 const ruleRe = p =>
   new RegExp(
@@ -1829,7 +1930,12 @@ function allowedBy(group, path) {
   }
   return !best || best.allow;
 }
-const groupFor = (robots, agent) => robots.groups.find(g => g.agents.includes(agent.toLowerCase())) || null;
+// Every group naming the crawler, combined into one, as RFC 9309 2.2.1 requires.
+const groupFor = (robots, agent) => {
+  const a = agent.toLowerCase(),
+    gs = robots.groups.filter(g => g.agents.includes(a));
+  return gs.length ? { agents: [a], rules: gs.flatMap(g => g.rules) } : null;
+};
 
 // ---------- sitemap ----------
 const SITEMAP_MAX = 50 * 1024 * 1024; // the protocol's limit per file, uncompressed
@@ -1846,13 +1952,23 @@ async function upTo(stream, max) {
   return Buffer.concat(chunks);
 }
 // Gunzips by the magic bytes, whatever the content type says: fetch undoes only Content-Encoding, and a .gz file may
-// be compressed twice. Reads 50 MB unpacked at most.
+// be compressed twice. Redirects are followed by hand, 5 at most, so each hop passes the guard.
 async function fetchSitemap(url, retry = true) {
   try {
-    const res = await fetch(url, {
-      headers: { "user-agent": UA, accept: "application/xml,text/xml;q=0.9,*/*;q=0.8" },
-      signal: AbortSignal.timeout(60000),
-    });
+    let res;
+    for (let hop = 0; ; hop++) {
+      const why = await offLimits(url);
+      if (why) return { status: 0, error: why };
+      res = await fetch(url, {
+        redirect: "manual",
+        headers: { "user-agent": UA, accept: "application/xml,text/xml;q=0.9,*/*;q=0.8" },
+        signal: AbortSignal.timeout(60000),
+      });
+      const loc = res.headers.get("location");
+      if (res.status < 300 || res.status > 399 || !loc || hop === 5) break;
+      await res.body?.cancel();
+      url = new URL(loc, url).href;
+    }
     if (res.status !== 200 || !res.body) {
       await res.body?.cancel();
       return { status: res.status };
@@ -1998,6 +2114,28 @@ async function readSitemaps(urls, listed = true) {
         queue.push([decode(m[1].trim()), true, u]);
       continue;
     }
+    // Google accepts an RSS 2.0 or Atom 1.0 feed as a sitemap of recent URLs. An Atom entry's own link has rel
+    // alternate or no rel. Feed dates (RFC 822 in RSS) aren't W3C dates, so lastmod is left out.
+    // https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap
+    if (!/<urlset\b/i.test(body) && /<(rss|feed)\b/i.test(body)) {
+      const locs = [
+        ...[...body.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].map(
+          m => tagText(m[1], "link") && decode(tagText(m[1], "link")),
+        ),
+        ...[...body.matchAll(/<entry\b[^>]*>([\s\S]*?)<\/entry>/gi)].map(
+          m => tagsOf(m[1], "link").find(l => l.href && /^(alternate)?$/i.test((l.rel || "").trim()))?.href,
+        ),
+      ].filter(Boolean);
+      file.urls = locs.length;
+      for (const loc of locs.slice(0, SITEMAP_URLS)) {
+        if (entries.length === SITEMAP_KEEP) {
+          cut = true;
+          break;
+        }
+        entries.push({ loc, lastmod: null, sitemap: u, hints: false });
+      }
+      continue;
+    }
     file.urls = 0;
     const hasNews = body.includes("<news:news");
     for (const m of body.matchAll(/<url\b[^>]*>([\s\S]*?)<\/url>/gi)) {
@@ -2124,6 +2262,7 @@ function enqueue(u, from) {
   if (x.origin !== START_ORIGIN) return;
   if (FILE_EXT.test(x.pathname)) return;
   if (x.search && !INCLUDE_QUERY) return;
+  if (!inSection(x.pathname) && c !== clean(START.href)) return; // the start page is always the way in
   if (seen.has(c)) return;
   seen.add(c);
   queue.push(c);
@@ -2286,8 +2425,10 @@ if (!SITE_ORIGIN) {
 }
 const smListed = !!(robots && robots.sitemaps.length);
 let sm = await readSitemaps(smUrls, smListed);
-if (!sm.entries.length && !smListed) {
-  const alt = await readSitemaps([START_ORIGIN + "/sitemap_index.xml"], false);
+// With no Sitemap: line, the plugins' index names, then WordPress core's (since 5.5).
+for (const path of ["/sitemap_index.xml", "/sitemap-index.xml", "/wp-sitemap.xml"]) {
+  if (sm.entries.length || smListed) break;
+  const alt = await readSitemaps([START_ORIGIN + path], false);
   if (alt.entries.length) sm = alt;
 }
 if (sm.filesLeft)
@@ -2355,7 +2496,7 @@ for (const e of sm.entries) {
   const c = clean(toCrawl(e.loc));
   if (!c) continue;
   smSet.set(c, e);
-  if (new URL(c).origin === START_ORIGIN && !seen.has(c)) {
+  if (new URL(c).origin === START_ORIGIN && !seen.has(c) && inSection(new URL(c).pathname)) {
     seen.add(c);
     queue.push(c);
   }
@@ -3806,6 +3947,181 @@ if (renderEvery?.note) notes.push(renderEvery.note);
     notes.push(`The crawl met ${met.length} redirects; the first 500 are kept for the next audit's comparison.`);
 }
 
+// ---------- crawling: site-wide ----------
+// A versioned user-agent still matches by its bare name, so this is a note, not a finding.
+if (robots?.versioned.length) {
+  const v = robots.versioned[0],
+    bare = /^[A-Za-z_-]+/.exec(v)[0];
+  notes.push(
+    `robots.txt names ${robots.versioned.map(x => `\`User-agent: ${x}\``).join(", ")} with more than the crawler's name. Google reads only the name, up to the first character that isn't a letter, "_" or "-", so ${v} counts as ${bare}. RFC 9309 allows only those characters, so other crawlers may not match it: write the bare name, such as \`User-agent: ${bare}\`.`,
+  );
+}
+// CRAWL-10: a parameter page whose clean URL was also crawled, with no canonical dropping the parameters, is an
+// indexable copy. It counts as checked only once such a page was crawled. Tracking and paging parameters are
+// skipped: Google wants paginated pages to stay indexable.
+// https://developers.google.com/search/docs/specialty/ecommerce/pagination-and-incremental-page-loading
+{
+  const TRACKING = /^(utm_\w+|gclid|gbraid|wbraid|dclid|fbclid|msclkid|yclid|igshid|mc_cid|mc_eid|_gl|_ga)$/i,
+    PAGING = /^(page|p|pg|paged|offset|start)$/i;
+  const cleanPaths = new Set(htmlPages.filter(p => !new URL(p.finalUrl).search).map(p => new URL(p.finalUrl).pathname));
+  for (const p of htmlPages) {
+    const x = new URL(p.finalUrl),
+      keys = [...new Set(x.searchParams.keys())].filter(k => !TRACKING.test(k) && !PAGING.test(k));
+    if (!keys.length || p.clientOnly || !indexable(p) || !cleanPaths.has(x.pathname)) continue;
+    evalRules("CRAWL-10");
+    const c = canonicalFor(p);
+    if (!c || urlOr(c)?.search)
+      add(
+        "parameter-page-indexable",
+        p.finalUrl,
+        `parameters ${keys.join(", ")}; ${c ? `canonical ${c}` : "no canonical"}`,
+      );
+  }
+}
+
+for (const p of htmlPages)
+  if (!p.clientOnly && p.badUrls?.length)
+    add("url-malformed", p.finalUrl, `${p.badUrls.length} address(es): ${p.badUrls.slice(0, 5).join(", ")}`);
+// One section: links from the pages left out aren't known, so depth and orphans can't be judged.
+if (SECTION) {
+  extra.section = { include: INCLUDE, exclude: EXCLUDE };
+  notes.push(
+    `Crawled one part of the site: ${[INCLUDE.length && `paths starting with ${INCLUDE.join(" or ")}`, EXCLUDE.length && `leaving out ${EXCLUDE.join(" and ")}`].filter(Boolean).join(", ")}, plus the start page. robots.txt and the sitemap files were still read whole.`,
+  );
+  for (const rule of ["LINK-01", "LINK-02"]) {
+    for (const k of [...findings.keys()]) if (CHECKS[k][0] === rule) findings.delete(k);
+    evaluated.delete(rule);
+    notChecked.push({
+      rule,
+      area: `${rule} ${RULES[rule][0]}`,
+      reason:
+        "Only part of the site was crawled (--include or --exclude), so links from the pages left out aren't known. Crawl the whole site to check this.",
+    });
+  }
+}
+// A folder with pages below it (/blog/ for /blog/a/) is a section; every other page counts under "/".
+{
+  const parts = p => new URL(p.finalUrl).pathname.split("/").filter(Boolean);
+  const folders = new Set(
+      htmlPages
+        .map(parts)
+        .filter(s => s.length > 1)
+        .map(s => s[0]),
+    ),
+    count = new Map();
+  for (const p of htmlPages) {
+    const s = parts(p)[0],
+      key = folders.has(s) ? `/${s}/` : "/";
+    count.set(key, (count.get(key) || 0) + 1);
+  }
+  extra.sections = [...count]
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .slice(0, 50)
+    .map(([path, pages]) => ({ path, pages, share: Math.round((1000 * pages) / htmlPages.length) / 1000 }));
+}
+// Every URL the crawl knew of, from links and sitemaps, is a floor for the site's size.
+if (capped) {
+  const listed = [...smSet.keys()].filter(u => new URL(u).origin === START_ORIGIN).length,
+    n = x => x.toLocaleString("en-US");
+  extra.siteSize = { crawled: fetched, known: seen.size, sitemapUrls: listed };
+  notes.push(
+    `The crawl stopped at ${n(fetched)} pages (--max). It knew of ${n(seen.size)} URLs on the site from links and sitemaps (the sitemaps list ${n(listed)}${sm.cut ? ", and more past the part read" : ""}), so the site has at least ${n(Math.max(seen.size, listed))} URLs.`,
+  );
+}
+// --gsc-indexing: Google's indexed count on the latest date of Search Console's Page indexing export, beside the
+// crawl's indexable pages, never a finding. The export's Chart.csv is undocumented, so columns are found by the
+// English export's names (Date first, Indexed, Not indexed); a file without them gets a note, not a guess.
+if (typeof args["gsc-indexing"] === "string") {
+  const file = args["gsc-indexing"];
+  let rows = [];
+  try {
+    rows = parseCsv(readFileSync(file, "utf8"));
+  } catch (e) {
+    notes.push(`--gsc-indexing: couldn't read ${file} (${e.message}).`);
+  }
+  const keys = Object.keys(rows[0] || {}),
+    on = keys.find(k => /^indexed$/i.test(k)),
+    off = keys.find(k => /^not indexed$/i.test(k)),
+    count = s => Number(String(s ?? "").replace(/\D/g, ""));
+  const last =
+    on && off
+      ? rows
+          .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r[keys[0]]))
+          .sort((a, b) => (a[keys[0]] < b[keys[0]] ? -1 : 1))
+          .at(-1)
+      : null;
+  if (last) {
+    extra.indexing = {
+      date: last[keys[0]],
+      indexed: count(last[on]),
+      notIndexed: count(last[off]),
+      crawlIndexable: htmlPages.filter(p => indexable(p)).length,
+      capped,
+    };
+    const i = extra.indexing,
+      n = x => x.toLocaleString("en-US");
+    notes.push(
+      `Search Console counted ${n(i.indexed)} indexed pages (and ${n(i.notIndexed)} not indexed) on ${i.date}; this crawl found ${n(i.crawlIndexable)} pages meant to be indexed${capped ? " before it stopped at --max" : ""}. Google counts every URL it knows, old and parameter URLs too, so the two rarely match exactly; a big gap either way is worth a look in the Page indexing report.`,
+    );
+  } else if (keys.length)
+    notes.push(
+      `--gsc-indexing: ${file} has no dated rows with Indexed and Not indexed columns. It takes the chart table (Chart.csv) of Search Console's Page indexing export, in English, so Google's indexed count wasn't compared.`,
+    );
+}
+// Other sites' hreflang targets are visited only with --outside and --hreflang-other-sites: 20 at most, never a private
+// address. A target must name the page back; a 404 or 410 is a bad target, anything else that isn't a page is a note.
+{
+  const others = otherSiteTargets(
+      htmlPages.filter(p => indexable(p) && !p.clientOnly),
+      EXPECT_ORIGIN,
+    ),
+    yes = !!args["hreflang-other-sites"];
+  if (others.size && OUTSIDE && yes) {
+    const list = [...others].slice(0, 20),
+      away = [];
+    for (let i = 0; i < list.length; i += CONC)
+      await Promise.all(
+        list.slice(i, i + CONC).map(async ([target, from]) => {
+          const r = await follow(target),
+            there = pageOf(r);
+          if (r.status === 404 || r.status === 410)
+            for (const f of from) add("hreflang-bad-target", f.url, `${f.lang} → ${target} (status ${r.status})`);
+          else if (!there) away.push(`${target} (${r.error || `status ${r.status}`})`);
+          else
+            for (const f of from)
+              if (!linksBack(there.hreflang, r.finalUrl, f.url, toCrawl))
+                add("hreflang-no-return", f.url, `${f.lang} → ${target} doesn't link back`);
+        }),
+      );
+    if (away.length)
+      notes.push(
+        `${away.length} hreflang target(s) on other sites couldn't be checked for a return link, e.g. ${away[0]}.`,
+      );
+    if (others.size > 20) notes.push(`hreflang on other sites: the first 20 of ${others.size} targets were checked.`);
+  } else if (others.size) {
+    if (yes)
+      notes.push(
+        "--hreflang-other-sites runs only with outside checks on (--outside), since it visits other sites. It didn't run.",
+      );
+    notChecked.push({
+      rule: "META-08",
+      area: "META-08 hreflang return links on other sites",
+      reason: `${others.size} hreflang target(s) on other sites, e.g. ${others.keys().next().value}, weren't visited to see whether they link back: that contacts other sites, so it needs outside checks on (--outside) and the owner's own yes (--hreflang-other-sites).`,
+    });
+  }
+}
+// After every request this crawl makes: what the private-address guard stopped, and whether the crawler slowed down.
+if (blocked.size)
+  notes.push(
+    `The crawler didn't fetch ${blocked.size} address(es) outside the crawled site that are private, local or cloud-metadata addresses: ${[
+      ...blocked,
+    ]
+      .slice(0, 3)
+      .map(([u, why]) => `${u} (${why})`)
+      .join("; ")}. A redirect there is reported as the redirect itself.`,
+  );
+
+// ---------- structured data: site-wide ----------
 // JSON-LD placeholders and deprecated types (SCHEMA-01, SCHEMA-05), and broken schema images (SCHEMA-01): the first
 // 64 KB of up to 50 on-site ones, read with firstBytes, which never leaves the site. An error or a web page counts as
 // not loading.

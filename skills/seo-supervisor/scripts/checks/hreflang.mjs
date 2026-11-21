@@ -172,6 +172,28 @@ export function checkHreflang(pages, { add, canonicalFor, statusOf, origin }) {
   }
 }
 
+// hreflang targets on other sites, as target URL -> [{ url, lang }] of the pages listing them. The crawler visits them
+// only with --outside and --hreflang-other-sites.
+export function otherSiteTargets(pages, origin) {
+  const out = new Map();
+  for (const p of pages)
+    for (const e of entriesOf(p, origin))
+      if (!e.ours) (out.get(e.href) || out.set(e.href, []).get(e.href)).push({ url: p.finalUrl, lang: e.lang });
+  return out;
+}
+// Whether hreflang names `back` by origin and path, trailing slashes aside; same maps the public origin onto the
+// crawled one. Google ignores a pair without the return link.
+export const linksBack = (hreflang, base, back, same = u => u) =>
+  hreflang.some(h => {
+    try {
+      const u = new URL(same(new URL(h.href, base).href)),
+        b = new URL(back);
+      return u.origin === b.origin && pathKey(u) === pathKey(b);
+    } catch {
+      return false;
+    }
+  });
+
 // The Link header form Google documents:
 // Link: <url1>; rel="alternate"; hreflang="de", <url2>; rel="alternate"; hreflang="fr"
 const LINK = /<([^>]*)>((?:\s*;\s*[\w*.-]+\s*(?:=\s*(?:"[^"]*"|[^\s;,]*))?)*)/g,
