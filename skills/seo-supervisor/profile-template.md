@@ -71,3 +71,10 @@ Only phrases with a recorded source. Never guessed; no invented volumes.
 | Page | Phrase | Source |
 | --- | --- | --- |
 | {/pricing/} | {phrase} | {owner · Search Console page export, {date} · approved plan, {date}} |
+
+## Topic clusters
+Only clusters the owner confirmed (`strategy.md`, Topic clusters).
+
+| Pillar | Posts | Confirmed |
+| --- | --- | --- |
+| {/guides/boilers/} | {/blog/boiler-pressure/, /blog/bleed-radiator/} | {owner, {date}} |

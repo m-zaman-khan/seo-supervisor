@@ -29,12 +29,12 @@
 
 ### CONTENT-06 · Answer first, in the searcher's words · medium
 - **Check:** content: guides, tool pages, FAQs.
-- **Pass:** an answer of 40–60 words right under the H1 and under each question-form H2, using specific numbers and no vague "it". Tables for comparisons, numbered steps for processes. Questions come from "People also ask", support tickets and top-ranking pages.
+- **Pass:** a direct answer right under the H1 and under each question-form H2, using specific numbers and no vague "it". Where a featured snippet shows for the query, match its format as shown (`strategy.md`). Tables for comparisons, numbered steps for processes. Questions come from "People also ask", support tickets and top-ranking pages.
 - **Long pages get a table of contents:** a page of about 1,500 words or more, or with 5 or more H2 sections (our own rough line), starts with a short list of jump links, one per H2, under the opening answer. Give each H2 an `id` and link to it (`<a href="#prices">Prices</a>`), with the heading's own words as the link text. Readers skip straight to the part they came for.
 
 ### CONTENT-07 · People and dates are behind the advice · medium
 - **Check:** content and code: author or reviewer lines, author pages, "updated" dates on guides and advice pages.
-- **Pass:** a named author or reviewer with real credentials and an author page, and a visible "last reviewed" date. Tool and service pages count too: "Reviewed by {name}, {credential} · Updated {date}". YMYL topics (health, money, security, legal) cite primary sources.
+- **Pass:** a named author or reviewer with real credentials and an author page, and a visible "last reviewed" date. Tool and service pages count too: "Reviewed by {name}, {credential} · Updated {date}". YMYL topics (health, money, safety, security, legal, and news, elections, civic trust and groups of people; BLOG-08) cite primary sources.
 - **Author pages** (`/about/team/{name}/` or similar) list role, certifications (e.g. OSCP, CISSP, licences), GitHub or portfolio, talks and publications, and credited work (e.g. CVEs). They use ProfilePage + Person schema and are linked from every byline and "Reviewed by" line.
 - **Review on a schedule:** every 6–12 months, and **straight away when a standard or regulation the page relies on changes.**
 - **Crawler:** `stale-guide` (low) flags a guide whose newest date is over 12 months old (our own line, the far end of the schedule above). A guide is a page in a `guide`, `guides`, `how-to` or `tutorial` folder, a title that starts "How to" or names a guide, or a page with HowTo schema. Its newest date is the latest of schema `dateModified` and `datePublished`, a `<time datetime>`, and a visible date after "updated", "reviewed", "published" or "posted"; a date in the future is ignored. Other dates on the page ("founded in 2009") aren't read. It never makes CONTENT-07 pass, since authors and credentials are judged from the content.

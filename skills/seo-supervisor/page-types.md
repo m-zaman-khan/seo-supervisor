@@ -29,6 +29,7 @@ A short checklist per page type, for planning a page, building one, or reviewing
 - On a phone, the number and the call or quote button are easy to reach, with no popup on load (LOCAL-08, PERF-07).
 - One line by the form says what's stored and links to the privacy policy (TRUST-03).
 - It's indexable and in the sitemap: people search for a business's contact details (CRAWL-02, MAP-03).
+- ContactPage and BreadcrumbList schema. The name, address and phone stay in the root layout's Organization node (SCHEMA-03).
 
 ## Service
 - One page per service intent, of the kind of page that ranks for it (SVC-01, INTENT-01).

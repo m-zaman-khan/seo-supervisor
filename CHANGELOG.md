@@ -160,6 +160,58 @@ Deeper checks, optional real-world data and search intent. Everything still work
 - **Links worth a look, and a disavow helper.**
   - `links-import.mjs` adds `worthALook`, shown in the Links panel: sitewide-looking sites, keyword-heavy link text, and the same text from 3 or more sites. It has no score and never says "toxic".
   - `disavow.mjs` writes Google's disavow file from the domains and pages the owner picks. It keeps the old list, stays within Google's limits and refuses the site's own domain. It never uploads.
+- **Security (TRUST-01).** New checks:
+  - `csp-weak`
+  - `hsts-invalid` and `hsts-no-subdomains`
+  - `server-known-holes`: Apache and nginx versions with critical or major advisories, checked against the vendors' pages on 21 Nov 2026
+  - Permissions-Policy in `sec-headers`
+
+  Mixed content now covers the head and media, at medium severity. Information only: `hstsPreload`. Headless Chrome and Lighthouse go through a guard that refuses private and cloud-metadata addresses. `lib/redact.mjs` masks secrets, home folders and emails in findings and notes.
+- **Crawling.**
+  - Reads RSS and Atom sitemaps, and falls back to `/sitemap-index.xml` and `/wp-sitemap.xml`.
+  - Merges repeated robots.txt groups and matches versioned user-agent lines.
+  - Waits on 429 (honouring Retry-After).
+  - `--include`/`--exclude` audit one section. `sections`, `siteSize` and `indexing` (`--gsc-indexing`) are information only.
+  - `--hreflang-other-sites` (its own yes) checks hreflang targets on other sites.
+  - The crawler never fetches private addresses off the site.
+  - New checks: `parameter-page-indexable` (CRAWL-10) and `url-malformed` (CRAWL-07).
+- **Structured data.**
+  - The crawl flags `schema-placeholder`, `schema-image-broken` and `schema-superseded` (Attorney).
+  - `schema-check.mjs` adds `type-missing`, `type-empty`, `placeholder`, `type-superseded`, `value-geo` (5 decimals) and `value-price-range`.
+  - LocalBusiness recommends `priceRange`.
+  - `structured-data.md`: retired types are no longer reported, breadcrumbs show on desktop only, sale dates, no ranking boost, and ContactPage and SaaS rows.
+- **Content.**
+  - The crawler flags `desc-mismatch`, `desc-brand-tail`, `templated-desc` and `stale-guide`. It adds `templatedDescriptions` and `keywordUse`, plus CJK title width and 11 more obsolete tags.
+  - `content-scan.mjs` lists every claim with a source near it, finds more claim kinds and hidden characters, flags stale data, and has `--fail-on`.
+  - The opt-in `examples/hooks/reading-ease.yml` fails CI below the owner's reading-ease pass mark.
+- **Guides.**
+  - Competitor analysis (its own yes, `competitors`).
+  - A one-page intent review with a wireframe.
+  - A cluster map and cluster briefs.
+  - Fuller briefs.
+  - Comparison, case-study, hybrid and language-version page guides.
+  - Publisher rules BLOG-08 and BLOG-09, and SaaS watch SVC-09.
+  - An invented "every 3–6 months" re-check is removed.
+- **Links.**
+  - `newLinks` and `noNewLinks`.
+  - `unlinkedPages` (pages no other site links to).
+  - A `reciprocal` kind in `worthALook`.
+  - backlinks.mjs records each link's text and nofollow, sites whose links are all nofollow, and page-level nofollow.
+  - The crawler counts `linksToOtherSites`.
+  - New `commoncrawl.mjs`: the site in Common Crawl's newest crawl, and whether saved copies of known linking pages link to it.
+- **Connections.**
+  - New `rdap.mjs` (domain age, no key), plus Moz and the YouTube Data API in `connect-keys.mjs`.
+  - Bing per-page and sister-site links.
+  - Matomo and PostHog splits and daily trends, with `test matomo|posthog`.
+  - Search Console property totals, URL Inspection's `crawledAs` and `referringUrls`.
+  - GA4 detail with the "AI Assistant" channel.
+  - `gsc-import.mjs --ai-google/--ai-bing`.
+  - The EU click-rate and Consent Mode notes.
+- **Fixed facts:**
+  - LOCAL-09 allows practitioner and department profiles, as Google's guidelines do.
+  - LOCAL-06 never asks a service-area business for its home address.
+  - Claude-User honours robots.txt.
+  - `indexnow.mjs` reads gzipped sitemaps.
 - **Share previews.** New checks `twitter-card-missing` and `twitter-card-invalid` (META-04, low). `og-missing` also names `og:description` when a page has no description at all.
 - Setup and fix offer each connection once; a skip is listed under Limits and never changes the score. Keys are typed at a hidden prompt in the owner's own terminal, never in chat; Google sign-in prints its link for agents (`--print-url`, `~/.seo-supervisor/pending-signin.txt`). Search Console findings flag only pages Google really excluded; pages Google doesn't know yet are notes.
 - **Fewer false findings:** the log scan needs 5 server errors and 1% before a finding, and repeated 404s become findings only for pages the site links to; sitemap priority/changefreq tags are a note; IndexNow refuses a key file that redirects to another host.

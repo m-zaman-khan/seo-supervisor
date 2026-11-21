@@ -88,6 +88,43 @@ npx seo-supervisor        # then, in Claude Code: /seo-audit
   - Audience check: name up to 4 audiences in the profile, and the report lists what each key page gives them and what's missing, with evidence from the page. No score, and no invented personas.
   - Links worth a look, and a disavow helper. The Links panel lists links that stand out, with what to check, and no score. `disavow.mjs` writes a disavow file from the domains you pick, keeping your old list, for you to upload. It's only for real cases, such as a manual action or links you bought.
   - Share previews: a share image without `twitter:card` (X then shows at most a small card), and a `twitter:card` value X doesn't define.
+- **Security, crawling and structured data:**
+  - TRUST-01 also checks:
+    - how strong the content security policy is
+    - Permissions-Policy
+    - HSTS that browsers ignore or that leaves out subdomains, and preload readiness
+    - mixed content in the head and in media
+    - server versions with known critical holes
+  - Headless Chrome and Lighthouse can't reach private or cloud-metadata addresses. Secrets, home folders and emails are masked in findings and notes.
+  - The crawler:
+    - reads RSS and Atom sitemaps and `/wp-sitemap.xml`
+    - merges repeated and versioned robots.txt groups
+    - waits when a site says "too many requests" (429)
+    - audits one section (`--include`, `--exclude`)
+    - estimates the site's size past its page limit
+    - compares Google's indexed count with its own
+    - flags indexable pages with URL parameters, and malformed links
+  - Schema: placeholder text left in JSON-LD, missing or empty `@type`, schema images that don't load, the deprecated Attorney type, and imprecise map coordinates.
+- **Content and guides:**
+  - Descriptions that barely match their page, end with the title's brand, or are templated across the site.
+  - Stale guides, keyword-use verdicts, more claim patterns ("grew 40%", "3x faster") with a source check, and an opt-in reading-ease check for CI (your pass mark; SEO Supervisor's own check, not Google's).
+  - New guides:
+    - competitor analysis
+    - a one-page intent review with a wireframe
+    - a cluster map
+    - fuller briefs
+    - comparison, case-study, hybrid and language-version pages
+    - publisher rules
+- **Links and connections:**
+  - New linking sites since the last export.
+  - Pages no other site links to.
+  - Reciprocal link swaps in "Worth a look".
+  - Each backlink's target, text and nofollow.
+  - Outbound link counts.
+  - A free Common Crawl lookup.
+  - Domain age from RDAP.
+  - Optional Moz and YouTube keys.
+  - Property totals and the "AI Assistant" channel from Google, more from Bing, Matomo and PostHog, and imports of Google's and Bing's AI reports.
 
 ## Install
 
