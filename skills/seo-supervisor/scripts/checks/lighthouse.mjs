@@ -8,6 +8,8 @@ import { delimiter, dirname, join } from "node:path";
 import { labLcpParts } from "./speed.mjs";
 import { containerArgs } from "../lib/cdp.mjs";
 import { chromeProxyArgs } from "../lib/proxy.mjs";
+import { redact } from "../lib/redact.mjs";
+import { startGuard } from "./render.mjs";
 
 const CATEGORIES = {
   performance: "performance",
@@ -101,15 +103,18 @@ function parse(lhr, url) {
 }
 
 /** One Lighthouse run on its defaults (mobile, simulated throttling) with a throwaway Chrome profile. Chrome gets
- * launchChrome's container and proxy flags. host ({ platform, uid, env, exists }) is for tests. */
-export function runLighthouse(bin, url, { chromePath, timeoutMs = 90000, host = {} } = {}) {
+ * launchChrome's container flags and the render guard instead of proxy flags, so the page can't steer it to a private
+ * or cloud-metadata address; with a configured proxy, that proxy's flags instead. host ({ platform, uid, env, exists })
+ * is for tests. Failure messages are redacted. */
+export async function runLighthouse(bin, url, { chromePath, timeoutMs = 90000, host = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "seo-supervisor-lighthouse-")),
     report = join(dir, "report.json");
   const [file, pre] = command(bin);
+  const guard = await startGuard(url, { env: host.env ?? process.env });
   const chromeFlags = [
     "--headless=new",
     ...containerArgs(host),
-    ...chromeProxyArgs(host.env),
+    ...(guard?.args || chromeProxyArgs(host.env)),
     `--user-data-dir="${join(dir, "profile")}"`,
   ].join(" ");
   const args = [
@@ -124,20 +129,24 @@ export function runLighthouse(bin, url, { chromePath, timeoutMs = 90000, host = 
   const env = chromePath ? { ...process.env, CHROME_PATH: chromePath } : process.env;
   // A timeout kills Lighthouse but can leave its Chrome running on Windows, and the profile then stays in the temp
   // folder. Killing the whole process tree would fix both.
-  return new Promise((ok, fail) =>
-    execFile(file, args, { env, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
-      let lhr = null;
-      try {
-        lhr = JSON.parse(readFileSync(report, "utf8"));
-      } catch {}
-      try {
-        rmSync(dir, { recursive: true, force: true });
-      } catch {}
-      const why = lhr?.runtimeError?.message || (err && (String(stderr).trim().split("\n").pop() || err.message));
-      if (why || !lhr) fail(new Error(String(why || "Lighthouse wrote no report").slice(0, 200)));
-      else ok(parse(lhr, url));
-    }),
-  );
+  try {
+    return await new Promise((ok, fail) =>
+      execFile(file, args, { env, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
+        let lhr = null;
+        try {
+          lhr = JSON.parse(readFileSync(report, "utf8"));
+        } catch {}
+        try {
+          rmSync(dir, { recursive: true, force: true });
+        } catch {}
+        const why = lhr?.runtimeError?.message || (err && (String(stderr).trim().split("\n").pop() || err.message));
+        if (why || !lhr) fail(new Error(redact(String(why || "Lighthouse wrote no report")).slice(0, 200)));
+        else ok(parse(lhr, url));
+      }),
+    );
+  } finally {
+    await guard?.close();
+  }
 }
 
 // A run takes about 15–25 s a page on a laptop, longer for heavy pages (the timeout is 90 s). ALL_CAP keeps an

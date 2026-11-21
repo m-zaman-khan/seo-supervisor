@@ -53,6 +53,10 @@ import { renderAll } from "./checks/render.mjs";
 
 import { createHash } from "node:crypto";
 
+import { SERVER_CHECK, cspProblems, hstsRead, insecureResources, serverHoles } from "./checks/technical.mjs";
+import { redact, hideSecrets } from "./lib/redact.mjs";
+import { chromeProxyArgs } from "./lib/proxy.mjs";
+
 import { lookup } from "node:dns";
 import { promisify } from "node:util";
 import { isPublic as publicAddress, guarded } from "./checks/outbound.mjs";
@@ -1090,6 +1094,33 @@ Object.assign(CHECKS, {
   ],
 });
 
+// Medium, as browsers block http:// scripts, stylesheets and frames on an https page outright. Also raised for head
+// and media resources by insecureResources in checks/technical.mjs.
+CHECKS["mixed-content"] = [
+  "TRUST-01",
+  "medium",
+  n => `${n} HTTPS page(s) load files over plain http://`,
+  "Browsers block http:// scripts, stylesheets, preloads, frames and embeds on an https page, so styles or features break, and they upgrade or block http:// images, video and audio, which then fail if the other server has no https. Chrome also stops showing the page as fully secure.",
+  "Load every file over https:// (or a relative URL): fix the theme, template or CMS setting that writes http://. While that's done, `Content-Security-Policy: upgrade-insecure-requests` makes browsers ask for https:// themselves.",
+];
+Object.assign(CHECKS, SERVER_CHECK);
+// Every finding and note passes through lib/redact.mjs on the way in, whichever check adds it: secret query values
+// and home folders in findings, and email addresses too in notes, which carry error messages.
+{
+  const raw = add;
+  add = (key, url, detail) =>
+    raw(
+      key,
+      url && redact(url, { emails: false }),
+      detail == null ? detail : redact(String(detail), { emails: false }),
+    );
+}
+notes.push = (...xs) =>
+  Array.prototype.push.apply(
+    notes,
+    xs.map(n => redact(n)),
+  );
+
 RULES["CRAWL-10"] = ["Parameter, filter, search and result pages stay out of the index", "Crawling & indexing"];
 Object.assign(CHECKS, {
   "parameter-page-indexable": [
@@ -1838,6 +1869,10 @@ function analyze(url, html, headers, xRobotsLines) {
     )
     .map(h => `H${h.level} “${h.text}”`);
   rec.referrerMeta = meta("referrer") ?? null;
+
+  // http:// files in the head and body, judged later site-wide against the public origin.
+  rec.insecure = insecureResources(html, headers.get("content-security-policy") || "");
+  rec.mixed = false;
 
   // Hrefs and srcs no URL parser can read, which the crawl would otherwise skip silently.
   rec.badUrls = [
@@ -3946,6 +3981,63 @@ if (renderEvery?.note) notes.push(renderEvery.note);
   if (met.length > 500)
     notes.push(`The crawl met ${met.length} redirects; the first 500 are kept for the next audit's comparison.`);
 }
+
+// ---------- security: site-wide ----------
+// TRUST-01 on the home page's headers: Permissions-Policy (the rule's pass list names it), what the CSP leaves open,
+// HSTS that browsers ignore or that leaves subdomains out, and the preload list's requirements. A Server version
+// with a known critical hole is needs-decision, as it may be patched.
+// https://www.rfc-editor.org/rfc/rfc6797#section-8.1
+// https://hstspreload.org
+if (home?.headers) {
+  const h = home.headers,
+    at = home.finalUrl,
+    sts = h.get("strict-transport-security");
+  if (!h.get("permissions-policy")) add("sec-headers", at, "Permissions-Policy");
+  const gaps = cspProblems(h.get("content-security-policy"));
+  if (gaps.length) add("csp-weak", at, gaps.join("; "));
+  const s = sts && hstsRead(sts);
+  if (s?.invalid) add("hsts-invalid", at, `${s.invalid}, so browsers ignore the whole header: ${sts}`);
+  else if (s) {
+    if (!s.includeSubDomains) add("hsts-no-subdomains", at, sts);
+    extra.hstsPreload = { ready: !s.missing.length, missing: s.missing };
+  }
+  const sv = serverHoles(h.get("server"));
+  if (sv)
+    add(
+      "server-known-holes",
+      at,
+      `Server: ${h.get("server")}: ${sv.cves.map(c => `${c.id} (${c.what}, fixed in ${c.fixed})`).join("; ")}`,
+    );
+}
+// A local copy's own files (the crawl origin or another local address) will be on https once deployed, so only other
+// sites' http:// files count.
+if (EXPECT_ORIGIN.startsWith("https:"))
+  for (const p of htmlPages) {
+    const bad = (p.insecure || []).filter(r => {
+      const o = urlOr(r.url)?.origin;
+      return o && o !== START_ORIGIN && !isLocal(o);
+    });
+    if (bad.length)
+      add(
+        "mixed-content",
+        p.finalUrl,
+        `${bad.length} resource${bad.length === 1 ? "" : "s"} over http://: ${bad
+          .slice(0, 3)
+          .map(r => `${r.kind} ${r.url}`)
+          .join(", ")}`,
+      );
+  }
+// Reasons and redirects recorded so far get the same masking as the findings and notes.
+for (const n of notChecked) n.reason = redact(n.reason);
+for (const r of extra.redirects || []) {
+  r.from = hideSecrets(r.from);
+  if (r.to) r.to = hideSecrets(r.to);
+}
+// The browser's private-address guard can't run behind a proxy.
+if ((browser || lighthouseBin) && chromeProxyArgs().length)
+  notes.push(
+    "A proxy is set (HTTPS_PROXY or HTTP_PROXY), so headless Chrome and Lighthouse went through it, and the guard that keeps them off private and cloud-metadata addresses didn't run for renders and Lighthouse. The proxy decides what they can reach.",
+  );
 
 // ---------- crawling: site-wide ----------
 // A versioned user-agent still matches by its bare name, so this is a note, not a finding.

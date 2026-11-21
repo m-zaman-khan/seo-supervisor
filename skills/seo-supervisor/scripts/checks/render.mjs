@@ -1,11 +1,16 @@
 // Renders sample pages, or every page with --render all, in an installed Chrome or Edge and compares the result with
 // the raw HTML. The page's own scripts, analytics included, run.
 import { execFile } from "node:child_process";
+import { lookup } from "node:dns";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { createServer, request as httpRequest } from "node:http";
+import { connect, isIP } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { containerArgs } from "../lib/cdp.mjs";
 import { chromeProxyArgs } from "../lib/proxy.mjs";
+import { redact } from "../lib/redact.mjs";
+import { privateIp } from "./outbound.mjs";
 
 export const CHECKS = {
   "render-changes-head": [
@@ -71,37 +76,170 @@ export function chromeError(dom, stderr = "") {
 }
 
 // When given, guard's flags replace launchChrome's proxy flags. host ({ platform, uid, env, exists }) is for tests.
-export const renderArgs = (profile, url, host = {}) => [
+export const renderArgs = (profile, url, host = {}, guard = null) => [
   "--headless=new",
   "--disable-gpu",
   "--no-first-run",
   "--no-default-browser-check",
   "--disable-extensions",
   ...containerArgs(host),
-  ...chromeProxyArgs(host.env),
+  ...(guard || chromeProxyArgs(host.env)),
   `--user-data-dir=${profile}`,
   "--virtual-time-budget=5000",
   "--dump-dom",
   url,
 ];
 
-// The DOM after scripts ran, from a throwaway profile so a running browser isn't touched.
-export function renderPage(browser, url, { timeoutMs = 20000 } = {}) {
+// ---------- the browser guard ----------
+// Page scripts must not reach private addresses or the cloud metadata service (169.254.169.254), whose answers could
+// end up in the report. The site's own addresses stay open (a local build's API on another port), as does loopback
+// for a local site. Every address a name resolves to is checked, so a public name for a private address is refused.
+// The returned check resolves to the host's addresses, or null when the host is refused.
+export async function addressCheck(siteUrl, { dns = lookup } = {}) {
+  const resolve = host =>
+    isIP(host)
+      ? Promise.resolve([host])
+      : new Promise((ok, fail) => dns(host, { all: true }, (e, list) => (e ? fail(e) : ok(list.map(a => a.address)))));
+  const bare = h => h.replace(/^\[|\]$/g, "");
+  const own = new Set(await resolve(bare(new URL(siteUrl).hostname)).catch(() => []));
+  if ([...own].some(a => /^127\.|^::1$/.test(a))) own.add("127.0.0.1").add("::1");
+  const seen = new Map();
+  return host => {
+    host = bare(host);
+    if (!seen.has(host))
+      seen.set(
+        host,
+        resolve(host).then(
+          list => (list.length && list.every(a => own.has(a) || !privateIp(a)) ? list : null),
+          () => null,
+        ),
+      );
+    return seen.get(host);
+  };
+}
+
+/** A local proxy for every request a guarded Chrome makes. It connects only to the address it checked, so a name can't
+ * pass the check and then resolve elsewhere. Returns null when HTTPS_PROXY or HTTP_PROXY is set, since the guard
+ * doesn't chain to another proxy; add that if the guard is needed behind a company proxy. */
+export async function startGuard(siteUrl, { dns = lookup, env = process.env } = {}) {
+  if (chromeProxyArgs(env).length) return null;
+  const check = await addressCheck(siteUrl, { dns }),
+    blocked = [],
+    sockets = new Set();
+  const refuse = what => {
+    if (blocked.length < 100) blocked.push(what);
+  }; // a request still being checked when Chrome hangs up or the guard closes opens nothing
+  // Node connects to the checked addresses only, trying each in turn (localhost may be ::1 or 127.0.0.1).
+  const pinned = list => (name, opts, cb) =>
+    opts?.all
+      ? cb(
+          null,
+          list.map(address => ({ address, family: isIP(address) })),
+        )
+      : cb(null, list[0], isIP(list[0]));
+  const server = createServer(async (req, res) => {
+    let u, ips;
+    try {
+      u = new URL(req.url);
+      ips = /^http:$/.test(u.protocol) && (await check(u.hostname));
+    } catch {}
+    if (!ips) {
+      if (u) refuse(u.href);
+      res
+        .writeHead(403, { "content-type": "text/plain" })
+        .end("seo-supervisor: not a public address, so the browser may not load it");
+      return;
+    }
+    const headers = { ...req.headers };
+    delete headers["proxy-connection"];
+    delete headers["proxy-authorization"];
+    const up = httpRequest(
+      {
+        host: u.hostname.replace(/^\[|\]$/g, ""),
+        port: u.port || 80,
+        lookup: pinned(ips),
+        method: req.method,
+        path: u.pathname + u.search,
+        headers,
+        setHost: false,
+      },
+      r => {
+        res.writeHead(r.statusCode, r.headers);
+        r.pipe(res);
+      },
+    );
+    up.on("error", () => res.destroy());
+    req.pipe(up);
+  });
+  server.on("connect", async (req, sock, head) => {
+    sockets.add(sock);
+    sock.on("close", () => sockets.delete(sock)).on("error", () => {});
+    let target, ips;
+    try {
+      target = new URL(`http://${req.url}`);
+      ips = await check(target.hostname);
+    } catch {}
+    if (!ips) {
+      refuse(req.url);
+      sock.end("HTTP/1.1 403 Forbidden\r\n\r\n");
+      return;
+    }
+    const up = connect(
+      { host: target.hostname.replace(/^\[|\]$/g, ""), port: Number(target.port) || 443, lookup: pinned(ips) },
+      () => {
+        sock.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+        up.write(head);
+        up.pipe(sock).on("error", () => {});
+        sock.pipe(up);
+      },
+    );
+    sockets.add(up);
+    up.on("close", () => sockets.delete(up)).on("error", () => sock.destroy());
+  });
+  await new Promise(ok => server.listen(0, "127.0.0.1", ok));
+  const port = server.address().port;
+  return {
+    port,
+    blocked,
+    args: [
+      `--proxy-server=http://127.0.0.1:${port}`,
+      `--proxy-bypass-list=<-loopback>;${new URL(siteUrl).host}`,
+      "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+    ],
+    close: () => {
+      for (const s of sockets) s.destroy();
+      server.closeAllConnections();
+      return new Promise(ok => server.close(() => ok()));
+    },
+  };
+}
+
+// The DOM after scripts ran, behind the guard, from a throwaway profile so a running browser isn't touched. No switch
+// turns service workers off, so the guard checks their requests and WebSockets, and each profile is deleted after use
+// so a worker never runs again. Errors are redacted because Chrome's command line names the temporary profile, under
+// the home folder.
+export async function renderPage(browser, url, { timeoutMs = 20000, dns } = {}) {
   const profile = mkdtempSync(join(tmpdir(), "seo-supervisor-render-"));
-  const args = renderArgs(profile, url);
-  return new Promise((ok, fail) =>
-    execFile(browser, args, { timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 }, (err, stdout, stderr) => {
-      try {
-        rmSync(profile, { recursive: true, force: true });
-      } catch {}
-      const why = err ? null : chromeError(stdout, stderr);
-      if (err) {
-        err.stderr = stderr;
-        fail(err);
-      } else if (why) fail(Object.assign(new Error(`Chrome couldn't load ${url}: ${why}`), { stderr }));
-      else ok(stdout);
-    }),
-  );
+  const guard = await startGuard(url, { dns });
+  const args = renderArgs(profile, url, {}, guard?.args);
+  try {
+    return await new Promise((ok, fail) =>
+      execFile(browser, args, { timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 }, (err, stdout, stderr) => {
+        const why = err ? null : chromeError(stdout, stderr);
+        if (err) {
+          err.message = redact(err.message);
+          err.stderr = stderr;
+          fail(err);
+        } else if (why) fail(Object.assign(new Error(redact(`Chrome couldn't load ${url}: ${why}`)), { stderr }));
+        else ok(stdout);
+      }),
+    );
+  } finally {
+    try {
+      rmSync(profile, { recursive: true, force: true });
+    } catch {}
+    await guard?.close();
+  }
 }
 
 // A page takes a browser start and up to 5 s of virtual time, about 5 s on a typical site. The cap keeps a

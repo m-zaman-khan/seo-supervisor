@@ -3,6 +3,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launchChrome, containerArgs } from "../lib/cdp.mjs";
+import { redact } from "../lib/redact.mjs";
+import { addressCheck } from "./render.mjs";
 
 export const CHECKS = {
   "mobile-content-missing": [
@@ -163,14 +165,37 @@ async function evaluate(page, expression) {
   return r.result.value;
 }
 
+// Every request the tab makes is held until checkAddress (checks/render.mjs) clears its host. Service workers are off:
+// their requests aren't the tab's, and one would serve the next load from its cache. WebSockets stay for Chrome's
+// back/forward cache test.
+// Limit: a cross-site frame runs in its own process, whose requests this tab doesn't see, and WebSockets aren't
+// checked. Launching Chrome with the render guard's proxy (startGuard) covers both once lib/cdp.mjs takes extra flags.
+const NO_SW = "delete Navigator.prototype.serviceWorker";
+async function guardTab(page, checkAddress) {
+  page.on("Fetch.requestPaused", ({ requestId, request }) => {
+    const u = new URL(request.url);
+    (/^https?:$/.test(u.protocol) ? checkAddress(u.hostname) : Promise.resolve(true))
+      .then(ok =>
+        page.send(
+          ok ? "Fetch.continueRequest" : "Fetch.failRequest",
+          ok ? { requestId } : { requestId, errorReason: "AddressUnreachable" },
+        ),
+      )
+      .catch(() => {});
+  });
+  await page.send("Fetch.enable", { patterns: [{ urlPattern: "*" }] });
+  await page.send("Page.addScriptToEvaluateOnNewDocument", { source: NO_SW });
+}
+
 // A fresh tab per load, so emulation and throttling never leak into the next. After the load event the page settles
 // until Chrome's networkIdle (500 ms of quiet) or settleMs, whichever comes first.
-async function visit(chrome, url, { device, userAgent, lab = false, settleMs, deadline }, read) {
+async function visit(chrome, url, { device, userAgent, lab = false, settleMs, deadline, checkAddress }, read) {
   const page = await chrome.newPage();
   page.on("Page.javascriptDialogOpening", () =>
     page.send("Page.handleJavaScriptDialog", { accept: true }).catch(() => {}),
   ); // alert() would stall the page
   const load = async () => {
+    await guardTab(page, checkAddress);
     await page.send("Page.enable");
     await page.send("Page.bringToFront"); // a background tab gets no animation frames
     await page.send("Emulation.setDeviceMetricsOverride", device);
@@ -257,7 +282,8 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
     lab = [],
     used = new Set(),
     smallText = [];
-  const why = e => String(e.message).split("\n")[0].slice(0, 120);
+  const why = e => redact(String(e.message).split("\n")[0]).slice(0, 120);
+  const checkAddress = urls.length ? await addressCheck(urls[0]) : null; // the sample is the site's own pages
   let checked = 0,
     bfTested = 0;
   if (screenshotDir) mkdirSync(screenshotDir, { recursive: true });
@@ -280,16 +306,25 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
         const d = await visit(
           chrome,
           url,
-          { device: DESKTOP, userAgent: desktopUa, settleMs: 200, deadline },
+          { device: DESKTOP, userAgent: desktopUa, settleMs: 200, deadline, checkAddress },
           async p => {
             await shoot(p, "desktop");
             return evaluate(p, MEASURE);
           },
         );
-        const m = await visit(chrome, url, { device: PHONE, userAgent: phoneUa, settleMs: 1000, deadline }, async p => {
-          await shoot(p, "mobile");
-          return { ...(await evaluate(p, MEASURE)), taps: await evaluate(p, TAPS), fields: await evaluate(p, FIELDS) };
-        });
+        const m = await visit(
+          chrome,
+          url,
+          { device: PHONE, userAgent: phoneUa, settleMs: 1000, deadline, checkAddress },
+          async p => {
+            await shoot(p, "mobile");
+            return {
+              ...(await evaluate(p, MEASURE)),
+              taps: await evaluate(p, TAPS),
+              fields: await evaluate(p, FIELDS),
+            };
+          },
+        );
         checked++;
         // Word counts below 30 are too small to compare. A real diff of the text would also catch swapped content.
         const fewer = d.words >= 30 && m.words < 0.7 * d.words,
@@ -344,7 +379,7 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
         const v = await visit(
           chrome,
           url,
-          { device: PHONE, userAgent: phoneUa, lab: true, settleMs: 500, deadline },
+          { device: PHONE, userAgent: phoneUa, lab: true, settleMs: 500, deadline, checkAddress },
           p => evaluate(p, "window.__seoLab"),
         );
         lab.push({
@@ -362,7 +397,7 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
           const reasons = await visit(
             chrome,
             url,
-            { device: DESKTOP, userAgent: desktopUa, settleMs: 200, deadline },
+            { device: DESKTOP, userAgent: desktopUa, settleMs: 200, deadline, checkAddress },
             p => goBack(p, list[(i + 1) % list.length]),
           );
           if (reasons) {

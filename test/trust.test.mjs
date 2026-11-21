@@ -96,6 +96,7 @@ const BARE = {
 const SECURITY = {
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=()",
   "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'",
 };
 
@@ -126,7 +127,13 @@ test("trust signals: each is found on a site that has it and missing on one that
 
 test("HTTPS isn't counted while a cookie or HSTS finding is open, though those checks run late in the crawl", async () => {
   const r = await crawl(FULL, {
-    headers: { "/": { ...SECURITY, "Set-Cookie": "sid=abc; Path=/", "Strict-Transport-Security": "max-age=300" } },
+    headers: {
+      "/": {
+        ...SECURITY,
+        "Set-Cookie": "sid=abc; Path=/",
+        "Strict-Transport-Security": "max-age=300; includeSubDomains",
+      },
+    },
     args: ["--site-origin", "https://acme.example"],
   });
   assert.deepEqual(

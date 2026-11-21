@@ -119,7 +119,237 @@ export const CHECKS = {
     "With `unsafe-url` the page's full address, path and query included, goes to every site it links to or loads from, even over plain HTTP. The W3C standard calls it unsafe for that reason: it leaks addresses from HTTPS pages to insecure sites.",
     'Use `strict-origin-when-cross-origin` in the `Referrer-Policy` header (or `<meta name="referrer">`), or remove the setting.',
   ],
+  "csp-weak": [
+    "TRUST-01",
+    "low",
+    () => "The Content-Security-Policy doesn't stop injected scripts",
+    "The policy is there, but it lets scripts run inline or from any site, or leaves plugins or the page's `<base>` tag open, so a script an attacker slips into the page can still run. These are the gaps Google's CSP Evaluator reports. A `'nonce-…'` or `'sha256-…'` source makes browsers ignore `'unsafe-inline'`, and `'strict-dynamic'` makes them ignore host and `https:` sources, so those fallbacks for old browsers aren't counted.",
+    "Move to a strict policy, as web.dev's \"Mitigate cross-site scripting with a strict CSP\" shows: `script-src 'nonce-{random}' 'strict-dynamic'; object-src 'none'; base-uri 'none'`, with a new nonce on every response (Next.js, Rails and Django can add it). Try it as `Content-Security-Policy-Report-Only` first.",
+  ],
+  "hsts-invalid": [
+    "TRUST-01",
+    "low",
+    () => "The Strict-Transport-Security header is broken, so browsers ignore it",
+    "RFC 6797, the HSTS standard, says every directive may appear only once and `max-age` is required, and browsers must ignore a header that breaks these rules. The site then has no HSTS at all, whatever the header says.",
+    "Send exactly one header with each directive once, such as `Strict-Transport-Security: max-age=31536000; includeSubDomains`. When the server and the CDN both add one, remove it from one of them.",
+  ],
+  "hsts-no-subdomains": [
+    "TRUST-01",
+    "low",
+    () => "HSTS doesn't cover subdomains (no includeSubDomains)",
+    "Without `includeSubDomains`, a subdomain such as `shop.` or an old `mail.` can still be opened over plain HTTP, where a cookie set for the whole domain can be read or changed. The HSTS preload list (hstspreload.org) also requires it.",
+    "Check that every subdomain works over HTTPS first (the directive switches HTTP off for all of them), then add `includeSubDomains`: `Strict-Transport-Security: max-age=31536000; includeSubDomains`.",
+  ],
 };
+// Not low like the rest, so the crawler adds it to its catalog itself: the version may already be patched.
+export const SERVER_CHECK = {
+  "server-known-holes": [
+    "TRUST-01",
+    "needs-decision",
+    () => "The web server's version has known critical security holes",
+    'The `Server` header names a version that its maker\'s security advisories list with a critical hole (Apache\'s "critical", nginx\'s "major", their highest ratings). Linux distributions and hosts often fix holes without changing the version number, so it may already be patched; a hacked server can serve spam and malware, which gets pages flagged or dropped from search.',
+    "Ask the host or whoever runs the server whether this version is patched, and update it if not. Then hide the version: `ServerTokens Prod` in Apache, `server_tokens off;` in nginx.",
+  ],
+};
+
+// ---------- Content-Security-Policy ----------
+// The gaps Google's CSP Evaluator flags: 'unsafe-inline' without a nonce or hash (browsers ignore it beside one),
+// 'unsafe-eval', any-host script sources without 'strict-dynamic' (which makes browsers ignore them), no script or
+// object limit, and no base-uri on a nonce policy (or a hash one with 'strict-dynamic').
+// https://github.com/google/csp-evaluator
+// https://web.dev/articles/strict-csp
+const directives = policy =>
+  new Map(
+    policy
+      .split(";")
+      .map(d => d.trim().split(/\s+/))
+      .filter(([n]) => n)
+      .map(([n, ...v]) => [n.toLowerCase(), v.map(s => (/^'(nonce|sha\d+)-/i.test(s) ? s : s.toLowerCase()))]),
+  );
+function policyGaps(policy) {
+  const d = directives(policy),
+    scripts = d.get("script-src") ?? d.get("default-src"),
+    out = [];
+  if (!scripts) out.push("no script-src or default-src, so scripts aren't limited");
+  else {
+    const keyed = scripts.some(s => /^'(nonce|sha\d+)-/i.test(s)),
+      dynamic = scripts.includes("'strict-dynamic'");
+    if (scripts.includes("'unsafe-inline'") && !keyed) out.push("scripts may run inline ('unsafe-inline')");
+    if (scripts.includes("'unsafe-eval'")) out.push("scripts may run eval() ('unsafe-eval')");
+    const any = dynamic
+      ? []
+      : scripts.filter(s => ["*", "http:", "https:", "data:", "http://*", "https://*"].includes(s));
+    if (any.length) out.push(`scripts may load from any site (${any.join(", ")})`);
+    if (!d.has("base-uri") && scripts.some(s => /^'nonce-/i.test(s) || (dynamic && /^'sha\d+-/i.test(s))))
+      out.push("no base-uri, so an injected <base> tag can move the page's scripts");
+  }
+  if (!(d.get("object-src") ?? d.get("default-src"))?.length)
+    out.push("no object-src or default-src, so plugins aren't limited");
+  return out;
+}
+/** What a Content-Security-Policy header value leaves open, in plain words ([] for none). Several policies all apply,
+ * so a gap counts only when every policy has it. */
+export function cspProblems(header) {
+  const each = String(header || "")
+    .split(",")
+    .filter(p => p.trim())
+    .map(policyGaps);
+  return each.length ? each.reduce((a, b) => a.filter(x => b.includes(x))) : [];
+}
+
+// ---------- Strict-Transport-Security ----------
+// Browsers use only the first header field (8.1). In it each directive may appear once, max-age (whole seconds, quotes
+// allowed) is required, unknown directives are ignored, and a field that breaks the syntax is ignored whole (6.1).
+// https://www.rfc-editor.org/rfc/rfc6797#section-6.1
+// The preload list needs max-age of at least 31536000, includeSubDomains and preload, but hstspreload.org recommends
+// against preloading, so findings advise HSTS and never the list. https://hstspreload.org
+// fetch joins repeated fields with ", ", which this syntax never contains, so the first field ends at the first comma.
+const TOKEN = /^[!#$%&'*+.^_`|~\w-]+$/;
+export function hstsRead(header) {
+  const seen = new Map();
+  let invalid = null;
+  for (const part of String(header || "")
+    .split(",")[0]
+    .split(";")
+    .map(p => p.trim())
+    .filter(Boolean)) {
+    const [, name, value] = part.match(/^([^=\s]+)\s*(?:=\s*(.*))?$/) || [];
+    if (!name || !TOKEN.test(name) || (value != null && !/^("[^"]*"|[!#$%&'*+.^_`|~\w-]+)$/.test(value))) {
+      invalid ||= "it doesn't follow the header's syntax (directives separated by ;)";
+      continue;
+    }
+    const key = name.toLowerCase();
+    if (seen.has(key)) invalid ||= `${name} appears twice`;
+    seen.set(key, value?.replace(/^"|"$/g, "") ?? "");
+  }
+  const raw = seen.get("max-age"),
+    maxAge = raw != null && /^\d+$/.test(raw) ? Number(raw) : null;
+  if (raw == null) invalid ||= "there's no max-age, which is required";
+  else if (maxAge == null) invalid ||= "max-age isn't a whole number of seconds";
+  const includeSubDomains = seen.has("includesubdomains"),
+    preload = seen.has("preload");
+  const missing = [
+    !(maxAge >= 31536000) && "a max-age of at least 31536000",
+    !includeSubDomains && "includeSubDomains",
+    !preload && "preload",
+  ].filter(Boolean);
+  return { maxAge, includeSubDomains, preload, invalid, missing };
+}
+
+// ---------- mixed content ----------
+// What an https page loads: stylesheets, preloads and scripts, which browsers block, and media, embeds and frames,
+// which they upgrade or block. Links, canonicals and icons aren't loads here. upgrade-insecure-requests in a page or
+// header CSP makes the browser fetch them all over https.
+// https://www.w3.org/TR/mixed-content/
+// https://www.w3.org/TR/upgrade-insecure-requests/
+const LOADS = [
+  [
+    "link",
+    "href",
+    l => {
+      const rel = (l.rel || "").toLowerCase().split(/\s+/);
+      return rel.includes("stylesheet")
+        ? "stylesheet"
+        : rel.some(r => r === "preload" || r === "modulepreload")
+          ? "preload"
+          : null;
+    },
+  ],
+  ["script", "src", () => "script"],
+  ["img", "src", () => "image"],
+  ["img", "srcset", () => "image"],
+  ["video", "src", () => "video"],
+  ["video", "poster", () => "image"],
+  ["source", "src", () => "media"],
+  ["source", "srcset", () => "image"],
+  ["track", "src", () => "media"],
+  ["audio", "src", () => "audio"],
+  ["embed", "src", () => "embed"],
+  ["object", "data", () => "embed"],
+  ["iframe", "src", () => "frame"],
+];
+const attrsOf = tag =>
+  Object.fromEntries(
+    [...tag.matchAll(/([^\s=/>"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g)]
+      .slice(1)
+      .map(m => [m[1].toLowerCase(), m[2] ?? m[3] ?? m[4] ?? ""]),
+  );
+/** The http:// files an https page loads, as { kind, url } in document order. cspHeader is the page's CSP header,
+ * if any. */
+export function insecureResources(html, cspHeader = "") {
+  const doc = String(html)
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/(<(script|style|template|noscript)\b[^>]*>)[\s\S]*?<\/\2>/gi, "$1");
+  const metaCsp = [...doc.matchAll(/<meta\b[^>]*>/gi)]
+    .map(m => attrsOf(m[0]))
+    .filter(m => /^content-security-policy$/i.test(m["http-equiv"] || ""))
+    .map(m => m.content || "");
+  if ([cspHeader, ...metaCsp].some(c => /(^|[;,\s])upgrade-insecure-requests(\s*[;,]|\s*$)/i.test(c || ""))) return [];
+  const out = [];
+  for (const m of doc.matchAll(/<(link|script|img|video|source|track|audio|embed|object|iframe)\b[^>]*>/gi)) {
+    const a = attrsOf(m[0]),
+      name = m[1].toLowerCase();
+    for (const [tag, attr, kindOf] of LOADS) {
+      const kind = tag === name && a[attr] && kindOf(a);
+      if (kind)
+        for (const url of attr === "srcset" ? a[attr].split(",").map(c => c.trim().split(/\s+/)[0]) : [a[attr].trim()])
+          if (/^http:\/\//i.test(url)) out.push({ kind, url });
+    }
+  }
+  return out;
+}
+
+// ---------- server software ----------
+// Versions the maker's own advisories list with a hole at its top rating (Apache's "critical", nginx's "major").
+// Checked 2026-11-21; CHECK AGAIN BY 2027-05-21, and add or drop versions. Apache httpd and nginx only; add PHP, IIS
+// and others when a vendor advisory rates one of their versions critical.
+// https://httpd.apache.org/security/vulnerabilities_24.html
+// https://nginx.org/en/security_advisories.html
+const v = s => s.split(".").map(Number),
+  lt = (a, b) => {
+    const x = v(a),
+      y = v(b);
+    for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i];
+    return false;
+  };
+const within = (ver, from, to) => !lt(ver, from) && !lt(to, ver);
+const HOLES = {
+  Apache: [
+    { id: "CVE-2021-41773", what: "path traversal and file disclosure", hits: x => x === "2.4.49", fixed: "2.4.50" },
+    {
+      id: "CVE-2021-42013",
+      what: "path traversal and remote code execution",
+      hits: x => within(x, "2.4.49", "2.4.50"),
+      fixed: "2.4.51",
+    },
+    {
+      id: "CVE-2026-119618",
+      what: "heap corruption and remote code execution in mod_http2",
+      hits: x => within(x, "2.4.55", "2.4.70"),
+      fixed: "2.4.71",
+    },
+  ],
+  nginx: [
+    // Not vulnerable: 1.31.9+ and the stable 1.30.7+.
+    {
+      id: "CVE-2026-123007",
+      what: "memory corruption in HTTP/2 flow control",
+      hits: x => within(x, "1.9.5", "1.31.8") && !within(x, "1.30.7", "1.30.999"),
+      fixed: "1.30.7 or 1.31.9",
+    },
+  ],
+};
+// A distribution's build (Apache/2.4.62 (Ubuntu)) is skipped: distributions patch without changing the version.
+const DISTRO =
+  /\((?:Ubuntu|Debian|Red Hat|CentOS|Fedora|Rocky|AlmaLinux|Amazon|Oracle|SUSE|Linux\/SUSE|openSUSE|Raspbian|Gentoo|Mageia)/i;
+/** The Server header's software and its listed holes ({ name, cves: [{ id, what, fixed }] }), or null. */
+export function serverHoles(server) {
+  const m = String(server || "").match(/^(Apache|nginx)\/(\d+\.\d+\.\d+)\b/i);
+  if (!m || DISTRO.test(server)) return null;
+  const sw = m[1].toLowerCase() === "nginx" ? "nginx" : "Apache",
+    cves = HOLES[sw].filter(h => h.hits(m[2])).map(({ id, what, fixed }) => ({ id, what, fixed }));
+  return cves.length ? { name: `${sw === "Apache" ? "Apache httpd" : "nginx"} ${m[2]}`, cves } : null;
+}
 
 // What a Set-Cookie header leaves out: Secure (judged only on HTTPS, as a local dev server leaves it off on purpose),
 // HttpOnly (except on a CSRF token, which a script has to read) and SameSite. A cookie being deleted needs nothing.

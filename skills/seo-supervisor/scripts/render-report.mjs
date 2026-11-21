@@ -1036,9 +1036,19 @@ const analyticsSplitLines = () =>
     )
     .filter(Boolean);
 
-// Each section is an Html and Md pair; an empty pair adds nothing to the page or the Markdown.
-const secHtml = () => "",
-  secMd = () => [];
+// The home page's HSTS header against the preload list's rules.
+const hstsPreloadText = () => {
+  const p = obj(raw.hstsPreload),
+    missing = Array.isArray(p?.missing) ? p.missing.filter(s => typeof s === "string") : [];
+  if (!p || typeof p.ready !== "boolean") return "";
+  const also =
+    "hstspreload.org also needs the header on the bare domain, http:// sent to https:// on the same host first, and every subdomain on HTTPS. Joining the list is optional and slow to undo. Information only: it doesn't change the score.";
+  return p.ready
+    ? `HSTS preload: the header meets the list's rules. ${also}`
+    : `HSTS preload: not ready yet. The header still needs ${missing.join(" and ")}. ${also}`;
+};
+const secHtml = () => (hstsPreloadText() ? `\n    <p class="quiet">${esc(hstsPreloadText())}</p>` : ""),
+  secMd = () => (hstsPreloadText() ? [noteMd(hstsPreloadText()), ""] : []);
 
 // Pages per top-level section show only with two or more; siteSize is set when the crawl stopped at --max, and
 // indexing is Search Console's indexed count. Paths are escaped.

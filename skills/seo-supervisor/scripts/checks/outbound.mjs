@@ -43,7 +43,7 @@ for (const s of [
   const [a, n] = s.split("/");
   PRIVATE.addSubnet(a, +n, isIP(a) === 6 ? "ipv6" : "ipv4");
 }
-const privateIp = a => !isIP(a) || PRIVATE.check(a, isIP(a) === 6 ? "ipv6" : "ipv4");
+export const privateIp = a => !isIP(a) || PRIVATE.check(a, isIP(a) === 6 ? "ipv6" : "ipv4");
 // The address: no private IP, no intranet or reserved name. The name's own answer is checked when connecting (guarded).
 export const isPublic = u => {
   try {
