@@ -51,7 +51,7 @@ import { estSaving } from "./images.mjs";
 
 import { renderAll } from "./checks/render.mjs";
 
-import { createHash } from "node:crypto";
+import { createHash } from "node:crypto"; // once, before any request
 
 const VERSION = "2.0.0";
 const UA = "seo-supervisor-crawler/" + VERSION;

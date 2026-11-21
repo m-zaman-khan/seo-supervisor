@@ -1036,6 +1036,81 @@ const analyticsSplitLines = () =>
     )
     .filter(Boolean);
 
+// Each section is an Html and Md pair; an empty pair adds nothing to the page or the Markdown.
+const secHtml = () => "",
+  secMd = () => [];
+
+const crawlScopeHtml = () => "",
+  crawlScopeMd = () => [];
+
+const aiCrawlersHtml = () => "",
+  aiCrawlersMd = () => [];
+
+const schemaHtml = () => "",
+  schemaMd = () => [];
+
+const shopHtml = () => "",
+  shopMd = () => [];
+
+const mediaHtml = () => "",
+  mediaMd = () => [];
+
+const renderHtml = () => "",
+  renderMd = () => [];
+
+const contentHtml = () => "",
+  contentMd = () => [];
+
+const localHtml = () => "",
+  localMd = () => [];
+
+const backlinksHtml = () => "",
+  backlinksMd = () => [];
+
+const connHtml = () => "",
+  connMd = () => [];
+
+const diffMoreHtml = () => "",
+  diffMoreMd = () => [];
+
+const reportHtml = () => "",
+  reportMd = () => [];
+
+const panelsHtml = () =>
+  [
+    secHtml,
+    crawlScopeHtml,
+    aiCrawlersHtml,
+    schemaHtml,
+    shopHtml,
+    mediaHtml,
+    renderHtml,
+    contentHtml,
+    localHtml,
+    backlinksHtml,
+    connHtml,
+    diffMoreHtml,
+    reportHtml,
+  ]
+    .map(f => f())
+    .join("");
+const panelsMd = () =>
+  [
+    secMd,
+    crawlScopeMd,
+    aiCrawlersMd,
+    schemaMd,
+    shopMd,
+    mediaMd,
+    renderMd,
+    contentMd,
+    localMd,
+    backlinksMd,
+    connMd,
+    diffMoreMd,
+    reportMd,
+  ].flatMap(f => f());
+
 // audiences (audience.md) is written into seo-audit.json and may quote page text, so every string is escaped.
 // Malformed entries are dropped quietly, and lists are capped at 4 audiences, 5 pages each and 10 items a list.
 const audStrs = x => (Array.isArray(x) ? x.filter(s => typeof s === "string" && s.trim()).slice(0, 10) : []);
@@ -1171,7 +1246,9 @@ function overviewHtml() {
       })()}</ol>
     </section>${viewsHtml()}${searchLines()
       .map(t => `\n    <p class="quiet">${esc(t)}</p>`)
-      .join("")}${linksHtml()}${agentsHtml()}${writingHtml()}${audienceHtml()}${imagesHtml()}${lighthouseDetailHtml()}
+      .join(
+        "",
+      )}${linksHtml()}${agentsHtml()}${writingHtml()}${audienceHtml()}${imagesHtml()}${lighthouseDetailHtml()}${panelsHtml()}
     </div>
   </div>
   ${
@@ -1795,7 +1872,15 @@ function markdown() {
       );
     L.push("");
     L.push(...viewsMd());
-    L.push(...linksMd(), ...agentsMd(), ...writingMd(), ...audienceMd(), ...imagesMd(), ...lighthouseDetailMd());
+    L.push(
+      ...linksMd(),
+      ...agentsMd(),
+      ...writingMd(),
+      ...audienceMd(),
+      ...imagesMd(),
+      ...lighthouseDetailMd(),
+      ...panelsMd(),
+    );
   }
   if (plan) L.push(...planMarkdown(plan));
   if (diff) {
