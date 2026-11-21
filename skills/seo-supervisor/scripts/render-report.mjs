@@ -1201,7 +1201,8 @@ const mediaLines = () => {
     weeks = Number.isInteger(t?.weeks) ? t.weeks : 0;
   if (p && mediaDay(p.from) && mediaDay(p.to))
     L.push(`Real-user data period: CrUX's latest 28 days, ${mediaDay(p.from)} – ${mediaDay(p.to, true)}.`);
-  else if (v) L.push("Real-user data period: PageSpeed's numbers cover the last 28 days of Chrome visits.");
+  else if (v && (v.shares || v.fcp != null || v.ttfb != null))
+    L.push("Real-user data period: PageSpeed's numbers cover the last 28 days of Chrome visits.");
   const late = mediaPairs(t, ["inp", "cls"]),
     avg = mediaPairs(obj(t?.avg4));
   if (weeks && (late || avg))

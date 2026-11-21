@@ -73,7 +73,7 @@ export async function speedTrend(
     url: target,
     ...Object.fromEntries(latest.map(([k, v]) => [k, Math.round(Number(v))])),
   };
-  const last = periods.at(-1);
+  const last = day(periods.at(-1)?.lastDate) ? periods.at(-1) : null;
   return {
     trend: {
       weeks: periods.length,

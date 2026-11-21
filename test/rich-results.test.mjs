@@ -220,7 +220,11 @@ test("with --outside --desktop, PageSpeed is asked for desktop, and the report s
       phone.asked.length && phone.asked.every(h => h.strategy === "mobile"),
       "outside checks alone ask for phones only",
     );
-    assert.deepEqual(phone.cruxAsked, ["PHONE"]);
+    assert.deepEqual(
+      phone.cruxAsked,
+      ["PHONE", "TABLET", "PHONE"],
+      "the phone trend, then tablets and the home page alone",
+    );
     assert.equal(phone.speed.desktop, undefined);
 
     const r = await crawl(["--outside", "--desktop"]);
@@ -231,7 +235,7 @@ test("with --outside --desktop, PageSpeed is asked for desktop, and the report s
         .sort();
     assert.ok(asked("desktop").length >= 1);
     assert.deepEqual(asked("desktop"), asked("mobile"), "the same sample pages, on desktop");
-    assert.deepEqual(r.cruxAsked.sort(), ["DESKTOP", "PHONE"], "the trend for desktop too");
+    assert.deepEqual(r.cruxAsked.sort(), ["DESKTOP", "PHONE", "PHONE", "TABLET"], "the trend for desktop too");
     assert.equal(r.speed.strategy, "mobile");
     assert.equal(r.speed.desktop.strategy, "desktop");
     assert.equal(r.speed.desktop.samples.length, asked("desktop").length);
