@@ -23,7 +23,8 @@ export function containerArgs({
   return platform === "linux" && inContainer ? ["--no-sandbox", "--disable-dev-shm-usage"] : [];
 }
 
-export async function launchChrome(browserPath, { headless = true, timeoutMs = 30000 } = {}) {
+// args: extra Chrome flags, added after the standard ones (none by default).
+export async function launchChrome(browserPath, { headless = true, timeoutMs = 30000, args: extra = [] } = {}) {
   const profile = mkdtempSync(join(tmpdir(), "seo-supervisor-cdp-"));
   const args = [
     headless && "--headless=new",
@@ -37,6 +38,7 @@ export async function launchChrome(browserPath, { headless = true, timeoutMs = 3
     ...chromeProxyArgs(),
     `--user-data-dir=${profile}`,
     "--remote-debugging-pipe",
+    ...extra,
     "about:blank",
   ].filter(Boolean);
   const proc = spawn(browserPath, args, { stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"] });

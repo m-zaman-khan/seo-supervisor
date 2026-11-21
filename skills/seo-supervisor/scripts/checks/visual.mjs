@@ -426,3 +426,642 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
     );
   return { checked, lab, notes, bfTested }; // bfTested: the pages Chrome's back/forward test actually ran on
 }
+
+// ---------- more from the render sample ----------
+// checkMore loads each sample page again at desktop and phone size, in its own browser, for the render checks. Every
+// load goes through visit() and its guard. --render-page renders one chosen page after its steps, which only scroll,
+// click and wait: nothing is ever typed into a page.
+import { compareRendered, gateOf } from "./render.mjs";
+
+export const MORE_CHECKS = {
+  "render-adds-text": [
+    "REND-01",
+    "medium",
+    n => `${n} page(s) get most of their text only after JavaScript runs`,
+    "The HTML the server sends holds less than half of the words the page shows; JavaScript adds the rest. Crawlers that don't run JavaScript (most AI crawlers, and Google's first pass) see only the part in the HTML.",
+    "Render the text on the server (server rendering or static generation) and keep client JavaScript for interactivity. If a widget adds it (reviews, related items), pick one that can output HTML on the server.",
+  ],
+  "mobile-menu-closed": [
+    "REND-11",
+    "low",
+    n => `${n} page(s) have a phone menu button that doesn't open the menu`,
+    "On a phone these pages hide their menu links behind a button, and when Chrome tapped the button the links still didn't show. Visitors on phones can't reach the rest of the site from the menu.",
+    "Tap the button on a real phone. It needs a click handler that shows the menu (or use a `<details>` element), the menu must not open behind another layer, and `aria-expanded` should follow the menu's state.",
+  ],
+  "mobile-ad-density": [
+    "REND-11",
+    "medium",
+    n => `${n} page(s) are more than 30% ads on a phone`,
+    "Ads take more than 30% of the page's height on a phone, measured between the header and the footer. The Coalition for Better Ads lists mobile ad density over 30% among the ad experiences people find most annoying (betterads.org/mobile-ad-density-higher-than-30), and Google's page-experience questions ask whether a page avoids “an excessive amount of ads that distract from or interfere with the main content”.",
+    "Show fewer ad slots on phones: drop some in-content units and sticky stacks, and keep ads under 30% of the height between the header and the footer.",
+  ],
+};
+
+// Local lines: twice the HTML's words and at least 200 more, since a consent banner or small widget adds less.
+export const addsText = (html, rendered) => html != null && rendered >= 2 * html && rendered - html >= 200;
+
+// Mobile ad density as the Better Ads Standard measures it: ad heights, overlaps counted once, over the height between
+// header and footer. https://www.betterads.org/mobile-ad-density-higher-than-30/
+export function adShare(ads, [top, bottom]) {
+  if (!ads.length || bottom - top < 1) return null;
+  let sum = 0,
+    end = -Infinity;
+  for (const [a, b] of ads
+    .map(([a, b]) => [Math.max(a, top), Math.min(b, bottom)])
+    .filter(([a, b]) => b > a)
+    .sort((x, y) => x[0] - y[0]))
+    if (b > end) {
+      sum += b - Math.max(a, end);
+      end = b;
+    }
+  return Math.round((sum / (bottom - top)) * 100) / 100;
+}
+
+// Local lines: under 3 hidden links needs no button, and a menu opens when it shows at least half of them.
+export function menuVerdict({ hidden = 0, toggle, covered, revealed = 0 }) {
+  return hidden < 3
+    ? "none-needed"
+    : !toggle
+      ? "no-button"
+      : covered
+        ? "covered"
+        : revealed >= hidden / 2
+          ? "opens"
+          : "closed";
+}
+
+// --render-steps: "scroll; click <CSS selector>; wait <ms>", by semicolons or lines, 20 steps and 10 s a wait at most.
+export function parseSteps(text = "") {
+  return String(text)
+    .split(/[;\n]/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .slice(0, 20)
+    .map(s => {
+      const [, verb, rest] = s.match(/^(\w+)\s*(.*)$/) || [];
+      if (verb === "scroll" && !rest) return { do: "scroll" };
+      if (verb === "click" && rest) return { do: "click", selector: rest };
+      if (verb === "wait" && /^\d+$/.test(rest)) return { do: "wait", ms: Math.min(Number(rest), 10000) };
+      throw new Error(`can't read the step “${s}”: use scroll, click <CSS selector> or wait <milliseconds>`);
+    });
+}
+
+// A request the guard blocked (ERR_BLOCKED_BY_CLIENT) isn't the page's error, nor is the /favicon.ico the browser asks
+// for on its own (META-10 covers favicons).
+export function errorOf(method, p) {
+  const line = s =>
+    String(s ?? "")
+      .split("\n")[0]
+      .trim()
+      .slice(0, 200);
+  const at = (url, n) =>
+    url ? ` (${url.split(/[?#]/)[0].split("/").pop() || url}${n != null ? `:${n + 1}` : ""})` : "";
+  if (method === "Runtime.exceptionThrown") {
+    const d = p.exceptionDetails || {},
+      x = d.exception || {};
+    return line(x.description || (x.value !== undefined ? `${d.text} ${x.value}` : d.text)) + at(d.url, d.lineNumber);
+  }
+  if (method === "Runtime.consoleAPICalled")
+    return p.type === "error"
+      ? line(`console.error: ${(p.args || []).map(a => a.value ?? a.description ?? "").join(" ")}`)
+      : null;
+  if (method === "Log.entryAdded") {
+    const e = p.entry || {};
+    return e.level === "error" && !/ERR_BLOCKED_BY_CLIENT/.test(e.text) && !/\/favicon\.ico$/.test(e.url || "")
+      ? line(e.text) + at(e.url)
+      : null;
+  }
+  return null;
+}
+// Words are counted as the crawler counts them, without consent and chat widgets. Hidden text leaves out accordions,
+// tabs, menus and dialogs, which Google's spam policies don't count as hidden. raw is HTML to count the same way.
+// https://developers.google.com/search/docs/essentials/spam-policies#hidden-text-and-links
+function pageMore(withHtml, raw) {
+  const css = e => getComputedStyle(e),
+    shown = e => e.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+  const cls = e => `${e.id} ${e.getAttribute("class") || ""}`;
+  const memo = f => {
+    const m = new Map(),
+      g = e => {
+        if (!m.has(e)) m.set(e, f(e, g));
+        return m.get(e);
+      };
+    return g;
+  };
+  const JUNK =
+    /onetrust|cookiebot|cybot|didomi|usercentrics|quantcast|qc-cmp|\bcmp\b|consent|cookie|intercom|drift|crisp|zendesk|hubspot-messages|tawk|livechat|tidio|freshchat|olark|chat/i;
+  const junk = memo((e, self) => !!e && e.tagName !== "BODY" && (JUNK.test(cls(e)) || self(e.parentElement)));
+  const SEG = new Intl.Segmenter(undefined, { granularity: "word" }),
+    NOSPACE = /[\p{scx=Han}\p{scx=Hira}\p{scx=Kana}\p{scx=Thai}\p{scx=Laoo}\p{scx=Khmr}\p{scx=Mymr}]/u;
+  const count = t =>
+    NOSPACE.test(t)
+      ? [...SEG.segment(t)].filter(s => s.isWordLike).length
+      : t.split(/\s+/).filter(w => /[\p{L}\p{N}]/u.test(w)).length;
+  const textsOf = d => {
+    const out = [];
+    if (d.body)
+      for (const w = d.createTreeWalker(d.body, NodeFilter.SHOW_TEXT); w.nextNode();) {
+        const p = w.currentNode.parentElement;
+        if (p && w.currentNode.data.trim() && !p.closest("script, style, noscript, template, svg, title"))
+          out.push([w.currentNode.data, p]);
+      }
+    return out;
+  };
+  const wordsIn = d =>
+    count(
+      textsOf(d)
+        .filter(([, p]) => !junk(p))
+        .map(([t]) => t)
+        .join(" "),
+    );
+  const vw = innerWidth,
+    vh = innerHeight,
+    texts = textsOf(document);
+  const box = e => e.getBoundingClientRect(),
+    across = e => {
+      const r = box(e);
+      return shown(e) && r.width > 0 && r.height > 0 && r.right > 0 && r.left < vw;
+    };
+  const first = e => across(e) && box(e).top < vh && box(e).bottom > 0;
+  const label = e => (e.innerText || e.value || e.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim();
+  const h1 = [...document.querySelectorAll("h1")].find(shown);
+  const cta = [
+    ...document.querySelectorAll('button, [role="button"], input[type="submit" i], input[type="button" i], a[href]'),
+  ].find(e => {
+    if (
+      e.closest('nav, [role="navigation"], footer, form[role="search"]') ||
+      e.matches("[aria-expanded], [aria-controls], [aria-haspopup]") ||
+      junk(e) ||
+      !first(e)
+    )
+      return false;
+    const t = label(e);
+    if (t.length < 2 || t.length > 40 || !/\p{L}/u.test(t)) return false;
+    return (
+      !e.matches("a") ||
+      /\b(btn|button|cta)\b/i.test(cls(e)) ||
+      !/^(rgba\(0, 0, 0, 0\)|transparent)$/.test(css(e).backgroundColor)
+    );
+  });
+  const here = location.href.split("#")[0],
+    frag = a => {
+      try {
+        return decodeURIComponent(a.hash.slice(1));
+      } catch {
+        return a.hash.slice(1);
+      }
+    };
+  const broken = [
+    ...new Set(
+      [...document.querySelectorAll('a[href*="#"]')]
+        .filter(
+          a =>
+            a.href.split("#")[0] === here &&
+            a.hash.length > 1 &&
+            !/^#([!\/:]|top$)/i.test(a.hash) &&
+            !a.matches('[role="button"], [role="tab"], [aria-controls], [data-toggle], [data-bs-toggle]'),
+        )
+        .map(frag)
+        .filter(id => !document.getElementById(id) && !document.getElementsByName(id).length),
+    ),
+  ].slice(0, 10);
+  const target =
+    [...document.querySelectorAll("h2[id], h3[id], section[id]")].find(
+      e => shown(e) && box(e).top + scrollY >= 1.5 * vh,
+    )?.id || null;
+  const AD =
+    'ins.adsbygoogle, [id^="div-gpt-ad"], [id^="google_ads_iframe"], iframe[src*="doubleclick.net"], iframe[src*="googlesyndication.com"], iframe[src*="amazon-adsystem.com"], iframe[src*="adnxs.com"], [data-ad-slot], [data-ad-unit-path], amp-ad, .advertisement, .ad-slot, .ad-unit, .ad-container';
+  const ads = [...document.querySelectorAll(AD)]
+    .filter(shown)
+    .map(box)
+    .filter(r => r.height >= 20 && r.width >= 50)
+    .map(r => [r.top + scrollY, r.bottom + scrollY]);
+  const outside = e => !e.closest("main, article") && shown(e);
+  const hdr = [...document.querySelectorAll('header, [role="banner"]')].find(outside),
+    ftr = [...document.querySelectorAll('footer, [role="contentinfo"]')].filter(outside).pop();
+  const controlled = new Set(
+    [...document.querySelectorAll("[aria-controls]")]
+      .flatMap(e => e.getAttribute("aria-controls").split(/\s+/))
+      .filter(Boolean),
+  );
+  const SKIP =
+    'details, dialog, nav, [role="navigation"], [role="menu"], [role="menubar"], [role="tabpanel"], [role="dialog"], [role="tooltip"], [aria-modal="true"], [hidden="until-found"], select, datalist, button, [role="button"], label';
+  const TOGGLED =
+    /accordion|collaps|tab-?pane|tabpanel|tab-content|dropdown|sub-?menu|mega-?menu|modal|popup|popover|tooltip|offcanvas|drawer|slide|carousel|swiper|faq|menu/i;
+  const SR =
+    /\b(sr-only|visually-?hidden|screen-reader-text|screen-reader-only|a11y-hidden|assistive-text|element-invisible|u-hidden-visually)\b/i;
+  const hideOf = memo((e, self) => {
+    if (!e || e.tagName === "BODY") return null;
+    const up = self(e.parentElement);
+    if (up === "skip" || e.matches(SKIP) || TOGGLED.test(cls(e)) || controlled.has(e.id) || junk(e)) return "skip";
+    if (up) return up;
+    const s = css(e);
+    const how = e.hidden
+      ? "hidden attribute"
+      : s.display === "none"
+        ? "display:none"
+        : e.getAttribute("aria-hidden") === "true"
+          ? "aria-hidden"
+          : SR.test(cls(e)) ||
+              (s.position === "absolute" &&
+                e.offsetWidth <= 1 &&
+                e.offsetHeight <= 1 &&
+                (s.overflow === "hidden" || s.clip !== "auto"))
+            ? "screen-reader only"
+            : null;
+    return how ? { how, block: e } : null;
+  });
+  const blocks = new Map(),
+    by = {};
+  let hiddenWords = 0;
+  for (const [t, p] of texts) {
+    const h = hideOf(p),
+      n = h && h !== "skip" ? count(t) : 0;
+    if (!n) continue;
+    hiddenWords += n;
+    by[h.how] = (by[h.how] || 0) + n;
+    const b = blocks.get(h.block) || blocks.set(h.block, { how: h.how, words: 0, text: "" }).get(h.block);
+    b.words += n;
+    if (b.text.length < 80) b.text += " " + t.trim();
+  }
+  return {
+    words: wordsIn(document),
+    ...(raw != null ? { rawWords: wordsIn(new DOMParser().parseFromString(raw, "text/html")) } : {}),
+    h1: h1 ? first(h1) : null,
+    cta: cta ? label(cta) : null,
+    nav: [
+      ...new Set(
+        [...document.querySelectorAll('nav a[href], [role="navigation"] a[href]')].filter(across).map(a => a.href),
+      ),
+    ].slice(0, 60),
+    broken,
+    target,
+    ads,
+    region: [hdr ? box(hdr).bottom + scrollY : 0, ftr ? box(ftr).top + scrollY : document.documentElement.scrollHeight],
+    hidden: {
+      words: hiddenWords,
+      by,
+      examples: [...blocks.values()]
+        .sort((a, b) => b.words - a.words)
+        .slice(0, 3)
+        .map(b => ({ how: b.how, words: b.words, text: b.text.replace(/\s+/g, " ").trim().slice(0, 80) })),
+    },
+    ...(withHtml ? { html: document.documentElement.outerHTML } : {}),
+  };
+}
+// The desktop nav links (`nav`) a phone hides everywhere on the page, and the button that should show them, by its name.
+function menuFind(nav) {
+  const shown = e => e.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+  const reach = e => {
+    const r = e.getBoundingClientRect();
+    return shown(e) && r.width > 0 && r.height > 0 && r.right > 0 && r.left < innerWidth;
+  };
+  const links = [...document.querySelectorAll("a[href]")],
+    hrefs = nav.filter(h => !links.some(a => a.href === h && reach(a)));
+  if (hrefs.length < 3) return { hidden: hrefs.length };
+  const here = location.href.split("#")[0];
+  const name = e =>
+    `${e.getAttribute("aria-label") || ""} ${e.innerText || ""} ${e.title || ""} ${e.id} ${e.getAttribute("class") || ""} ${e.getAttribute("aria-controls") || ""}`;
+  const toggle = [
+    ...document.querySelectorAll(
+      'button, [role="button"], a[href], label[for], summary, [aria-controls], [aria-expanded]',
+    ),
+  ].find(
+    e =>
+      reach(e) &&
+      e.getBoundingClientRect().top < innerHeight &&
+      !(e.matches("a[href]") && e.href.split("#")[0] !== here) &&
+      /menu|navigation|\bnav\b|hamburger|burger|navbar-toggle|nav-toggle|toggle-nav/i.test(name(e)),
+  );
+  if (!toggle) return { hidden: hrefs.length, toggle: null };
+  const r = toggle.getBoundingClientRect(),
+    x = r.left + r.width / 2,
+    y = r.top + r.height / 2,
+    top = document.elementFromPoint(x, y);
+  return {
+    hidden: hrefs.length,
+    hrefs,
+    x,
+    y,
+    covered: !(top && (top === toggle || toggle.contains(top) || top.contains(toggle))),
+    toggle:
+      (toggle.getAttribute("aria-label") || toggle.innerText || toggle.title || "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 40) || "the menu button",
+  };
+}
+function menuReached(hrefs) {
+  const reach = e => {
+    const r = e.getBoundingClientRect();
+    return (
+      e.checkVisibility({ opacityProperty: true, visibilityProperty: true }) &&
+      r.width > 0 &&
+      r.height > 0 &&
+      r.right > 0 &&
+      r.left < innerWidth
+    );
+  };
+  const links = [...document.querySelectorAll("a[href]")];
+  return hrefs.filter(h => links.some(a => a.href === h && reach(a))).length;
+}
+// After a load at #id: still at the target, and the #id still in the address? (Google's "Read more" deep links.)
+function landed(id) {
+  const t = document.getElementById(id);
+  if (!t) return null;
+  const r = t.getBoundingClientRect(),
+    inView = r.bottom > 0 && r.top < innerHeight,
+    kept = location.hash.slice(1) === id || location.hash.slice(1) === encodeURIComponent(id);
+  return inView && kept ? "ok" : inView ? "hash-removed" : kept ? "scrolled-away" : "both";
+}
+// Down the page a screen at a time so lazy images and infinite lists load (40 screens at most), then back to the top.
+async function scrollAll() {
+  const wait = ms => new Promise(ok => setTimeout(ok, ms)),
+    root = document.scrollingElement || document.documentElement;
+  for (let i = 0; i < 40 && scrollY + innerHeight < root.scrollHeight - 1; i++) {
+    const y = scrollY;
+    scrollBy(0, Math.max(200, innerHeight * 0.8));
+    await wait(150);
+    if (scrollY === y) break;
+  }
+  await wait(300);
+  scrollTo(0, 0);
+  await Promise.race([Promise.all([...document.images].map(i => i.decode().catch(() => {}))), wait(3000)]);
+}
+// Hides cookie bars and chat widgets (fixed or sticky layers named so, or inside one) for a clean screenshot; false
+// shows them again.
+function hideJunk(on) {
+  const JUNK =
+    /onetrust|cookiebot|cybot|didomi|usercentrics|quantcast|qc-cmp|\bcmp\b|consent|cookie|intercom|drift|crisp|zendesk|hubspot-messages|tawk|livechat|tidio|freshchat|olark|chat/i;
+  document.getElementById("seo-supervisor-hide")?.remove();
+  if (!on) return 0;
+  let n = 0;
+  for (const e of document.querySelectorAll("body *")) {
+    if (!/^(fixed|sticky)$/.test(getComputedStyle(e).position)) continue;
+    let hit = false;
+    for (let a = e; a && a !== document.body && !hit; a = a.parentElement)
+      hit = JUNK.test(
+        `${a.id} ${a.getAttribute("class") || ""} ${a.tagName === "IFRAME" ? `${a.src} ${a.title}` : ""}`,
+      );
+    if (hit) {
+      e.setAttribute("data-seo-supervisor-hide", "");
+      n++;
+    }
+  }
+  const style = document.createElement("style");
+  style.id = "seo-supervisor-hide";
+  style.textContent = "[data-seo-supervisor-hide]{display:none!important}";
+  document.head.append(style);
+  return n;
+}
+function clickOn(selector) {
+  const e = document.querySelector(selector);
+  if (!e) return false;
+  e.scrollIntoView({ block: "center" });
+  e.click();
+  return true;
+}
+
+// Local cap, in CSS px: Chrome can't draw much past 16,384 px.
+const FULL_MAX = 12000;
+// Resized in the desktop load, not loaded again, so a page that lays itself out only on load keeps its 1366 px layout.
+const SIZES = [
+  ["desktop-1920", { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false }],
+  ["tablet", { width: 768, height: 1024, deviceScaleFactor: 1, mobile: false }],
+];
+const shoot = async (page, file, opts = { format: "png" }) =>
+  writeFileSync(file, Buffer.from((await page.send("Page.captureScreenshot", opts)).data, "base64"));
+// The whole page after scrolling through it, at CSS-pixel size, as JPEG to keep the files small.
+async function fullPage(page, file, device) {
+  await evaluate(page, `(${scrollAll})()`);
+  const { cssContentSize: c } = await page.send("Page.getLayoutMetrics");
+  await shoot(page, file, {
+    format: "jpeg",
+    quality: 70,
+    captureBeyondViewport: true,
+    clip: {
+      x: 0,
+      y: 0,
+      width: Math.ceil(c.width),
+      height: Math.min(Math.ceil(c.height), FULL_MAX),
+      scale: 1 / device.deviceScaleFactor,
+    },
+  });
+}
+async function cleanShot(page, file) {
+  if (await evaluate(page, `(${hideJunk})(true)`)) await shoot(page, file);
+  await evaluate(page, `(${hideJunk})(false)`);
+}
+// The tab's browser errors go into `errors` from before the page loads: visit() opens its tab with chrome.newPage().
+const watch = (chrome, errors) => ({
+  ...chrome,
+  async newPage() {
+    const page = await chrome.newPage();
+    for (const m of ["Runtime.exceptionThrown", "Runtime.consoleAPICalled", "Log.entryAdded"])
+      page.on(m, p => {
+        const e = errorOf(m, p);
+        if (e) errors.add(e);
+      });
+    await page.send("Runtime.enable");
+    await page.send("Log.enable");
+    return page;
+  },
+});
+
+async function userAgents(chrome) {
+  const { userAgent: ua } = await chrome.send("Browser.getVersion");
+  return {
+    desktop: ua.replace("HeadlessChrome/", "Chrome/"),
+    phone: `Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${ua.match(/Chrome\/(\d+)/)?.[1] || "130"}.0.0.0 Mobile Safari/537.36`,
+  };
+}
+
+/** Loads the render sample again, up to 10 pages; pages gives each page's data for the report. rawWords is the
+ * crawler's word count per URL; clean adds screenshots without cookie bars and chat widgets; chosen is rendered at
+ * phone size after its steps. */
+export async function checkMore(
+  browser,
+  urls,
+  { add, screenshotDir, rawWords = new Map(), clean = false, chosen = null, pageBudgetMs = 60000 } = {},
+) {
+  const pages = [],
+    notes = [],
+    used = new Set(),
+    why = e => String(e.message).split("\n")[0].slice(0, 120);
+  const list = urls.slice(0, 10),
+    gates = [],
+    noButton = [];
+  let checked = 0,
+    picked = null,
+    steps = [];
+  if (chosen)
+    try {
+      steps = parseSteps(chosen.steps);
+    } catch (e) {
+      notes.push(`--render-steps: ${e.message}. The page you chose wasn't rendered.`);
+      chosen = null;
+    }
+  if (!list.length && !chosen) return { checked, pages, chosen: picked, notes };
+  if (screenshotDir) mkdirSync(screenshotDir, { recursive: true });
+  const chrome = await launchChrome(browser);
+  try {
+    const ua = await userAgents(chrome);
+    for (const url of list) {
+      const slug = slugOf(url, used),
+        deadline = Date.now() + pageBudgetMs,
+        errors = new Set(),
+        tab = watch(chrome, errors);
+      const shots = async (page, kind) => {
+        if (!screenshotDir) return;
+        const at = name => join(screenshotDir, `${slug}-${kind}-${name}`);
+        await fullPage(page, at("full.jpg"), kind === "desktop" ? DESKTOP : PHONE);
+        if (clean) await cleanShot(page, at("clean.png"));
+        if (kind === "desktop")
+          for (const [name, size] of SIZES) {
+            await page.send("Emulation.setDeviceMetricsOverride", size);
+            await sleep(400);
+            await shoot(page, join(screenshotDir, `${slug}-${name}.png`));
+          }
+      };
+      let d, m;
+      try {
+        d = await visit(tab, url, { device: DESKTOP, userAgent: ua.desktop, settleMs: 500, deadline }, async p => {
+          const x = await evaluate(p, `(${pageMore})(true)`);
+          x.gate = gateOf(x.html);
+          delete x.html;
+          if (!x.gate) await shots(p, "desktop");
+          return x;
+        });
+        if (d.gate) {
+          gates.push(`${new URL(url).pathname} (${d.gate})`);
+          pages.push({ url, gate: d.gate, errors: [...errors].slice(0, 10) });
+          continue;
+        }
+        m = await visit(tab, url, { device: PHONE, userAgent: ua.phone, settleMs: 1000, deadline }, async p => {
+          const x = await evaluate(p, `(${pageMore})(false)`);
+          await shots(p, "mobile");
+          await evaluate(p, `(${hideJunk})(true)`); // a cookie bar or chat bubble mustn't take the tap
+          x.menu = await evaluate(p, `(${menuFind})(${JSON.stringify(d.nav)})`);
+          if (x.menu.toggle && !x.menu.covered) {
+            for (const type of ["mousePressed", "mouseReleased"])
+              await p.send("Input.dispatchMouseEvent", {
+                type,
+                x: x.menu.x,
+                y: x.menu.y,
+                button: "left",
+                clickCount: 1,
+              });
+            await sleep(700); // menus slide in
+            x.menu.revealed = await evaluate(p, `(${menuReached})(${JSON.stringify(x.menu.hrefs)})`);
+          }
+          return x;
+        });
+      } catch (e) {
+        notes.push(`Couldn't load ${url} for the render checks (${why(e)}).`);
+        continue;
+      }
+      checked++;
+      const rec = {
+        url,
+        h1: { desktop: d.h1, phone: m.h1 },
+        cta: { desktop: d.cta, phone: m.cta },
+        words: { html: rawWords.get(url) ?? null, rendered: d.words },
+        menu: menuVerdict(m.menu),
+        ads: adShare(m.ads, m.region),
+      };
+      if (d.hidden.words) rec.hidden = d.hidden;
+      if (d.broken.length || d.target) rec.jumpLinks = { broken: d.broken, deepLink: null, target: d.target };
+      if (d.target)
+        try {
+          rec.jumpLinks.deepLink = await visit(
+            tab,
+            `${url.split("#")[0]}#${encodeURIComponent(d.target)}`,
+            { device: DESKTOP, userAgent: ua.desktop, settleMs: 1500, deadline },
+            p => evaluate(p, `(${landed})(${JSON.stringify(d.target)})`),
+          );
+        } catch (e) {
+          notes.push(`Couldn't test a jump to #${d.target} on ${url} (${why(e)}).`);
+        }
+      rec.errors = [...errors].slice(0, 10);
+      pages.push(rec);
+      if (addsText(rec.words.html, rec.words.rendered))
+        add(
+          "render-adds-text",
+          url,
+          `${rec.words.html} words in the HTML, ${rec.words.rendered} after JavaScript runs`,
+        );
+      if (rec.menu === "closed")
+        add(
+          "mobile-menu-closed",
+          url,
+          `the menu button “${m.menu.toggle}” showed ${m.menu.revealed} of the ${m.menu.hidden} menu links desktop shows`,
+        );
+      if (rec.menu === "no-button") noButton.push(new URL(url).pathname);
+      if (rec.ads > 0.3)
+        add(
+          "mobile-ad-density",
+          url,
+          `ads take ${Math.round(rec.ads * 100)}% of the page's height on a phone, between the header and the footer`,
+        );
+    }
+    if (chosen) {
+      const errors = new Set();
+      try {
+        const x = await visit(
+          watch(chrome, errors),
+          chosen.url,
+          { device: PHONE, userAgent: ua.phone, settleMs: 1000, deadline: Date.now() + 120000 },
+          async p => {
+            for (const s of steps) {
+              if (s.do === "scroll") await evaluate(p, `(${scrollAll})()`);
+              else if (s.do === "wait") await sleep(s.ms);
+              else if (await evaluate(p, `(${clickOn})(${JSON.stringify(s.selector)})`)) await sleep(500);
+              else
+                notes.push(
+                  `--render-steps: nothing on the page you chose matched “${s.selector}”, so that click was skipped.`,
+                );
+            }
+            const r = await evaluate(p, `(${pageMore})(true, ${JSON.stringify(chosen.raw ?? null)})`);
+            if (screenshotDir) {
+              await shoot(p, join(screenshotDir, "chosen-mobile.png"));
+              await fullPage(p, join(screenshotDir, "chosen-mobile-full.jpg"), PHONE);
+            }
+            return r;
+          },
+        );
+        picked = {
+          url: chosen.url,
+          steps: steps.length ? chosen.steps.trim() : null,
+          words: { html: x.rawWords ?? null, rendered: x.words },
+          changes: chosen.raw ? compareRendered(chosen.raw, x.html) : [],
+          gate: gateOf(x.html),
+          errors: [...errors].slice(0, 10),
+        };
+        notes.push(
+          `Rendered the page you chose, ${chosen.url}, at phone size${steps.length ? " after your steps" : ""}${screenshotDir ? ", with screenshots (chosen-mobile.png and chosen-mobile-full.jpg)" : ""}. Information only.`,
+        );
+      } catch (e) {
+        notes.push(`Couldn't render the page you chose, ${chosen.url} (${why(e)}).`);
+      }
+    }
+  } finally {
+    await chrome.close();
+  }
+  if (checked)
+    notes.push(
+      `Loaded ${checked} sample page(s) again at desktop and phone size for browser errors, the first screen, the phone menu, ads, hidden text and jump links${screenshotDir ? `, with whole-page, 1920×1080 and 768×1024 (tablet) screenshots${clean ? " and copies without cookie bars and chat widgets" : ""}` : ""}.`,
+    );
+  if (checked && screenshotDir)
+    notes.push(
+      `The screenshots are in ${screenshotDir}. Look through them for text that overlaps or is cut off, images that are stretched, squashed or blurry, and layouts that break at one of the sizes, and report what you find with the file name.`,
+    );
+  if (gates.length)
+    notes.push(
+      `Chrome got a login screen or a paywall instead of the page on ${gates.join(", ")}. Reported only: nothing was typed in, and these weren't measured as the page.`,
+    );
+  if (noButton.length)
+    notes.push(
+      `On a phone, ${noButton.join(", ")} ${noButton.length === 1 ? "hides" : "hide"} the menu links desktop shows, and no menu button was found to open them. Check the menu by hand on a phone.`,
+    );
+  return { checked, pages, chosen: picked, notes };
+}

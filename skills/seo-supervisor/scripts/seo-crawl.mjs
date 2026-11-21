@@ -73,6 +73,8 @@ import { CHECKS as MEDIA_CHECKS, altProblem, lazySrc, hintsOf, domShape, cdnOf, 
 import { imageMeta } from "./lib/image-size.mjs";
 import { medianScores, ALL_CAP } from "./checks/lighthouse.mjs";
 
+import { MORE_CHECKS as RENDER_MORE_CHECKS, checkMore } from "./checks/visual.mjs";
+
 import {
   CHECKS as CONTENT_CHECKS,
   titleWidth,
@@ -1265,6 +1267,12 @@ const SHOP_FIELDS = {
 };
 
 Object.assign(CHECKS, MEDIA_CHECKS);
+
+RULES["REND-11"] = ["Phones get a working menu, and pages that aren't crowded with ads", "Rendering"];
+Object.assign(CHECKS, RENDER_MORE_CHECKS);
+const RENDER_PAGE = typeof args["render-page"] === "string" ? args["render-page"] : null;
+const RENDER_STEPS = typeof args["render-steps"] === "string" ? args["render-steps"] : "";
+const CLEAN_SHOTS = !!args["clean-screenshots"];
 
 Object.assign(CHECKS, CONTENT_CHECKS);
 RULES["CONTENT-07"] ??= ["People and dates are behind the advice", "Headings & content"]; // stale-guide's rule; never passed here
@@ -4617,6 +4625,46 @@ else if (AI_PROBE)
     if (homeT.trend) speed.pageTrend = { url: EXPECT_ORIGIN + "/", trend: homeT.trend };
   }
 }
+
+// REND-11 data from the browser loads above, and --render-page's result.
+if (RENDER_PAGE && !OUTSIDE)
+  notes.push(
+    "--render-page runs only with outside checks on (--outside): rendering runs the page's own scripts, analytics included. It didn't run.",
+  );
+let moreReason = OUTSIDE
+  ? "Chrome or Edge isn't installed (or set CHROME_PATH), so the phone menu and ads couldn't be checked."
+  : "Outside checks are off. With the owner's go-ahead, --outside loads sample pages in headless Chrome at phone size (running the site's own scripts) to try the menu button and measure ads.";
+if (browser) {
+  let chosen = null;
+  if (RENDER_PAGE) {
+    const u = urlOr(RENDER_PAGE, START.href);
+    if (u && /^https?:$/.test(u.protocol)) {
+      const res = await get(u.href, { manual: false }).catch(() => null);
+      chosen = { url: u.href, steps: RENDER_STEPS, raw: res?.status === 200 && res.body ? res.body : null };
+    } else notes.push(`--render-page needs an http or https address; “${RENDER_PAGE}” isn't one, so it didn't run.`);
+  }
+  const r = await checkMore(browser, renderSample, {
+    add,
+    screenshotDir: resolve(dirname(OUT), "screenshots"),
+    rawWords: new Map(htmlPages.filter(p => !p.clientOnly).map(p => [p.finalUrl, p.words])),
+    clean: CLEAN_SHOTS,
+    chosen,
+  }).catch(e => ({
+    checked: 0,
+    pages: [],
+    chosen: null,
+    notes: [`the browser didn't start for the render checks: ${String(e.message).split("\n")[0].slice(0, 160)}`],
+  }));
+  notes.push(...r.notes);
+  if (r.pages.length) extra.renderSample = r.pages;
+  if (r.chosen) extra.renderedPage = r.chosen;
+  if (r.checked) {
+    evalRules("REND-11");
+    moreReason = null;
+  } else
+    moreReason = `The browser at ${browser} couldn't load the sample pages at phone size (${r.notes[0] || "no pages to load"}).`;
+}
+if (moreReason) notChecked.push({ rule: "REND-11", area: `REND-11 ${RULES["REND-11"][0]}`, reason: moreReason });
 
 // ---------- content: site-wide ----------
 // META-02: descriptions that barely match their page, end with the title's brand or are templated; CONTENT-07: guides

@@ -234,12 +234,15 @@ export async function renderPage(browser, url, { timeoutMs = 20000, dns } = {}) 
   try {
     return await new Promise((ok, fail) =>
       execFile(browser, args, { timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 }, (err, stdout, stderr) => {
-        const why = err ? null : chromeError(stdout, stderr);
+        const why = err ? null : chromeError(stdout, stderr),
+          gate = err || why ? null : gateOf(stdout);
         if (err) {
           err.message = redact(err.message);
           err.stderr = stderr;
           fail(err);
         } else if (why) fail(Object.assign(new Error(redact(`Chrome couldn't load ${url}: ${why}`)), { stderr }));
+        else if (gate)
+          fail(new Error(redact(`Chrome showed ${gate} at ${url}, so it wasn't compared with the raw HTML`)));
         else ok(stdout);
       }),
     );
@@ -380,4 +383,24 @@ export function compareRendered(rawHtml, renderedHtml) {
   if (b.links > a.links * 1.5 && b.links - a.links >= 10)
     out.push({ field: "link-count", raw: a.links, rendered: b.links });
   return out;
+}
+
+// A login screen or paywall where the page should be, or null; never filled in or clicked through. A login needs the
+// title or H1 to say so, so a login box in the header doesn't count. tp-modal and tp-backdrop are Piano's paywall.
+// https://developers.google.com/search/docs/appearance/structured-data/paywalled-content
+export function gateOf(html) {
+  const markup = html.replace(/<(script|style|template|noscript)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi, " ");
+  const text = re => (markup.match(re)?.[1] || "").replace(/<[^>]+>/g, " ");
+  if (
+    /<input\b[^>]*\btype\s*=\s*["']?password\b/i.test(markup) &&
+    /\b(log ?in|sign ?in)\b/i.test(
+      `${text(/<title\b[^>]*>([\s\S]*?)<\/title>/i)} ${text(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)}`,
+    )
+  )
+    return "a login screen";
+  if (/"isAccessibleForFree"\s*:\s*(false|"false")/i.test(html))
+    return "a paywall (its structured data says isAccessibleForFree: false)";
+  if (/<[a-z][^>]*\s(?:id|class)\s*=\s*["'][^"']*\b(?:paywall|regwall|tp-modal|tp-backdrop)\b/i.test(markup))
+    return "a paywall";
+  return null;
 }

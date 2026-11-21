@@ -1306,8 +1306,92 @@ const mediaMd = () => {
   return L.length ? ["## Speed and image details", "", MEDIA_INTRO, "", ...L.flatMap(t => [noteMd(t), ""])] : [];
 };
 
-const renderHtml = () => "",
-  renderMd = () => [];
+// "What the browser saw": the crawler's renderSample (checks/visual.mjs checkMore) and renderedPage (--render-page).
+// Findings from these browser loads are listed with the others. Errors, text and addresses come from the site, so
+// each is escaped (code spans in the Markdown).
+const renderPages = (Array.isArray(raw.renderSample) ? raw.renderSample : [])
+  .filter(p => obj(p) && typeof p.url === "string")
+  .slice(0, 10);
+const renderChosen = (c => (c && typeof c.url === "string" ? c : null))(obj(raw.renderedPage));
+const renderStrs = x => (Array.isArray(x) ? x.filter(s => typeof s === "string" && s) : []);
+const renderNum = x => Number.isInteger(x) && x >= 0;
+const renderSummary = () => {
+  const seen = renderPages.filter(p => !p.gate && obj(p.h1) && obj(p.cta)),
+    n = seen.length;
+  if (!n) return "";
+  const h1 = d => seen.filter(p => p.h1[d] === true).length,
+    cta = d => seen.filter(p => typeof p.cta[d] === "string" && p.cta[d]).length;
+  return `On a phone, the H1 is on the first screen on ${h1("phone")} of ${plural(n, "page")} and a button on ${cta("phone")} of ${n}; on desktop, ${h1("desktop")} of ${n} and ${cta("desktop")} of ${n}. The first screen and the button are our own measures, not Google rules.`;
+};
+const RENDER_DEEP = {
+  "scrolled-away": "the page scrolled away from it",
+  "hash-removed": "the page removed it from the address",
+  both: "the page scrolled away from it and removed it from the address",
+};
+const renderBits = p => {
+  if (typeof p.gate === "string") return [`showed ${p.gate}, so it wasn't compared or measured`];
+  const errors = renderStrs(p.errors),
+    h = obj(p.hidden),
+    j = obj(p.jumpLinks),
+    broken = renderStrs(j?.broken).map(id => `#${id}`);
+  return [
+    errors.length && `${plural(errors.length, "browser error")}, first: ${errors[0]}`,
+    ...["phone", "desktop"].map(
+      d =>
+        obj(p.h1) &&
+        p.h1[d] === false &&
+        `the H1 isn't on the first screen on ${d === "phone" ? "a phone" : "desktop"}`,
+    ),
+    h &&
+      renderNum(h.words) &&
+      h.words >= 50 &&
+      /* our own line */ `${num(h.words)} hidden words (${Object.entries(obj(h.by) || {})
+        .filter(([, v]) => renderNum(v))
+        .map(([k, v]) => `${k} ${num(v)}`)
+        .join(", ")})${typeof h.examples?.[0]?.text === "string" ? `, most in “${h.examples[0].text}”` : ""}`,
+    broken.length &&
+      (broken.length === 1
+        ? `a link to ${broken[0]}, which isn't on the page`
+        : `links to ${broken.join(", ")}, which aren't on the page`),
+    RENDER_DEEP[j?.deepLink] && typeof j.target === "string" && `opened at #${j.target}, ${RENDER_DEEP[j.deepLink]}`,
+    p.menu === "no-button" && "no menu button found on a phone",
+    p.menu === "covered" && "the phone menu button is covered by another layer",
+  ].filter(Boolean);
+};
+const renderRows = () => renderPages.map(p => [p.url, renderBits(p)]).filter(([, b]) => b.length);
+const renderChosenText = () => {
+  const c = renderChosen,
+    w = obj(c.words) || {},
+    steps = typeof c.steps === "string" && c.steps ? ` and the steps (${c.steps})` : "",
+    errors = renderStrs(c.errors);
+  const changes = (Array.isArray(c.changes) ? c.changes : [])
+    .filter(x => obj(x) && typeof x.field === "string")
+    .map(x => `${x.field}: ${x.raw ?? "none"} → ${x.rendered ?? "none"}`);
+  return `: ${renderNum(w.html) ? `${num(w.html)} words in the HTML, ${renderNum(w.rendered) ? num(w.rendered) : "?"}` : `${renderNum(w.rendered) ? num(w.rendered) : "?"} words`} after JavaScript${steps}. ${changes.length ? `What changed: ${changes.join("; ")}.` : "The title, canonical, robots tag, H1, schema and links match the HTML."}${typeof c.gate === "string" ? ` It showed ${c.gate}.` : ""}${errors.length ? ` ${plural(errors.length, "browser error")}, first: ${errors[0]}.` : ""}`;
+};
+const RENDER_INTRO =
+  "The sample pages loaded again in Chrome at desktop and phone size. Information only; what is a finding is listed with the other findings.";
+const renderHtml = () => {
+  const s = renderSummary(),
+    rows = renderRows();
+  if (!s && !rows.length && !renderChosen) return "";
+  return `\n    <details class="how render"><summary>What the browser saw</summary><p>${esc(RENDER_INTRO)}</p>${s ? `<p>${esc(s)}</p>` : ""}${rows.length ? `<ul class="lim">${rows.map(([u, b]) => `<li><b><code>${esc(notePath(u))}</code></b><span>${esc(b.join(" · "))}</span></li>`).join("")}</ul>` : ""}${renderChosen ? `<p>You chose <code>${esc(notePath(renderChosen.url))}</code>${esc(renderChosenText())}</p>` : ""}</details>`;
+};
+const renderMd = () => {
+  const s = renderSummary(),
+    rows = renderRows();
+  if (!s && !rows.length && !renderChosen) return [];
+  return [
+    "## What the browser saw",
+    "",
+    RENDER_INTRO,
+    "",
+    ...(s ? [s, ""] : []),
+    ...rows.map(([u, b]) => `- ${noteCode(notePath(u))} ${noteMd(b.join(" · "))}`),
+    ...(rows.length ? [""] : []),
+    ...(renderChosen ? [`You chose ${noteCode(notePath(renderChosen.url))}${noteMd(renderChosenText())}`, ""] : []),
+  ];
+};
 
 // Templated descriptions (META-02) and keyword use on English pages (CONTENT-03). Crawled text is escaped.
 const tdShare = (t =>
