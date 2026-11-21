@@ -2038,6 +2038,15 @@ const reportMd = () =>
       ]
     : [];
 
+// Optional report sections, each an HTML and a Markdown function; an empty pair adds nothing.
+const pageHtml = () => "",
+  pageMd = () => [];
+const aiPrefsHtml = () => "",
+  aiPrefsMd = () => [];
+const linkIdeasHtml = () => "",
+  linkIdeasMd = () => [];
+const changeHtml = () => "",
+  changeMd = () => [];
 const panelsHtml = () =>
   [
     secHtml,
@@ -2053,6 +2062,10 @@ const panelsHtml = () =>
     connHtml,
     diffMoreHtml,
     reportHtml,
+    pageHtml,
+    aiPrefsHtml,
+    linkIdeasHtml,
+    changeHtml,
   ]
     .map(f => f())
     .join("");
@@ -2071,6 +2084,10 @@ const panelsMd = () =>
     connMd,
     diffMoreMd,
     reportMd,
+    pageMd,
+    aiPrefsMd,
+    linkIdeasMd,
+    changeMd,
   ].flatMap(f => f());
 
 // audiences (audience.md) is written into seo-audit.json and may quote page text, so every string is escaped.

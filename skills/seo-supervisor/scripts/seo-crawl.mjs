@@ -4490,7 +4490,7 @@ for (const p of htmlPages) {
   const bad = prefs.filter(x => !BING_PREFS[x.name].includes(x.value));
   if (bad.length) add("ai-preference-invalid", p.finalUrl, bad.map(x => `${x.name}:${x.value}`).join(", "));
 }
-// Click-only elements (AI-05) and missing main, nav, header or footer landmarks on the pages the per-page checks read;
+// Click-only elements (AI-05) and missing main, nav, header or footer landmarks on indexable, server-rendered pages;
 // the first 20 lacking a landmark are listed.
 {
   const bare = [];
