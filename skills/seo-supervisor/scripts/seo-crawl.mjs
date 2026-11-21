@@ -1109,7 +1109,7 @@ Object.assign(CHECKS, {
 });
 
 Object.assign(CHECKS, CONTENT_CHECKS);
-RULES["CONTENT-07"] ??= ["Guides show who wrote them and when they were reviewed", "Headings & content"]; // stale-guide's rule; never passed here
+RULES["CONTENT-07"] ??= ["People and dates are behind the advice", "Headings & content"]; // stale-guide's rule; never passed here
 
 const findings = new Map(); // key -> {evidence:[], count}
 function add(key, url, detail) {
