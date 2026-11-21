@@ -903,6 +903,8 @@ export async function checkMore(
     }
   if (!list.length && !chosen) return { checked, pages, chosen: picked, notes };
   if (screenshotDir) mkdirSync(screenshotDir, { recursive: true });
+  // The same guard as checkVisual: every request is checked against the site's own addresses.
+  const checkAddress = await addressCheck(list[0] ?? chosen.url);
   const chrome = await launchChrome(browser);
   try {
     const ua = await userAgents(chrome);
@@ -925,37 +927,47 @@ export async function checkMore(
       };
       let d, m;
       try {
-        d = await visit(tab, url, { device: DESKTOP, userAgent: ua.desktop, settleMs: 500, deadline }, async p => {
-          const x = await evaluate(p, `(${pageMore})(true)`);
-          x.gate = gateOf(x.html);
-          delete x.html;
-          if (!x.gate) await shots(p, "desktop");
-          return x;
-        });
+        d = await visit(
+          tab,
+          url,
+          { device: DESKTOP, userAgent: ua.desktop, settleMs: 500, deadline, checkAddress },
+          async p => {
+            const x = await evaluate(p, `(${pageMore})(true)`);
+            x.gate = gateOf(x.html);
+            delete x.html;
+            if (!x.gate) await shots(p, "desktop");
+            return x;
+          },
+        );
         if (d.gate) {
           gates.push(`${new URL(url).pathname} (${d.gate})`);
           pages.push({ url, gate: d.gate, errors: [...errors].slice(0, 10) });
           continue;
         }
-        m = await visit(tab, url, { device: PHONE, userAgent: ua.phone, settleMs: 1000, deadline }, async p => {
-          const x = await evaluate(p, `(${pageMore})(false)`);
-          await shots(p, "mobile");
-          await evaluate(p, `(${hideJunk})(true)`); // a cookie bar or chat bubble mustn't take the tap
-          x.menu = await evaluate(p, `(${menuFind})(${JSON.stringify(d.nav)})`);
-          if (x.menu.toggle && !x.menu.covered) {
-            for (const type of ["mousePressed", "mouseReleased"])
-              await p.send("Input.dispatchMouseEvent", {
-                type,
-                x: x.menu.x,
-                y: x.menu.y,
-                button: "left",
-                clickCount: 1,
-              });
-            await sleep(700); // menus slide in
-            x.menu.revealed = await evaluate(p, `(${menuReached})(${JSON.stringify(x.menu.hrefs)})`);
-          }
-          return x;
-        });
+        m = await visit(
+          tab,
+          url,
+          { device: PHONE, userAgent: ua.phone, settleMs: 1000, deadline, checkAddress },
+          async p => {
+            const x = await evaluate(p, `(${pageMore})(false)`);
+            await shots(p, "mobile");
+            await evaluate(p, `(${hideJunk})(true)`); // a cookie bar or chat bubble mustn't take the tap
+            x.menu = await evaluate(p, `(${menuFind})(${JSON.stringify(d.nav)})`);
+            if (x.menu.toggle && !x.menu.covered) {
+              for (const type of ["mousePressed", "mouseReleased"])
+                await p.send("Input.dispatchMouseEvent", {
+                  type,
+                  x: x.menu.x,
+                  y: x.menu.y,
+                  button: "left",
+                  clickCount: 1,
+                });
+              await sleep(700); // menus slide in
+              x.menu.revealed = await evaluate(p, `(${menuReached})(${JSON.stringify(x.menu.hrefs)})`);
+            }
+            return x;
+          },
+        );
       } catch (e) {
         notes.push(`Couldn't load ${url} for the render checks (${why(e)}).`);
         continue;
@@ -976,7 +988,7 @@ export async function checkMore(
           rec.jumpLinks.deepLink = await visit(
             tab,
             `${url.split("#")[0]}#${encodeURIComponent(d.target)}`,
-            { device: DESKTOP, userAgent: ua.desktop, settleMs: 1500, deadline },
+            { device: DESKTOP, userAgent: ua.desktop, settleMs: 1500, deadline, checkAddress },
             p => evaluate(p, `(${landed})(${JSON.stringify(d.target)})`),
           );
         } catch (e) {
@@ -1010,7 +1022,7 @@ export async function checkMore(
         const x = await visit(
           watch(chrome, errors),
           chosen.url,
-          { device: PHONE, userAgent: ua.phone, settleMs: 1000, deadline: Date.now() + 120000 },
+          { device: PHONE, userAgent: ua.phone, settleMs: 1000, deadline: Date.now() + 120000, checkAddress },
           async p => {
             for (const s of steps) {
               if (s.do === "scroll") await evaluate(p, `(${scrollAll})()`);
