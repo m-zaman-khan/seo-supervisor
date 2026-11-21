@@ -42,6 +42,16 @@ const RULES = [
 ];
 const RETIRED = GOOGLE.retired.filter(r => !r.keep),
   KEPT = GOOGLE.retired.filter(r => r.keep && r.note);
+// Types schema.org deprecates, and the type it names instead. The crawler reads this list too.
+// https://schema.org/Attorney
+export const SUPERSEDED = { Attorney: "LegalService" };
+// Template placeholders: a bracketed field name ([Business Name], [Phone], [CITY]) or a REPLACE_ token. Only field
+// names count, so "[Updated]" in a headline isn't one.
+const BRACKET =
+  /\[(?:(?:your|the|insert|enter|add) )?(?:business|company|brand|site|store|shop|city|town|street|state|county|region|country|zip|postcode|postal|phone|telephone|email|e-mail|address|name|url|website|domain|logo|price|hours)(?: (?:name|number|address|url|code|here))?\]/i;
+const REPLACE = /\bREPLACE_[A-Z0-9_]*|\bREPLACE[_ ]?ME\b/;
+export const placeholderIn = s => (BRACKET.exec(s) || REPLACE.exec(s))?.[0] ?? null;
+const docOf = type => GOOGLE.supported.find(r => r.type === type).doc;
 const monthOf = d =>
   new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 
@@ -84,8 +94,14 @@ export function checkJsonLd(text) {
       },
     ];
   let data;
+  // Each object's numbers as the page wrote them, so a latitude of 53.79640 keeps its five decimal places.
+  const written = new WeakMap();
+  function keepSource(k, v, c) {
+    if (typeof v === "number" && c?.source) (written.get(this) || written.set(this, {}).get(this))[k] = c.source;
+    return v;
+  }
   try {
-    data = JSON.parse(text.replace(/^﻿/, ""));
+    data = JSON.parse(text.replace(/^﻿/, ""), keepSource);
   } catch (e) {
     const pos = Number(/at position (\d+)/.exec(e.message)?.[1] ?? text.length);
     return [
@@ -253,6 +269,49 @@ export function checkJsonLd(text) {
           `Google retired ${r.feature} in ${monthOf(r.since)}, but keep "${r.type}": ${r.note}`,
           { doc: r.source, rule: "SCHEMA-05", key: r.type },
         );
+    for (const t of known)
+      if (SUPERSEDED[t])
+        add(
+          "warning",
+          "type-superseded",
+          path,
+          known,
+          `schema.org has deprecated "${t}" and says to use "${SUPERSEDED[t]}" instead`,
+          { doc: `https://schema.org/${t}`, rule: "SCHEMA-05", key: t },
+        );
+  }
+
+  // A business's map pin and price range, as Google's local business and vacation rental docs set them.
+  function business(v, path, known) {
+    if (!known.some(t => isA(t, "LocalBusiness"))) return;
+    const doc = docOf(known.some(t => isA(t, "VacationRental")) ? "VacationRental" : "LocalBusiness");
+    // Both docs want latitude and longitude to at least 5 decimal places.
+    for (const o of [v, ...list(v.geo)])
+      for (const k of ["latitude", "longitude"]) {
+        if (!o || typeof o !== "object" || o[k] == null) continue;
+        const s = String(written.get(o)?.[k] ?? o[k]).trim(),
+          m = /^[+-]?\d+(?:\.(\d*))?$/.exec(s),
+          n = m?.[1]?.length ?? 0;
+        if (m && n < 5)
+          add(
+            "warning",
+            "value-geo",
+            path,
+            known,
+            `"${k}" is ${s} (${n} decimal place${n === 1 ? "" : "s"}); Google wants at least 5, so the map pin lands on the right building`,
+            { doc, key: k },
+          );
+      }
+    const range = typeof v.priceRange === "string" ? v.priceRange.trim().length : 0;
+    if (range >= 100)
+      add(
+        "warning",
+        "value-price-range",
+        path,
+        known,
+        `"priceRange" is ${range} characters; Google shows no price range at 100 characters or more ("$10-15" or "$$$" is the form it wants)`,
+        { doc: docOf("LocalBusiness"), key: "priceRange" },
+      );
   }
 
   function walk(v, path, parent, last, via) {
@@ -267,10 +326,41 @@ export function checkJsonLd(text) {
     for (const t of types)
       if (!TYPES[t])
         add("error", "type-unknown", path, types, `"${t}" isn't a schema.org type${hint(TYPE_LC, t)}`, { key: t });
+    // An empty @type anywhere; no @type on a top-level or @graph item that has properties (via is unset only there),
+    // unless its @id names an item typed elsewhere in the block, which it adds to. Nested values may go untyped.
+    if (Object.hasOwn(v, "@type") && !list(v["@type"]).some(t => typeof t === "string" && t.trim()))
+      add("error", "type-empty", path, [], `"@type" is empty; name the type, such as "Organization" or "Article"`, {
+        key: "@type",
+      });
+    else if (
+      via === undefined &&
+      !Object.hasOwn(v, "@type") &&
+      Object.keys(v).some(k => !k.startsWith("@")) &&
+      !typedIds.has(v["@id"])
+    )
+      add(
+        "error",
+        "type-missing",
+        path,
+        [],
+        `this item has no "@type", so search engines can't tell what it describes; add one, such as "Organization" or "Article"`,
+      );
     for (const [key, val] of Object.entries(v)) {
       if (key === "@graph") {
         walk(val, `${path}.@graph`, null, true);
         continue;
+      }
+      for (const x of list(val)) {
+        const ph = typeof x === "string" && placeholderIn(x);
+        if (ph)
+          add(
+            "error",
+            "placeholder",
+            path,
+            known,
+            `"${key}" holds the placeholder "${ph}"; fill in the real value from the site's data`,
+            { rule: "SCHEMA-01", key },
+          );
       }
       const k = term(key);
       if (key.startsWith("@") || k.includes(":")) continue; // JSON-LD keywords and other vocabularies
@@ -292,8 +382,20 @@ export function checkJsonLd(text) {
       }
       walk(val, `${path}.${key}`, known.length ? known : parent, true, k);
     }
-    if (known.length) google(v, path, known, parent, last, via);
+    if (known.length) {
+      google(v, path, known, parent, last, via);
+      business(v, path, known);
+    }
   }
+
+  const typedIds = new Set(),
+    scan = x => {
+      if (x && typeof x === "object") {
+        if (has(x, "@type") && typeof x["@id"] === "string") typedIds.add(x["@id"]);
+        Object.values(x).forEach(scan);
+      }
+    };
+  scan(data);
 
   for (const [root, path] of Array.isArray(data) ? data.map((d, i) => [d, `$[${i}]`]) : [[data, "$"]]) {
     if (!root || typeof root !== "object") continue;

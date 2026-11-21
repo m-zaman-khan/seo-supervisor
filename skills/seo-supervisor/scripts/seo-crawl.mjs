@@ -51,7 +51,9 @@ import { estSaving } from "./images.mjs";
 
 import { renderAll } from "./checks/render.mjs";
 
-import { createHash } from "node:crypto"; // once, before any request
+import { createHash } from "node:crypto";
+
+import { SUPERSEDED, placeholderIn } from "./schema-check.mjs"; // once, before any request
 
 const VERSION = "2.0.0";
 const UA = "seo-supervisor-crawler/" + VERSION;
@@ -1068,6 +1070,30 @@ Object.assign(CHECKS, {
   ],
 });
 
+Object.assign(CHECKS, {
+  "schema-placeholder": [
+    "SCHEMA-01",
+    "high",
+    n => `${n} page(s) have placeholder text in their structured data`,
+    "Template text such as [Business Name], [Phone] or a REPLACE_ token went live in the JSON-LD. Search engines read it as the real name, phone or address, so the business is described wrongly where visitors can't see it.",
+    "Fill each field from the site's real data, the same settings that feed the page. `scripts/schema-check.mjs` reports these tokens as errors, so run it on the built pages before each release.",
+  ],
+  "schema-superseded": [
+    "SCHEMA-05",
+    "low",
+    n => `${n} page(s) use a schema type that schema.org has deprecated`,
+    "schema.org marks these types as deprecated and names the type to use instead: LegalService for Attorney, which it calls more inclusive and less ambiguous.",
+    "Change the type to the one named (Attorney → LegalService) and keep the same properties.",
+  ],
+  "schema-image-broken": [
+    "SCHEMA-01",
+    "medium",
+    n => `${n} schema image(s) don't load`,
+    "Structured data points at these images (an article's image, a logo, a video thumbnail), but the URL answers with an error or a web page instead of an image. Google asks for image URLs it can crawl and index, and recipes, movies and vacation rentals show as rich results only with an image.",
+    "Restore the file, or fix the URL in the data the schema is built from. Use the full https:// URL of an image on the public site.",
+  ],
+});
+
 const findings = new Map(); // key -> {evidence:[], count}
 function add(key, url, detail) {
   if (!CHECKS[key]) throw new Error("unknown check " + key);
@@ -1708,6 +1734,25 @@ function analyze(url, html, headers, xRobotsLines) {
     )
     .map(h => `H${h.level} “${h.text}”`);
   rec.referrerMeta = meta("referrer") ?? null;
+
+  // JSON-LD placeholders, deprecated types (at any JSON-LD depth, and in Microdata or RDFa) and schema image URLs:
+  // image, logo and thumbnailUrl, as a string or an ImageObject's contentUrl or url.
+  rec.schemaPlaceholder = placeholderIn(JSON.stringify(nodes));
+  rec.superseded = Object.keys(SUPERSEDED).filter(
+    t => schemaOther.includes(t) || nodes.some(n => deepHas(n, o => typesOf(o).includes(t))),
+  );
+  const schemaImages = new Set(),
+    pick = (o, d) => {
+      if (!o || typeof o !== "object" || d > 12) return;
+      for (const k of ["image", "logo", "thumbnailUrl"])
+        for (const x of [].concat(o[k] ?? [])) {
+          const s = typeof x === "string" ? x : x?.contentUrl || x?.url;
+          if (typeof s === "string" && s.trim()) schemaImages.add(s.trim());
+        }
+      Object.values(o).forEach(x => pick(x, d + 1));
+    };
+  nodes.forEach(n => pick(n, 0));
+  rec.schemaImages = [...schemaImages];
 
   return rec;
 }
@@ -3733,6 +3778,44 @@ if (renderEvery?.note) notes.push(renderEvery.note);
     .map(p => ({ from: p.url, to: p.error === "too many redirects" ? null : p.finalUrl, status: p.chain[0].status }));
   if (met.length > 500)
     notes.push(`The crawl met ${met.length} redirects; the first 500 are kept for the next audit's comparison.`);
+}
+
+// JSON-LD placeholders and deprecated types (SCHEMA-01, SCHEMA-05), and broken schema images (SCHEMA-01): the first
+// 64 KB of up to 50 on-site ones, read with firstBytes, which never leaves the site. An error or a web page counts as
+// not loading.
+{
+  const schemaImgs = new Map(),
+    away = new Set(); // crawl URL -> { src, page }; images on other hosts
+  for (const p of htmlPages) {
+    if (p.clientOnly || !indexable(p)) continue;
+    if (p.schemaPlaceholder) add("schema-placeholder", p.finalUrl, `“${p.schemaPlaceholder}”`);
+    if (p.superseded.length)
+      add("schema-superseded", p.finalUrl, p.superseded.map(t => `${t} → ${SUPERSEDED[t]}`).join(", "));
+    for (const s of p.schemaImages) {
+      const src = urlOr(s, p.base);
+      if (!src || !/^https?:$/.test(src.protocol)) continue;
+      const c = clean(toCrawl(src.href));
+      if (new URL(c).origin !== START_ORIGIN) away.add(src.href);
+      else if (!schemaImgs.has(c)) schemaImgs.set(c, { src: src.href, page: p.finalUrl });
+    }
+  }
+  const list = [...schemaImgs].slice(0, 50);
+  for (let i = 0; i < list.length; i += CONC)
+    await Promise.all(
+      list.slice(i, i + CONC).map(async ([crawlSrc, { src, page }]) => {
+        const r = await firstBytes(crawlSrc);
+        if (!r)
+          away.add(src); // redirects off the crawled site, so not followed
+        else if (r.status !== 200 && r.status !== 206)
+          add("schema-image-broken", page, `${src} → ${r.status || `no response (${r.error})`}`);
+        else if (/html/i.test(r.type)) add("schema-image-broken", page, `${src} → an HTML page, not an image`);
+      }),
+    );
+  if (away.size)
+    notes.push(
+      `${away.size} schema image(s) are on another host (often a CDN) or redirect there, e.g. ${[...away][0]}, so they weren't checked: only the crawled site is fetched.`,
+    );
+  if (schemaImgs.size > 50) notes.push(`Schema images were checked for the first 50 of ${schemaImgs.size}.`);
 }
 
 // E-E-A-T signals for the trust view, never findings or scored; last, so the security findings are in. HTTPS counts

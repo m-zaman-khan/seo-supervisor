@@ -21,12 +21,16 @@
 > - VideoObject `creator`
 > - new Discussion forum and Q&A properties
 >
+> **Sale dates (merchant listings):** a sale is the active price plus a second price marked `priceType: "https://schema.org/StrikethroughPrice"`. Give the sale's start in `validFrom` and its end in `validThrough` or `priceValidUntil`, in ISO 8601 with a time and timezone (`2026-11-30T23:59:59+00:00`), the start no later than the end. On the Offer they apply when its `price` is the sale price; on a UnitPriceSpecification use `validFrom` and `validThrough` (`priceValidUntil` doesn't apply there). A `priceValidUntil` in the past can stop the listing showing. Source: Google's merchant listing doc, checked 21 Nov 2026.
+>
 > **Reviews:** no fake or undisclosed incentivised reviews, on the page or in markup. Self-serving reviews in LocalBusiness or Organization markup never earn stars.
 >
 > **Not needed for AI search:** Google says no schema is required for AI Overviews or AI Mode.
+>
+> **Not a ranking factor:** schema makes a page eligible for rich results and tells engines what it is, but it doesn't move a page up. "Structured data won't make your site rank better" (John Mueller, Google, April 2025), and Google's general structured data guidelines say markup "does not guarantee" a rich result. Never promise rankings from it.
 
 ### SCHEMA-01 · JSON-LD parses and comes from data · high
-- **Check:** crawler `jsonld-invalid`. Code: the JSON-LD component.
+- **Check:** crawler `jsonld-invalid`, `schema-placeholder` (high: template text such as `[Business Name]`, `[Phone]` or a `REPLACE_` token in the JSON-LD; `schema-check.mjs` reports it as `placeholder`) and `schema-image-broken` (medium: an `image`, `logo` or `thumbnailUrl` on the crawled site that answers with an error or a web page; up to 50 are fetched, and images on other hosts aren't). Code: the JSON-LD component.
 - **Pass:** built with `JSON.stringify` from typed data, with `<` escaped (`<`) so no string can close the script tag. Never string templates. No relative URLs, staging hosts or `new Date()` dates.
 - **Microdata and RDFa:** the crawler records their types (`itemtype`, `typeof`) per page as `schemaOther`, and they count as structured data for SCHEMA-02, SCHEMA-03 and SCHEMA-07. A page with only Microdata or RDFa gets `schema-not-jsonld` (low): Google reads them, but recommends JSON-LD, and the crawler and `schema-check.mjs` validate JSON-LD only.
 
@@ -46,7 +50,8 @@
 | Article, guide, post | Article or BlogPosting with `author` (Person with author page), `datePublished`, `dateModified`, BreadcrumbList |
 | Author page | ProfilePage, Person (`jobTitle`, `sameAs`, `knowsAbout`) |
 | Service page | Service (`serviceType`, `provider` → `#organization`, `areaServed`), BreadcrumbList |
-| Local business | The most specific LocalBusiness subtype with real NAP, `geo`, `openingHoursSpecification`, `sameAs` (Google profile) |
+| Local business | The most specific LocalBusiness subtype with real NAP, `geo` (latitude and longitude to at least 5 decimal places), `openingHoursSpecification`, `priceRange` if it has one (under 100 characters, such as `$10-15` or `$$`), `sameAs` (Google profile) |
+| Contact page | ContactPage, BreadcrumbList. The name, address and phone stay in the root layout's Organization node (`#organization`), not in a second copy |
 | Product | Product with Offer (merchant listing) or AggregateOffer (product snippet only), plus shipping, return policy and warranty when they apply |
 | Glossary | DefinedTermSet on the glossary hub; DefinedTerm on each term page, pointing back with `inDefinedTermSet` |
 | Comparison | Article, ItemList of the products compared (no ratings for anyone, yours included) |
@@ -54,9 +59,12 @@
 | Download (template, checklist) | CreativeWork or DigitalDocument with `name`, `description`, `encodingFormat`, `dateModified` |
 | Sample report | WebPage, plus DigitalDocument when it's a download (client details redacted) |
 | Pricing | Service or SoftwareApplication with one Offer per plan |
+| SaaS home and feature pages | SoftwareApplication (WebApplication for an app that runs in the browser) with `name`, `applicationCategory`, `operatingSystem` and `offers`, once, on the home page, with a stable `@id` (`https://site/#app`) and `publisher` → `#organization`. Feature pages: WebPage with `about` → `#app`, BreadcrumbList. Google shows the app result only with a real rating (SCHEMA-04) |
+| SaaS docs and help articles | TechArticle (schema.org's Article type for technical docs) with `dateModified`, BreadcrumbList. Google's article docs name only Article, NewsArticle and BlogPosting |
+| Case study | Article with `about` → the customer (an Organization) and `mentions` → the product or service by `@id`, BreadcrumbList. No Review or rating: a customer story isn't a review (SCHEMA-04) |
 | Search, result and account pages | None |
 
-CollectionPage, ItemList, DefinedTerm, CreativeWork and Service earn no Google rich result. Add them anyway: they tell Bing and AI engines what each page is. Full examples are in `examples/snippets.md`.
+CollectionPage, ItemList, DefinedTerm, CreativeWork, ContactPage and Service earn no Google rich result. Add them anyway: they tell Bing and AI engines what each page is. Full examples are in `examples/snippets.md`.
 
 ### SCHEMA-04 · Schema matches what the page visibly shows · blocker
 - **Check:** crawler `faq-not-visible`, `rating-review`. Code: where FAQ, breadcrumb and rating schema come from.
@@ -67,6 +75,8 @@ CollectionPage, ItemList, DefinedTerm, CreativeWork and Service earn no Google r
 - **Check:** crawler `deprecated-schema`, and `scripts/schema-check.mjs` warns `type-retired` with Google's source, for each type in the `retired` list of `scripts/data/google-rich-results.json`: HowTo (Sept 2023), SearchAction (the sitelinks search box, Nov 2024), and SpecialAnnouncement and a top-level Occupation (estimated salary), phased out from June 2025.
 - **ClaimReview** lost its rich result in June 2025, but it's marked `keep`, because Google's Fact Check Explorer still reads it. It gets an information note (`type-kept`), never a finding, so fact-checkers aren't told to remove it.
 - Types are matched exactly, so a Recipe, a kind of HowTo in schema.org, isn't flagged.
+- **Deprecated in schema.org:** `Attorney`, which schema.org replaced with `LegalService` (https://schema.org/Attorney), gets crawler `schema-superseded` (low) and a `type-superseded` warning from `schema-check.mjs`, in JSON-LD, Microdata or RDFa. The fix is a one-word change.
+- **Search Console and the Rich Results Test no longer report retired types:** Google dropped them from both as it retired them (How-to in Oct 2023, the sitelinks search box in Nov 2024, the June 2025 types from Sept 2025, practice problems from Jan 2026). A clean enhancement report says nothing about this markup; the crawler and `schema-check.mjs` still see it.
 - **Not flagged:** FAQPage, which Bing and AI engines still read: keep it where the FAQ is visible (SCHEMA-04). Course info, learning video, vehicle listing and practice problem results are gone too, but their types (Course, VideoObject, Quiz, Car) still serve live results or describe the item to other engines.
 - **Fix:** remove the markup, or keep it knowingly: it does no harm. Never promise these rich results.
 
@@ -76,9 +86,10 @@ CollectionPage, ItemList, DefinedTerm, CreativeWork and Service earn no Google r
 
 ### SCHEMA-07 · BreadcrumbList on every page below the home page · medium
 - **Check:** crawler `breadcrumb-missing`, and URL-05.
+- **Desktop only:** since January 2025 Google shows breadcrumbs in desktop results only; on phones the result shows just the domain (Search Central blog, 23 Jan 2025). Keep the markup: Google still uses it on desktop, and the Search Console report and the Rich Results Test still cover it.
 
 ### SCHEMA-08 · Every template is validated · medium
-- **Check:** `scripts/schema-check.mjs` on the built pages or a local URL, offline: the schema.org vocabulary, value shapes, and Google's required and recommended properties for every rich-result type in its search gallery (`scripts/data/google-rich-results.json`, with the date it was checked; FAQPage structure only). JSON-LD with template tags (`{{`, `{%`, `<%`) is a note to check the built output; ProductGroups and Products nested as `isSimilarTo`, `itemOffered` or `itemReviewed` don't need offers. Then one URL per template through Google's Rich Results Test. After launch, watch the enhancement reports in Search Console.
+- **Check:** `scripts/schema-check.mjs` on the built pages or a local URL, offline: the schema.org vocabulary, value shapes, and Google's required and recommended properties for every rich-result type in its search gallery (`scripts/data/google-rich-results.json`, with the date it was checked; FAQPage structure only). JSON-LD with template tags (`{{`, `{%`, `<%`) is a note to check the built output; ProductGroups and Products nested as `isSimilarTo`, `itemOffered` or `itemReviewed` don't need offers. It also reports a top-level item with no `@type` and any empty `@type` (errors; an untyped nested value or a bare `@id` reference is fine), and warns when a business's `latitude` or `longitude` has fewer than 5 decimal places (`value-geo`; Google's local business and vacation rental docs) or its `priceRange` is 100 characters or more (`value-price-range`; Google then shows no price range). Then one URL per template through Google's Rich Results Test. After launch, watch the enhancement reports in Search Console.
 - **What it never asks for:** recommended lists leave out what Google marks "if applicable" and every rating. A software app with no rating or review is a note (`rating-missing`), not an error, because Google shows the result only with one and it must come from real reviews shown on the page (SCHEMA-04).
 - **Copy-ready code:** the "Google rich results" section of `examples/snippets.md` has one snippet per type, each passing `schema-check.mjs`.
 - Facts that must match the visible page: phone, email, address, prices, hours.
