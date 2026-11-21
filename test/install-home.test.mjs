@@ -93,6 +93,26 @@ test("a new crawl into seo-crawl.json files the one it replaces in history/ firs
   }
 });
 
+test("the score model skips null or malformed findings and passed rules instead of crashing", async () => {
+  const { normalise, buildRules, score } = await import("../skills/seo-supervisor/scripts/lib/score.mjs");
+  const rules = buildRules(normalise([null, "x", { rule: "META-01", severity: "low" }]), [
+    null,
+    { rule: "MAP-01" },
+    { nope: 1 },
+  ]);
+  assert.deepEqual(rules.map(r => r.key).sort(), ["MAP-01", "META-01"]);
+  assert.equal(score(rules).value, 90);
+});
+
+test("SEO_SUPERVISOR_HOME expands ~ and never resolves inside the current folder", async () => {
+  const { settingsDir } = await import("../skills/seo-supervisor/scripts/lib/settings-dir.mjs");
+  const { isAbsolute } = await import("node:path");
+  assert.equal(settingsDir({ SEO_SUPERVISOR_HOME: "~/.seo" }, "/home/me"), join("/home/me", ".seo"));
+  assert.equal(settingsDir({ SEO_SUPERVISOR_HOME: "~" }, "/home/me"), join("/home/me"));
+  assert.throws(() => settingsDir({ SEO_SUPERVISOR_HOME: "settings" }, "/home/me"), /full path/);
+  assert.ok(isAbsolute(settingsDir({}, "/home/me")));
+});
+
 test("findLighthouse looks in the settings folder SEO_SUPERVISOR_HOME names", () => {
   const home = tmp(),
     bin = join(home, "tools", "node_modules", ".bin");

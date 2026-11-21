@@ -8,14 +8,16 @@ export const isOpen = f => f.status !== "fixed";
 
 // Findings as the report reads them: an ID, a known severity, a status and an area on each.
 export const normalise = list =>
-  (Array.isArray(list) ? list : []).map((f, i) => ({
-    evidence: [],
-    ...f,
-    id: f.id || `F-${String(i + 1).padStart(3, "0")}`,
-    severity: SEV.includes(f.severity) ? f.severity : "low",
-    status: f.status || (f.severity === "needs-decision" ? "needs-decision" : "open"),
-    category: f.category || "Other",
-  }));
+  (Array.isArray(list) ? list : [])
+    .filter(f => f && typeof f === "object")
+    .map((f, i) => ({
+      evidence: [],
+      ...f,
+      id: f.id || `F-${String(i + 1).padStart(3, "0")}`,
+      severity: SEV.includes(f.severity) ? f.severity : "low",
+      status: f.status || (f.severity === "needs-decision" ? "needs-decision" : "open"),
+      category: f.category || "Other",
+    }));
 
 // fixedCountsAsOpen: the score before this run's fixes. assume: findings to treat as fixed (for the "once blockers
 // are fixed" score).
@@ -32,8 +34,9 @@ export function buildRules(findings, passed = [], { fixedCountsAsOpen = false, a
       r.worst = f.severity;
     rules.set(key, r);
   }
-  for (const p of passed || [])
-    if (!rules.has(p.rule)) rules.set(p.rule, { key: p.rule, area: p.category || "Other", worst: null });
+  for (const p of Array.isArray(passed) ? passed : [])
+    if (typeof p?.rule === "string" && !rules.has(p.rule))
+      rules.set(p.rule, { key: p.rule, area: p.category || "Other", worst: null });
   return [...rules.values()];
 }
 export function score(rules) {
