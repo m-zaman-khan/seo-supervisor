@@ -2431,8 +2431,89 @@ const scoreMd = () =>
           : []),
       ]
     : [];
-const answersHtml = () => "",
-  answersMd = () => [];
+// aiAnswers comes from ai-answers.json: per engine, how many sampled answers cited the site and each rival. It's a
+// count from a small sample, so never a score or a finding. Questions, rivals, pages and errors are user or provider
+// text, so they're escaped.
+const aiAnswerData = (a => {
+  const cnt = x => (Number.isInteger(x) && x >= 0 ? x : null),
+    strs = x => (Array.isArray(x) ? x.filter(s => typeof s === "string") : []);
+  const counts = m => Object.entries(obj(m) || {}).filter(([, v]) => cnt(v) !== null);
+  const engines = Object.values(obj(a?.engines) || {})
+    .map(obj)
+    .filter(
+      e =>
+        e &&
+        typeof e.name === "string" &&
+        cnt(e.answers) !== null &&
+        cnt(e.cited) !== null &&
+        (e.answers > 0 || typeof e.error === "string"),
+    );
+  return engines.length
+    ? {
+        date: /^\d{4}-\d{2}-\d{2}$/.test(a.date) ? a.date : "an unknown date",
+        questions: strs(a.questions).length,
+        repeat: cnt(a.repeat) || 1,
+        engines: engines.map(e => ({
+          ...e,
+          rivals: counts(e.rivals),
+          pages: counts(e.pages),
+          never: strs(e.neverCited),
+        })),
+      }
+    : null;
+})(obj(raw.aiAnswers));
+const AI_ANSWERS_INTRO =
+  "Whether AI answer engines cited your site when they answered the questions you chose, asked through each provider's API with your own keys. These answers can differ from what people see in the ChatGPT or Perplexity apps, which add personal settings and location, and answers change from day to day. So this is a sample to compare over time, not a ranking. Information only: it doesn't change the score.";
+const aiName = e => `${e.name}${typeof e.model === "string" ? ` (${e.model})` : ""}`;
+const aiHead = e =>
+  `your site was cited in ${e.cited} of ${plural(e.answers, "answer")} (a sample: ${plural(aiAnswerData.questions, "question")}, asked ${aiAnswerData.repeat === 1 ? "once" : `${aiAnswerData.repeat} times`} each, on ${aiAnswerData.date}).`;
+const aiStop = e =>
+  typeof e.error === "string" ? `${e.name} stopped after ${plural(e.answers, "answer")}: ${e.error}` : "";
+const aiCited = n => `cited in ${plural(n, "answer")}`;
+const aiLists = e =>
+  [
+    ["Rivals", e.rivals.map(([d, n]) => [d, `cited in ${n} of ${plural(e.answers, "answer")}`])],
+    ["Your pages cited", e.pages.map(([p, n]) => [p, aiCited(n)])],
+    ["Questions whose answers never cited your site", e.never.map(q => [q, ""])],
+  ].filter(([, rows]) => rows.length);
+const answersHtml = () =>
+  aiAnswerData
+    ? `\n    <details class="how aianswers"><summary>AI answer check</summary><p>${esc(AI_ANSWERS_INTRO)}</p>${aiAnswerData.engines
+        .map(
+          e =>
+            `<p><b>${esc(aiName(e))}</b>: ${esc(aiHead(e))}${aiStop(e) ? ` ${esc(aiStop(e))}` : ""}</p>${aiLists(e)
+              .map(
+                ([t, rows]) =>
+                  `<p>${esc(t)}:</p><ul class="lim">${rows.map(([k, v]) => `<li><b>${t === "Your pages cited" ? `<code>${esc(k)}</code>` : esc(k)}</b>${v ? `<span>${esc(v)}</span>` : ""}</li>`).join("")}</ul>`,
+              )
+              .join("")}`,
+        )
+        .join("")}</details>`
+    : "";
+const answersMd = () =>
+  aiAnswerData
+    ? [
+        "## AI answer check",
+        "",
+        noteMd(AI_ANSWERS_INTRO),
+        "",
+        ...aiAnswerData.engines.flatMap(e => [
+          `### ${noteMd(e.name)}`,
+          "",
+          noteMd(`${aiName(e)}: ${aiHead(e)}`),
+          "",
+          ...(aiStop(e) ? [noteMd(aiStop(e)), ""] : []),
+          ...aiLists(e).flatMap(([t, rows]) => [
+            `${t}:`,
+            "",
+            ...rows.map(
+              ([k, v]) => `- ${t === "Your pages cited" ? noteCode(k) : noteMd(k)}${v ? ` ${noteMd(v)}` : ""}`,
+            ),
+            "",
+          ]),
+        ]),
+      ]
+    : [];
 const panelsHtml = () =>
   [
     secHtml,

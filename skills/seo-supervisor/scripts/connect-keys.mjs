@@ -204,8 +204,52 @@ export const SERVICES = {
       "Clarity allows 10 requests a day per project, and each fetch uses one. A token reads one project, so for several sites use a client folder each (SEO_SUPERVISOR_CLIENT=<name>). If someone with access leaves the project, Microsoft asks you to replace the token.",
     ],
   },
+  // answers: ai-answers.mjs uses Perplexity and OpenAI; fetch doesn't. Each answer searches the web first, so it gets
+  // 2 minutes, not the usual 30 seconds. The requests' sources are in ai-answers.mjs.
+  // https://docs.perplexity.ai/docs/getting-started/quickstart
+  // https://developers.openai.com/api/docs/quickstart
+  perplexity: {
+    name: "Perplexity",
+    env: "PERPLEXITY_API_KEY",
+    endpointEnv: "PERPLEXITY_ENDPOINT",
+    endpoint: "https://api.perplexity.ai/v1/agent",
+    optional: true,
+    answers: true,
+    timeout: 120000,
+    adds: "whether Perplexity's answers to your customers' questions cite your site (node ai-answers.mjs)",
+    where: "console.perplexity.ai → API Keys",
+    guide: [
+      "Perplexity's API lets ai-answers.mjs ask Perplexity the questions your customers ask, and count how often its answers cite your site. It uses your own key, and Perplexity bills each answer to your account.",
+      "1. Sign in at https://console.perplexity.ai and create or pick a project.",
+      "2. Open API Keys (https://console.perplexity.ai/project/keys) and click + Generate API Key. Copy the key straight away: the console shows it only once.",
+      "3. The API needs credits: sign-up credit alone isn't enough. Buy credits on the Billing page (https://console.perplexity.ai/project/billing).",
+      `4. In your own terminal run: ${setLine("perplexity")}`,
+      PASTE,
+      "Then node ai-answers.mjs --site <your address> --questions <file> shows what it would send and how many requests that is. Nothing is sent until you add --yes.",
+    ],
+  },
+  openai: {
+    name: "OpenAI",
+    env: "OPENAI_API_KEY",
+    endpointEnv: "OPENAI_ENDPOINT",
+    endpoint: "https://api.openai.com/v1/responses",
+    optional: true,
+    answers: true,
+    timeout: 120000,
+    adds: "whether the model ChatGPT uses, searching the web, cites your site when it answers your customers' questions (node ai-answers.mjs)",
+    where: "platform.openai.com/api-keys",
+    guide: [
+      "OpenAI's API lets ai-answers.mjs ask the model ChatGPT uses, with web search, the questions your customers ask, and count how often its answers cite your site. It uses your own key, and OpenAI bills each answer to your account.",
+      "1. Sign in at https://platform.openai.com.",
+      "2. Open https://platform.openai.com/api-keys and create a new secret key. Copy it and keep it private.",
+      "3. The API needs credits: add them on the billing page (https://platform.openai.com/account/billing/overview).",
+      `4. In your own terminal run: ${setLine("openai")}`,
+      PASTE,
+      "Then node ai-answers.mjs --site <your address> --questions <file> shows what it would send and how many requests that is. Nothing is sent until you add --yes.",
+    ],
+  },
 };
-const USAGE = `usage: node connect-keys.mjs set bing|openpagerank|ahrefs|matomo|posthog|moz|youtube|clarity [<key>]   (no key: it asks, hidden)
+const USAGE = `usage: node connect-keys.mjs set bing|openpagerank|ahrefs|matomo|posthog|moz|youtube|clarity|perplexity|openai [<key>]   (no key: it asks, hidden)
        node connect-keys.mjs set matomo [--url <address>] [--site-id <id>] | set posthog [--host us|eu|<address>] [--project-id <id>]
        node connect-keys.mjs status | remove <service> | guide <service> | test matomo|posthog [--yes]
        node connect-keys.mjs fetch --site https://www.example.com [--competitors a.com,b.com] [--days 90] [--out seo-audit/keys.json] [--yes]
@@ -215,8 +259,8 @@ const UA = "seo-supervisor-connect-keys";
 const ATTRIBUTION = { text: "Domain Rating by Ahrefs", url: "https://ahrefs.com/" };
 const MAX_LINK_PAGES = 10;
 const ROWS = 25000; // the most pages read from Matomo or PostHog, as google.mjs reads from Google Analytics
-class Fail extends Error {} // bad input: exit 2
-class Refused extends Error {} // a service said no: noted, the rest still runs, exit 1
+export class Fail extends Error {} // bad input: exit 2
+export class Refused extends Error {} // a service said no: noted, the rest still runs, exit 1
 const fail = msg => {
   throw new Fail("connect-keys: " + msg);
 };
@@ -461,6 +505,18 @@ function refusal(id, status, body, retryAfter, host, moved) {
     if (status === 429)
       return `Microsoft Clarity allows 10 requests a day per project, and today's are used up (429). Fetch again tomorrow.`;
   }
+  // Perplexity's 402 is an account with no credits. An OpenAI 429 whose error.code names credits or a spend or usage
+  // limit, or whose type is insufficient_quota, isn't a rate limit, so retrying won't help.
+  // https://docs.perplexity.ai/docs/resources/faq
+  // https://developers.openai.com/api/docs/guides/error-codes
+  if (id === "perplexity" && status === 402)
+    return `Perplexity says the account has no API credits left (402). Buy credits on the Billing page (console.perplexity.ai/project/billing), or turn on auto top-up, then run again.`;
+  if (
+    id === "openai" &&
+    status === 429 &&
+    /credit|spend_limit|usage_limit|insufficient_quota/.test(`${body?.error?.code} ${body?.error?.type}`)
+  )
+    return `OpenAI says the account can't pay for more requests (${body.error.code || body.error.type}): it has no credits left, or reached a spend or usage limit. Add credits or raise the limit at platform.openai.com/settings/organization/billing, then run again. Trying again before that won't help.`;
   if (status === 401 || bing === "key")
     return `${s.name} didn't accept the key (${status === 401 ? 401 : "InvalidApiKey"}): it's mistyped, or it was deleted or replaced. Get the current key at ${s.where}, then run: ${setLine(id)}`;
   if (id === "openpagerank" && status === 403)
@@ -484,7 +540,7 @@ function refusal(id, status, body, retryAfter, host, moved) {
     (Array.isArray(body) ? body.join(" ") : "");
   return `${s.name} answered ${status}${detail ? ` (${detail})` : ""}. Try again later; if it keeps happening, the service may have changed.`;
 }
-async function call(id, url, init = {}) {
+export async function call(id, url, init = {}) {
   const s = SERVICES[id],
     host = new URL(url).host;
   let r;
@@ -492,7 +548,7 @@ async function call(id, url, init = {}) {
     r = await fetch(url, {
       ...init,
       headers: { "user-agent": UA, ...init.headers },
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(s.timeout || 30000),
     });
   } catch (e) {
     throw new Refused(
@@ -1474,19 +1530,21 @@ async function main(argv) {
           ? `your key, ${Math.min(topics.length, YT_TOPICS)} topic search(es)${topics.length ? ` (${topics.slice(0, YT_TOPICS).join(", ")})` : ""}${channel ? ` and the channel ${channel}` : ""}`
           : "nothing (no --topics or --youtube-channel given)";
       const bingWhat = `your site's address (${siteUrl})${bingPages.length ? `, ${bingPages.length} chosen page(s) for their links` : ""}${bingSister ? `, the sister site ${bingSister}` : ""}`;
-      const lines = Object.entries(SERVICES).map(([id, s]) =>
-        !keys[id]
-          ? `  ${s.name}: not set, skipped (to add it: node connect-keys.mjs guide ${id})`
-          : id === "matomo"
-            ? `  Matomo: your token (in the request body, never in the address) and site ID ${m.siteId}, to ${new URL(m.url).host}:${[undefined, ...Object.values(MATOMO_SPLITS), MATOMO_DAILY].map(method => `\n    POST ${matomoUrl(m, period, method)}`).join("")}`
-            : id === "posthog"
-              ? `  PostHog: your key and project ID ${p.projectId}, to ${new URL(p.host).host}:${[posthogQuery(period), ...Object.values(POSTHOG_SPLITS).map(q => q(period)), posthogDaily(period)].map(q => `\n    POST ${posthogUrl(p)} with the query: ${q}`).join("")}`
-              : id === "youtube"
-                ? `  YouTube Data API: ${yt}, to ${new URL(endpoints[id]).host}`
-                : id === "clarity"
-                  ? `  Microsoft Clarity: your token only, to ${new URL(endpoints[id]).host}: GET ${endpoints[id]}?numOfDays=${CLARITY_DAYS}&dimension1=URL (nothing about your site: the token names the Clarity project). It uses 1 of the 10 requests Clarity allows a project each day.`
-                  : `  ${s.name}: ${id === "bing" ? bingWhat : id === "moz" ? `${Math.min(domains.length, MOZ_MAX)} domain name(s) (${list(domains.slice(0, MOZ_MAX))})` : `${domains.length} domain name(s) (${list(domains)})`} and your key, to ${new URL(endpoints[id]).host}`,
-      );
+      const lines = Object.entries(SERVICES)
+        .filter(([, s]) => !s.answers)
+        .map(([id, s]) =>
+          !keys[id]
+            ? `  ${s.name}: not set, skipped (to add it: node connect-keys.mjs guide ${id})`
+            : id === "matomo"
+              ? `  Matomo: your token (in the request body, never in the address) and site ID ${m.siteId}, to ${new URL(m.url).host}:${[undefined, ...Object.values(MATOMO_SPLITS), MATOMO_DAILY].map(method => `\n    POST ${matomoUrl(m, period, method)}`).join("")}`
+              : id === "posthog"
+                ? `  PostHog: your key and project ID ${p.projectId}, to ${new URL(p.host).host}:${[posthogQuery(period), ...Object.values(POSTHOG_SPLITS).map(q => q(period)), posthogDaily(period)].map(q => `\n    POST ${posthogUrl(p)} with the query: ${q}`).join("")}`
+                : id === "youtube"
+                  ? `  YouTube Data API: ${yt}, to ${new URL(endpoints[id]).host}`
+                  : id === "clarity"
+                    ? `  Microsoft Clarity: your token only, to ${new URL(endpoints[id]).host}: GET ${endpoints[id]}?numOfDays=${CLARITY_DAYS}&dimension1=URL (nothing about your site: the token names the Clarity project). It uses 1 of the 10 requests Clarity allows a project each day.`
+                    : `  ${s.name}: ${id === "bing" ? bingWhat : id === "moz" ? `${Math.min(domains.length, MOZ_MAX)} domain name(s) (${list(domains.slice(0, MOZ_MAX))})` : `${domains.length} domain name(s) (${list(domains)})`} and your key, to ${new URL(endpoints[id]).host}`,
+        );
       console.log(
         `connect-keys: dry run, nothing sent. With --yes it would send:\n${lines.join("\n")}${skipNote.length ? "\n" + skipNote.join("\n") : ""}\nThese go to outside services, so re-run with --yes once the owner agrees.`,
       );

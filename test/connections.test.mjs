@@ -372,7 +372,9 @@ test("set, guide and status know Moz and YouTube; the dry run names the topics a
       assert.match(yt, re);
     await assert.rejects(
       cli(KEYS, ["set", "nope", "x"], env),
-      e => e.code === 2 && /bing, openpagerank, ahrefs, matomo, posthog, moz, youtube or clarity/.test(e.stderr),
+      e =>
+        e.code === 2 &&
+        /bing, openpagerank, ahrefs, matomo, posthog, moz, youtube, clarity, perplexity or openai/.test(e.stderr),
     );
     const r = await cli(
       KEYS,
