@@ -919,7 +919,7 @@ export async function checkMore(
         if (kind === "desktop")
           for (const [name, size] of SIZES) {
             await page.send("Emulation.setDeviceMetricsOverride", size);
-            await sleep(400);
+            await sleep(250);
             await shoot(page, join(screenshotDir, `${slug}-${name}.png`));
           }
       };
