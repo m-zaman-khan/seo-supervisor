@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Keyword ideas from real sources only, each labelled with its source. No volumes or difficulty: those need paid data,
-// so none are guessed.
+// @ts-check
+// Keyword ideas from real sources only, each labelled with its source. No volumes or difficulty: keyword-data.mjs adds
+// those.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";

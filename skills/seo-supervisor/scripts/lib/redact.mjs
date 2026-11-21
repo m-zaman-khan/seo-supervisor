@@ -1,3 +1,4 @@
+// @ts-check
 // Masks what a saved or shared report must not carry: secret query values in URLs, well-known token
 // formats, home-folder paths and, in error text, email addresses.
 import { homedir } from "node:os";

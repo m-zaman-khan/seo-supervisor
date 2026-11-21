@@ -1,8 +1,7 @@
 #!/usr/bin/env node
+// @ts-check
 // Summarises Search Console's Links exports, the only source as the API has no Links report: who links to the site,
-// the link-text mix, and changes since the last audit. Each table exports at most 1,000 rows, "~" and "-" export
-// as 0, and link text is merged case-insensitively.
-// https://support.google.com/webmasters/answer/9049606
+// the link-text mix, and changes since the last audit.
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { domainToUnicode } from "node:url";

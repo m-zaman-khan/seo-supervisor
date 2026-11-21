@@ -1,7 +1,9 @@
+// @ts-check
 // The score model (documented in report-format.md), shared by render-report.mjs and dashboard.mjs.
 // Every checked rule is worth 10 points. A passing rule (or one whose findings are all fixed) earns 10;
 // a rule with open findings earns by its worst one: low 8, medium 6, decision 6, high 3, blocker 0.
-// Score = earned / possible. Open blockers cap it: 1 → 59, 2 → 49, 3 → 39 … (never below 9).
+// Score = earned / possible. Open blockers cap it: 1 → 59, 2 → 49, 3 → 39 … (never below 9). While any open
+// finding isn't won't-fix, it stops at 99, so 100 always means nothing is left to fix (rounding alone could reach 100).
 export const SEV = ["blocker", "high", "needs-decision", "medium", "low"];
 export const EARN = { blocker: 0, high: 3, "needs-decision": 6, medium: 6, low: 8 };
 export const isOpen = f => f.status !== "fixed";
@@ -21,7 +23,7 @@ export const normalise = list =>
 
 // fixedCountsAsOpen: the score before this run's fixes. assume: findings to treat as fixed (for the "once blockers
 // are fixed" score).
-export function buildRules(findings, passed = [], { fixedCountsAsOpen = false, assume = () => false } = {}) {
+export function buildRules(findings, passed = [], { fixedCountsAsOpen = false, assume = _f => false } = {}) {
   const rules = new Map();
   for (const f of findings) {
     const key = f.rule || f.id;

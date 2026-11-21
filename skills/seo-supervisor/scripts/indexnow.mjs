@@ -1,7 +1,7 @@
 #!/usr/bin/env node
+// @ts-check
 // Tells the IndexNow engines (Bing, Yandex, Seznam, Naver, Yep, Internet Archive, Amazonbot) which URLs changed.
-// Google doesn't use IndexNow. Nothing is sent without --yes, and then only once <site>/<key>.txt serves the key.
-// IndexNow takes at most 10,000 URLs per POST.
+// Google doesn't use IndexNow.
 // https://www.indexnow.org/documentation
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, statSync } from "node:fs";
 import { randomBytes } from "node:crypto";

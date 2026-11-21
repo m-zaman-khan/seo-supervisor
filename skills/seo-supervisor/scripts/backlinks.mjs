@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Checks that known backlinks still exist: opens each linking page and looks for an <a href> to the site. Visiting
-// other people's sites is an outside action, so without --yes it's a dry run that visits nothing.
+// @ts-check
+// Checks that known backlinks still exist: opens each linking page and looks for an <a href> to the site.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { lookup } from "node:dns";
 import { get as httpGet } from "node:http";

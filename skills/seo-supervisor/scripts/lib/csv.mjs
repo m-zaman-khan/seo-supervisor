@@ -1,3 +1,4 @@
+// @ts-check
 // CSV to an array of objects keyed by the first row. Handles quotes, doubled quotes, CRLF and a leading BOM.
 export function parseCsv(txt) {
   txt = txt.replace(/^﻿/, "");

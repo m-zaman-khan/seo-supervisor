@@ -1,8 +1,10 @@
+// @ts-check
 // Whether a local business is a storefront, a service-area business or a hybrid, from its schema and visible text.
 // The kind is never a finding or scored; it keeps nap-not-shown quiet for a service-area business hiding its street.
 // Google: a service-area business hides an address it doesn't serve customers at, and a hybrid gives both.
 // https://support.google.com/business/answer/3038177
 // https://support.google.com/business/answer/9157481
+// OnlineStore, Organization and a bare Service aren't local businesses.
 import { readFileSync } from "node:fs";
 
 // LocalBusiness and its subtypes, from schema.org's type tree.

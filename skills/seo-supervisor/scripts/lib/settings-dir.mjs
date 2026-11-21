@@ -1,3 +1,4 @@
+// @ts-check
 // Where settings, logins, keys and add-ons live: ~/.seo-supervisor or SEO_SUPERVISOR_HOME. SEO_SUPERVISOR_CLIENT=<name>
 // puts logins and keys in clients/<name> so each client's stay apart; add-ons and the update setting stay shared.
 import { existsSync, readFileSync } from "node:fs";

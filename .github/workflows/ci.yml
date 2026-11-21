@@ -20,5 +20,7 @@ jobs:
           node-version: ${{ matrix.node }}
       - name: Check script syntax
         run: for f in bin/*.mjs skills/seo-supervisor/scripts/*.mjs; do node --check "$f"; done
+      - name: Type-check the files marked // @ts-check (TypeScript is a dev-only tool; nothing is compiled or shipped)
+        run: npm ci && npm run typecheck
       - name: Crawl the fixture site, scan content, render the report, test the installer
         run: npm test

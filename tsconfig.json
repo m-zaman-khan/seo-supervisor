@@ -1,0 +1,19 @@
+{
+  // Type checking for the plain JavaScript scripts: nothing is compiled or shipped. Only files that start with
+  // "// @ts-check" are checked (checkJs is off), so files are switched on one at a time. Run: npm run typecheck
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "target": "es2023",
+    "lib": ["es2024"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true
+  },
+  "include": ["bin/**/*.mjs", "skills/seo-supervisor/scripts/**/*.mjs"]
+}

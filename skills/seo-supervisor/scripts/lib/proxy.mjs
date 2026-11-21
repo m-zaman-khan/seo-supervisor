@@ -1,3 +1,4 @@
+// @ts-check
 // Company proxies. Node honours HTTP_PROXY / HTTPS_PROXY (minus NO_PROXY; lowercase names win) only with
 // NODE_USE_ENV_PROXY=1: fetch() from Node 22.21 and 24.0, http(s).request() and --use-env-proxy from 22.21 and 24.5.
 // Chrome over CDP gets the same proxy as flags.

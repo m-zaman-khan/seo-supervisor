@@ -1,5 +1,5 @@
+// @ts-check
 // Checks links to other sites. Runs only with the crawler's --outbound-links, since it visits other people's sites.
-// Only 404 and 410 count as broken; a refusal, an error or no answer means the link couldn't be checked.
 import { lookup } from "node:dns";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";

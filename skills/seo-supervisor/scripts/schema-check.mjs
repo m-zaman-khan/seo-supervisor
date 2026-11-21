@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 // Checks JSON-LD structured data offline, against the schema.org vocabulary and Google's rich-result requirements.
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";

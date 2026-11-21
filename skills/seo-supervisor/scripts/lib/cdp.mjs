@@ -1,6 +1,6 @@
-// Chrome or Edge over the DevTools protocol, with no dependencies. --remote-debugging-pipe: fd 3 carries commands,
-// fd 4 the replies, each JSON message ending in a NUL byte. Each launch gets a throwaway profile, removed on close;
-// the browser is killed on any failure and when this process exits or gets SIGINT or SIGTERM.
+// @ts-check
+// Chrome or Edge over the DevTools protocol, with no dependencies. Each launch gets a throwaway profile, removed on
+// close; the browser is killed on any failure and when this process exits or gets SIGINT or SIGTERM.
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -92,9 +92,12 @@ export async function launchChrome(browserPath, { headless = true, timeoutMs = 3
   proc.stderr.on("data", d => {
     stderr = (stderr + d).slice(-2000);
   });
-  proc.stdio[3].on("error", () => {}); // EPIPE once the browser is gone; die() reports it
-  proc.stdio[4].setEncoding("utf8"); // a multi-byte character can straddle two reads
-  proc.stdio[4].on("data", d => {
+  // --remote-debugging-pipe: fd 3 carries commands, fd 4 the replies, each JSON message ending in a NUL byte.
+  const toBrowser = /** @type {import("node:stream").Writable} */ (proc.stdio[3]),
+    fromBrowser = /** @type {import("node:stream").Readable} */ (proc.stdio[4]);
+  toBrowser.on("error", () => {}); // EPIPE once the browser is gone; die() reports it
+  fromBrowser.setEncoding("utf8"); // a multi-byte character can straddle two reads
+  fromBrowser.on("data", d => {
     buf += d;
     for (let k; (k = buf.indexOf("\0")) >= 0; buf = buf.slice(k + 1)) {
       const msg = JSON.parse(buf.slice(0, k)),
@@ -129,7 +132,7 @@ export async function launchChrome(browserPath, { headless = true, timeoutMs = 3
           fail(e);
         },
       });
-      proc.stdio[3].write(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }) + "\0");
+      toBrowser.write(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }) + "\0");
     });
   const close = async () => {
     if (!dead) await send("Browser.close").catch(() => {});

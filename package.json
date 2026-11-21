@@ -16,7 +16,8 @@
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "demo": "node skills/seo-supervisor/scripts/render-report.mjs skills/seo-supervisor/examples/sample-audit.json --out docs/index.html --no-md && node skills/seo-supervisor/scripts/render-report.mjs skills/seo-supervisor/examples/sample-audit.json --out skills/seo-supervisor/examples/sample-report.html"
+    "demo": "node skills/seo-supervisor/scripts/render-report.mjs skills/seo-supervisor/examples/sample-audit.json --out docs/index.html --no-md && node skills/seo-supervisor/scripts/render-report.mjs skills/seo-supervisor/examples/sample-audit.json --out skills/seo-supervisor/examples/sample-report.html",
+    "typecheck": "tsc -p tsconfig.json"
   },
   "engines": {
     "node": ">=22"
@@ -44,5 +45,9 @@
     "url": "https://github.com/m-zaman-khan/seo-supervisor/issues"
   },
   "author": "Zaman Khan",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "6.0.3"
+  }
 }

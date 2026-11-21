@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 // Checks this machine is ready for an audit. Read-only and offline; it reports whether a key or token is there, never
 // its value.
 import { accessSync, constants, existsSync, readFileSync } from "node:fs";

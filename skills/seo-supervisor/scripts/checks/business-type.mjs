@@ -1,3 +1,4 @@
+// @ts-check
 // Picks the schema.org type that fits the business from home page keywords and the site's existing business types.
 // Keyword evidence, not a model, so every audit gives the same answer. A test checks data/business-types.json against
 // data/schema-vocab.json; its fields follow https://developers.google.com/search/docs/appearance/structured-data/

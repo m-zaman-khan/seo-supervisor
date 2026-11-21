@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 // Reads an unzipped Search Console Performance export, and the AI report exports, into traffic per page and findings.
 // google.mjs builds the same output from the API and reuses addTraffic() and gscFindings().
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from "node:fs";

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 // Converts the heavy JPEG and PNG files an audit found to WebP or AVIF, and labels images as AI-made in their XMP.
 import { createRequire } from "node:module";
 import {

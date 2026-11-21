@@ -1,3 +1,4 @@
+// @ts-check
 // The project's shared Google OAuth client ("Desktop app" type) for `node google.mjs connect`. Google treats a desktop
 // client's secret as non-confidential, since it ships inside every installed app, so it lives in the code. Registered
 // in Google Cloud project seo-supervisor-515208; SEO_GOOGLE_SHARED_CLIENT_ID and _SECRET override it.

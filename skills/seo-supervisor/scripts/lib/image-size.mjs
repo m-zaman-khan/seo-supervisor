@@ -1,3 +1,4 @@
+// @ts-check
 // Pixel size from the first bytes of a PNG, JPEG, GIF, WebP or ICO file: { type, width, height }, or null when the
 // bytes aren't one of those formats or the header is cut off. Headers only, so the first 64 KB is plenty.
 export function imageSize(b) {

@@ -1,8 +1,8 @@
+// @ts-check
 // E-E-A-T signals for the report's trust view, read from the crawled HTML. They're never findings or scored: Google
 // says E-E-A-T isn't a ranking factor, so the view is a local check, not a Google score.
 // https://developers.google.com/search/docs/fundamentals/creating-helpful-content
 // HTML is read with regexes; page names and paths are matched in English and a few European languages.
-
 const ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 const decode = s =>
   s.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (m, e) => {
