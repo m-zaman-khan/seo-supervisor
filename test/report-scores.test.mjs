@@ -322,6 +322,16 @@ test("npx seo-supervisor doctor and dashboard run the skill's scripts, with no a
   assert.match(s.stdout, /Example Security.*49\/100/, "with no folder named, the current folder's seo-audit");
 });
 
+test("npx seo-supervisor deploy-check and issues run the skill's scripts too, for CI", async () => {
+  const home = tmp();
+  await assert.rejects(
+    node([BIN, "deploy-check"], { env: env(home), cwd: home }),
+    e => e.code === 2 && /deploy-check\.mjs --site/.test(e.stderr),
+  );
+  const i = await node([BIN, "issues", "--audit", SAMPLE], { env: env(home), cwd: home });
+  assert.match(i.stdout, /dry run/i, "no --yes: nothing is filed");
+});
+
 // ---------- --with-browser ----------
 // A stand-in for npm: records its arguments, prints what @puppeteer/browsers prints, and exits with the given code.
 function fakeNpm(exit = 0, print = "") {

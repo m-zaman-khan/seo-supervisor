@@ -17,7 +17,12 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const { version } = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 
 // Subcommands that run a skill script directly, with no agent.
-const SCRIPT = { doctor: "doctor.mjs", dashboard: "dashboard.mjs" }[process.argv[2]];
+const SCRIPT = {
+  doctor: "doctor.mjs",
+  dashboard: "dashboard.mjs",
+  "deploy-check": "deploy-check.mjs",
+  issues: "issues.mjs",
+}[process.argv[2]];
 if (SCRIPT)
   process.exit(
     spawnSync(process.execPath, [join(ROOT, "skills", NAME, "scripts", SCRIPT), ...process.argv.slice(3)], {
