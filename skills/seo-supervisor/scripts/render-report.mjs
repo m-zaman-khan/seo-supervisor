@@ -2869,7 +2869,7 @@ async function printPdf(htmlPath, pdf) {
   const browser = findBrowser() || installedBrowser();
   if (!browser)
     throw new Error(
-      "no Chrome or Edge found, so no PDF was made (the HTML report is ready). Install Chrome or Edge, or set CHROME_PATH to it; in a container or CI, run npx seo-supervisor --with-browser.",
+      "no Chrome or Edge found, so no PDF was made (the HTML report is ready). Install Chrome or Edge, or set CHROME_PATH to it; in a container or CI, the owner can add one with npx seo-supervisor --with-browser (it downloads Chrome).",
     );
   const chrome = await launchChrome(browser, { timeoutMs: 60000 });
   try {

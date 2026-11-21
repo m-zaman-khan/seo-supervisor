@@ -1048,14 +1048,16 @@ async function fetchYoutube(key, base, { topics, channel }, notes) {
       topic,
       videos: items
         .filter(i => typeof i?.id?.videoId === "string")
-        .map(({ id: { videoId }, snippet: s = {} }) => ({
-          id: videoId,
-          url: `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`,
-          title: s.title ?? "",
-          channel: s.channelTitle ?? "",
-          published: isDay(String(s.publishedAt).slice(0, 10)) ? s.publishedAt.slice(0, 10) : null,
-          own: !!out.channel && s.channelId === out.channel.id,
-        })),
+        .map(({ id: { videoId }, snippet }) =>
+          (s => ({
+            id: videoId,
+            url: `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`,
+            title: s.title ?? "",
+            channel: s.channelTitle ?? "",
+            published: isDay(String(s.publishedAt).slice(0, 10)) ? s.publishedAt.slice(0, 10) : null,
+            own: !!out.channel && s.channelId === out.channel.id,
+          }))(snippet && typeof snippet === "object" ? snippet : {}),
+        ),
     });
   }
   return out;

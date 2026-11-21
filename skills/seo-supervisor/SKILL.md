@@ -245,7 +245,7 @@ In chat, give: the score and band, and while blockers are open, the score fixing
     4. The owner picks every domain and page.
     5. Run `node <skill-dir>/scripts/disavow.mjs --site <origin> --domains "a.com,b.com" [--urls <file>] [--existing <the list already in Search Console>] --reason "<why>" --out seo-audit/disavow.txt`.
     6. Show the owner the file and its printed steps. The owner uploads it; there is no API.
-16. **AI image labels (MEDIA-07), only for images the owner says were made with AI:** `node <skill-dir>/scripts/images.mjs --label-ai public/hero.jpg,public/team.png` prints a dry run. With `--yes` it writes the IPTC AI label into each JPEG or PNG's metadata without re-encoding the image, and keeps the original as `hero.original.jpg`. Image CDNs often strip metadata, so re-crawl once the files are live.
+16. **AI image labels (MEDIA-07), only for images the owner says were made with AI:** `node <skill-dir>/scripts/images.mjs --label-ai public/hero.jpg,public/team.png` prints a dry run. Add `--yes` only with the owner's yes: it then writes the IPTC AI label into each JPEG or PNG's metadata without re-encoding the image, and keeps the original as `hero.original.jpg`. Move those originals out of the public folder (or delete them once the labelled files are checked), or the unlabelled copies get deployed too. Image CDNs often strip metadata, so re-crawl once the files are live.
 
 ### 6. Review mode
 

@@ -1112,3 +1112,26 @@ test("LAUNCH notes: EU click rates around March 2024, and Consent Mode undercoun
   assert.match(t, /Consent Mode/);
   assert.match(t, /support\.google\.com\/analytics\/answer\/9976101/);
 });
+
+test("YouTube: a search result with snippet: null is kept without its details, never a crash", async () => {
+  const srv = await fake({
+    "/yt": ({ path }) =>
+      path.endsWith("/search")
+        ? [200, { items: [{ id: { kind: "youtube#video", videoId: "vid9" }, snippet: null }] }]
+        : [200, { items: [] }],
+  });
+  try {
+    const { result } = await fetchKeys({
+      site: SITE,
+      keys: { youtube: { key: "yt-key-0001" } },
+      endpoints: { youtube: srv.url + "/yt" },
+      topics: ["widgets"],
+    });
+    assert.deepEqual(
+      result.youtube.topics[0].videos.map(v => [v.id, v.title, v.published]),
+      [["vid9", "", null]],
+    );
+  } finally {
+    await srv.close();
+  }
+});

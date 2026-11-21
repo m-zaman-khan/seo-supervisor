@@ -11,7 +11,7 @@ type Tool = {
   family: string;          // "ssl-tls": groups tools on the hub; not part of the URL unless the profile says so
   status: "draft" | "live" | "retired";
   summary: string;         // 120–160 chars → meta description
-  intro: string;           // 40–60 words → answer-first paragraph under the H1
+  intro: string;           // a short answer-first paragraph under the H1 (CONTENT-06)
   checks: string[];        // what the tool tests, in plain words
   faqs: { q: string; a: string }[];
   related: string[];       // 3–6 sibling slugs, same family
@@ -25,12 +25,12 @@ type Tool = {
 ```
 - Only `live` tools are routable, listed and linked. `retired` with a successor 301s to it; without one, it returns 410 and leaves the sitemap. `draft` returns 404 in production.
 - When tools come from a separate API, serve the registry from a cacheable endpoint (`GET /v1/tools`, `GET /v1/tools/{slug}`, with `ETag` and `Cache-Control`). The site reads it at build or revalidation time, never per visitor.
-- The engineers who build each tool write 4–6 real FAQs while building it. Take the questions from support tickets, Reddit threads and "People also ask". Each answer is 40–60 words, and its first sentence answers the question directly.
+- The engineers who build each tool write 4–6 real FAQs while building it. Take the questions from support tickets, Reddit threads and "People also ask". Each answer is short, and its first sentence answers the question directly (CONTENT-06).
 
 ### TOOL-02 · The tool page follows a fixed order · high
 1. Breadcrumb.
 2. H1 with the tool name people search for ("DMARC Record Checker").
-3. Intro of 40–60 words.
+3. A short intro that answers first (CONTENT-06).
 4. **The tool, visible without scrolling** on desktop and mobile.
 5. How to use it (3–5 steps).
 6. What it checks.
