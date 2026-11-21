@@ -130,7 +130,11 @@ test("2.0 is documented: untrusted content, outside checks, history, intent, bri
     /^---\ndescription: "Write an SEO content brief for a topic or page"\nargument-hint: "\[topic or URL\]"\n---/,
   );
   assert.match(brief, /seo-audit\/briefs\//);
-  assert.match(readFileSync(join(ROOT, "NOTICE"), "utf8"), /MIT License/);
+  assert.match(
+    readFileSync(join(ROOT, "NOTICE"), "utf8"),
+    /Schema\.org[\s\S]*CC BY-SA 3\.0/,
+    "the bundled Schema.org vocabulary keeps the credit its licence requires",
+  );
 });
 
 test("rewrite mode: the agent rewrites, nothing changes without the owner's yes, and facts stay as they are", () => {
@@ -230,7 +234,11 @@ test("the docs agree with the code and keep every outside or content step behind
   const readme = read("README.md");
   assert.doesNotMatch(readme, /no API keys?\b/i);
   assert.match(readme, /`\/seo-brief`, `\/seo-rewrite` and `\/seo-grow` commands/);
-  assert.match(read(S + "NOTICE"), /MIT License/, "installed skill copies carry the MIT notice");
+  assert.match(
+    read(S + "NOTICE"),
+    /Schema\.org[\s\S]*CC BY-SA 3\.0/,
+    "installed skill copies carry the Schema.org credit",
+  );
 });
 
 test("every outside action is named before the owner says yes, and launch mode edits nothing", () => {
