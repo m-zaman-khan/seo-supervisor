@@ -53,6 +53,7 @@
 | Local business | The most specific LocalBusiness subtype with real NAP, `geo` (latitude and longitude to at least 5 decimal places), `openingHoursSpecification`, `priceRange` if it has one (under 100 characters, such as `$10-15` or `$$`), `sameAs` (Google profile) |
 | Contact page | ContactPage, BreadcrumbList. The name, address and phone stay in the root layout's Organization node (`#organization`), not in a second copy |
 | Product | Product with Offer (merchant listing) or AggregateOffer (product snippet only), plus shipping, return policy and warranty when they apply |
+| Brand page | CollectionPage with `about` → Brand (`name`, `logo`), ItemList, BreadcrumbList |
 | Glossary | DefinedTermSet on the glossary hub; DefinedTerm on each term page, pointing back with `inDefinedTermSet` |
 | Comparison | Article, ItemList of the products compared (no ratings for anyone, yours included) |
 | Path / guided sequence | WebPage, ItemList of the steps in order, each pointing to its guide, tool or template |

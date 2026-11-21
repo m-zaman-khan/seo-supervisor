@@ -59,7 +59,7 @@ Google renders JavaScript, but later and not always. Most AI crawlers (GPTBot, C
 - **Phone text (outside checks, information only):** main text from 12 px up to 16 px on the phone load goes in the notes. It never becomes a finding or changes the score; under 12 px stays `mobile-small-text`.
 
 ### REND-10 · No obsolete HTML tags · low
-- **Check:** crawler `obsolete-tags`: `<frameset>`, `<frame>`, `<marquee>`, `<blink>`, `<font>` or `<center>` anywhere in the server HTML. `<iframe>` is fine, and so are custom elements such as `<font-awesome-icon>`.
+- **Check:** crawler `obsolete-tags`: `<frameset>`, `<frame>`, `<marquee>`, `<blink>`, `<font>` or `<center>` anywhere in the server HTML. It also flags `<acronym>`, `<applet>`, `<basefont>`, `<bgsound>`, `<big>`, `<dir>`, `<isindex>`, `<nobr>`, `<spacer>`, `<strike>` and `<tt>` (WHATWG HTML, Obsolete features). `<iframe>` is fine, and so are custom elements such as `<font-awesome-icon>`.
 - **Pass:** content lives in ordinary pages, not frames, and styling lives in CSS.
 - **Fix:** replace a frameset with real pages, each with its own URL and links (search engines index each frame's document on its own, without the frame around it). Move what `<font>`, `<center>`, `<marquee>` and `<blink>` do into CSS. Old templates and text pasted from word processors are the usual source.
 

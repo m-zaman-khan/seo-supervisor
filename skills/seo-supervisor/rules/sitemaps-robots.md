@@ -26,7 +26,7 @@
 - **How groups are read:** as RFC 9309 says. Several groups for the same crawler are combined into one. A user-agent line counts by its name up to the first character that isn't a letter, `_` or `-`, so `User-agent: GPTBot/1.1` is GPTBot, as Google's open-source parser reads it; the crawl notes such lines, since RFC 9309 allows only those characters and other crawlers may not match them. Write the bare name: `User-agent: GPTBot`.
 
 ### MAP-06 · The AI crawler policy is a deliberate, written decision · low
-- **Check:** crawler `ai-bots-blocked` (needs-decision).
+- **Check:** crawler `ai-bots-blocked` (needs-decision), `content-signal-placement` (low: a Content-Signal line outside a user-agent group, or a group that lets crawlers in without one) and, with `--outside` and the owner's own yes for `--ai-bot-probe`, `ai-bot-refused` (needs-decision: a firewall turns AI search crawlers away). Details are in `rules/ai-search.md` (AI-02).
 - **Default:** allow them; being cited in AI answers is distribution.
 - **Middle ground:** block the training crawlers (`GPTBot`, `ClaudeBot`, `Google-Extended`, `CCBot`, `Applebot-Extended`) and allow the search and user crawlers (`OAI-SearchBot`, `ChatGPT-User`, `Claude-SearchBot`, `Claude-User`, `PerplexityBot`). Record the choice in the profile. Details, Bing's new AI directives and the vendor IP lists are in `rules/ai-search.md` (AI-02, AI-03).
 - **Content-Signal:** a `Content-Signal:` line in robots.txt (e.g. `search=yes, ai-train=no`) is an emerging way to state the policy. The crawler flags only invalid values (keys other than `search`, `ai-input`, `ai-train` with `yes`/`no`, or Cloudflare's optional `use` with `immediate`, `reference` or `full`), at low severity. Leaving it out is fine.
@@ -34,7 +34,7 @@
 
 ### MAP-07 · /llms.txt, optional · low
 - **Check:** a missing llms.txt is a note in the crawl, not a finding, and MAP-07 isn't scored for it. A file that exists has its format checked (below).
-- **Fact:** Google Search ignores llms.txt and it doesn't affect ranking (clarified June 2026). No major AI crawler documents using it either. It's harmless; never present it as a ranking or AI-visibility fix.
+- **Fact:** Google Search ignores llms.txt and it doesn't affect ranking (clarified June 2026). No major AI crawler documents using it either. It's harmless; never present it as a ranking or AI-visibility fix. The exception is a developer-docs or API site, where coding tools read it: see "Myths to correct in reports" in `rules/ai-search.md`.
 - **Pass (if kept):** Markdown with one line on what the site is, then each section with its key pages (name, URL, one sentence), generated so it can't drift from the real pages.
 - **Structure:** when llms.txt exists, the crawler checks it starts with a `# Site name` heading and contains Markdown links (`llms-structure`, low).
 

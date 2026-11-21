@@ -40,6 +40,9 @@ A short checklist per page type, for planning a page, building one, or reviewing
 - Its own words, not a template with one word swapped (CONTENT-04).
 
 ## Product
+- The product's name as the H1, with H2 sections for what applies (SHOP-09).
+- Specs in a table; a size guide and care details where they apply (SHOP-09).
+- A meta description with the price, or "from £X" (SHOP-09, META-02).
 - Product schema built from live data: price, currency, stock, shipping and returns, matching what the page shows (SHOP-05, SCHEMA-04).
 - One page for all variants, which point to it (SHOP-02); out-of-stock and discontinued products handled as SHOP-04 says.
 - Ratings and reviews only when real ones are shown on the page (SHOP-06, SCHEMA-04).

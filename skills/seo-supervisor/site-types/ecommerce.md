@@ -35,7 +35,7 @@ Product with an Offer (`price`, `priceCurrency`, `availability`, `itemCondition`
 - **Brand pages:** a page for each brand the shop stocks is a category page (SHOP-01, SHOP-03), with CollectionPage whose `about` points at a Brand (`name`, `logo`), an ItemList of its products in the order shown, and BreadcrumbList. It earns no Google rich result, but it tells Bing and AI engines what the page is. Each Product's `brand` names the same Brand.
 
 ### SHOP-06 · Reviews are real · blocker
-Only genuine buyer reviews, with whole stars per review and decimals only in averages. Never present imported, scraped or AI-rewritten reviews as verified (illegal in some places, e.g. the UK's DMCC Act 2024, with fines up to 10% of global turnover). Send one review request 7–14 days after delivery. Skip product FAQs until there's real per-product content; identical templated FAQs are worthless.
+Only genuine buyer reviews, with whole stars per review and decimals only in averages. Never present imported, scraped or AI-rewritten reviews as verified (illegal in some places, e.g. the UK's DMCC Act 2024, with fines up to 10% of global turnover). In the US, the FTC's Consumer Reviews and Testimonials Rule (16 CFR Part 465), in force since 21 October 2024, bans fake and AI-written reviews, bought reviews, reviews by the shop's own people that don't say so, and hiding bad reviews, with civil penalties of up to $53,088 per violation (ftc.gov). Send one review request 7–14 days after delivery. Skip product FAQs until there's real per-product content; identical templated FAQs are worthless.
 
 ### SHOP-07 · International · medium
 `hreflang` for every language or region version (self plus `x-default`), currency per region, and `<html lang>` set.

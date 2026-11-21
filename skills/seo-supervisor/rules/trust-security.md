@@ -33,6 +33,7 @@
 ### TRUST-05 · No fake trust signals · blocker
 - **Check:** content and schema: ratings, review counts, testimonials, "as seen in" logos, certifications, years in business, team photos.
 - **Pass:** every one is real and verifiable. Imported or AI-rewritten reviews are never presented as verified (in some places, such as the UK under the DMCC Act 2024, this is illegal). Review requests go to every customer, with no gating.
+- **US law:** the FTC's Consumer Reviews and Testimonials Rule (16 CFR Part 465), in force since 21 October 2024, bans fake and AI-written reviews, bought reviews, reviews by the business's own people that don't say so, and hiding bad reviews. The FTC can seek civil penalties of up to $53,088 per violation (ftc.gov).
 - **Fix:** remove anything unsourced. Ask the owner (`needs-decision`) rather than keep it.
 
 ### TRUST-06 · The site passes its own claims · medium
