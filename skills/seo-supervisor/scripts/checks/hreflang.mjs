@@ -1,7 +1,8 @@
-// hreflang and page-language checks. Codes are ISO 639-1 languages and ISO 3166-1 alpha-2 regions, the formats
-// Google names.
-// https://developers.google.com/search/docs/specialty/international/localized-versions
+// @ts-check
+// hreflang and page-language checks.
 
+// ISO 639-1 languages and ISO 3166-1 alpha-2 regions, the formats Google names.
+// https://developers.google.com/search/docs/specialty/international/localized-versions
 const LANGS = new Set(
   "aa ab ae af ak am an ar as av ay az ba be bg bi bm bn bo br bs ca ce ch co cr cs cu cv cy da de dv dz ee el en eo es et eu fa ff fi fj fo fr fy ga gd gl gn gu gv ha he hi ho hr ht hu hy hz ia id ie ig ii ik io is it iu ja jv ka kg ki kj kk kl km kn ko kr ks ku kv kw ky la lb lg li ln lo lt lu lv mg mh mi mk ml mn mr ms mt my na nb nd ne ng nl nn no nr nv ny oc oj om or os pa pi pl ps pt qu rm rn ro ru rw sa sc sd se sg si sk sl sm sn so sq sr ss st su sv sw ta te tg th ti tk tl tn to tr ts tt tw ty ug uk ur uz ve vi vo wa wo xh yi yo za zh zu".split(
     " ",
@@ -220,15 +221,18 @@ export function mergeHreflang(sources, base, same = u => u) {
   };
   const lists = Object.entries(sources)
     .filter(([, l]) => l?.length)
-    .map(([s, l]) => [
-      s,
-      new Map(
-        l.map(h => {
-          const e = { h, lang: h.lang.toLowerCase(), url: at(h) };
-          return [`${e.lang} ${e.url}`, e];
-        }),
-      ),
-    ]);
+    .map(
+      ([s, l]) =>
+        /** @type {[string, Map<string, any>]} */ ([
+          s,
+          new Map(
+            l.map(h => {
+              const e = { h, lang: h.lang.toLowerCase(), url: at(h) };
+              return [`${e.lang} ${e.url}`, e];
+            }),
+          ),
+        ]),
+    );
   const merged = new Map();
   for (const [, l] of lists) for (const [k, e] of l) if (!merged.has(k)) merged.set(k, e.h);
   // Google combines the sources, so an entry missing from one isn't a conflict. A conflict is the same code at another

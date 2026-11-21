@@ -1,6 +1,6 @@
-// Core Web Vitals from PageSpeed Insights (CrUX field data plus a lab run). The crawler calls it only with --outside,
-// for public URLs.
-
+// @ts-check
+// Core Web Vitals from PageSpeed Insights (CrUX field data plus a lab run) and the CrUX History API. The crawler
+// calls it only with --outside, for public URLs.
 export const CHECKS = {
   "cwv-fail": [
     "PERF-01",
@@ -47,7 +47,7 @@ export async function speedTrend(
     return {
       note: `CrUX history${page ? ` for ${target}` : formFactor === "PHONE" ? "" : ` (${formFactor.toLowerCase()})`}: ${r.status === 404 ? `not enough Chrome visits to this ${page ? "page" : "site"} for a trend` : `answered ${r.status}${r.status === 403 ? " (enable the Chrome UX Report API for this key)" : ""}`}.`,
     };
-  const rec = (await r.json()).record || {},
+  const rec = /** @type {any} */ (await r.json()).record || {},
     m = rec.metrics || {},
     periods = rec.collectionPeriods || [];
   // A period with too few visits is null: skipped, never read as 0.
@@ -223,7 +223,7 @@ export async function checkSpeed(urls, { add, endpoint = PSI_ENDPOINT, key, fetc
           notes.push(`${PSI}: ${url} answered ${r.status}.`);
           break;
         }
-        data = await r.json();
+        data = /** @type {any} */ (await r.json());
       } catch (e) {
         notes.push(`${PSI}: ${url} failed (${e.message}).`);
         break;

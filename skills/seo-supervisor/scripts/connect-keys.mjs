@@ -1,10 +1,8 @@
 #!/usr/bin/env node
-// Services connected by an API key alone: Bing Webmaster Tools, Open PageRank, Ahrefs' free Domain Rating, Moz, the
-// YouTube Data API, Matomo and PostHog. Keys, with Matomo's and PostHog's addresses and IDs, are saved in
-// ~/.seo-supervisor/keys.json, never in the project; a service's environment variable wins over its saved value.
-// fetch sends the site's address and domain names to these services, test sends a token, and submit-bing asks Bing
-// to crawl URLs, so without --yes each is a dry run that prints what it would send. *_ENDPOINT variables point the
-// services at the tests' fakes; Matomo and PostHog use their saved address instead.
+// @ts-check
+// Services connected by an API key alone, and the key store the other scripts share. Keys are saved in
+// ~/.seo-supervisor/keys.json, never in the project; a service's environment variable wins over its saved key.
+// Exits 0 when done, 1 when a service refuses or can't be reached (or status finds no key), 2 on bad input.
 import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, mkdirSync, chmodSync, existsSync, renameSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -490,6 +488,7 @@ const domainsFor = (siteUrl, competitors) =>
 
 // ---------- Bing Webmaster Tools ----------
 // CrawlIssues is a flags enum; JSON sends the number, XML the names, so both are read.
+/** @type {[string, number, string][]} */
 const ISSUES = [
   ["Code301", 1, "permanent redirect (301)"],
   ["Code302", 2, "temporary redirect (302)"],
@@ -765,20 +764,22 @@ const MATOMO_SPLITS = {
 const MATOMO_ALL = "Referrers.getReferrerType",
   MATOMO_DAILY = "VisitsSummary.get";
 const matomoUrl = (k, p, method = "Actions.getEntryPageUrls") =>
-  `${k.url}index.php?${new URLSearchParams({
-    module: "API",
-    method,
-    idSite: k.siteId,
-    period: method === MATOMO_DAILY ? "day" : "range",
-    date: `${p.from},${p.to}`,
-    ...(method === MATOMO_ALL ? {} : { segment: "referrerType==search" }),
-    ...(method === "Actions.getEntryPageUrls"
-      ? { flat: 1, filter_limit: ROWS, filter_sort_column: "entry_nb_visits", filter_sort_order: "desc" }
-      : method === MATOMO_DAILY
-        ? {}
-        : { filter_limit: 10, filter_sort_column: "nb_visits", filter_sort_order: "desc" }),
-    format: "JSON",
-  })}`;
+  `${k.url}index.php?${new URLSearchParams(
+    /** @type {any} */ ({
+      module: "API",
+      method,
+      idSite: k.siteId,
+      period: method === MATOMO_DAILY ? "day" : "range",
+      date: `${p.from},${p.to}`,
+      ...(method === MATOMO_ALL ? {} : { segment: "referrerType==search" }),
+      ...(method === "Actions.getEntryPageUrls"
+        ? { flat: 1, filter_limit: ROWS, filter_sort_column: "entry_nb_visits", filter_sort_order: "desc" }
+        : method === MATOMO_DAILY
+          ? {}
+          : { filter_limit: 10, filter_sort_column: "nb_visits", filter_sort_order: "desc" }),
+      format: "JSON",
+    }),
+  )}`;
 // PostHog: sessions it files as Organic Search (a search engine as referrer or utm_source, paid search left out, as
 // in GA4), by entry page. The site's host is matched here, not sent.
 // Without $channel_type, the fallback counts sessions referred by a search engine. These LIKE patterns can count a

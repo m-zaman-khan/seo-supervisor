@@ -1,3 +1,4 @@
+// @ts-check
 // Content checks shared by the crawler and content-scan.mjs. Thresholds are local unless a source is named.
 
 const norm = s =>
@@ -268,6 +269,7 @@ const FORECAST = /\b(?:will|(?:is|are)\s+(?:expected|projected|forecast|predicte
 const TREND =
   /\b(?:doubled|tripled|quadrupled|halved|(?:grown|grew|risen|rose|fallen|fell|dropped|increased|decreased|declined|jumped|surged|soared)\s+(?:by\s+)?(?:\d|a\s+(?:third|quarter|half)|half|tenfold|twofold|threefold))/i;
 const MEASURE = /\d|\b(?:half|a\s+third|a\s+quarter|double|twice|triple|majority|most|million|billion)\b/i;
+/** @type {[string, RegExp | ((s: string) => boolean)][]} */
 const KINDS = [
   [
     "named source",

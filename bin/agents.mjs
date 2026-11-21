@@ -1,3 +1,4 @@
+// @ts-check
 // Where each coding agent reads skills from, and how to tell it's installed. Skill paths follow the open skills CLI.
 // https://github.com/vercel-labs/skills
 import { existsSync } from "node:fs";

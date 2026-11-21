@@ -1,6 +1,5 @@
-// Agent readiness: what AI agents can use on a page, the agent files a site publishes, AI crawler rules, and the AI
-// bot list. Links with no name are LINK-05's link-no-text, so they aren't counted here.
-
+// @ts-check
+// Agent readiness: what AI agents can use on a page, Bing's AI rules, AI crawler rules, and the AI bot list.
 export const CHECKS = {
   "click-only-elements": [
     "AI-05",
@@ -173,7 +172,7 @@ export function agentFeatures(html) {
     }
   // Click-only: an onclick on a non-interactive tag with no role. A landmark counts as its tag or its ARIA role.
   const clickOnly = [...shown.matchAll(/<([a-z][\w-]*)\b[^>]*>/gi)]
-    .map(m => [m[1].toLowerCase(), attrs(m[0])])
+    .map(m => /** @type {[string, Record<string, string>]} */ ([m[1].toLowerCase(), attrs(m[0])]))
     .filter(([tag, a]) => "onclick" in a && !("role" in a) && !INTERACTIVE.test(tag))
     .map(([tag, a]) => describe(tag, a));
   const landmarksMissing = Object.entries(LANDMARKS)
@@ -261,13 +260,11 @@ export function signalPlacement(txt, blocksAll) {
 }
 
 // An RFC 9727 API catalog (a linkset), an A2A Agent Card (A2A 1.0.0 section 8.2), and OAuth metadata, whose required
-// members are `resource` (RFC 9728) and `issuer` (RFC 8414), plus a UCP business profile, a JSON object with a `ucp`
-// member. Only /.well-known/ paths on the origin are asked for, and a file counts only when it parses as what it
-// should be, so a soft 404 doesn't.
+// members are `resource` (RFC 9728) and `issuer` (RFC 8414).
 // https://www.rfc-editor.org/rfc/rfc9727
 // https://www.rfc-editor.org/rfc/rfc9728
 // https://www.rfc-editor.org/rfc/rfc8414
-// https://ucp.dev/latest/specification/overview
+/** @type {[string, (j: any) => boolean][]} */
 const AGENT_FILES = [
   ["/.well-known/api-catalog", j => Array.isArray(j?.linkset)],
   ["/.well-known/agent-card.json", j => filled(j?.name)],

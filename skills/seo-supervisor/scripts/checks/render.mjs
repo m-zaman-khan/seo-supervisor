@@ -1,5 +1,6 @@
-// Renders sample pages, or every page with --render all, in an installed Chrome or Edge and compares the result with
-// the raw HTML. The page's own scripts, analytics included, run.
+// @ts-check
+// Renders pages in an installed Chrome or Edge and compares the result with the raw HTML. The page's own scripts,
+// analytics included, run behind a guard that keeps them off private addresses.
 import { execFile } from "node:child_process";
 import { lookup } from "node:dns";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
@@ -206,8 +207,9 @@ export async function startGuard(siteUrl, { dns = lookup, env = process.env } = 
     );
     up.on("close", () => sock.destroy()).on("error", () => sock.destroy());
   });
-  await new Promise(ok => server.listen(0, "127.0.0.1", ok));
-  const port = server.address().port;
+  await /** @type {Promise<void>} */ (new Promise(ok => server.listen(0, "127.0.0.1", ok)));
+  server.unref(); // a guard left open never keeps the process alive
+  const port = /** @type {import("node:net").AddressInfo} */ (server.address()).port;
   return {
     port,
     blocked,
@@ -229,6 +231,10 @@ export async function startGuard(siteUrl, { dns = lookup, env = process.env } = 
 // turns service workers off, so the guard checks their requests and WebSockets, and each profile is deleted after use
 // so a worker never runs again. Errors are redacted because Chrome's command line names the temporary profile, under
 // the home folder.
+/**
+ * @param {string} browser
+ * @param {string} url
+ * @param {{ timeoutMs?: number, dns?: typeof lookup }} [options] */
 export async function renderPage(browser, url, { timeoutMs = 20000, dns } = {}) {
   const profile = mkdtempSync(join(tmpdir(), "seo-supervisor-render-"));
   const guard = await startGuard(url, { dns });
@@ -261,10 +267,12 @@ export async function renderPage(browser, url, { timeoutMs = 20000, dns } = {}) 
 export const RENDER_SECONDS_PER_PAGE = 5,
   RENDER_ALL_CAP = 200;
 
-/** The pages for --render all, home first. note says how many the cap left out, or is null. */
+/** The pages for --render all, home first. note says how many the cap left out, or is null.
+ * @param {string[]} urls
+ * @param {{ max?: number, log?: (message: string) => void }} [options] */
 export function renderAll(urls, { max = RENDER_ALL_CAP, log = () => {} } = {}) {
   const home = u => new URL(u).pathname === "/";
-  const list = [...urls].sort((a, b) => home(b) - home(a)).slice(0, max);
+  const list = [...urls].sort((a, b) => +home(b) - +home(a)).slice(0, max);
   const minutes = Math.max(1, Math.round((list.length * RENDER_SECONDS_PER_PAGE) / 60));
   log(
     `Rendering ${list.length} page${list.length === 1 ? "" : "s"} in the browser, about ${minutes} minute${minutes === 1 ? "" : "s"} (roughly ${RENDER_SECONDS_PER_PAGE} seconds a page), one at a time.`,

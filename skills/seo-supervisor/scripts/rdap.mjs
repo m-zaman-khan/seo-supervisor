@@ -1,8 +1,7 @@
 #!/usr/bin/env node
+// @ts-check
 // Registration and expiry dates and the registrar of the site's and competitors' domains, from RDAP, the keyless
 // successor of WHOIS. Domain age is never a finding.
-// Dates come from the registration and expiration events, the registrar from its entity's vCard fn.
-// https://www.rfc-editor.org/rfc/rfc9083
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
@@ -16,7 +15,7 @@ const get = async url => {
     headers: { accept: "application/rdap+json, application/json", "user-agent": UA },
     signal: AbortSignal.timeout(30000),
   });
-  const body = await r.json().catch(() => null);
+  const body = /** @type {any} */ (await r.json().catch(() => null));
   return { status: r.status, body };
 };
 const reason = e => e.cause?.code || e.message;

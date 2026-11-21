@@ -616,8 +616,9 @@ test("an ordinary site raises none of these checks and only quiet information", 
   assert.equal(m.domShape, undefined, "no page is over the lines");
   assert.deepEqual(
     { ...m.imageCredits, noCreator: m.imageCredits.noCreator.map(u => new URL(u).pathname).sort() },
-    { read: 2, creator: 0, ai: [], c2pa: 0, noCreator: ["/logo.png", "/team.jpg"] },
+    { read: 2, creator: 0, ai: [], aiCount: 0, c2pa: 0, noCreator: ["/logo.png", "/team.jpg"] },
   );
+  assert.equal(m.imageCache.uncachedCount, 1, "the real total, beside the list of up to 20");
   assert.equal(m.imageCache.uncached.length, 1, "the logo is served with no cache lifetime");
   assert.equal(m.heroImages, undefined, "no lab run, no hero");
 });

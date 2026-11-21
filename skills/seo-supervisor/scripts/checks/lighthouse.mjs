@@ -1,3 +1,4 @@
+// @ts-check
 // Optional Lighthouse runs, an outside check: Chrome loads each page and runs its scripts, analytics included.
 // No findings: its SEO audits repeat the crawler's, its lab metrics aren't the field data PERF-01 asks for, and no rule
 // covers its accessibility or best-practices audits.
@@ -155,7 +156,10 @@ export function takeAgentic(lhr) {
 /** One Lighthouse run on its defaults (mobile, simulated throttling) with a throwaway Chrome profile. Chrome gets
  * launchChrome's container flags and the render guard instead of proxy flags, so the page can't steer it to a private
  * or cloud-metadata address; with a configured proxy, that proxy's flags instead. host ({ platform, uid, env, exists })
- * is for tests. Failure messages are redacted. */
+ * is for tests. Failure messages are redacted.
+ * @param {string} bin
+ * @param {string} url
+ * @param {{ chromePath?: string, timeoutMs?: number, host?: Parameters<typeof containerArgs>[0] }} [options] */
 export async function runLighthouse(bin, url, { chromePath, timeoutMs = 90000, host = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "seo-supervisor-lighthouse-")),
     report = join(dir, "report.json");
@@ -208,14 +212,17 @@ export const SECONDS_PER_PAGE = 20,
   ALL_CAP = 200;
 
 /** Up to 5 sample pages, or with `all` every page up to max, home first. One at a time, since parallel runs skew each
- * other's timings. log gets the time estimate before the first run. */
+ * other's timings. log gets the time estimate before the first run.
+ * @param {string} bin
+ * @param {string[]} urls
+ * @param {{ chromePath?: string, all?: boolean, max?: number, log?: (message: string) => void }} [options] */
 export async function checkLighthouse(
   bin,
   urls,
   { chromePath, all = false, max = all ? ALL_CAP : 5, log = () => {} } = {},
 ) {
   const home = u => new URL(u).pathname === "/";
-  const sample = [...urls].sort((a, b) => home(b) - home(a)).slice(0, max);
+  const sample = [...urls].sort((a, b) => +home(b) - +home(a)).slice(0, max);
   const minutes = Math.max(1, Math.round((sample.length * SECONDS_PER_PAGE) / 60));
   log(
     `Lighthouse: ${sample.length} page${sample.length === 1 ? "" : "s"}, about ${minutes} minute${minutes === 1 ? "" : "s"} (roughly ${SECONDS_PER_PAGE} seconds a page), one at a time.`,

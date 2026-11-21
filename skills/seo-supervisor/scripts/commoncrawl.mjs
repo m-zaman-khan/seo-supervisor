@@ -1,11 +1,7 @@
 #!/usr/bin/env node
+// @ts-check
 // Common Crawl's view of a site: its pages in the newest crawl, its domain rank, and whether the saved copies of known
 // linking pages link to it. The linking sites themselves are never visited.
-// Only the newest crawl is asked; add older ones from collinfo.json if too few linking pages turn up. One request at a
-// time, 1 s apart: Common Crawl calls the index's rate limits strict but publishes no number. A busy answer stops all
-// further lookups. Only Common Crawl's own hosts are asked: the index must be on collinfo.json's host, and redirects
-// aren't followed. A byte-range request reads just one saved copy, a few KB.
-// https://commoncrawl.org/blog/you-can-now-build-directly-on-common-crawl-from-the-browser
 import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { Readable } from "node:stream";
@@ -97,7 +93,7 @@ export async function domainRank(site, { graphinfo = GRAPHINFO, graph = GRAPH, c
   let g;
   try {
     const r = await get(graphinfo, CAP.list),
-      list = r.status === 200 && r.body ? JSON.parse(r.body) : null;
+      list = r.status === 200 && r.body ? JSON.parse(/** @type {any} */ (r.body)) : null;
     // The id goes into a URL path, so only letters, digits, . _ and -, never "..".
     // A host-only graph has no domain ranks.
     g =
@@ -218,7 +214,7 @@ export async function commonCrawl(site, pages, { collinfo = COLLINFO, data = DAT
   let crawl;
   try {
     const r = await get(collinfo, CAP.list),
-      newest = r.status === 200 && r.body ? JSON.parse(r.body)?.[0] : null;
+      newest = r.status === 200 && r.body ? JSON.parse(/** @type {any} */ (r.body))?.[0] : null;
     if (typeof newest?.id !== "string" || typeof newest["cdx-api"] !== "string")
       throw new Error(`its list of crawls answered ${r.status}`);
     crawl = {
@@ -282,6 +278,7 @@ export async function commonCrawl(site, pages, { collinfo = COLLINFO, data = DAT
   }
 
   // A linking page's saved copy in the crawl, and the links to the site in it.
+  /** @returns {Promise<{ state: string, reason?: string, captured?: string, links?: any[], pageNofollow?: any }>} */
   async function look(url) {
     if (busy) return { state: "not-checked" };
     try {
@@ -422,7 +419,7 @@ async function main(argv) {
     );
     return 0;
   }
-  const result = await commonCrawl(site.href, pages);
+  const result = /** @type {{ commonCrawl: any, notes: string[] }} */ (await commonCrawl(site.href, pages));
   if (args.rank) {
     const rank = saved || (await domainRank(site.href, { capBytes: capMb * MB }));
     if (rank.note) result.notes.push(rank.note);

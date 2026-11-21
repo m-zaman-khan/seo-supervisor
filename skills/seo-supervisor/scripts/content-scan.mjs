@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 // Audits content data (JSON, CSV or a Markdown folder) before it becomes pages.
 
 import { readFileSync, readdirSync, statSync, mkdirSync, writeFileSync } from "node:fs";
@@ -476,7 +477,7 @@ const findings = [...found]
     };
   })
   .sort((a, b) => SEV[a.severity] - SEV[b.severity] || b.count - a.count);
-findings.forEach((f, i) => {
+findings.forEach((/** @type {Record<string, any>} */ f, i) => {
   f.id = "D-" + String(i + 1).padStart(3, "0");
 });
 stats.claims = { total: claims.length, unsourced: claims.filter(c => !c.sourced).length };

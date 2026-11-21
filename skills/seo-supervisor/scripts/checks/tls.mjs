@@ -1,3 +1,4 @@
+// @ts-check
 // Live-origin HTTPS checks (certificate, redirects, HSTS), run only with --check-live against the production origin.
 import tls from "node:tls";
 
@@ -283,7 +284,7 @@ export async function checkLive(
         }
         // hstspreload.org asks http:// to go to https:// on the same host first, so that step doesn't count.
         const upgrade = scheme === "http" && (w.hops[1]?.from ?? w.url) === `https://${other}${p}`;
-        if (w.hops.length - upgrade > 1) add("host-redirect-hops", from, `${w.hops.length} hops to ${w.url}`);
+        if (w.hops.length - Number(upgrade) > 1) add("host-redirect-hops", from, `${w.hops.length} hops to ${w.url}`);
         if (p !== "/" && new URL(w.url).pathname === "/") add("host-redirect-drops-path", from, `→ ${w.url}`);
         temporary(from, w);
       }

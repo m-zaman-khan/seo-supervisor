@@ -1,5 +1,6 @@
-// Loads sample pages at desktop and phone size in an installed Chrome or Edge for the phone and lab speed checks,
-// with screenshots. The pages' own scripts, analytics included, run.
+// @ts-check
+// Loads sample pages at desktop and phone size in an installed Chrome or Edge for the phone, render and lab speed
+// checks, with screenshots. The pages' own scripts, analytics included, run.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launchChrome, containerArgs } from "../lib/cdp.mjs";
@@ -247,6 +248,7 @@ async function goBack(page, next) {
   return told;
 }
 // Plain words for the common reasons, Chrome's names for the rest; "Circumstantial" ones aren't the page's fault.
+/** @type {[RegExp, string][]} */
 const REASONS = [
   [/^UnloadHandler.*SubFrame/, "an unload handler in an embedded frame"],
   [/^UnloadHandler/, "an unload handler"],
@@ -275,7 +277,11 @@ const slugOf = (url, used) => {
   return slug;
 };
 
-// pageBudgetMs covers all three of a page's loads, so a page that hangs (a busy loop, a dialog) can't stall the run.
+/** @typedef {(id: string, url: string, evidence: string) => void} AddFinding */
+/** pageBudgetMs covers all three of a page's loads, so a page that hangs (a busy loop, a dialog) can't stall the run.
+ * @param {string} browser
+ * @param {string[]} urls
+ * @param {{ add?: AddFinding, screenshotDir?: string, pageBudgetMs?: number }} [options] */
 export async function checkVisual(browser, urls, { add, screenshotDir, pageBudgetMs = 50000 } = {}) {
   const notes = [],
     lab = [],
@@ -288,7 +294,10 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
   if (screenshotDir) mkdirSync(screenshotDir, { recursive: true });
   // The render guard's proxy also covers what the tab can't see: other-site frames and WebSockets.
   const guard = urls.length ? await startGuard(urls[0]) : null;
-  const chrome = await launchChrome(browser, { args: guard?.args || [] });
+  const chrome = await launchChrome(browser, { args: guard?.args || [] }).catch(async e => {
+    await guard?.close();
+    throw e;
+  }); // a browser that won't start leaves no guard open
   try {
     const { userAgent: ua } = await chrome.send("Browser.getVersion");
     const desktopUa = ua.replace("HeadlessChrome/", "Chrome/");
@@ -535,6 +544,21 @@ export function errorOf(method, p) {
   }
   return null;
 }
+
+// For the type checker only, which has Node's types and no DOM. The functions below run in the page as source text,
+// as `(${fn})(args)`, so each is self-contained and uses the page's own globals.
+const {
+  document,
+  getComputedStyle,
+  NodeFilter,
+  DOMParser,
+  location,
+  innerWidth,
+  innerHeight,
+  scrollY,
+  scrollBy,
+  scrollTo,
+} = /** @type {any} */ ({});
 // Words are counted as the crawler counts them, without consent and chat widgets. Hidden text leaves out accordions,
 // tabs, menus and dialogs, which Google's spam policies don't count as hidden. raw is HTML to count the same way.
 // https://developers.google.com/search/docs/essentials/spam-policies#hidden-text-and-links
@@ -880,7 +904,10 @@ async function userAgents(chrome) {
 
 /** Loads the render sample again, up to 10 pages; pages gives each page's data for the report. rawWords is the
  * crawler's word count per URL; clean adds screenshots without cookie bars and chat widgets; chosen is rendered at
- * phone size after its steps. */
+ * phone size after its steps.
+ * @param {string} browser
+ * @param {string[]} urls
+ * @param {{ add?: AddFinding, screenshotDir?: string, rawWords?: Map<string, number>, clean?: boolean, chosen?: { url: string, steps?: string, raw?: string | null } | null, pageBudgetMs?: number }} [options] */
 export async function checkMore(
   browser,
   urls,
@@ -908,7 +935,10 @@ export async function checkMore(
   // The same guard as checkVisual: every request is checked against the site's own addresses.
   const checkAddress = await addressCheck(list[0] ?? chosen.url),
     guard = await startGuard(list[0] ?? chosen.url);
-  const chrome = await launchChrome(browser, { args: guard?.args || [] });
+  const chrome = await launchChrome(browser, { args: guard?.args || [] }).catch(async e => {
+    await guard?.close();
+    throw e;
+  });
   try {
     const ua = await userAgents(chrome);
     for (const url of list) {

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 // Weekly at most, says when a newer version is on npm. It never updates anything and sends only the package name.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -40,7 +41,7 @@ export async function checkForUpdate({ env = process.env, now = Date.now(), fetc
       const registry = (env.SEO_SUPERVISOR_REGISTRY || "https://registry.npmjs.org").replace(/\/$/, "");
       const r = await fetchFn(`${registry}/seo-supervisor/latest`, { signal: AbortSignal.timeout(3000) });
       if (!r.ok) return null;
-      latest = (await r.json()).version;
+      latest = /** @type {any} */ (await r.json()).version;
       writeJson(cacheFile, { checkedAt: new Date(now).toISOString(), latest });
     } catch {
       return null;

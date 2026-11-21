@@ -1,8 +1,6 @@
 #!/usr/bin/env node
+// @ts-check
 // Search Console and GA4 data for the audit. Read-only, except submit-sitemap, which writes only with --yes.
-// The sign-in is saved in the settings folder, never in the project.
-// Each Google address can be overridden with SEO_GOOGLE_<NAME>_URL, e.g. SEO_GOOGLE_SEARCH_CONSOLE_URL.
-// SEO_GOOGLE_SHARED_CLIENT_ID and SEO_GOOGLE_SHARED_CLIENT_SECRET override the shared client; empty means none.
 import { createHash, randomBytes, sign } from "node:crypto";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
@@ -131,7 +129,7 @@ async function tokenRequest(E, params) {
       `google: couldn't reach Google's sign-in server (${e.cause?.code || e.message}). Check the internet connection and try again.`,
     );
   }
-  const j = await r.json().catch(() => ({}));
+  const j = /** @type {any} */ (await r.json().catch(() => ({})));
   if (r.ok && j.access_token)
     return {
       access_token: j.access_token,
@@ -171,6 +169,7 @@ function renew(E, s) {
 }
 
 // Authorized JSON calls: renews an expired token first, renews once more on a 401, retries a 429 once.
+/** @param {{ home?: string, endpoints?: any }} [opts] */
 function session({ home, endpoints } = {}) {
   const E = endpointsFrom(endpoints),
     file = tokenFile(home);
@@ -211,7 +210,7 @@ function session({ home, endpoints } = {}) {
         await sleep(Math.min(isNaN(ra) ? 2 : ra, 30) * 1000);
         continue;
       }
-      const j = await r.json().catch(() => ({}));
+      const j = /** @type {any} */ (await r.json().catch(() => ({})));
       if (r.ok) return j;
       throw Object.assign(new Error(j.error?.message || `HTTP ${r.status}`), { status: r.status });
     }
@@ -275,6 +274,7 @@ const inProperty = (prop, u) => {
 // ---------- fetch ----------
 // crawl, a parsed seo-crawl.json, lets URL Inspection sample key pages with no search traffic yet. inspect (paths or
 // URLs) replaces the default sample.
+/** @param {{ site?: string, days?: number | string, ga4Property?: string, crawl?: any, inspect?: string[], pageSize?: number, home?: string, endpoints?: any }} [opts] */
 export async function fetchGoogle({
   site,
   days = 90,
@@ -718,10 +718,9 @@ export async function fetchGoogle({
           byCountry = byName(await rows("country"), 10);
         // GA4's default channel group files ChatGPT, Gemini, Copilot and the like under "AI Assistant".
         // https://support.google.com/analytics/answer/9756891
-        const ai = Object.entries(byName(await rows("sessionSource", "AI Assistant"), 10)).map(([k, v]) => [
-          k,
-          { sessions: v.sessions },
-        ]);
+        const ai = Object.entries(byName(await rows("sessionSource", "AI Assistant"), 10)).map(
+          ([k, v]) => /** @type {const} */ ([k, { sessions: v.sessions }]),
+        );
         analyticsDetail = {
           sessions,
           users,
@@ -1004,8 +1003,8 @@ async function signIn(E, client, args, params, { cmd = "connect", intro = "" } =
   const { verifier, challenge } = pkce(),
     state = randomBytes(16).toString("base64url");
   const server = createServer();
-  await new Promise((ok, no) => server.once("error", no).listen(0, "127.0.0.1", ok));
-  const redirect_uri = `http://127.0.0.1:${server.address().port}`;
+  await /** @type {Promise<void>} */ (new Promise((ok, no) => server.once("error", no).listen(0, "127.0.0.1", ok)));
+  const redirect_uri = `http://127.0.0.1:${/** @type {import("node:net").AddressInfo} */ (server.address()).port}`;
   // --paste: nothing listens, so the browser's redirect fails at once and its address can be copied (pastedCode).
   const paste = args.paste === true;
   if (paste) server.close();

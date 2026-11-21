@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 // Reports what changed between two crawls. Pages are matched by path, so a local crawl compares with the public site.
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, copyFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -57,6 +58,7 @@ const realMove = (o, n) => {
 };
 const real = (o, n) => (crossed(o, n, true) ? -1 : realMove(o, n) || (crossed(o, n, false) ? 1 : 0));
 const field = samples => samples?.map(s => [s.url, s.field?.lcp != null ? s.field : null]);
+/** @type {[string, (r: any) => any[], (o: any, n: any) => number, (v: any) => string][]} */
 const SPEED = [
   ["real visitors", r => field(r.speed?.samples), real, fmtCwv],
   ["real visitors, desktop", r => field(r.speed?.desktop?.samples), real, fmtCwv],
@@ -171,9 +173,10 @@ export function diffCrawls(oldReport, newReport) {
   const index = r => new Map([...(r.pages || []), ...(r.errors || [])].map(p => [pathOf(p.url), p]));
   const before = index(oldReport),
     after = index(newReport);
-  const regressions = [],
-    improvements = [],
-    changed = [],
+  /** @typedef {{ path: string, kind: string, detail?: string, before?: any, after?: any, source?: string }} Change */
+  const regressions = /** @type {Change[]} */ ([]),
+    improvements = /** @type {Change[]} */ ([]),
+    changed = /** @type {Change[]} */ ([]),
     compared = new Set();
   // Sitemap listing only when both crawls read the whole sitemap: one that failed this time is sitemap-missing, and a
   // file that failed or went unread past a limit isn't every page in it leaving. An older crawl is whole when every

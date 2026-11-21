@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 // Makes 1200x630 Open Graph cards locally: plain HTML with system fonts, screenshotted in headless Chrome or Edge.
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -30,6 +31,7 @@ const lum = v =>
 const contrast = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
 
 // logo: an image URL the page can load offline (the CLI passes a data: URI).
+/** @param {{ title?: string, subtitle?: string, brand?: string, accent?: string, background?: string, logo?: string }} [card] */
 export function cardHtml({
   title,
   subtitle = "",

@@ -1,5 +1,5 @@
+// @ts-check
 // The report's /seo-setup plan section as stats, HTML and Markdown. The plan's shape is in report-format.md.
-
 const STATUSES = ["exists", "to-build", "built", "to-create"];
 const LABEL = { exists: "Already right", "to-build": "To build", built: "Built", "to-create": "To create" };
 const PLAN_LABEL = {
@@ -33,6 +33,10 @@ export function planStats(plan) {
   };
 }
 
+/**
+ * @param {any} plan
+ * @param {{ esc: (s: any) => string, inl: (s: any) => string, num: (n: any) => string, traffic?: (url: string) => string | null }} helpers
+ */
 export function planHtml(plan, { esc, inl, num, traffic = () => null }) {
   const pages = Array.isArray(plan?.pages) ? plan.pages : [];
   const s = planStats(plan);

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Google ranking updates, and optionally Search Central blog posts, that overlap a period. The updates come from the
-// Search Status Dashboard's history (Google Cloud's status format), the posts from the blog's RSS feed. Dates only: it
-// never says an update caused a traffic change.
+// @ts-check
+// Google ranking updates, and optionally Search Central blog posts, that overlap a period. Dates only: it never says an
+// update caused a traffic change.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
@@ -13,7 +13,7 @@ export const FEED = "https://status.search.google.com/incidents.json";
 const FEED_DAYS = 365;
 const ymd = t => {
   const d = new Date(t);
-  return isNaN(d) ? null : d.toISOString().slice(0, 10);
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 };
 
 const isRanking = i =>

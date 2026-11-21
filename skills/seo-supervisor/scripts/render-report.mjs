@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 // Renders an audit JSON (or raw seo-crawl / content-scan output) as one self-contained HTML page that makes no network
 // requests, plus a Markdown copy with every finding in full. The JSON shape and score model are in ../report-format.md.
 
@@ -64,7 +65,9 @@ const STATUS_LABEL = {
 const findings = normalise(raw.findings);
 findings.sort(
   (a, b) =>
-    !isOpen(a) - !isOpen(b) || SEV.indexOf(a.severity) - SEV.indexOf(b.severity) || (b.count || 0) - (a.count || 0),
+    Number(!isOpen(a)) - Number(!isOpen(b)) ||
+    SEV.indexOf(a.severity) - SEV.indexOf(b.severity) ||
+    (b.count || 0) - (a.count || 0),
 );
 const passed = raw.passed || [];
 const notChecked = raw.notChecked || [];
@@ -134,12 +137,15 @@ function deltaOf() {
 const impact = (() => {
   if (!overall) return { rows: [], cap: 0 };
   const possible = overall.rules * 10;
-  const lost = areas.map(a => ({
-    a,
-    exact:
-      (100 * rules.filter(r => r.area === a.name).reduce((s, r) => s + (r.worst ? 10 - EARN[r.worst] : 0), 0)) /
-      possible,
-  }));
+  const lost = areas.map(
+    a =>
+      /** @type {{ a: typeof a, exact: number, pts?: number }} */ ({
+        a,
+        exact:
+          (100 * rules.filter(r => r.area === a.name).reduce((s, r) => s + (r.worst ? 10 - EARN[r.worst] : 0), 0)) /
+          possible,
+      }),
+  );
   const target = 100 - overall.raw;
   lost.forEach(x => {
     x.pts = Math.floor(x.exact);
@@ -180,7 +186,9 @@ const inl = s =>
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 const fmtDate = d => {
   const x = new Date(d || Date.now());
-  return isNaN(x) ? String(d) : x.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return isNaN(x.getTime())
+    ? String(d)
+    : x.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 };
 const num = n => Number(n).toLocaleString("en-US");
 // Search traffic by path, one line on findings and plan rows: Search Console (`traffic`, gsc-import.mjs or
@@ -350,6 +358,7 @@ const mdFile = mdPath ? basename(mdPath) : null;
 
 // ---------- overview ----------
 function scoreScale(v) {
+  /** @type {[number, number, string][]} */
   const segs = [
     [0, 40, "b1"],
     [40, 60, "b2"],
@@ -972,7 +981,7 @@ const analyticsSplitLines = () =>
         ["country", x?.byCountry, k => k.toUpperCase()],
       ].map(([by, map, label]) => {
         const rows = Object.entries(obj(map) || {})
-            .map(([k, v]) => [k, visitsOf(v)])
+            .map(([k, v]) => /** @type {[string, number]} */ ([k, visitsOf(v)]))
             .filter(([, n]) => n)
             .sort((a, b) => b[1] - a[1])
             .slice(0, 10),
@@ -1727,7 +1736,7 @@ const connLines = () => {
     isDay = s => /^\d{4}-\d{2}-\d{2}$/.test(s);
   const top = (map, k, max = 10, label = s => s) =>
     Object.entries(obj(map) || {})
-      .map(([name, v]) => [name, n(v?.[k])])
+      .map(([name, v]) => /** @type {[string, number]} */ ([name, n(v?.[k])]))
       .filter(([, v]) => v > 0)
       .sort((a, b) => b[1] - a[1])
       .slice(0, max)

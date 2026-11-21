@@ -1,3 +1,4 @@
+// @ts-check
 // Dependency-free keyboard prompts. They read keypresses from any stream, so tests can drive them with a PassThrough.
 import { emitKeypressEvents } from "node:readline";
 

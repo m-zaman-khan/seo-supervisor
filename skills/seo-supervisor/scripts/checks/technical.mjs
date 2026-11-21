@@ -1,9 +1,5 @@
+// @ts-check
 // Small technical checks the crawler runs (sitemaps, links, images, head tags, headings, security headers and cookies).
-// Sources: the sitemaps.org protocol (URLs under 2,048 characters), Search Console's Sitemaps report help (nested
-// sitemap indexes), Google's video sitemap, image sitemap and URL structure docs (session IDs, fragments,
-// percent-encoding), web.dev on responsive images and lazy loading, ogp.me (repeated og:image is an array), Google's
-// robots meta docs (the more restrictive rule applies), WCAG 2.2 SC 2.4.6, hstspreload.org (max-age of a year), the
-// W3C Referrer Policy spec (unsafe-url) and MDN's Set-Cookie reference.
 
 export const CHECKS = {
   "sitemap-duplicate-urls": [
@@ -242,6 +238,7 @@ export function hstsRead(header) {
 // header CSP makes the browser fetch them all over https.
 // https://www.w3.org/TR/mixed-content/
 // https://www.w3.org/TR/upgrade-insecure-requests/
+/** @type {[string, string, (l: Record<string, string>) => string | null][]} */
 const LOADS = [
   [
     "link",

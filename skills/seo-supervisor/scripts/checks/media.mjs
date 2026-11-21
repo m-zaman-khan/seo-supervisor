@@ -1,5 +1,5 @@
-// Image and DOM shape checks on the HTML the crawler already fetched.
-
+// @ts-check
+// Image and DOM shape checks on the HTML and headers the crawler already fetched.
 export const CHECKS = {
   "img-alt-quality": [
     "CONTENT-08",
@@ -77,11 +77,11 @@ export function lazySrc(i) {
   return !i.src || /^data:/i.test(i.src) || /\blazy/i.test(i.class || "") ? real : null;
 }
 
-// <link> tags outside comments and <noscript>, for the image-preload and rel=prerender checks. Image preloads with
-// a media attribute are one hero per screen size, so together they count as one.
+/** @typedef {{ rels: string[], as?: string, href?: string, imagesrcset?: string }} LinkTag every attribute by its lowercased name (those read here typed), and rel's values */
+/** @type {(html: string) => LinkTag[]} */
 const linkTags = html =>
   [...html.replace(/<!--[\s\S]*?-->|<noscript\b[\s\S]*?<\/noscript>/gi, " ").matchAll(/<link\b[^>]*>/gi)].map(m => {
-    const a = {};
+    const a = /** @type {Record<string, string>} */ ({});
     for (const x of m[0].matchAll(/([^\s=\/>"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g))
       a[x[1].toLowerCase()] = x[2] ?? x[3] ?? x[4] ?? "";
     return { ...a, rels: (a.rel || "").toLowerCase().split(/\s+/) };

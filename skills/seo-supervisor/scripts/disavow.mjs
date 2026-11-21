@@ -1,10 +1,7 @@
 #!/usr/bin/env node
+// @ts-check
 // Writes a disavow file from hand-picked domains and pages. It never chooses entries, and never uploads: Search Console
-// has no API for it. An upload replaces the property's whole list, so every --existing line is carried over.
-// Google's limits: a UTF-8 .txt file of 100,000 lines (blank and comment lines included) and 2 MB, read strictly as
-// 2,000,000 bytes; URLs up to 2,048 characters. https://support.google.com/webmasters/answer/2648487
-// Bing removed its disavow tool in October 2023.
-// https://blogs.bing.com/webmaster/september-2023/Bing-Webmaster-Tools-to-Remove-Disavow-Links-Feature-in-October-2023
+// has no API for it.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
@@ -57,6 +54,7 @@ const lines = f => {
 };
 
 function main(argv) {
+  /** @type {Record<string, any>} */
   const args = {};
   for (let i = 0; i < argv.length; i++)
     if (argv[i].startsWith("--")) {

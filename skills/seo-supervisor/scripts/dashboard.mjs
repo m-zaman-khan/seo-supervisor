@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 // Several sites at a glance from local audits. Scores come from lib/score.mjs, so they match each seo-audit.html.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -7,7 +8,9 @@ import { isMain } from "./lib/is-main.mjs";
 
 const fmtDate = d => {
   const x = new Date(d);
-  return d && !isNaN(x) ? x.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "";
+  return d && !isNaN(x.getTime())
+    ? x.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : "";
 };
 const plural = (n, w) => `${n} ${n === 1 ? w : w + "s"}`;
 
@@ -35,7 +38,9 @@ export function summaryOf(dir) {
     open: open.length,
     blockers: count("blocker"),
     high: count("high"),
-    unlock: s?.cap ? score(buildRules(findings, passed, { assume: f => f.severity === "blocker" })) : null,
+    unlock: s?.cap
+      ? score(buildRules(findings, passed, { assume: /** @type {any} */ (f => f.severity === "blocker") }))
+      : null,
     regressions: Array.isArray(raw.diff?.regressions) ? raw.diff.regressions.length : null,
   };
 }
@@ -62,7 +67,7 @@ export const lineOf = x =>
 export const order = list =>
   [...list].sort(
     (a, b) =>
-      !!a.problem - !!b.problem ||
+      +!!a.problem - +!!b.problem ||
       (a.score?.value ?? 101) - (b.score?.value ?? 101) ||
       String(a.name).localeCompare(String(b.name)),
   );

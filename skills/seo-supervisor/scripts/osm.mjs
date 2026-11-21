@@ -1,15 +1,7 @@
 #!/usr/bin/env node
+// @ts-check
 // Nearby businesses of the same kind, and a check of the business's address, from OpenStreetMap. Context for the
 // report: never a finding, never scored.
-// Nominatim allows 1 request per second and no bulk geocoding, and wants results cached.
-// https://operations.osmfoundation.org/policies/nominatim/
-// overpass-api.de allows 10,000 queries and 1 GB a day; commercial use should run its own server (OSM_OVERPASS).
-// One Overpass query a run; a busy answer ends it with no retry. The 10 km cap keeps the query small.
-// https://wiki.openstreetmap.org/wiki/Overpass_API
-// Both services require a User-Agent that identifies the application.
-// The data is ODbL; the credit, linked to the copyright page, is the accepted attribution.
-// https://osmfoundation.org/wiki/Licence/Attribution_Guidelines
-// OSM_NOMINATIM and OSM_OVERPASS point at another server, or the tests' fakes.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
@@ -164,13 +156,14 @@ export async function lookupOsm({
   overpass = OVERPASS,
 }) {
   const notes = [],
-    out = {
-      source: "openstreetmap",
-      when: new Date().toISOString(),
-      credit: CREDIT,
-      licence: "ODbL 1.0",
-      copyright: "https://www.openstreetmap.org/copyright",
-    };
+    out =
+      /** @type {{ source: string, when: string, credit: string, licence: string, copyright: string, nearby?: any, geocode?: any }} */ ({
+        source: "openstreetmap",
+        when: new Date().toISOString(),
+        credit: CREDIT,
+        licence: "ODbL 1.0",
+        copyright: "https://www.openstreetmap.org/copyright",
+      });
   const sab = local?.kind === "service-area",
     schemaGeo = point(local?.geo?.lat, local?.geo?.lon);
   let center = near ? { ...near, from: "--near" } : schemaGeo ? { ...schemaGeo, from: "the schema's geo" } : null;
@@ -179,7 +172,7 @@ export async function lookupOsm({
     try {
       const reuse = cached?.query === address && point(cached.found?.lat, cached.found?.lon);
       const u = new URL(nominatim);
-      u.search = new URLSearchParams({ q: address, format: "jsonv2", limit: "1" });
+      u.search = new URLSearchParams({ q: address, format: "jsonv2", limit: "1" }).toString();
       const { status, body } = reuse
         ? { status: 200, body: [{ lat: cached.found.lat, lon: cached.found.lon, display_name: cached.found.label }] }
         : await call(u);

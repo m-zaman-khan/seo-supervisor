@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Installs the skill into the chosen coding agents (bin/agents.mjs), with its /seo-* commands for Claude Code.
-// No dependencies.
+// @ts-check
+// Installs the skill into the chosen coding agents, with each agent's commands, subagents and guard hook
+// (bin/agents.mjs, bin/extras.mjs). No dependencies.
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -165,7 +166,7 @@ const crc32 = b => {
   return ~x >>> 0;
 };
 function zipFolder(src, root, out) {
-  const files = readdirSync(src, { recursive: true })
+  const files = /** @type {string[]} */ (readdirSync(src, { recursive: true }))
     .filter(f => statSync(join(src, f)).isFile())
     .map(f => f.split(sep).join("/"))
     .sort();
@@ -351,7 +352,10 @@ for (const t of targetsFor(keys, scope, c)) {
 // error is null on success, else the reason. capture also returns npm's stdout, still printing it.
 function npm(args, capture = false) {
   const bin = c.env.SEO_SUPERVISOR_NPM || "npm",
-    o = { stdio: capture ? ["inherit", "pipe", "inherit"] : "inherit", encoding: "utf8" };
+    o = /** @type {import("node:child_process").SpawnSyncOptionsWithStringEncoding} */ ({
+      stdio: capture ? ["inherit", "pipe", "inherit"] : "inherit",
+      encoding: "utf8",
+    });
   // A .js bin runs with this Node. On Windows npm is npm.cmd, which only starts through a shell. Only parts with spaces
   // are quoted: cmd gives a quoted batch name found on PATH the wrong %~dp0, and npm.cmd then can't find npm.
   const r = /\.[cm]?js$/i.test(bin)

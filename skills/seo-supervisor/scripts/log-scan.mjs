@@ -1,7 +1,6 @@
 #!/usr/bin/env node
+// @ts-check
 // Reads the site's own access logs to show how search and AI crawlers actually treat the site.
-// Detected per line: Apache/Nginx combined and common format (anything may precede [time], so vhost_combined works),
-// or JSON lines, Cloudflare Logpush field names included.
 import { createReadStream, existsSync, statSync, readdirSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { pipeline } from "node:stream";
 import { createGunzip } from "node:zlib";
@@ -149,7 +148,7 @@ if (args["verify-ips"] !== undefined) {
   }
   ipLists = new Map(
     Object.entries(IP_LISTS)
-      .map(([bot, us]) => [bot, us.filter(u => loaded.has(u)).map(u => loaded.get(u))])
+      .map(([bot, us]) => /** @type {const} */ ([bot, us.filter(u => loaded.has(u)).map(u => loaded.get(u))]))
       .filter(([, bls]) => bls.length),
   );
 }
@@ -282,12 +281,12 @@ const handle = raw => {
     stats.unparsed++;
     return;
   }
-  const time = r.time && !isNaN(r.time) ? r.time : null;
+  const time = r.time && !isNaN(r.time.getTime()) ? r.time : null;
   if (SINCE !== null && !time) {
     stats.undated++;
     return;
   }
-  if (SINCE !== null && time < SINCE) {
+  if (SINCE !== null && +time < SINCE) {
     stats.beforeSince++;
     return;
   }
@@ -388,13 +387,16 @@ const botsOut = Object.fromEntries(
 );
 const aiReferrals = Object.fromEntries(
   Object.entries(referrals)
-    .map(([s, pages]) => [
-      s,
-      {
-        visits: [...pages.values()].reduce((a, b) => a + b, 0),
-        topPages: top(pages, v => v, 10).map(([path, visits]) => ({ path, visits })),
-      },
-    ])
+    .map(
+      ([s, pages]) =>
+        /** @type {const} */ ([
+          s,
+          {
+            visits: [...pages.values()].reduce((a, b) => a + b, 0),
+            topPages: top(pages, v => v, 10).map(([path, visits]) => ({ path, visits })),
+          },
+        ]),
+    )
     .sort((a, b) => b[1].visits - a[1].visits),
 );
 

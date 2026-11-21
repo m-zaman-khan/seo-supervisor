@@ -1,10 +1,5 @@
+// @ts-check
 // Plain-language writing notes for English pages, and a reading-ease check for CI when run on its own.
-// English only: the thresholds, the phrases and the formula are all English ones. Over 35 words a sentence or 150 a
-// paragraph is long: rough local guides, not Google's. Stock phrases come from a short local list.
-// Reading ease: Flesch, "A new readability yardstick", Journal of Applied Psychology 32(3), 1948. Syllables are
-// counted by vowel groups, so it's a rough guide.
-// The CI check (examples/hooks/reading-ease.yml): the default pass mark, 60, is where Flesch's table moves from
-// "standard" to "fairly difficult". It never touches the audit or its score.
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { isMain } from "../lib/is-main.mjs";
@@ -36,10 +31,13 @@ const STOCK = [
 ];
 // Phrases hold letters, spaces, apostrophes and hyphens only. A curly apostrophe matches too, and a hyphen may be a
 // space or nothing.
-const STOCK_RE = STOCK.map(p => [
-  p,
-  new RegExp(`\\b${p.replace(/'/g, "['’]").replace(/-/g, "[- ]?").replace(/ /g, "\\s+")}\\b`, "i"),
-]);
+const STOCK_RE = STOCK.map(
+  p =>
+    /** @type {[string, RegExp]} */ ([
+      p,
+      new RegExp(`\\b${p.replace(/'/g, "['’]").replace(/-/g, "[- ]?").replace(/ /g, "\\s+")}\\b`, "i"),
+    ]),
+);
 
 const ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 const decode = s =>

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 // Read-only SEO crawler: GET and HEAD only, plus a TLS handshake with --check-live.
 // Regex HTML parsing is enough for audit evidence. Swap in a real parser if a site breaks it.
 
@@ -1123,6 +1124,7 @@ CHECKS["mixed-content"] = [
 Object.assign(CHECKS, SERVER_CHECK);
 // Every finding and note passes through lib/redact.mjs on the way in, whichever check adds it: secret query values
 // and home folders in findings, and email addresses too in notes, which carry error messages.
+// @ts-expect-error TS2630: add is a function declaration, and no annotation allows reassigning one.
 {
   const raw = add;
   add = (key, url, detail) =>
@@ -1307,7 +1309,9 @@ const slashOnly = (a, b) => {
 // Limit: the DNS answer is checked before fetch() looks the name up again, so a name that changes its answer in
 // between (DNS rebinding) gets through. Connecting through node:http with guarded(), as backlinks.mjs does, closes it.
 const blocked = new Map(); // URL -> why it wasn't fetched
-const publicLookup = promisify(guarded(lookup));
+const publicLookup = /** @type {(host: string, opts: { all: boolean }) => Promise<unknown>} */ (
+  promisify(guarded(lookup))
+);
 // A crawl of this machine may reach its other ports (a dev server redirecting to its API or asset server). Other
 // private addresses and cloud metadata stay blocked even then.
 const loopback = h => /^(localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|0\.0\.0\.0|\[::1\])$/i.test(h); // 0.0.0.0: what Django and Rails print
@@ -1964,7 +1968,13 @@ function analyze(url, html, headers, xRobotsLines) {
   );
 
   rec.dupHead = ["description", "robots", "viewport", "og:title"]
-    .map(n => [n, metas.filter(m => (m.name || m.property || "").toLowerCase() === n).length])
+    .map(
+      n =>
+        /** @type {[string, number]} */ ([
+          n,
+          metas.filter(m => (m.name || m.property || "").toLowerCase() === n).length,
+        ]),
+    )
     .filter(([, c]) => c > 1)
     .map(([n, c]) => `${c} × ${n}`);
   rec.numberHeadings = headings
@@ -2249,10 +2259,11 @@ const tagText = (h, t) =>
   undefined;
 // listed is false for the guessed /sitemap.xml, where an HTML page means no sitemap. cut means SITEMAP_KEEP URLs were
 // kept and the rest, with any files after them, went unread.
+/** @typedef {{ url: string, status: number, html?: boolean, invalid?: string, tooBig?: boolean, urls?: number, nestedIn?: string }} SitemapFile */
 async function readSitemaps(urls, listed = true) {
   const entries = [],
     seen = new Set(),
-    files = [];
+    files = /** @type {SitemapFile[]} */ ([]);
   let cut = false;
   const queue = urls.map(u => [u, listed, null]); // [url, named, the sitemap index that lists it]
   while (queue.length && files.length < 60 && !cut) {
@@ -3681,6 +3692,8 @@ else
     });
 
 // ---------- outside checks: real-user speed ----------
+/** @typedef {{ trend?: any, lcpBreakdown?: any, note?: string }} TrendResult */
+/** @type {{ strategy: string, samples: any[], trend?: any, lcpBreakdown?: any, desktop?: any, tablet?: any, pageTrend?: any }} */
 let speed;
 let speedReason = OUTSIDE
   ? "Speed data needs the public, live site; pass --site-origin."
@@ -3717,9 +3730,11 @@ if (speedReason) notChecked.push({ rule: "PERF-01", area: `PERF-01 ${RULES["PERF
 // The 25-week trend for the whole origin, only with a key (CRUX_API_KEY, or a PSI_API_KEY with the CrUX API enabled).
 const CRUX_KEY = process.env.CRUX_API_KEY || process.env.PSI_API_KEY;
 if (SPEED_ON && CRUX_KEY) {
-  const t = await speedTrend(EXPECT_ORIGIN, { key: CRUX_KEY, endpoint: CRUX_AT }).catch(e => ({
-    note: `CrUX history failed (${e.message}).`,
-  }));
+  const t = /** @type {TrendResult} */ (
+    await speedTrend(EXPECT_ORIGIN, { key: CRUX_KEY, endpoint: CRUX_AT }).catch(e => ({
+      note: `CrUX history failed (${e.message}).`,
+    }))
+  );
   if (t.trend)
     speed = {
       ...(speed || { strategy: "mobile", samples: [] }),
@@ -3826,14 +3841,13 @@ let bfTested = 0,
     ? "Chrome or Edge isn't installed (or set CHROME_PATH)"
     : "outside checks are off (with the owner's go-ahead, --outside runs it in headless Chrome)";
 if (browser) {
-  const v = await checkVisual(browser, renderSample, {
-    add,
-    screenshotDir: resolve(dirname(OUT), "screenshots"),
-  }).catch(e => ({
-    checked: 0,
-    lab: [],
-    notes: [`the browser didn't start: ${String(e.message).split("\n")[0].slice(0, 160)}`],
-  }));
+  const v = /** @type {{ checked: number, lab: any[], notes: string[], bfTested?: number }} */ (
+    await checkVisual(browser, renderSample, { add, screenshotDir: resolve(dirname(OUT), "screenshots") }).catch(e => ({
+      checked: 0,
+      lab: [],
+      notes: [`the browser didn't start: ${String(e.message).split("\n")[0].slice(0, 160)}`],
+    }))
+  );
   if (v.lab.length) labSpeed = v.lab;
   if (v.checked) {
     evalRules("REND-07", "PERF-07");
@@ -4043,11 +4057,11 @@ for (const p of htmlPages)
 const stsHeader = home?.headers?.get("strict-transport-security") || "",
   maxAge = hstsRead(stsHeader)?.invalid ? null : /max-age\s*=\s*"?(\d+)/i.exec(stsHeader)?.[1];
 if (maxAge != null && +maxAge < 31536000) {
-  const d = Math.round(maxAge / 86400);
+  const d = Math.round(+maxAge / 86400);
   add(
     "hsts-short",
     home.finalUrl,
-    `max-age=${maxAge} (${maxAge < 86400 ? "under a day" : `${d} day${d === 1 ? "" : "s"}`})`,
+    `max-age=${maxAge} (${+maxAge < 86400 ? "under a day" : `${d} day${d === 1 ? "" : "s"}`})`,
   );
 }
 const POLICIES = new Set([
@@ -4655,14 +4669,14 @@ else if (AI_PROBE)
   if (Object.keys(media).length) extra.media = media;
   // Only once the phone trend came back: a site without it has no tablet or page data either. A 404 is no news.
   if (SPEED_ON && CRUX_KEY && speed?.trend) {
-    const [tab, homeT] = [
+    const [tab, homeT] = /** @type {TrendResult[]} */ ([
       await speedTrend(EXPECT_ORIGIN, { key: CRUX_KEY, endpoint: CRUX_AT, formFactor: "TABLET" }).catch(e => ({
         note: `CrUX history (tablet) failed (${e.message}).`,
       })),
       await speedTrend(EXPECT_ORIGIN + "/", { key: CRUX_KEY, endpoint: CRUX_AT, page: true }).catch(e => ({
         note: `CrUX history for the home page failed (${e.message}).`,
       })),
-    ];
+    ]);
     for (const t of [tab, homeT]) if (t.note && !/not enough Chrome visits/.test(t.note)) notes.push(t.note);
     if (tab.trend) speed.tablet = { trend: tab.trend, ...(tab.lcpBreakdown ? { lcpBreakdown: tab.lcpBreakdown } : {}) };
     if (homeT.trend) speed.pageTrend = { url: EXPECT_ORIGIN + "/", trend: homeT.trend };
@@ -4903,7 +4917,7 @@ for (const [key, f] of findings) {
   });
 }
 out.sort((a, b) => SEV[a.severity] - SEV[b.severity] || b.count - a.count);
-out.forEach((f, i) => {
+out.forEach((/** @type {Record<string, any>} */ f, i) => {
   f.id = "C-" + String(i + 1).padStart(3, "0");
 });
 const failedRules = new Set(out.map(f => f.rule));
