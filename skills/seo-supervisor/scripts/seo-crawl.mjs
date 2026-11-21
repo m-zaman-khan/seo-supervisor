@@ -1292,6 +1292,8 @@ import { CHECKS as PAGE_CHECKS, ugcLinks, backTrap, paywallLeak, lateHead, ident
 Object.assign(CHECKS, PAGE_CHECKS);
 RULES["CONTENT-11"] ??= ["Nothing breaks Google's spam policies", "Headings & content"]; // never passed: see NOT_CRAWLABLE
 
+import { pageRank, scale as strengthScale } from "./checks/link-strength.mjs";
+
 import { CHECKS as CRAWL_CHECKS, brake, fragmentLinks, hasName, slowNote } from "./checks/crawl.mjs";
 Object.assign(CHECKS, CRAWL_CHECKS);
 
@@ -4785,6 +4787,31 @@ if (home?.markdownWords && home.markdownWords.main.length >= 50)
         );
     }
   } catch {}
+
+// Each indexable page's link strength, 0–100, over the link checks' graph; noindex pages pass links on too. Keyed by
+// path rather than a column on `pages`: leaner, and the report matches it to Search Console's paths. Skipped on a
+// one-section crawl, as linkedOnce is.
+if (!SECTION) {
+  const { rank, base } = pageRank(new Map(htmlPages.map(p => [p.finalUrl, p.links.map(l => finalOf(l.url))])));
+  const s = [
+    ...strengthScale(
+      rank,
+      base,
+      htmlPages.filter(p => indexable(p)).map(p => p.finalUrl),
+    ),
+  ].sort((a, b) => b[1] - a[1]);
+  if (s.length)
+    extra.linkStrength = {
+      pages: Object.fromEntries(
+        s.map(([u, v]) => {
+          const x = new URL(u);
+          return [x.pathname + x.search, v];
+        }),
+      ),
+      median: s[s.length >> 1][1],
+      ...(capped ? { capped: true } : {}),
+    };
+}
 
 // Each indexable page's words and links (as indexes into the same list, redirects followed) for keyword-ideas.mjs.
 // A file of its own, so seo-crawl.json doesn't grow: a few KB a page, some 10–25 MB for 5,000 pages. seo-crawl.json

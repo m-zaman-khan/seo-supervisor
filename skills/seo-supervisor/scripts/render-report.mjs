@@ -2373,8 +2373,64 @@ const flowMd = () => [
       ]
     : []),
 ];
-const scoreHtml = () => "",
-  scoreMd = () => [];
+// linkStrength is a local measure, 0–100: PageRank over the site's own links (sources in checks/link-strength.mjs).
+// With Search Console traffic it also lists, of the 20 crawled pages with the most clicks, those in the bottom third
+// of strength, a local rule. Paths are escaped.
+const n0 = x => Number(x) || 0;
+const ls = (s => {
+  const pages =
+    s && obj(s.pages)
+      ? Object.entries(s.pages)
+          .filter(([, v]) => Number.isInteger(v) && v >= 0 && v <= 100)
+          .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+      : [];
+  if (!pages.length) return null;
+  const asc = pages.map(([, v]) => v).reverse(),
+    cut = asc[Math.ceil(asc.length / 3) - 1],
+    top = pages[0][1];
+  const weak = traffic
+    ? pages
+        .map(([u, v]) => ({ u, v, t: byPath(traffic, u) }))
+        .filter(x => x.t && (n0(x.t.clicks) || n0(x.t.impressions)))
+        .sort((a, b) => n0(b.t.clicks) - n0(a.t.clicks) || n0(b.t.impressions) - n0(a.t.impressions))
+        .slice(0, 20)
+        .filter(x => x.v <= cut && x.v < top)
+    : [];
+  return { pages, median: asInt(s.median) ? s.median : null, capped: s.capped === true, weak };
+})(obj(raw.linkStrength));
+const LS_LABEL =
+  "This is our own measure, computed with the PageRank formula (Brin and Page, 1998) on this site's own links. It's not Google's PageRank, which uses links from the whole web and isn't public.";
+const lsIntro = () =>
+  `How much of the site's own linking reaches each page, from 0 to 100. ${LS_LABEL} A page gets more when more pages link to it, and more again when those pages are strong. 100 is the site's strongest page, and 0 means no more than a page nothing links to. The scale is logarithmic: the home page and a few others usually hold most of the strength, and on a straight scale nearly every other page would read close to 0. Here, twice the share of links is always the same number of extra points. It's relative to the ${plural(ls.pages.length, "page")} this crawl read that can be indexed${ls.median != null ? `; half of them have a strength of ${ls.median} or less` : ""}.${ls.capped ? " The crawl stopped at --max, so links on pages it didn't read aren't counted." : ""} Information only: it doesn't change the score.`;
+const weakIntro = () =>
+  `Found in search, but little link strength: of the 20 crawled pages with the most Search Console clicks, then impressions${raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : ""}, these are in the bottom third of the site's strength (our own rule). People already find them in search, so they're worth more links from your own pages. Link to them from the strongest pages above, in a sentence about what they cover, and see Internal link ideas for pages that already mention their searches.`;
+const weakTail = x =>
+  `strength ${x.v} · Search Console: ${num(n0(x.t.clicks))} clicks · ${num(n0(x.t.impressions))} impressions`;
+const scoreHtml = () =>
+  ls
+    ? `\n    <details class="how linkstrength"><summary>Internal link strength</summary><p>${esc(lsIntro())}</p><ul class="lim">${ls.pages
+        .slice(0, 10)
+        .map(([u, v]) => `<li><b><code>${esc(u)}</code></b><span>strength ${v}</span></li>`)
+        .join("")}</ul>` +
+      (ls.weak.length
+        ? `<p>${esc(weakIntro())}</p><ul class="lim">${ls.weak.map(x => `<li><b><code>${esc(x.u)}</code></b><span>${esc(weakTail(x))}</span></li>`).join("")}</ul>`
+        : "") +
+      `</details>`
+    : "";
+const scoreMd = () =>
+  ls
+    ? [
+        "## Internal link strength",
+        "",
+        noteMd(lsIntro()),
+        "",
+        ...ls.pages.slice(0, 10).map(([u, v]) => `- ${noteCode(u)} strength ${v}`),
+        "",
+        ...(ls.weak.length
+          ? [noteMd(weakIntro()), "", ...ls.weak.map(x => `- ${noteCode(x.u)} ${noteMd(weakTail(x))}`), ""]
+          : []),
+      ]
+    : [];
 const panelsHtml = () =>
   [
     secHtml,
