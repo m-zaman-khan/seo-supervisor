@@ -1261,6 +1261,19 @@ test("Content-Signal accepts Cloudflare's use= field", async () => {
   assert.equal(findingOf(bad, "content-signal-invalid")?.evidence[0].detail, "use=maybe");
 });
 
+test("Content-Signal may start with a path the signals apply to", async () => {
+  const robots = line => ({ files: { "/robots.txt": file("text/plain", `User-agent: *\n${line}\nAllow: /\n`) } });
+  const [scoped, bad] = await Promise.all([
+    crawlSite(two(), robots("Content-Signal: /blog/ search=yes, ai-train=no")),
+    crawlSite(two(), robots("Content-Signal: /blog/ ai-train=maybe")),
+  ]);
+  assert.ok(
+    !findingOf(scoped, "content-signal-invalid"),
+    JSON.stringify(findingOf(scoped, "content-signal-invalid")?.evidence),
+  );
+  assert.equal(findingOf(bad, "content-signal-invalid")?.evidence[0].detail, "ai-train=maybe");
+});
+
 test("Microdata and RDFa count as structured data, with a low note that only JSON-LD is validated", async () => {
   const r = await crawlSite(
     site({

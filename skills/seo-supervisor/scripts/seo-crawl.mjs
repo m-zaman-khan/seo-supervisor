@@ -2582,7 +2582,8 @@ else {
     if (g && !allowedBy(g, "/")) add("ai-bots-blocked", START_ORIGIN + "/robots.txt", bot);
   }
   if (!robots.sitemaps.length) add("sitemap-not-in-robots", START_ORIGIN + "/robots.txt");
-  for (const m of robotsRes.body.matchAll(/^\s*content-signal\s*:\s*(.*)$/gim))
+  // A line may start with the path it applies to: `Content-Signal: /blog/ search=yes`. https://contentsignals.org
+  for (const m of robotsRes.body.matchAll(/^\s*content-signal\s*:\s*(?:\/\S*\s+)?(.*)$/gim))
     for (const pair of m[1]
       .split(",")
       .map(x => x.trim())
