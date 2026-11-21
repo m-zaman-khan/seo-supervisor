@@ -4,6 +4,15 @@
 import { readFileSync, readdirSync, statSync, mkdirSync, writeFileSync } from "node:fs";
 import { parseCsv } from "./lib/csv.mjs";
 import { join, dirname, resolve, extname, basename } from "node:path";
+import {
+  titleWidth,
+  widthText,
+  templatedDescs,
+  templatedShare,
+  sectionOf,
+  claimsIn,
+  invisibleChar,
+} from "./checks/content.mjs";
 
 const args = {};
 for (let i = 2; i < process.argv.length; i++) {
@@ -13,7 +22,7 @@ for (let i = 2; i < process.argv.length; i++) {
 }
 if (!args.in && !args.csv && !args.md) {
   console.error(
-    "Usage: node content-scan.mjs --in content.json | --csv file.csv | --md dir  [--id] [--url] [--title] [--desc] [--text] [--faq] [--publish] [--group] [--strip] [--required] [--banned] [--verify] [--threshold 0.5] [--out file]",
+    "Usage: node content-scan.mjs --in content.json | --csv file.csv | --md dir  [--id] [--url] [--title] [--desc] [--text] [--faq] [--publish] [--group] [--strip] [--required] [--banned] [--verify] [--threshold 0.5] [--date field] [--max-age 12] [--fail-on checks] [--out file]",
   );
   process.exit(2);
 }
@@ -30,6 +39,8 @@ const THRESH = Number(args.threshold || 0.5);
 const STRIP = typeof args.strip === "string" ? new RegExp(`\\b(${args.strip})\\b`, "gi") : null;
 const BANNED = typeof args.banned === "string" ? new RegExp(args.banned, "i") : null;
 const VERIFY = typeof args.verify === "string" ? new RegExp(args.verify, "i") : null;
+const MAX_AGE = Number(args["max-age"] || 12); // months: the far end of CONTENT-07's 6–12 month review cycle
+const FAIL_ON = list(args["fail-on"]);
 // Placeholders, plus mojibake: U+FFFD and curly apostrophes turned into "?" (We?re, Don?t).
 const PH =
   /\b[Ll]orem [Ii]psum\b|\bTODO\b|\bTBD\b|\{\{\s*[\w.]+\s*\}\}|\[(?:[A-Z][A-Z _]{2,29})\]|�|\b(?:We|You|They|It|Don|Can|Isn|Won|Doesn|Didn|That|There)\?(?:ve|re|s|t|ll|d)\b/;
@@ -204,22 +215,29 @@ const CHECKS = {
     "CONTENT-09",
     "medium",
     n => `${n} item(s) contain invisible characters`,
-    "Zero-width spaces, stray byte-order marks and soft hyphens usually come from copy-pasting. They split words for search engines and break matching, while readers see nothing wrong.",
+    "Zero-width spaces, stray byte-order marks and soft hyphens usually come from copy-pasting. Direction controls can change the order text is read in (the “Trojan Source” trick, CVE-2021-42574), and Unicode tag characters are invisible copies of letters that can hide a whole message. All of them split words for search engines and break matching, while readers see nothing wrong.",
     "Strip them at the source, and normalise pasted text when content is saved.",
   ],
   "templated-desc": [
     "META-02",
     "medium",
-    n => `${n} description(s) repeat their title or end in a stock call to action`,
-    "Descriptions built from one template (the title again, or a closing “Learn more”) all read alike in results and give searchers no reason to pick this page.",
+    n => `${n} description(s) repeat their title, end in a stock call to action, or end like other descriptions`,
+    "Descriptions built from one template (the title again, a closing “Learn more”, or the same last sentence on many items) all read alike in results and give searchers no reason to pick this page.",
     "Write each description from what the page offers, in about 120–160 characters; leave calls to action to the page itself.",
   ],
   "unsourced-stat": [
     "CONTENT-10",
     "needs-decision",
-    n => `${n} item(s) state a statistic with no source`,
-    "Figures like “73% of drivers” or “studies show” without a source can't be checked by readers or quality reviewers, and become a liability if they're wrong.",
-    "Link the source next to the figure, or remove the figure until the owner can back it.",
+    n => `${n} item(s) make a claim with no source nearby`,
+    "Figures and claims like “73% of drivers”, “grew 40%”, “3x faster”, “$3.2 billion”, “by 2030 … will” or “a Gartner study found” can't be checked by readers or quality reviewers without a source next to them, and become a liability if they're wrong.",
+    "Put the source next to each claim (a link, a [1] or [^1] footnote, “Source:” or “Via:”), or remove the claim until the owner can back it.",
+  ],
+  "stale-data": [
+    "CONTENT-07",
+    "low",
+    n => `${n} item(s) haven't been updated in over ${MAX_AGE} months`,
+    `Pages built from old data (prices, opening hours, figures, rules) go out of date without anyone noticing. CONTENT-07 asks for a review every 6 to 12 months; ${MAX_AGE === 12 ? "the 12-month line is our own" : `--max-age set it to ${MAX_AGE} months`}.`,
+    "Review the items and update their data, or confirm it's still right and record the review date. Never move the date without a real review (CONTENT-12).",
   ],
   "banned": [
     "CONTENT-10",
@@ -323,9 +341,9 @@ if (req.length)
     if (miss.length) add("missing-field", urlOf(r, i), `missing: ${miss.join(", ")}`);
   });
 // A title's length is its width: Chinese, Japanese and Korean characters count as two.
-for (const [field, lenKey, dupKey, lo, hi] of [
-  [args.title, "title-length", "title-dup", 20, 60],
-  [args.desc, "desc-length", "desc-dup", 120, 160],
+for (const [field, lenKey, dupKey, lo, hi, len, lenText] of [
+  [args.title, "title-length", "title-dup", 20, 60, titleWidth, widthText],
+  [args.desc, "desc-length", "desc-dup", 120, 160, v => v.length, v => `${v.length} chars`],
 ]) {
   if (typeof field !== "string") continue;
   const m = new Map();
@@ -333,63 +351,97 @@ for (const [field, lenKey, dupKey, lo, hi] of [
     const i = records.indexOf(r);
     const v = str(get(r, field)).trim();
     if (!v) return;
-    if (v.length < lo || v.length > hi) add(lenKey, urlOf(r, i), `${v.length} chars: ${v.slice(0, 80)}`);
+    if (len(v) < lo || len(v) > hi) add(lenKey, urlOf(r, i), `${lenText(v)}: ${v.slice(0, 80)}`);
     (m.get(v) || m.set(v, []).get(v)).push(urlOf(r, i));
   });
   for (const [v, us] of m) if (us.length > 1) for (const u of us) add(dupKey, u, v.slice(0, 80));
 }
 // A shared ending counts only on 3+ items. The share is split by --group or the URL's first folder.
 if (typeof args.desc === "string") {
-  const CTA = /(?:learn more|click here|contact us today|find out more|read more)[.!…\s]*$/i;
-  const hits = [];
-  live.forEach(r => {
-    const d = str(get(r, args.desc)).trim(),
-      t = typeof args.title === "string" ? str(get(r, args.title)).trim() : "";
-    if (!d) return;
-    const cta = d.match(CTA);
-    if (cta) hits.push([urlOf(r, records.indexOf(r)), `ends with “${cta[0].trim()}”`]);
-    // The title alone or with a few words; a description that goes on to say something specific is fine.
-    else if (
-      t.length >= 10 &&
-      d.toLowerCase().startsWith(t.toLowerCase()) &&
-      d
-        .slice(t.length)
-        .split(/\s+/)
-        .filter(w => /[\p{L}\p{N}]/u.test(w)).length < 5
-    )
-      hits.push([urlOf(r, records.indexOf(r)), `repeats the title “${t}”`]);
-  });
-  if (hits.length >= 3) for (const [u, why] of hits) add("templated-desc", u, why);
+  const descs = live
+    .map(r => {
+      const i = records.indexOf(r),
+        url = urlOf(r, i);
+      return {
+        url,
+        section: typeof args.group === "string" ? String(get(r, args.group) ?? "") : sectionOf(url),
+        desc: str(get(r, args.desc)).trim(),
+        title: typeof args.title === "string" ? str(get(r, args.title)).trim() : "",
+      };
+    })
+    .filter(x => x.desc);
+  const hits = templatedDescs(descs, { titleRepeat: true });
+  for (const [u, why] of hits) add("templated-desc", u, why);
+  if (hits.length)
+    stats.templatedDescriptions = templatedShare(
+      descs,
+      hits.map(h => h[0]),
+    );
 }
-// Zero-width spaces, word joiners and BOMs always count; soft hyphens and zero-width (non-)joiners only inside Latin
-// words.
-const INVISIBLE = /[\u200B\u2060\uFEFF]|(?<=[A-Za-z])[\u00AD\u200C\u200D](?=[A-Za-z])/;
-const INVISIBLE_NAME = {
-  "\u200B": "zero-width space",
-  "\u2060": "word joiner",
-  "\uFEFF": "byte-order mark",
-  "\u00AD": "soft hyphen",
-  "\u200C": "zero-width non-joiner",
-  "\u200D": "zero-width joiner",
-};
-// A statistic counts as sourced when anything in the same item cites a source.
-const STAT =
-  /\b\d{1,3}(?:\.\d+)?\s?%\s+of\b|\b(?:studies|research|surveys?)\s+(?:show|shows|suggests?|proves?|found|finds|has shown|have shown)\b/i;
-const CITED = /https?:\/\/|\[\d+\]|\bsource:|\baccording to\b/i;
-
+// Without --date, the first of these fields that half the items fill.
+const DATE_KEYS = [
+  "dateModified",
+  "updatedAt",
+  "updated_at",
+  "updated",
+  "lastUpdated",
+  "last_updated",
+  "lastModified",
+  "modified",
+  "lastReviewed",
+  "last_reviewed",
+  "reviewed",
+];
+const dateField =
+  typeof args.date === "string"
+    ? args.date
+    : DATE_KEYS.find(k => records.filter(r => str(get(r, k)).trim()).length >= records.length / 2);
+if (dateField)
+  live.forEach(r => {
+    const v = str(get(r, dateField)).trim(),
+      t = Date.parse(v);
+    if (t && Date.now() - t > MAX_AGE * 30.44 * 864e5)
+      add("stale-data", urlOf(r, records.indexOf(r)), `${dateField}: ${v}`);
+  });
+const fieldNames = [...new Set(records.flatMap(r => Object.keys(r)))].filter(k => !k.startsWith("_")).slice(0, 100);
+stats.fields = Object.fromEntries(
+  fieldNames.map(k => {
+    const filled = records.filter(r => str(r[k]).trim()).length;
+    return [k, { filled, missing: records.length - filled }];
+  }),
+);
+const missingNote = fieldNames
+  .filter(k => stats.fields[k].missing)
+  .map(k => `${k} ${stats.fields[k].missing} of ${records.length}`);
+const claims = [];
 records.forEach((r, i) => {
   const all = str(r);
-  const inv = all.match(INVISIBLE);
+  const inv = invisibleChar(all);
   if (inv) {
-    const c = inv[0],
-      at = inv.index;
+    const at = inv.index;
     add(
       "invisible-unicode",
       urlOf(r, i),
-      `U+${c.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0")} (${INVISIBLE_NAME[c]}) in “${all.slice(Math.max(0, at - 20), at + 20).replace(INVISIBLE, "⟨here⟩")}”`,
+      `${inv.code} (${inv.name}) in “${all.slice(Math.max(0, at - 20), at)}⟨here⟩${all.slice(at + inv.char.length, at + 20)}”`,
     );
   }
-  if (STAT.test(all) && !CITED.test(all)) add("unsourced-stat", urlOf(r, i), ctx(all, STAT));
+  // A schema.org `citation` field sources every claim in the item.
+  const cited = !!str(get(r, "citation")).trim();
+  const own = Object.entries(r)
+    .filter(([k]) => !k.startsWith("_") && k !== "citation")
+    .flatMap(([, v]) => claimsIn(str(v)))
+    .map(c => ({ url: urlOf(r, i), ...c, sourced: c.sourced || cited }));
+  claims.push(...own);
+  const bare = own.filter(c => !c.sourced);
+  if (bare.length)
+    add(
+      "unsourced-stat",
+      urlOf(r, i),
+      `${bare.length} of ${own.length} claims have no source nearby (${Math.round((100 * bare.length) / own.length)}%): ${bare
+        .slice(0, 5)
+        .map(c => `“${c.claim}” (${c.kind})`)
+        .join("; ")}${bare.length > 5 ? `; and ${bare.length - 5} more` : ""}`,
+    );
   const ph = all.match(PH);
   if (ph) add("placeholder", urlOf(r, i), `“${ph[0]}”`);
   if (BANNED) {
@@ -427,21 +479,39 @@ const findings = [...found]
 findings.forEach((f, i) => {
   f.id = "D-" + String(i + 1).padStart(3, "0");
 });
+stats.claims = { total: claims.length, unsourced: claims.filter(c => !c.sourced).length };
+const notes = [
+  `Scanned ${records.length} records from ${source}; compared ${items.length} texts (${distinct.size} distinct after removing names).`,
+];
+if (missingNote.length) notes.push(`Missing values: ${missingNote.join(", ")}.`);
+if (claims.length > 1000) notes.push(`claims lists the first 1,000 of ${claims.length} claims.`);
 const report = {
   tool: "seo-supervisor-content-scan",
   scannedAt: new Date().toISOString(),
   source,
-  options: { text: textFields, group: args.group || null, strip: args.strip || null, threshold: THRESH },
+  options: {
+    text: textFields,
+    group: args.group || null,
+    strip: args.strip || null,
+    threshold: THRESH,
+    date: dateField || null,
+    maxAge: MAX_AGE,
+  },
   stats,
   findings,
+  claims: claims.slice(0, 1000),
   passed: [],
   notChecked: [],
-  notes: [
-    `Scanned ${records.length} records from ${source}; compared ${items.length} texts (${distinct.size} distinct after removing names).`,
-  ],
+  notes,
 };
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, JSON.stringify(report, null, 2));
 console.log(
   `content-scan: ${records.length} records, ${findings.length} findings ${JSON.stringify(findings.reduce((m, f) => ((m[f.severity] = (m[f.severity] || 0) + 1), m), {}))} → ${OUT}`,
 );
+// --fail-on lets CI stop a publish. For unsourced-stat, a single unsourced claim is enough.
+const failed = findings.filter(f => FAIL_ON.includes(f.check));
+if (failed.length) {
+  console.error(`content-scan: failing on ${failed.map(f => `${f.check} (${f.count})`).join(", ")}`);
+  process.exitCode = 1;
+}
