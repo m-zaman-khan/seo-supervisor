@@ -1281,6 +1281,10 @@ const CLEAN_SHOTS = !!args["clean-screenshots"];
 Object.assign(CHECKS, CONTENT_CHECKS);
 RULES["CONTENT-07"] ??= ["People and dates are behind the advice", "Headings & content"]; // stale-guide's rule; never passed here
 
+import { CHECKS as PAGE_CHECKS, ugcLinks, backTrap, paywallLeak, lateHead, identityDrift } from "./checks/page.mjs";
+Object.assign(CHECKS, PAGE_CHECKS);
+RULES["CONTENT-11"] ??= ["Nothing breaks Google's spam policies", "Headings & content"]; // never passed: see NOT_CRAWLABLE
+
 // keyword-ideas.mjs's own word rules, so the words file matches its searches exactly.
 const { mainWords: pickMainWords } = await import("./keyword-ideas.mjs");
 
@@ -1996,6 +2000,20 @@ function analyze(url, html, headers, xRobotsLines) {
       [...anchors.map(a => a.href), ...imgs.map(i => i.src)].filter(h => h?.trim() && !urlOr(h.trim(), rec.base)),
     ),
   ];
+
+  // Inputs for checks/page.mjs: comment-section links, a script that may trap Back, paid text sent in full, head tags
+  // after </head>, and the top-level Organization (not Service) and WebSite nodes' @id and name.
+  const idNodes = pred => nodes.filter(n => typesOf(n).some(pred)).map(n => ({ id: n["@id"], name: n.name }));
+  rec.pageChecks = {
+    ugc: ugcLinks(body)
+      .map(h => urlOr(h, rec.base))
+      .filter(x => x && /^https?:$/.test(x.protocol))
+      .map(x => x.href),
+    backTrap: backTrap(html),
+    paywall: paywallLeak(body, nodes),
+    late: lateHead(html),
+    identity: { org: idNodes(t => ORG_RE.test(t) && t !== "Service"), site: idNodes(t => t === "WebSite") },
+  };
 
   // Words of the title, H1s and main text, for keyword-ideas.mjs. Runs of a script written without spaces are dropped
   // (no words to match), and a page mostly in one is marked, so no missing search is claimed for it.
@@ -4502,6 +4520,22 @@ for (const p of htmlPages) {
   const bad = prefs.filter(x => !BING_PREFS[x.name].includes(x.value));
   if (bad.length) add("ai-preference-invalid", p.finalUrl, bad.map(x => `${x.name}:${x.value}`).join(", "));
 }
+// Findings from checks/page.mjs: comment links to other sites and a script that may trap Back (CONTENT-11), paid text
+// sent in full (REND-06), head tags after </head> (REND-08), and an Organization or WebSite whose @id or name differs
+// from most pages' (SCHEMA-02). CONTENT-11 stays under NOT_CRAWLABLE.
+{
+  const read = htmlPages.filter(p => p.pageChecks && indexable(p) && !p.clientOnly);
+  for (const { finalUrl: u, pageChecks: r } of read) {
+    const away = r.ugc.filter(h => !selfHosts.has(bareHost(new URL(h).host)));
+    if (away.length) add("ugc-link-followed", u, `${away.length} link(s), e.g. ${away[0]}`);
+    if (r.backTrap) add("back-button-trap", u, r.backTrap);
+    if (r.paywall) add("paywall-text-sent", u, `about ${r.paywall.words} words inside ${r.paywall.selector}`);
+    if (r.late.length) add("head-tags-late", u, `in the body: ${r.late.join(", ")}`);
+  }
+  for (const [u, d] of identityDrift(read.map(p => ({ url: p.finalUrl, ...p.pageChecks.identity }))))
+    add("site-identity-differs", u, d);
+}
+
 // AI crawler rules in robots.txt that contradict each other (MAP-06, needs-decision), aipref Content-Usage lines, and
 // Cloudflare's Bot Preference Sync block, which Cloudflare prepends to robots.txt between "# BEGIN Cloudflare Bot
 // Preference Sync" and "# END Cloudflare Bot Preference Sync".
@@ -4971,7 +5005,7 @@ const NOT_CRAWLABLE = [
   [
     "CONTENT-11",
     "Spam policies (scaled content, doorways, site reputation, back-button hijacking)",
-    "Needs a read of content strategy and scripts; the near-duplicate check covers part of it.",
+    'Needs a read of content strategy and scripts. The crawler covers parts of it: near-duplicate pages, links in comment sections without rel="ugc" or "nofollow", and inline scripts that may trap the Back button; scripts loaded from files aren\'t read.',
   ],
   [
     "AI-02",
