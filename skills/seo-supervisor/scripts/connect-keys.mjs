@@ -248,8 +248,31 @@ export const SERVICES = {
       "Then node ai-answers.mjs --site <your address> --questions <file> shows what it would send and how many requests that is. Nothing is sent until you add --yes.",
     ],
   },
+  // script: geo-grid.mjs uses it; fetch doesn't. The project needs billing enabled. The key goes in the X-Goog-Api-Key
+  // header, never in an address. Prices are in geo-grid.mjs.
+  // https://developers.google.com/maps/documentation/places/web-service/get-api-key
+  googleplaces: {
+    name: "Google Places API",
+    env: "GOOGLE_PLACES_API_KEY",
+    endpointEnv: "GOOGLE_PLACES_ENDPOINT",
+    endpoint: "https://places.googleapis.com/v1",
+    optional: true,
+    script: "geo-grid.mjs",
+    adds: "where your business appears in the list Google's Places API returns near each point of a grid around it (node geo-grid.mjs)",
+    where: "console.cloud.google.com → Google Maps Platform → Keys & Credentials",
+    guide: [
+      "Google's Places API (New) lets geo-grid.mjs check where your business appears in the list Google returns for a keyword near each point of a grid around it. It uses your own Google Maps Platform key. Asking for place IDs only, as geo-grid does, is listed as free without limit on Google's price list (read 22 Nov 2026).",
+      "1. Open https://console.cloud.google.com and pick or create a project.",
+      "2. Turn on billing for the project: https://console.cloud.google.com/projectselector/billing. Google requires billing for the Places API even when your use stays within the free amounts.",
+      "3. Open https://console.cloud.google.com/apis/library/places.googleapis.com and click Enable. Check that it says Places API (New). It can take a few minutes to start working.",
+      "4. Open Google Maps Platform → Keys & Credentials (https://console.cloud.google.com/projectselector/google/maps-apis/credentials) and click Create credentials → API key. Under API restrictions, keep only Places API (New) selected, so the key can't be used for anything else.",
+      `5. Copy the key, then in your own terminal run: ${setLine("googleplaces")}`,
+      PASTE,
+      'Then node geo-grid.mjs --place-id <your place ID> --keywords "plumber" shows what it would send and how many requests that is. Nothing is sent until you add --yes. Your place ID is on Google\'s Place ID Finder: https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder',
+    ],
+  },
 };
-const USAGE = `usage: node connect-keys.mjs set bing|openpagerank|ahrefs|matomo|posthog|moz|youtube|clarity|perplexity|openai [<key>]   (no key: it asks, hidden)
+const USAGE = `usage: node connect-keys.mjs set bing|openpagerank|ahrefs|matomo|posthog|moz|youtube|clarity|perplexity|openai|googleplaces [<key>]   (no key: it asks, hidden)
        node connect-keys.mjs set matomo [--url <address>] [--site-id <id>] | set posthog [--host us|eu|<address>] [--project-id <id>]
        node connect-keys.mjs status | remove <service> | guide <service> | test matomo|posthog [--yes]
        node connect-keys.mjs fetch --site https://www.example.com [--competitors a.com,b.com] [--days 90] [--out seo-audit/keys.json] [--yes]
@@ -504,6 +527,23 @@ function refusal(id, status, body, retryAfter, host, moved) {
       return `Microsoft Clarity says this token can't read the project's data (403). A project admin can make a new token under ${s.where}; then run: ${setLine(id)}`;
     if (status === 429)
       return `Microsoft Clarity allows 10 requests a day per project, and today's are used up (429). Fetch again tomorrow.`;
+  }
+  // Google Cloud's ErrorInfo reasons come in error.details. A Place Details 404 means an obsolete or wrong place ID.
+  // https://github.com/googleapis/googleapis/blob/master/google/api/error_reason.proto
+  // https://developers.google.com/maps/documentation/places/web-service/place-id
+  if (id === "googleplaces") {
+    const why = (Array.isArray(body?.error?.details) ? body.error.details : []).map(d => d?.reason).join(" "),
+      msg = String(body?.error?.message || "");
+    if (/API_KEY_INVALID/.test(why) || /API key not valid/i.test(msg))
+      return `Google Places API didn't accept the key: it's mistyped or was deleted. Check it at ${s.where}, then run: ${setLine(id)}`;
+    if (/API_KEY_SERVICE_BLOCKED/.test(why))
+      return `The key isn't allowed to use Places API (New). At ${s.where}, open the key and select Places API (New) under API restrictions, then run again.`;
+    if (/SERVICE_DISABLED/.test(why) || /has not been used|is disabled/i.test(msg))
+      return `Places API (New) isn't turned on in the key's Google Cloud project. Open console.cloud.google.com/apis/library/places.googleapis.com and click Enable, wait a few minutes, then run again.`;
+    if (/BILLING_DISABLED/.test(why) || /billing/i.test(msg))
+      return `Google says billing isn't turned on for the key's Google Cloud project. Google requires it for the Places API even when your use stays within the free amounts. Turn it on at console.cloud.google.com/billing, then run again.`;
+    if (status === 404)
+      return `Google has no place with this place ID (404): it's mistyped, or out of date (a place ID can change when a business moves or Google updates its data). Find the current one at https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder or with geo-grid.mjs --find.`;
   }
   // Perplexity's 402 is an account with no credits. An OpenAI 429 whose error.code names credits or a spend or usage
   // limit, or whose type is insufficient_quota, isn't a rate limit, so retrying won't help.
@@ -1531,7 +1571,7 @@ async function main(argv) {
           : "nothing (no --topics or --youtube-channel given)";
       const bingWhat = `your site's address (${siteUrl})${bingPages.length ? `, ${bingPages.length} chosen page(s) for their links` : ""}${bingSister ? `, the sister site ${bingSister}` : ""}`;
       const lines = Object.entries(SERVICES)
-        .filter(([, s]) => !s.answers)
+        .filter(([, s]) => !s.answers && !s.script)
         .map(([id, s]) =>
           !keys[id]
             ? `  ${s.name}: not set, skipped (to add it: node connect-keys.mjs guide ${id})`
