@@ -27,6 +27,7 @@ Inside each group, items chain into a loop. Across content types, each type poin
 - **Pass:** every indexable page has at least one link from the **body** of another page. Sitemap, footer and menu links alone don't count.
 - **Fix:** add the page to its hub and to the related blocks of its siblings. Add a build check that fails orphans.
 - **Pages with one incoming link:** every whole-site crawl lists pages that can be indexed with exactly one other page linking to them (`linkedOnce`, the first 20; the home page aside). Information only: a page linked from one place is easy to miss, so link it from its hub or related pages too.
+- **Internal link strength:** every whole-site crawl gives each indexable page a 0–100 strength (`linkStrength`), our own measure from the PageRank formula on the site's own links, not Google's PageRank. Information only: pages people find in search with little strength are worth links from the strongest pages.
 
 ### LINK-03 · Circular linking: up, across, forward, and across content types · high
 - **Check:** code: related-content components and the data behind them. Content: a sample of pages of each type.

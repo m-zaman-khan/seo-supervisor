@@ -180,7 +180,7 @@ node <skill-dir>/scripts/content-scan.mjs --in seo-audit/content.json --items pa
 
 Write `seo-audit/seo-audit.json` exactly as `report-format.md` describes. Merge the crawler and content-scan findings into it, with one finding per root cause. Copy these as they are:
 - from the crawl: `speed`, `labSpeed`, `lighthouse`, `trustSignals`, `agents`, `writingNotes`, `businessType`, `outboundLinks` and `images`
-- from the crawl, when present: `hstsPreload`, `sections`, `siteSize`, `indexing`, `templatedDescriptions`, `keywordUse`, `linksToOtherSites`, `productFields`, `media`, `renderSample`, `renderedPage`, `localBusiness`, `aiBots`, `trainingOptOut`, `contentUsage`, `botPreferenceSync`, `aiBotPaid`, `landmarks`, `linkedOnce`, `appLinks` and `pdfLinks`
+- from the crawl, when present: `hstsPreload`, `sections`, `siteSize`, `indexing`, `templatedDescriptions`, `keywordUse`, `linksToOtherSites`, `productFields`, `media`, `renderSample`, `renderedPage`, `localBusiness`, `aiBots`, `trainingOptOut`, `contentUsage`, `botPreferenceSync`, `aiBotPaid`, `landmarks`, `linkedOnce`, `linkStrength`, `appLinks` and `pdfLinks`
 - the `diff` and the Search Console `traffic`
 - when you have them: `googleUpdates`, `backlinks`, `matomo`, `posthog`, `clarity`, `commonCrawl`, `nearby`, `geocode`, and the `links-import.mjs` fields
 

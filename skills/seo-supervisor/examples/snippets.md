@@ -100,7 +100,7 @@ Canonical: https://example.com/.well-known/security.txt
 ## robots.txt for AI crawlers (MAP-06)
 A copy-ready robots.txt that lets AI search crawlers and user fetchers in and keeps training crawlers out, with Content-Signal lines in the right groups, is in `rules/ai-search.md` (AI-02). Use it only once the owner has chosen that policy.
 
-## llms.txt (MAP-07, optional)
+## llms.txt (MAP-07)
 ```
 # Brand
 
