@@ -1307,6 +1307,9 @@ const slashOnly = (a, b) => {
 // between (DNS rebinding) gets through. Connecting through node:http with guarded(), as backlinks.mjs does, closes it.
 const blocked = new Map(); // URL -> why it wasn't fetched
 const publicLookup = promisify(guarded(lookup));
+// A crawl of this machine may reach its other ports (a dev server redirecting to its API or asset server). Other
+// private addresses and cloud metadata stay blocked even then.
+const loopback = h => /^(localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[::1\])$/i.test(h);
 async function offLimits(u) {
   let x;
   try {
@@ -1315,6 +1318,7 @@ async function offLimits(u) {
     return null;
   }
   if (x.origin === START_ORIGIN) return null;
+  if (loopback(new URL(START_ORIGIN).hostname) && loopback(x.hostname)) return null;
   const why = !publicAddress(u)
     ? `${x.host} isn't a public address`
     : await publicLookup(x.hostname, { all: true }).then(

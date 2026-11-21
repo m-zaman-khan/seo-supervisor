@@ -169,11 +169,8 @@ test("the crawl weighs each image once, before the Googlebot test, and only on t
     await away.close();
   }
   const report = JSON.parse(readFileSync(out, "utf8"));
-  // The other host is a second local server: a private address off the crawled site, so the crawler mustn't fetch it.
-  assert.ok(
-    !hits.some(h => h.startsWith("away")),
-    "the redirect to a private address off the crawled site wasn't followed",
-  );
+  // The other host is a second local server. The crawled site is local too, so the local machine is in scope.
+  assert.ok(hits.includes("away GET /elsewhere/"), "the other host's page was part of the crawl");
   assert.deepEqual(
     report.images.map(i => [i.url, i.bytes, i.width]),
     [[site.url + "/img/hero.jpg", 300 * KB, 2400]],

@@ -370,7 +370,7 @@ test("other sites' hreflang pages are visited only with --outside and --hreflang
     "/": page(
       "Boiler repairs and servicing in Leeds",
       "",
-      `<link rel="alternate" hreflang="en" href="https://site.test/"><link rel="alternate" hreflang="de" href="http://127.0.0.1:9/de/"><link rel="alternate" hreflang="x-default" href="https://site.test/">`,
+      `<link rel="alternate" hreflang="en" href="https://site.test/"><link rel="alternate" hreflang="de" href="http://10.0.0.1:9/de/"><link rel="alternate" hreflang="x-default" href="https://site.test/">`,
     ),
   };
   // A closed local port stands in for PageSpeed, and node for the browser, so nothing leaves the machine.
@@ -394,7 +394,7 @@ test("other sites' hreflang pages are visited only with --outside and --hreflang
     );
   assert.ok(!on.notChecked.some(n => /other sites/.test(n.area)));
   assert.ok(
-    on.notes.some(n => /127\.0\.0\.1:9/.test(n) && /isn't a public address/.test(n)),
+    on.notes.some(n => /10\.0\.0\.1:9/.test(n) && /isn't a public address/.test(n)),
     on.notes.join("\n"),
   );
   assert.ok(
