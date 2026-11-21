@@ -53,7 +53,21 @@ import { renderAll } from "./checks/render.mjs";
 
 import { createHash } from "node:crypto";
 
-import { SUPERSEDED, placeholderIn } from "./schema-check.mjs"; // once, before any request
+import { SUPERSEDED, placeholderIn } from "./schema-check.mjs";
+
+import {
+  CHECKS as CONTENT_CHECKS,
+  titleWidth,
+  widthText,
+  obsoleteMore,
+  brandTail,
+  templatedDescs,
+  templatedShare,
+  sectionOf,
+  keywordUse,
+  isGuide,
+  newestDate,
+} from "./checks/content.mjs"; // once, before any request
 
 const VERSION = "2.0.0";
 const UA = "seo-supervisor-crawler/" + VERSION;
@@ -1094,6 +1108,9 @@ Object.assign(CHECKS, {
   ],
 });
 
+Object.assign(CHECKS, CONTENT_CHECKS);
+RULES["CONTENT-07"] ??= ["Guides show who wrote them and when they were reviewed", "Headings & content"]; // stale-guide's rule; never passed here
+
 const findings = new Map(); // key -> {evidence:[], count}
 function add(key, url, detail) {
   if (!CHECKS[key]) throw new Error("unknown check " + key);
@@ -1753,6 +1770,14 @@ function analyze(url, html, headers, xRobotsLines) {
     };
   nodes.forEach(n => pick(n, 0));
   rec.schemaImages = [...schemaImages];
+
+  // The rest of HTML's obsolete tags (REND-10), a guide's newest date (CONTENT-07) and keyword use on English pages
+  // (CONTENT-03). Dates are read from the whole body, not the main text, since an article's <header> often holds them.
+  rec.obsolete.push(...obsoleteMore(html));
+  rec.guideDate = isGuide(url, rec.title, types) ? newestDate(body, nodes) : null;
+  rec.keywordUse = /^en(?![a-z])/i.test(rec.lang || "")
+    ? keywordUse({ title: rec.title, headings, description: rec.description || "", text: textOf(mainHtml) })
+    : null;
 
   return rec;
 }
@@ -2743,8 +2768,9 @@ for (const p of htmlPages) {
   if (sitewide.title.has(p)) add("title-missing-sitewide", u, p.title ? `“${p.title}”` : undefined);
   else if (!p.title) add("title-missing", u);
   else {
-    if (p.title.length > 60) add("title-long", u, `${p.title.length} chars: ${p.title}`);
-    else if (p.title.length < 20) add("title-short", u, p.title);
+    if (titleWidth(p.title) > 60)
+      add("title-long", u, `${widthText(p.title)}: ${p.title}`); // CJK characters count as two
+    else if (titleWidth(p.title) < 20) add("title-short", u, p.title);
     (titleMap.get(p.title) || titleMap.set(p.title, []).get(p.title)).push(u);
     if (BRAND && p.title.split(BRAND).length > 2) add("title-brand-twice", u, p.title);
   }
@@ -3816,6 +3842,48 @@ if (renderEvery?.note) notes.push(renderEvery.note);
       `${away.size} schema image(s) are on another host (often a CDN) or redirect there, e.g. ${[...away][0]}, so they weren't checked: only the crawled site is fetched.`,
     );
   if (schemaImgs.size > 50) notes.push(`Schema images were checked for the first 50 of ${schemaImgs.size}.`);
+}
+
+// META-02: descriptions that barely match their page, end with the title's brand or are templated; CONTENT-07: guides
+// last dated over a year ago; CONTENT-03: keyword use. A description's main words are read as META-09 reads a
+// title's, matched by stem or acronym. The 4-word minimum, a quarter on the page and the one-year guide age are local
+// lines.
+{
+  const live = htmlPages.filter(p => indexable(p) && !p.clientOnly);
+  for (const p of live) {
+    const u = p.finalUrl;
+    if (p.description) {
+      const dw = titleWords(p.description).filter(w => !brandWords.has(w)),
+        onPage = " " + p.normText;
+      if (dw.length >= 4 && p.words >= 50) {
+        const on = dw.filter(w => onPage.includes(" " + w.slice(0, Math.max(4, w.length - 3)))).length;
+        if (on < dw.length / 4 && ![...acronyms(p.description)].some(a => p.caps.has(a)))
+          add("desc-mismatch", u, `“${p.description.slice(0, 80)}”: ${on} of ${dw.length} main words are on the page`);
+      }
+      const tail = p.title && brandTail(p.title, p.description);
+      if (tail) add("desc-brand-tail", u, `ends with “${tail}”, as the title does`);
+    }
+    if (p.guideDate && Date.now() - p.guideDate.time > 365 * 864e5)
+      add("stale-guide", u, `newest date ${p.guideDate.date}, from ${p.guideDate.from}`);
+  }
+  const descs = live
+    .filter(p => p.description)
+    .map(p => ({ url: p.finalUrl, section: sectionOf(p.finalUrl), desc: p.description }));
+  const hits = templatedDescs(descs);
+  for (const [u, why] of hits) add("templated-desc", u, why);
+  if (hits.length)
+    extra.templatedDescriptions = templatedShare(
+      descs,
+      hits.map(h => h[0]),
+    );
+  const kw = live.filter(p => p.keywordUse).map(p => ({ url: p.finalUrl, ...p.keywordUse }));
+  if (kw.length)
+    extra.keywordUse = {
+      counts: Object.fromEntries(
+        ["natural", "missing", "repetitive", "forced"].map(v => [v, kw.filter(k => k.verdict === v).length]),
+      ),
+      pages: kw.filter(k => k.verdict !== "natural").slice(0, 50),
+    };
 }
 
 // E-E-A-T signals for the trust view, never findings or scored; last, so the security findings are in. HTTPS counts

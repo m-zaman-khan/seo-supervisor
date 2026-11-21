@@ -1058,8 +1058,96 @@ const mediaHtml = () => "",
 const renderHtml = () => "",
   renderMd = () => [];
 
-const contentHtml = () => "",
-  contentMd = () => [];
+// Templated descriptions (META-02) and keyword use on English pages (CONTENT-03). Crawled text is escaped.
+const tdShare = (t =>
+  t && Number.isInteger(t.pages) && Number.isInteger(t.templated) && t.templated > 0 && t.pages >= t.templated
+    ? t
+    : null)(obj(raw.templatedDescriptions));
+const tdClusters =
+  tdShare && Array.isArray(tdShare.clusters)
+    ? tdShare.clusters.filter(
+        c => obj(c) && typeof c.section === "string" && Number.isInteger(c.templated) && Number.isInteger(c.pages),
+      )
+    : [];
+// The verdict's sections go through `code`, which escapes for its format.
+const tdText = code => [
+  `${num(tdShare.templated)} of ${plural(tdShare.pages, "description")} (${Math.round((100 * tdShare.templated) / tdShare.pages)}%) end in a stock call to action or in a last sentence other pages share.`,
+  tdShare.verdict === "cluster" && tdClusters.length
+    ? `Verdict: a cluster. Most are in ${tdClusters.map(c => `${code(c.section)} (${c.templated} of ${c.pages} pages)`).join(", ")}, so that section's template is the fix.`
+    : tdShare.verdict === "site-wide"
+      ? "Verdict: site-wide. Half or more of the descriptions are templated, so the shared description template is the fix."
+      : "Verdict: scattered. Fix them page by page.",
+];
+const KW = ["natural", "missing", "repetitive", "forced"];
+const KW_WHY = {
+  missing: "not in the H1 or the first 100 words",
+  repetitive: "over 3% of the words",
+  forced: "over 5% of the words, or in most subheadings",
+};
+const kwUse = obj(raw.keywordUse),
+  kwCounts =
+    kwUse && obj(kwUse.counts)
+      ? KW.map(v => [v, Number.isInteger(kwUse.counts[v]) && kwUse.counts[v] >= 0 ? kwUse.counts[v] : 0])
+      : [];
+const kwPages =
+  kwUse && Array.isArray(kwUse.pages)
+    ? kwUse.pages.filter(k => obj(k) && typeof k.url === "string" && typeof k.phrase === "string" && KW_WHY[k.verdict])
+    : [];
+const kwRow = k =>
+  `“${k.phrase}”: ${k.verdict}, ${KW_WHY[k.verdict]}${Number.isFinite(k.density) ? ` (${k.density}% of the words)` : ""}`;
+const kwLine = () =>
+  `Keyword use on ${plural(
+    kwCounts.reduce((n, [, c]) => n + c, 0),
+    "English page",
+  )}: ${kwCounts.map(([v, c]) => `${num(c)} ${v}`).join(" · ")}.`;
+const CONTENT_INTRO =
+  "How the descriptions and the main keyword are written, for information: these notes never change the score. Each English page's main phrase is taken from its title; the 3% and 5% lines are our own, from CONTENT-03's “no density targets above about 2–3%”.";
+const contentHtml = () =>
+  tdShare || kwCounts.length
+    ? `\n    <details class="how content"><summary>Descriptions and keyword use</summary><p>${esc(CONTENT_INTRO)}</p>${
+        tdShare
+          ? `<p>${tdText(s => `<code>${esc(s)}</code>`)
+              .map((t, i) => (i ? t : esc(t)))
+              .join(" ")}</p>`
+          : ""
+      }${
+        kwCounts.length
+          ? `<p>${esc(kwLine())}</p>${
+              kwPages.length
+                ? `<ul class="lim">${kwPages
+                    .slice(0, 10)
+                    .map(k => `<li><b><code>${esc(notePath(k.url))}</code></b><span>${esc(kwRow(k))}</span></li>`)
+                    .join("")}</ul>`
+                : ""
+            }`
+          : ""
+      }${kwPages.length > 10 && mdFile ? `<p>All ${num(kwPages.length)} pages are listed in <code>${esc(mdFile)}</code>.</p>` : ""}</details>`
+    : "";
+const contentMd = () =>
+  tdShare || kwCounts.length
+    ? [
+        "## Descriptions and keyword use",
+        "",
+        CONTENT_INTRO,
+        "",
+        ...(tdShare
+          ? [
+              tdText(noteCode)
+                .map((t, i) => (i ? t : noteMd(t)))
+                .join(" "),
+              "",
+            ]
+          : []),
+        ...(kwCounts.length
+          ? [
+              kwLine(),
+              "",
+              ...kwPages.map(k => `- ${noteCode(notePath(k.url))} ${noteMd(kwRow(k))}`),
+              ...(kwPages.length ? [""] : []),
+            ]
+          : []),
+      ]
+    : [];
 
 const localHtml = () => "",
   localMd = () => [];
