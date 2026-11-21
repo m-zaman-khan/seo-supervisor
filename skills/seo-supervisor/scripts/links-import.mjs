@@ -4,7 +4,7 @@
 // as 0, and link text is merged case-insensitively.
 // https://support.google.com/webmasters/answer/9049606
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { domainToUnicode } from "node:url";
 import { isMain } from "./lib/is-main.mjs";
 import { parseCsv } from "./lib/csv.mjs";
@@ -193,7 +193,8 @@ const ONLY = "Only disavow links you know are paid or were made to manipulate ra
 const SPAM =
   "Google's spam policies count “links with optimized anchor text in articles, guest posts, or press releases distributed on other sites” as link spam.";
 const pct = x => `${Math.round(x * 100)}%`;
-export function worthALook({ sites = [], texts = [], sample = [] }, site, brand) {
+// outDomains: the crawl's linksToOtherSites.domains ({ host: count }), the sites the crawled pages link to.
+export function worthALook({ sites = [], texts = [], sample = [], outDomains }, site, brand) {
   const own = bare(site.hostname),
     mine = h => {
       const b = bare(h);
@@ -264,7 +265,95 @@ export function worthALook({ sites = [], texts = [], sample = [] }, site, brand)
       look: `Check whether you, or someone you paid, placed these links. ${SPAM} ${ONLY}`,
       examples: g.urls.slice(0, 5),
     });
+  // Reciprocal: sites that link to you and that your crawled pages link to (a subdomain counts for its root domain, as
+  // Search Console lists sites by root domain). 10 or more sites and 10% of the linking sites listed are local lines.
+  const to = Object.keys(obj(outDomains) || {}).map(bare);
+  const both = others.filter(s => {
+    const d = bare(s.domain);
+    return to.some(h => h === d || h.endsWith("." + d));
+  });
+  if (both.length >= 10 && both.length * 10 >= others.length)
+    out.push({
+      kind: "reciprocal",
+      subject: "Sites you link to that link back",
+      why: `You link to ${both.length} of the ${others.length} sites that link to you, so many of the links go both ways.`,
+      look: `That's normal between partners, suppliers and sites that cover each other. It's worth a look if the links were swapped to get links: Google's spam policies count “Excessive link exchanges ("Link to me and I'll link to you") or partner pages exclusively for the sake of cross-linking” as link spam. ${ONLY}`,
+      examples: both.slice(0, 5).map(s => s.domain),
+    });
   return out;
+}
+
+// An empty previous list may mean there was no export, so it isn't compared. Each export stops at 1,000 rows, so with
+// either at 1,000 a "new" site may only have been past the cut before (capped).
+export function newLinks(before, after, site) {
+  if (!Array.isArray(before?.sites) || !before.sites.length || !after?.length) return null;
+  const own = bare(site.hostname),
+    key = d => bare(String(d ?? "")),
+    mine = d => d === own || d.endsWith("." + own) || own.endsWith("." + d);
+  const had = new Set(before.sites.map(s => key(obj(s)?.domain)));
+  const fresh = after.filter(s => !had.has(key(s.domain)) && !mine(key(s.domain)));
+  return fresh.length
+    ? {
+        count: fresh.length,
+        sites: fresh.slice(0, 100).map(({ domain, links }) => ({ domain, links })),
+        since: typeof before.when === "string" ? before.when : null,
+        capped: before.sites.length >= 1000 || after.length >= 1000,
+      }
+    : null;
+}
+
+// Indexable crawled pages missing from Search Console's and Bing's linked pages, matched by path as in brokenLinked().
+// Most pages of any site have no links from other sites, so this is never a finding.
+export function unlinkedPages(linked, crawl, site) {
+  const host = bare(site.hostname),
+    url = u => {
+      try {
+        return new URL(u);
+      } catch {
+        return null;
+      }
+    },
+    pathOf = x => x.pathname + x.search;
+  const has = new Set(
+    linked
+      .map(l => url(l.url))
+      .filter(u => u && bare(u.hostname) === host)
+      .map(pathOf),
+  );
+  const pages = crawl.pages.filter(
+    p =>
+      obj(p) &&
+      !p.noindex &&
+      url(p.url) &&
+      (!p.canonical || pathOf(url(p.canonical) || url(p.url)) === pathOf(url(p.url))),
+  );
+  const none = pages.filter(p => !has.has(pathOf(url(p.url))));
+  return none.length ? { count: none.length, of: pages.length, urls: none.slice(0, 100).map(p => p.url) } : null;
+}
+
+// Latest links' date column (the linking page's last crawl) is never earlier than the day a link was found, so its
+// newest date bounds when any link in it was found. https://support.google.com/webmasters/answer/9049606
+const ISO = /^\d{4}-\d{2}-\d{2}/;
+export function newestLink(text) {
+  const rows = parseCsv(text),
+    heads = Object.keys(rows[0] || {});
+  const col = heads.find(h => rows.some(r => r[h]) && rows.every(r => !r[h] || ISO.test(r[h])));
+  return (
+    (col
+      ? rows
+          .map(r => String(r[col]).slice(0, 10))
+          .filter(d => ISO.test(d) && !isNaN(Date.parse(d)))
+          .sort()
+      : []
+    ).at(-1) || null
+  );
+}
+// No new link found for 3 months or more before the export's date: { newest, asOf }, or null.
+export function noNewLinks(newest, asOf) {
+  if (!newest) return null;
+  const cut = new Date(asOf);
+  cut.setUTCMonth(cut.getUTCMonth() - 3);
+  return newest < cut.toISOString().slice(0, 10) ? { newest, asOf: new Date(asOf).toISOString().slice(0, 10) } : null;
 }
 
 // Linking sites (Search Console) or Bing's linked pages fell by 30% or more and by at least 10. A count is compared
@@ -394,13 +483,19 @@ function main(argv) {
   // A list of linking pages whose name says "latest" is read as Latest links, for its newest date: More sample links
   // has the same columns, but it's a sample, so its dates say nothing about new links.
   const got = {};
+  let latest = null;
   for (const f of all
     .filter(f => /\.csv$/i.test(f))
     .sort((a, b) => statSync(join(dir, b)).mtimeMs - statSync(join(dir, a)).mtimeMs)) {
-    const x = readExport(readFileSync(join(dir, f), "utf8"), site.href);
+    const text = readFileSync(join(dir, f), "utf8"),
+      x = readExport(text, site.href),
+      newest = !x.kind && /latest/i.test(basename(f)) ? newestLink(text) : null;
+    if (newest && !latest) latest = { newest, when: statSync(join(dir, f)).mtime };
     if (!x.kind)
       notes.push(
-        `${f} isn't Search Console's Top linking sites, Top linking text or Top linked pages export, so it wasn't read. A list of linking pages (Latest links or More sample links) goes to backlinks.mjs --csv instead, which checks those links are still there.`,
+        newest
+          ? `${f} was read as Search Console's Latest links export, for the date of the newest link. To check those links are still there, pass it to backlinks.mjs --csv.`
+          : `${f} isn't Search Console's Top linking sites, Top linking text or Top linked pages export, so it wasn't read. A list of linking pages (Latest links or More sample links) goes to backlinks.mjs --csv instead, which checks those links are still there. Keep "latest" in the name of the Latest links export: its dates show whether new links still arrive.`,
       );
     else if (got[x.kind]) notes.push(`${f} is another ${NAME[x.kind]} export; the newer ${got[x.kind].f} was used.`);
     else got[x.kind] = { f, rows: x.rows, when: statSync(join(dir, f)).mtime };
@@ -445,7 +540,8 @@ function main(argv) {
   };
   const previous = str("previous") ? readJson(args.previous, "there was nothing to compare with") : null;
   // Checked against the crawl's data only; nothing is fetched.
-  let findings = [];
+  let findings = [],
+    unlinked = null;
   const crawl = str("crawl")
     ? readJson(args.crawl, "the pages other sites link to weren't checked against the crawl")
     : null;
@@ -457,6 +553,12 @@ function main(argv) {
     const bing = Array.isArray(keys?.bing?.backlinks?.pages)
       ? keys.bing.backlinks.pages.filter(obj).map(p => ({ url: p.url, links: p.count ?? null, source: "Bing" }))
       : [];
+    // Pages with no links from other sites: only from a Top linked pages export under 1,000 rows, the most it holds.
+    if (got.pages && links.pages.length >= 1000)
+      notes.push(
+        "Top linked pages has 1,000 rows, the most an export holds, so pages past the cut may have links from other sites too: the pages with none weren't listed.",
+      );
+    else if (got.pages) unlinked = unlinkedPages([...links.pages, ...bing], crawl, site);
     const checked = brokenLinked(
       [...(links?.pages || []).map(p => ({ ...p, source: "Search Console" })), ...bing],
       crawl,
@@ -470,12 +572,19 @@ function main(argv) {
       );
   }
   const sample = Array.isArray(keys?.bing?.backlinks?.sample) ? keys.bing.backlinks.sample.filter(obj) : [];
-  const look = worthALook({ sites: links?.sites, texts: links?.texts, sample }, site, brand);
+  const look = worthALook(
+    { sites: links?.sites, texts: links?.texts, sample, outDomains: obj(crawl?.linksToOtherSites)?.domains },
+    site,
+    brand,
+  );
   const result = {
     links,
     linkSummary,
     anchorMix: links?.texts.length ? anchorMix(links.texts, brand) : null,
     linksChange: linksChange(obj(previous?.linkSummary), linkSummary),
+    newLinks: got.sites ? newLinks(obj(previous?.links), links.sites, site) : null,
+    noNewLinks: latest && noNewLinks(latest.newest, latest.when),
+    unlinkedPages: unlinked,
     worthALook: look,
     findings,
     notes,
@@ -486,7 +595,7 @@ function main(argv) {
   writeFileSync(out, JSON.stringify(result, null, 2));
   const c = result.linksChange;
   console.log(
-    `links-import: ${links ? `${links.sites.length} linking sites, ${links.pages.length} linked pages, ${links.texts.length} link texts` : "no Search Console export"}${c ? ` · ${c.what} dropped ${c.before} → ${c.after}` : ""}${findings.length ? ` · ${findings[0].count} linked page(s) broken` : ""}${look.length ? ` · ${look.length} worth a look` : ""} · wrote ${out}`,
+    `links-import: ${links ? `${links.sites.length} linking sites, ${links.pages.length} linked pages, ${links.texts.length} link texts` : "no Search Console export"}${c ? ` · ${c.what} dropped ${c.before} → ${c.after}` : ""}${result.newLinks ? ` · ${result.newLinks.count} new linking site${result.newLinks.count === 1 ? "" : "s"}` : ""}${result.noNewLinks ? ` · no new links found since ${result.noNewLinks.newest}` : ""}${findings.length ? ` · ${findings[0].count} linked page(s) broken` : ""}${look.length ? ` · ${look.length} worth a look` : ""} · wrote ${out}`,
   );
   return 0;
 }

@@ -5,10 +5,10 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { lookup } from "node:dns";
 import { get as httpGet } from "node:http";
 import { get as httpsGet } from "node:https";
-import { BlockList, isIP } from "node:net";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 import { parseCsv } from "./lib/csv.mjs";
+import { isPublic, guarded } from "./checks/outbound.mjs";
 
 const USAGE =
   "usage: node backlinks.mjs --site https://www.example.com (--keys seo-audit/keys.json | --csv links.csv | --urls links.txt) [--out seo-audit/backlinks.json] [--yes]";
@@ -18,68 +18,28 @@ const UA = "seo-supervisor-backlinks",
   HOPS = 5,
   MB = 5,
   CAP = MB * 1024 * 1024;
-class Fail extends Error {}
+export class Fail extends Error {}
 const fail = msg => {
   throw new Fail("backlinks: " + msg);
 };
 const obj = x => (x && typeof x === "object" ? x : null);
 const bare = h => h.toLowerCase().replace(/^www\./, "");
-
-// Private, local and reserved addresses: what seo-crawl.mjs's isPublic refuses, plus benchmarking, multicast, reserved
-// and broadcast, NAT64 and IPv4 inside IPv6 (BlockList reads ::ffff:127.0.0.1 as 127.0.0.1). A non-IP counts too.
-const PRIVATE = new BlockList();
-for (const s of [
-  "0.0.0.0/8",
-  "10.0.0.0/8",
-  "100.64.0.0/10",
-  "127.0.0.0/8",
-  "169.254.0.0/16",
-  "172.16.0.0/12",
-  "192.168.0.0/16",
-  "198.18.0.0/15",
-  "224.0.0.0/3",
-  "::/96",
-  "fc00::/7",
-  "fe80::/10",
-  "ff00::/8",
-  "64:ff9b::/96",
-  "64:ff9b:1::/48",
-]) {
-  const [a, n] = s.split("/");
-  PRIVATE.addSubnet(a, +n, isIP(a) === 6 ? "ipv6" : "ipv4");
-}
-const privateIp = a => !isIP(a) || PRIVATE.check(a, isIP(a) === 6 ? "ipv6" : "ipv4");
-// The address: no private IP, no intranet or reserved name. The name's own answer is checked when connecting (guarded).
-const isPublic = u => {
-  try {
-    const { protocol, hostname: h } = new URL(u);
-    return (
-      /^https?:$/.test(protocol) &&
-      h.includes(".") &&
-      !(/^[\d.]+$/.test(h) && privateIp(h)) &&
-      !/\.(local|internal|lan|localhost|test|home\.arpa)$/i.test(h)
-    );
-  } catch {
-    return false;
-  }
-};
-// The lookup every request connects with, so the address checked is the one used: a name can't pass a check and then
-// answer differently (DNS rebinding). A name that doesn't resolve fails the visit.
-const guarded = dns => (name, opts, cb) =>
-  dns(name, opts, (err, addr, family) => {
-    const bad = !err && (Array.isArray(addr) ? addr.map(a => a.address) : [addr]).find(privateIp);
-    bad
-      ? cb(
-          Object.assign(new Error(`${name} points at a private or local address (${bad}), so it wasn't visited`), {
-            code: "ENOTPUBLIC",
-          }),
-        )
-      : cb(err, addr, family);
-  });
 const open = (u, opts) =>
   new Promise((ok, ko) => (u.startsWith("https:") ? httpsGet : httpGet)(u, opts, ok).on("error", ko));
 
 const ATTR = /([^\s"'=<>/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+const attrs = tag => {
+  const a = {};
+  for (const m of tag.replace(/^<\w+|>$/g, "").matchAll(ATTR)) a[m[1].toLowerCase()] ??= m[2] ?? m[3] ?? m[4] ?? "";
+  return a;
+};
+const ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+const decode = s =>
+  s.replace(/&(#x[0-9a-f]{1,6}|#\d{1,7}|\w+);/gi, (m, e) => {
+    if (e[0] !== "#") return ENT[e.toLowerCase()] ?? m;
+    const n = e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : Number(e.slice(1));
+    return n <= 0x10ffff ? String.fromCodePoint(n) : m;
+  });
 // A link through a redirect wrapper (youtube.com/redirect?q=…, l.facebook.com/l.php?u=…) counts for the address it
 // wraps.
 const WRAPS = ["q", "u", "url", "target", "to", "dest"];
@@ -91,30 +51,82 @@ const wrapped = u =>
       return [];
     }
   });
-function linksTo(html, base, host) {
-  const out = [];
-  for (const [tag] of html.replace(/<!--[\s\S]*?-->|<script\b[\s\S]*?<\/script>/gi, "").matchAll(/<a\s[^>]*>/gi)) {
-    const a = {};
-    for (const m of tag.slice(2, -1).matchAll(ATTR)) a[m[1].toLowerCase()] ??= m[2] ?? m[3] ?? m[4] ?? "";
+const clean = html => html.replace(/<!--[\s\S]*?-->|<script\b[\s\S]*?<\/script>/gi, "");
+// Each <a href> to the site as { href, text, rel }; www, the bare domain, http and https are one site. Text falls back
+// to an image's alt, and rel keeps only nofollow, sponsored and ugc.
+// Raw HTML only: links a script adds aren't seen, and unread() guesses when that's the case.
+export function linksTo(html, base, host) {
+  const out = [],
+    page = clean(html);
+  for (const m of page.matchAll(/<a\s[^>]*>/gi)) {
+    const a = attrs(m[0]);
     let u;
     try {
-      u = new URL(a.href.trim().replace(/&amp;/g, "&"), base);
+      u = new URL(decode(a.href.trim()), base);
     } catch {
       continue;
     }
-    if (
-      /^https?:$/.test(u.protocol) &&
-      [u, ...wrapped(u)].some(t => /^https?:$/.test(t.protocol) && bare(t.hostname) === host)
-    )
-      out.push(
-        (a.rel || "")
-          .toLowerCase()
-          .split(/\s+/)
-          .filter(t => ["nofollow", "sponsored", "ugc"].includes(t)),
-      );
+    if (!/^https?:$/.test(u.protocol)) continue;
+    const to = [u, ...wrapped(u)].find(t => /^https?:$/.test(t.protocol) && bare(t.hostname) === host);
+    if (!to) continue;
+    const inner = page.slice(m.index + m[0].length, m.index + m[0].length + 3000).split(/<\/a\s*>|<a\s/i)[0];
+    const words = decode(inner.replace(/<[^>]*>/g, " "))
+      .replace(/\s+/g, " ")
+      .trim();
+    const alt = /<img\s[^>]*>/i.exec(inner);
+    const text = (
+      words ||
+      (alt
+        ? decode(attrs(alt[0]).alt || "")
+            .replace(/\s+/g, " ")
+            .trim()
+        : "")
+    ).slice(0, 200);
+    out.push({
+      href: to.href,
+      text,
+      rel: (a.rel || "")
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(t => ["nofollow", "sponsored", "ugc"].includes(t))
+        .join(" "),
+    });
   }
   return out;
 }
+
+// A page-wide nofollow or none, in a robots or googlebot meta tag or an X-Robots-Tag line for all crawlers or
+// googlebot. Rules for another crawler ("bingbot: nofollow") don't count.
+// https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag
+const NOFOLLOW = /^(nofollow|none)$/i;
+export function pageNofollow(html, headerLines = []) {
+  const metas = [...clean(html).matchAll(/<meta\s[^>]*>/gi)]
+    .map(([t]) => attrs(t))
+    .filter(a => /^(robots|googlebot)$/i.test((a.name || "").trim()));
+  if (
+    metas.some(a =>
+      decode(a.content || "")
+        .split(",")
+        .some(r => NOFOLLOW.test(r.trim())),
+    )
+  )
+    return "robots meta tag";
+  for (const line of headerLines) {
+    let bot = null;
+    for (const part of String(line).split(",")) {
+      const m = /^\s*([a-z][\w-]*)\s*:\s*(.*)$/i.exec(part),
+        rule =
+          m && !/^(unavailable_after|max-snippet|max-image-preview|max-video-preview)$/i.test(m[1])
+            ? ((bot = m[1].toLowerCase()), m[2])
+            : part;
+      if ((!bot || bot === "googlebot") && NOFOLLOW.test(rule.trim())) return "X-Robots-Tag header";
+    }
+  }
+  return null;
+}
+// X-Robots-Tag lines from rawHeaders, kept apart because a `bot:` prefix scopes only its own line.
+export const robotsLines = raw =>
+  raw.flatMap((v, i) => (i % 2 && raw[i - 1].toLowerCase() === "x-robots-tag" ? [v] : []));
 
 // Why a page without the link may not really be gone: truncated, behind a consent screen, built by a script, or naming
 // the site without a link. "" when the page was clearly read.
@@ -193,7 +205,12 @@ async function visit(url, host, allow, timeout, lookup) {
         );
       const links = linksTo(page, u, host);
       if (links.length)
-        return { state: "live", rel: links.every(l => l.length) ? [...new Set(links.flat())].join(" ") : null };
+        return {
+          state: "live",
+          rel: links.every(l => l.rel) ? [...new Set(links.flatMap(l => l.rel.split(" ")))].join(" ") : null,
+          links: links.slice(0, 5),
+          page: pageNofollow(page, robotsLines(r.rawHeaders)),
+        };
       const why = unread(page, n > CAP, u !== url && u, host);
       return why
         ? no(why)
@@ -237,6 +254,28 @@ const capNote = extra => `${extra} more linking page(s) weren't checked: at most
 // misleading text.
 const code = s => s.replace(/https?:\/\/\S+/g, u => "`" + u.replace(/`/g, "%60") + "`");
 
+// Linking sites whose every live page holds its links back (rel or page-wide nofollow), most pages first.
+// https://developers.google.com/search/docs/crawling-indexing/qualify-outbound-links
+export function allNofollow(live) {
+  const sites = new Map();
+  for (const r of live) {
+    let h;
+    try {
+      h = bare(new URL(r.url).hostname);
+    } catch {
+      continue;
+    }
+    const s = sites.get(h) || { site: h, pages: 0, followed: false };
+    s.pages++;
+    s.followed ||= !(r.rel || r.page);
+    sites.set(h, s);
+  }
+  return [...sites.values()]
+    .filter(s => !s.followed)
+    .sort((a, b) => b.pages - a.pages)
+    .map(({ site, pages }) => ({ site, pages }));
+}
+
 // `allow` vets each address before a request; `dns` (dns.lookup's signature) resolves the address checked and used.
 export async function checkBacklinks(urls, site, { allow = isPublic, timeout = 15000, dns = lookup } = {}) {
   const host = bare(new URL(site).hostname),
@@ -254,6 +293,7 @@ export async function checkBacklinks(urls, site, { allow = isPublic, timeout = 1
   );
   const of = state => results.filter(r => r.state === state);
   const gone = of("gone").map(({ url, reason }) => ({ url, reason }));
+  // A page is nofollow when every link to the site carries a rel value, or the whole page is nofollow.
   const backlinks = {
     when: new Date().toISOString(),
     checked: list.length,
@@ -261,8 +301,10 @@ export async function checkBacklinks(urls, site, { allow = isPublic, timeout = 1
     gone,
     unreachable: of("unreachable").map(({ url, reason }) => ({ url, reason })),
     nofollow: of("live")
-      .filter(r => r.rel)
-      .map(({ url, rel }) => ({ url, rel })),
+      .filter(r => r.rel || r.page)
+      .map(({ url, rel, page }) => ({ url, rel: rel || "nofollow", ...(page && { page }) })),
+    nofollowSites: allNofollow(of("live")),
+    found: of("live").map(({ url, links, page }) => ({ url, links, ...(page && { pageNofollow: page }) })),
   };
   const findings = gone.length
     ? [
@@ -329,6 +371,12 @@ const fromText = f =>
     .map(s => s.trim())
     .filter(s => s && !s.startsWith("#"))
     .map(s => (/^[a-z][a-z0-9+.-]*:/i.test(s) ? s : "https://" + s));
+// commoncrawl.mjs reads the same three inputs.
+export const linkingPages = ({ keys, csv, urls }) => [
+  ...(keys ? fromKeys(keys) : []),
+  ...(csv ? fromCsv(csv) : []),
+  ...(urls ? fromText(urls) : []),
+];
 
 async function main(argv) {
   const args = {};
@@ -345,11 +393,7 @@ async function main(argv) {
   } catch {}
   if (!site || !/^https?:$/.test(site.protocol))
     fail(`--site must be the site's address, like https://www.example.com (got ${args.site})`);
-  const urls = [
-    ...(str("keys") ? fromKeys(args.keys) : []),
-    ...(str("csv") ? fromCsv(args.csv) : []),
-    ...(str("urls") ? fromText(args.urls) : []),
-  ];
+  const urls = linkingPages({ keys: str("keys"), csv: str("csv"), urls: str("urls") });
   const { list, extra } = pick(urls);
   if (!list.length) {
     console.log("backlinks: the files given list no linking pages, so there's nothing to check.");

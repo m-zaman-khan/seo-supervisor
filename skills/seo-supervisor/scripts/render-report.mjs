@@ -1152,8 +1152,138 @@ const contentMd = () =>
 const localHtml = () => "",
   localMd = () => [];
 
-const backlinksHtml = () => "",
-  backlinksMd = () => [];
+// More about links, in one collapsed panel on the Overview (a section in the Markdown). Names, addresses and link
+// text come from other sites, so each is escaped (code spans in the Markdown).
+const asArray = (x, ok) => (Array.isArray(x) ? x.filter(ok) : []);
+const asString = x => typeof x === "string" && x !== "";
+const asInt = x => Number.isInteger(x) && x >= 0;
+const asDay = x => typeof x === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x) && !isNaN(Date.parse(x));
+const newItems = (n =>
+  n && asInt(n.count) && n.count > 0
+    ? { ...n, sites: asArray(n.sites, s => obj(s) && asString(s.domain)).slice(0, 5) }
+    : null)(obj(raw.newLinks));
+const stale = (n => (n && asDay(n.newest) && asDay(n.asOf) ? n : null))(obj(raw.noNewLinks));
+const unlinked = (u =>
+  u && asInt(u.count) && u.count > 0 && asInt(u.of) && u.of >= u.count
+    ? { ...u, urls: asArray(u.urls, asString).slice(0, 5) }
+    : null)(obj(raw.unlinkedPages));
+const nfSites = asArray(linkCheck?.nofollowSites, s => obj(s) && asString(s.site) && asInt(s.pages)).slice(0, 10);
+const foundItems = asArray(linkCheck?.found, f => obj(f) && asString(f.url) && Array.isArray(f.links))
+  .flatMap(f =>
+    asArray(f.links, l => obj(l) && asString(l.href))
+      .slice(0, 1)
+      .map(l => ({ url: f.url, ...l })),
+  )
+  .slice(0, 10);
+const cc = (c =>
+  c && asString(obj(c.crawl)?.name)
+    ? {
+        name: c.crawl.name,
+        site: obj(c.site) && asInt(c.site.captures) ? c.site : null,
+        pages: asArray(c.linkingPages, p => obj(p) && asString(p.url) && asString(p.state)),
+        sites: asArray(c.linkingSites, asString),
+      }
+    : null)(obj(raw.commonCrawl));
+const out = (o =>
+  o && obj(o.pages) && Object.keys(o.pages).length
+    ? {
+        pages: Object.values(o.pages).filter(asInt),
+        domains: Object.entries(obj(o.domains) || {}).filter(([k, v]) => asString(k) && asInt(v)),
+      }
+    : null)(obj(raw.linksToOtherSites));
+const bingSample = Array.isArray(bing?.backlinks?.sample) ? bing.backlinks.sample.filter(obj).length : 0;
+const extraLines = () => {
+  const L = []; // [text, list of [name, detail]]
+  if (newItems)
+    L.push([
+      `${plural(newItems.count, "new site")} ${newItems.count === 1 ? "links" : "link"} to you since the last export${Date.parse(newItems.since) ? ` (${fmtDate(newItems.since)})` : ""}, from Search Console's Top linking sites.${newItems.capped === true ? " Some may be older links: an export holds 1,000 sites at most, so they may have been past the cut before." : ""}`,
+      newItems.sites.map(s => [s.domain, asInt(s.links) ? plural(s.links, "link") : ""]),
+    ]);
+  if (stale)
+    L.push([
+      `No new links for 3 months or more: no link in Search Console's Latest links export was found after ${fmtDate(stale.newest)} (export of ${fmtDate(stale.asOf)}). New links usually come from new things worth linking to, like original data, a free tool, a guide or real news (LINK-10).`,
+      [],
+    ]);
+  if (unlinked)
+    L.push([
+      `${num(unlinked.count)} of your ${num(unlinked.of)} crawled pages have no links from other sites in Search Console's list. That's normal for most pages. For the ones that matter most, link to them from your pages that other sites do link to.`,
+      unlinked.urls.map(u => [notePath(u), ""]),
+    ]);
+  if (nfSites.length)
+    L.push([
+      "Sites whose links to you are all nofollow, sponsored or ugc, in the backlink check. Such links are allowed; Google says links marked this way “will generally not be followed”.",
+      nfSites.map(s => [s.site, plural(s.pages, "page")]),
+    ]);
+  if (foundItems.length)
+    L.push([
+      "Links the backlink check found, with the page each points at and its text:",
+      foundItems.map(f => [
+        f.url,
+        `→ ${f.href}${asString(f.text) ? ` “${f.text}”` : ""}${asString(f.rel) ? ` (${f.rel})` : ""}`,
+      ]),
+    ]);
+  if (cc) {
+    const s = cc.site,
+      linked = cc.pages.filter(p => p.state === "links").length,
+      absent = cc.pages.filter(p => p.state === "not-in-crawl").length;
+    if (s)
+      L.push([
+        s.captures
+          ? `Common Crawl (${cc.name}) holds ${s.capped === true ? "1,000 or more" : num(s.captures)} saved copies of your site's pages${s.home === true ? ", the home page among them" : ", but not the home page"}.`
+          : `Common Crawl (${cc.name}) holds none of your site's pages. If robots.txt blocks CCBot, its crawler, that's why.`,
+        [],
+      ]);
+    if (cc.pages.length)
+      L.push([
+        `${num(linked)} of ${num(cc.pages.length)} known linking pages link to you in Common Crawl's saved copies${absent ? `; ${num(absent)} ${absent === 1 ? "isn't" : "aren't"} in its newest crawl` : ""}. Its full web graph, with each site's rank, is too big to download, so your rank there isn't shown.`,
+        cc.sites.slice(0, 5).map(h => [h, ""]),
+      ]);
+  }
+  if (out) {
+    const n = out.pages.filter(c => c > 0).length,
+      top = [...out.domains].sort((a, b) => b[1] - a[1]).slice(0, 5);
+    L.push([
+      `${num(n)} of your ${num(out.pages.length)} crawled pages ${n === 1 ? "links" : "link"} to other sites, ${plural(out.domains.length, "site")} in all. Pages that make claims should link to their sources (CONTENT-10).`,
+      top.map(([d, c]) => [d, plural(c, "address", "addresses")]),
+    ]);
+  }
+  // How much of the link profile the free sources cover.
+  // https://support.google.com/webmasters/answer/9049606
+  const cover = [
+    hasSc &&
+      `Google says Search Console's Links report “isn't a comprehensive list of every link on your site”, and each of its tables stops at 1,000 rows${scSites.length >= 1000 ? " (Top linking sites reached it)" : ""}.`,
+    bingSample && `Bing's links here are a sample of ${plural(bingSample, "link")} to your home page.`,
+    checkedLinks && `The backlink check opened ${plural(checkedLinks, "known linking page")} (100 at most).`,
+    cc && "Common Crawl holds only the pages its monthly crawl reached.",
+  ].filter(Boolean);
+  if (cover.length)
+    L.push([`How much this covers: ${cover.join(" ")} Treat the numbers as a sample, not a full count.`, []]);
+  return L;
+};
+const LINKS_INTRO = "Information only: none of this changes the score.";
+const backlinksHtml = () => {
+  const L = extraLines();
+  return L.length
+    ? `\n    <details class="how morelinks"><summary>More about links</summary><p>${esc(LINKS_INTRO)}</p>${L.map(([t, list]) => `<p>${esc(t)}</p>${list.length ? `<ul class="lim">${list.map(([k, v]) => `<li><b><code>${esc(k)}</code></b><span>${esc(v)}</span></li>`).join("")}</ul>` : ""}`).join("")}</details>`
+    : "";
+};
+const backlinksMd = () => {
+  const L = extraLines();
+  return L.length
+    ? [
+        "## More about links",
+        "",
+        LINKS_INTRO,
+        "",
+        ...L.flatMap(([t, list]) => [
+          noteMd(t),
+          "",
+          ...list.map(([k, v]) => `- ${noteCode(k)}${v ? ` ${noteMd(v)}` : ""}`),
+          ...(list.length ? [""] : []),
+        ]),
+      ]
+    : [];
+};
 
 // Third-party text (registrars, video titles, referrers, paths) is escaped by the callers.
 const connLines = () => {

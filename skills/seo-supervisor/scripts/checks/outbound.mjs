@@ -19,9 +19,9 @@ export const CHECKS = {
   ],
 };
 
+// The private-address guard; backlinks.mjs imports it from here.
 // Private, local and reserved addresses: what seo-crawl.mjs's isPublic refuses, plus benchmarking, multicast, reserved
 // and broadcast, NAT64 and IPv4 inside IPv6 (BlockList reads ::ffff:127.0.0.1 as 127.0.0.1). A non-IP counts too.
-// backlinks.mjs has a copy; move both into one lib module before changing either.
 const PRIVATE = new BlockList();
 for (const s of [
   "0.0.0.0/8",
@@ -44,7 +44,8 @@ for (const s of [
   PRIVATE.addSubnet(a, +n, isIP(a) === 6 ? "ipv6" : "ipv4");
 }
 const privateIp = a => !isIP(a) || PRIVATE.check(a, isIP(a) === 6 ? "ipv6" : "ipv4");
-const isPublic = u => {
+// The address: no private IP, no intranet or reserved name. The name's own answer is checked when connecting (guarded).
+export const isPublic = u => {
   try {
     const { protocol, hostname: h } = new URL(u);
     return (
@@ -59,7 +60,7 @@ const isPublic = u => {
 };
 // The lookup every request connects with, so the address checked is the one used: a name can't pass a check and then
 // answer differently (DNS rebinding). A name that doesn't resolve fails the visit.
-const guarded = dns => (name, opts, cb) =>
+export const guarded = dns => (name, opts, cb) =>
   dns(name, opts, (err, addr, family) => {
     const bad = !err && (Array.isArray(addr) ? addr.map(a => a.address) : [addr]).find(privateIp);
     bad

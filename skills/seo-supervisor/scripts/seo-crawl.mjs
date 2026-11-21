@@ -3886,8 +3886,40 @@ if (renderEvery?.note) notes.push(renderEvery.note);
     };
 }
 
-// E-E-A-T signals for the trust view, never findings or scored; last, so the security findings are in. HTTPS counts
-// with no open TRUST-01 or TRUST-07 finding, and is unknown without a public origin.
+// ---------- links to other sites ----------
+// Counted from the pages already read, with no requests; only --outbound-links visits them. pages: distinct
+// addresses per page; domains: distinct addresses per host (www left off), the 1,000 most linked, which
+// links-import.mjs crosses with Search Console's Top linking sites.
+{
+  const pages = {},
+    domains = {};
+  for (const p of htmlPages) {
+    const here = new Set();
+    for (const a of p.anchors) {
+      const x = a.href && urlOr(a.href.trim(), p.base);
+      if (!x || !/^https?:$/.test(x.protocol) || selfHosts.has(bareHost(x.host))) continue;
+      x.hash = "";
+      here.add(x.href);
+    }
+    pages[p.finalUrl] = here.size;
+  }
+  for (const u of outbound.keys()) {
+    const h = bareHost(new URL(u).hostname);
+    domains[h] = (domains[h] || 0) + 1;
+  }
+  extra.linksToOtherSites = {
+    pages,
+    domains: Object.fromEntries(
+      Object.entries(domains)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 1000),
+    ),
+  };
+}
+
+// ---------- trust signals ----------
+// E-E-A-T signals for the trust view, never findings or scored; after the security checks, so their findings are in.
+// HTTPS counts with no open TRUST-01 or TRUST-07 finding, and is unknown without a public origin.
 extra.trustSignals = trustSignals(htmlPages, {
   origin: EXPECT_ORIGIN,
   https: !isPublic(EXPECT_ORIGIN)

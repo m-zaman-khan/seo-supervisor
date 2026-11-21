@@ -34,6 +34,7 @@ Inside each group, items chain into a loop. Across content types, each type poin
   - **Across:** 3–6 siblings from the same group, both ways (adding an item updates its siblings).
   - **Forward:** 1–2 "next step" links. Chain each group so its last item points back to its first.
   - **Across types:** each content type points to the next one, ending at the pages that make money, which link back. A typical cycle: blog post → glossary term → guide → tool → template or checklist → path → service page → back to posts and guides. Local sites: service ↔ city ↔ nearby cities ↔ projects ↔ reviews. Shops: category ↔ product ↔ buying guide ↔ comparison.
+  - **Comparisons:** each comparison page ("X vs Y", "alternatives to X") links to the other comparisons that share a product, both ways, and to the pages of the products it compares. A comparisons hub lists every comparison, grouped by product or category, and each comparison links back to it.
 - **Fix:** generate these links from data (related, next and guide fields), never by hand.
 
 ### LINK-04 · Links point only at live pages · high
@@ -47,6 +48,7 @@ Inside each group, items chain into a loop. Across content types, each type poin
 ### LINK-06 · Link blocks stay focused · low
 - **Check:** crawler `too-many-links` (more than 150 per page).
 - **Pass:** about 12–15 relevant contextual links on a content page, up to 6 siblings and 2 next steps. The footer links to hubs, not to every item. Nav doesn't list programmatic pages such as service × city.
+- **Links to other sites:** every crawl counts them per page, and per site linked to (`linksToOtherSites` in seo-crawl.json), without visiting them. Information only: pages that make claims should link to their sources (CONTENT-10). Only `--outbound-links` visits them, to find broken ones (CRAWL-07).
 
 ### LINK-08 · An HTML sitemap page lists every hub and item · low
 - **Check:** crawler pages for `/sitemap/` or similar. Code: footer link.
@@ -61,7 +63,7 @@ Inside each group, items chain into a loop. Across content types, each type poin
 - **Pass:** items link to their browse page (breadcrumb plus a "More in …" block). Browse pages link to every item, paginated. Tag pages exist only once there's enough volume.
 
 ### LINK-10 · Links from other sites are earned, never bought · medium
-> Checked 19 Nov 2026 against developers.google.com/search/docs/essentials/spam-policies#link-spam; the link text and disavow notes on 20 Nov 2026 against support.google.com/webmasters/answer/2648487 (disavow) and developers.google.com/search/blog/2022/12/december-22-link-spam-update; the "Worth a look" list and the disavow file on 21 Nov 2026 against support.google.com/webmasters/answer/2648487, support.google.com/webmasters/answer/9044175 (manual actions) and Bing's notice that it removed its disavow tool (blogs.bing.com/webmaster/september-2023/Bing-Webmaster-Tools-to-Remove-Disavow-Links-Feature-in-October-2023).
+> Checked 19 Nov 2026 against developers.google.com/search/docs/essentials/spam-policies#link-spam; the link text and disavow notes on 20 Nov 2026 against support.google.com/webmasters/answer/2648487 (disavow) and developers.google.com/search/blog/2022/12/december-22-link-spam-update; the "Worth a look" list and the disavow file on 21 Nov 2026 against support.google.com/webmasters/answer/2648487, support.google.com/webmasters/answer/9044175 (manual actions) and Bing's notice that it removed its disavow tool (blogs.bing.com/webmaster/september-2023/Bing-Webmaster-Tools-to-Remove-Disavow-Links-Feature-in-October-2023); the link exchange quote, the Latest links and coverage notes, and the Common Crawl file sizes on 21 Nov 2026 against the spam policies page, support.google.com/webmasters/answer/9049606 and data.commoncrawl.org/projects/hyperlinkgraph/cc-main-2026-aug-sep-oct/index.html.
 
 Google uses links from other well-known sites as one sign of quality, and for local businesses, as part of how well known the business is. Links worth having come from giving people a reason to link.
 - **Check:** ask the owner how the site gets links. Search Console's Links report shows who links now; `links-import.mjs` reads its exports into the report.
@@ -71,8 +73,16 @@ Google uses links from other well-known sites as one sign of quality, and for lo
   - one site linking from 50 or more of its pages to 3 or fewer of yours, and 20% or more of all links. It's usually a footer or sidebar link: fine from a partner, worth a look from a site the owner doesn't know.
   - link text that's 75% or more descriptive words (not the brand, the address or generic words), from at least 10 texts. That's normal when people link to articles by their titles.
   - the same descriptive words from 3 or more sites in Bing's sample of links to the home page.
+  - links that go both ways: 10 or more of the sites that link to you, and 10% or more of them, are sites your crawled pages link to (needs `--crawl`). That's normal between partners and suppliers. Google's spam policies count "Excessive link exchanges ("Link to me and I'll link to you") or partner pages exclusively for the sake of cross-linking" as link spam.
 
   These cut-offs are ours, not Google's. The list is information only: no score, no finding.
+- **More link data, all information only** (the report's "More about links"):
+  - **New linking sites:** with `--previous`, the sites in this Top linking sites export that the last one didn't list. An export holds 1,000 sites at most, so with 1,000 a "new" site may only have been past the cut before.
+  - **No new links for 3 months or more:** Google's Latest links export lists "the most recently discovered links to your site ... sorted by discovery date". Its newest date is the latest a link in it can have been found, so a newest date 3 months or more before the export means no new link was found since. Keep "latest" in the file's name: More sample links has the same columns but is a sample.
+  - **Pages no other site links to:** with `--crawl`, the indexable crawled pages missing from Top linked pages and Bing's linked pages. That's normal for most pages; link to the ones that matter from pages other sites do link to. Not listed when the export has 1,000 rows.
+  - **The backlink check** (`backlinks.mjs`) records each link's target page, text and rel, a linking page that's nofollow as a whole (robots meta tag, or an X-Robots-Tag for every crawler or for googlebot), and the sites whose every link is nofollow, sponsored or ugc. Google says links marked this way "will generally not be followed" (developers.google.com/search/docs/crawling-indexing/qualify-outbound-links).
+  - **Common Crawl** (`commoncrawl.mjs`, with the owner's `--yes`): whether the site is in Common Crawl's newest crawl, and whether its saved copies of known linking pages still link to the site. Its web graph, with each site's rank, is too big to download (the domain ranks alone are 2.4 GB), so ranks aren't read and it finds no linking site that isn't known already.
+  - **How much this covers:** Google says the Links report "isn't a comprehensive list of every link on your site", and each table stops at 1,000 rows. Bing's sample covers links to the home page only. Treat the numbers as a sample, not a full count.
 - **Disavow only for real cases:** a manual action for unnatural links, or links the owner knows were paid for or made to manipulate rankings, after asking the sites to remove them. Google says "most sites will not need to use this tool", and warns that a disavow done wrong "can potentially harm your site's performance in Google Search results". The owner picks every domain and page; `disavow.mjs` only writes the file, and the owner uploads it at search.google.com/search-console/disavow-links.
   - **The file:** a .txt file in UTF-8, one `domain:example.com` or full URL per line, `#` for comments, at most 100,000 lines and 2 MB, URLs up to 2,048 characters.
   - **An upload replaces the old list,** so the new file keeps every line of it (`--existing`).
