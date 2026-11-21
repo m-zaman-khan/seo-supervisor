@@ -477,6 +477,18 @@ function filed(dir) {
   return [...byTime.values()].sort((a, b) => (a.crawledAt < b.crawledAt ? -1 : 1));
 }
 
+// Files a crawl in the history folder under its date, or its date and time when another crawl has that day; never over
+// another crawl, and not again when a crawl with its crawledAt is there. Returns the path it wrote, or null.
+export function fileCrawl(hist, file, crawl) {
+  if (typeof crawl?.crawledAt !== "string" || filed(hist).some(r => r.crawledAt === crawl.crawledAt)) return null;
+  const day = join(hist, `${crawl.crawledAt.slice(0, 10)}-seo-crawl.json`),
+    at = join(hist, `${crawl.crawledAt.slice(0, 19).replace(/:/g, "-")}-seo-crawl.json`);
+  mkdirSync(hist, { recursive: true });
+  const to = existsSync(day) ? at : day;
+  copyFileSync(file, to);
+  return to;
+}
+
 if (isMain(import.meta.url)) {
   const args = process.argv.slice(2),
     val = k => (args.includes(k) ? args[args.indexOf(k) + 1] : null);
@@ -500,13 +512,7 @@ if (isMain(import.meta.url)) {
     }
     const past = filed(hist),
       earlier = past.filter(r => r.crawledAt < newR.crawledAt);
-    // File this crawl under its date, or its date and time when another crawl has that day; never over another crawl.
-    if (!past.some(r => r.crawledAt === newR.crawledAt)) {
-      const day = join(hist, `${newR.crawledAt.slice(0, 10)}-seo-crawl.json`),
-        at = join(hist, `${newR.crawledAt.slice(0, 19).replace(/:/g, "-")}-seo-crawl.json`);
-      mkdirSync(hist, { recursive: true });
-      copyFileSync(files[0], existsSync(day) ? at : day);
-    }
+    fileCrawl(hist, files[0], newR);
     oldR = earlier.at(-1);
     rows = oldR && timeline([...earlier, newR]);
   }

@@ -63,6 +63,36 @@ test("masking secrets leaves ordinary site URLs alone", async () => {
   );
 });
 
+test("a new crawl into seo-crawl.json files the one it replaces in history/ first, once", async () => {
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const { SCRIPTS, node } = await import("./helpers.mjs");
+  const { serve } = await import("./serve.mjs");
+  const root = tmp(),
+    dir = join(tmp(), "seo-audit"),
+    out = join(dir, "seo-crawl.json");
+  writeFileSync(
+    join(root, "index.html"),
+    '<!doctype html><html lang="en"><head><title>Boiler repairs in Leeds</title></head><body><h1>Boiler repairs</h1></body></html>',
+  );
+  const site = await serve(root);
+  try {
+    const crawl = () => node([join(SCRIPTS, "seo-crawl.mjs"), "--url", site.url, "--out", out]);
+    await crawl();
+    const first = JSON.parse(readFileSync(out, "utf8")).crawledAt;
+    await crawl();
+    const hist = join(dir, "history"),
+      files = readdirSync(hist);
+    assert.equal(files.length, 1, files.join(", "));
+    assert.equal(
+      JSON.parse(readFileSync(join(hist, files[0]), "utf8")).crawledAt,
+      first,
+      "the replaced crawl is the one filed",
+    );
+  } finally {
+    await site.close();
+  }
+});
+
 test("findLighthouse looks in the settings folder SEO_SUPERVISOR_HOME names", () => {
   const home = tmp(),
     bin = join(home, "tools", "node_modules", ".bin");

@@ -2,8 +2,9 @@
 // Read-only SEO crawler: GET and HEAD only, plus a TLS handshake with --check-live.
 // Regex HTML parsing is enough for audit evidence. Swap in a real parser if a site breaks it.
 
-import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileCrawl } from "./seo-diff.mjs";
 import { createGunzip } from "node:zlib";
 import { get as httpGet } from "node:http";
 import { get as httpsGet } from "node:https";
@@ -4980,6 +4981,14 @@ const report = {
   })),
 };
 mkdirSync(dirname(OUT), { recursive: true });
+// File the previous seo-crawl.json in history/ before replacing it, so "Since last audit" still has it. Other --out
+// names (a branch crawl, say) stay out of the history.
+if (basename(OUT) === "seo-crawl.json" && existsSync(OUT))
+  try {
+    fileCrawl(join(dirname(OUT), "history"), OUT, JSON.parse(readFileSync(OUT, "utf8")));
+  } catch (e) {
+    console.log(`note: the previous ${OUT} couldn't be filed in history/ (${e.message})`);
+  }
 writeFileSync(OUT, JSON.stringify(report, null, 2));
 const counts = out.reduce((m, f) => ((m[f.severity] = (m[f.severity] || 0) + 1), m), {});
 console.log(

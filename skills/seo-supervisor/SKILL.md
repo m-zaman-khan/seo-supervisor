@@ -67,7 +67,7 @@ node <skill-dir>/scripts/seo-crawl.mjs --url http://localhost:3000 \
 - **Starting and stopping the server:** start it directly so it stops cleanly, e.g. `node node_modules/next/dist/bin/next start -p 3123` rather than `npx`. Always stop it when you're done.
 - Crawler findings are evidence, not verdicts. Check each against the profile (a noindex page may be intended), adjust severity, or drop it with a reason.
 - If the site can't run, audit statically and list the crawler checks under `notChecked`. Never present guesses as crawl results.
-- **History:** after the crawl, run this. It compares the crawl with the newest one filed in `seo-audit/history/`, adds a timeline of all of them, and files this crawl there. It never overwrites a filed crawl, and the first crawl is only filed. Put the output in `seo-audit.json` as `diff`; the report then gets a "Since last audit" tab. It compares status, indexing, canonical, title, description, H1 and H2 text, hreflang, schema, Open Graph tags, sections and big word-count changes.
+- **History:** after the crawl, run this. It compares the crawl with the newest one filed in `seo-audit/history/`, adds a timeline of all of them, and files this crawl there. It never overwrites a filed crawl, and the first crawl is only filed. The crawler itself files the old `seo-audit/seo-crawl.json` there before it replaces it, so an audit from before this step isn't lost. Put the output in `seo-audit.json` as `diff`; the report then gets a "Since last audit" tab. It compares status, indexing, canonical, title, description, H1 and H2 text, hreflang, schema, Open Graph tags, sections and big word-count changes.
   ```bash
   node <skill-dir>/scripts/seo-diff.mjs --history seo-audit/history seo-audit/seo-crawl.json --out seo-audit/seo-diff.json
   ```
@@ -249,7 +249,7 @@ In chat, give: the score and band, and while blockers are open, the score fixing
 
 ### 6. Review mode
 
-List the changed routes, templates and content. Apply only the rules they touch. Crawl the changed pages if the site runs. When there's an earlier crawl (a committed one, or the latest in `seo-audit/history/`), run `seo-diff.mjs` from it to the branch's crawl and include its regressions. Report regressions and new problems, nothing else.
+List the changed routes, templates and content. Apply only the rules they touch. Crawl the changed pages if the site runs, with `--out seo-audit/review-crawl.json` so the branch's crawl stays out of the history. When there's an earlier crawl (a committed one, or the latest in `seo-audit/history/`), run `seo-diff.mjs` from it to the branch's crawl and include its regressions. Report regressions and new problems, nothing else.
 
 ### 7. Launch mode
 
