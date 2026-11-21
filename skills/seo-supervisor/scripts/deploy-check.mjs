@@ -8,6 +8,7 @@ import { proxyNote } from "./lib/proxy.mjs";
 import { guarded, isPublic } from "./checks/outbound.mjs";
 import { tlsCert } from "./checks/tls.mjs";
 import { VERSION } from "./update-check.mjs";
+import { anomaliesIn, searchConsole } from "./google.mjs";
 
 const UA = "seo-supervisor-deploy-check/" + VERSION,
   TIMEOUT = 10000,
@@ -306,7 +307,128 @@ export async function deployCheck(
   };
 }
 
-const LABEL = { ok: "OK", warning: "WARNING", blocker: "BLOCKER", skipped: "SKIPPED" };
+// ---------- --search-console: Google Search clicks hour by hour ----------
+// Local thresholds: warn at a 30% fall in clicks, judged only with 100+ clicks a week before; with fewer, an ordinary
+// slow hour looks like a fall.
+const HOUR = 36e5,
+  WEEK = 7 * DAY,
+  DROP = 30,
+  MIN_CLICKS = 100;
+// Search Analytics takes dates, and returns hours, in Pacific Time.
+// https://developers.google.com/webmaster-tools/v1/searchanalytics/query
+const ptDate = t => new Date(t).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }); // YYYY-MM-DD
+const utc = t => new Date(t).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+const iso = t => new Date(t).toISOString();
+const pct = (a, b) => (b ? Math.round((a / b - 1) * 100) : null);
+const pc = p => (p == null ? "" : ` (${p > 0 ? "+" : ""}${p}%)`),
+  vs = (a, b, p) => `${a}, against ${b} in the same hours a week before${pc(p)}`;
+const SINCE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/i;
+
+/** Clicks in the hours since `since` (an ISO time; default Google's last 24 hours) beside the same hours a week before,
+ * as { state: "ok" | "warning" | "too-little-data" | "skipped", text, ... }. Never throws for Google's answers.
+ * @param {{ site: string, since?: string | null, now?: number, home?: string, endpoints?: any }} opts */
+export async function searchHourly({ site, since, now = Date.now(), home, endpoints }) {
+  const skip = text => ({ state: "skipped", text }),
+    t = since ? Date.parse(since) : null;
+  if (t != null && t > now) return skip(`--since (${since}) is in the future, so there's nothing to compare yet.`);
+  if (t != null && t < now - 2 * DAY)
+    return skip(
+      `--since (${since}) is more than 2 days ago. Google keeps hourly data for 10 days, and the same hours a week before have to fit in them. For an older deploy, change-check.mjs compares whole days.`,
+    );
+  let sc, res;
+  try {
+    sc = await searchConsole({ site, home, endpoints });
+    // Hourly data covers up to 10 days and may be partial; Google suggests comparing with the same day a week before.
+    // https://developers.google.com/search/blog/2025/04/san-hourly-data
+    res = await sc.query({
+      startDate: ptDate(now - 9 * DAY),
+      endDate: ptDate(now),
+      type: "web",
+      dimensions: ["hour"],
+      dataState: "hourly_all",
+    });
+  } catch (e) {
+    return skip(`Google Search wasn't read: ${sc ? sc.explain(e) : String(e.message).replace(/^google: /, "")}`);
+  }
+  const little = text => ({ state: "too-little-data", property: sc.prop, text: `${text} This isn't a drop.` });
+  const got = new Map();
+  for (const r of res.rows || []) {
+    const h = Date.parse(r.keys?.[0]);
+    if (!isNaN(h)) got.set(h, { clicks: Number(r.clicks) || 0, impressions: Number(r.impressions) || 0 });
+  }
+  if (!got.size)
+    return little("Too little data to tell: Search Console has no hourly data for this site in the last 10 days.");
+  // Up to Google's latest hour; the deploy's own hour is left out (Pacific offsets are whole hours, so hours line up).
+  const end = Math.max(...got.keys()) + HOUR,
+    from = t != null ? Math.ceil(t / HOUR) * HOUR : end - 24 * HOUR;
+  if (from >= end)
+    return little(
+      `Too early to tell: Google's hourly data so far ends at ${utc(end)}, before the first full hour after the deploy. It shows up a few hours late, so run this again later.`,
+    );
+  const none = { clicks: 0, impressions: 0 },
+    hours = []; // an hour with no row had no impressions
+  for (let h = from; h < end; h += HOUR)
+    hours.push({ hour: iso(h), ...(got.get(h) || none), weekBefore: got.get(h - WEEK) || none });
+  const sum = (k, wb) => hours.reduce((s, x) => s + (wb ? x.weekBefore[k] : x[k]), 0);
+  const after = { from: iso(from), to: iso(end), clicks: sum("clicks"), impressions: sum("impressions") };
+  const before = {
+    from: iso(from - WEEK),
+    to: iso(end - WEEK),
+    clicks: sum("clicks", true),
+    impressions: sum("impressions", true),
+  };
+  const change = { clicks: pct(after.clicks, before.clicks), impressions: pct(after.impressions, before.impressions) };
+  const span = `${hours.length} hour${hours.length === 1 ? "" : "s"} from ${utc(from)} to ${utc(end)}`,
+    imp = ` Impressions: ${after.impressions} against ${before.impressions}${pc(change.impressions)}.`;
+  // firstIncompleteHour is the first hour Google is still collecting; the API's prose spells it first_incomplete_hour.
+  const notes = [],
+    m = res.metadata || {},
+    open = Date.parse(m.firstIncompleteHour ?? m.first_incomplete_hour);
+  if (open < end)
+    notes.push(
+      `Google is still collecting the data for the hours from ${utc(Math.max(open, from))} on, so those numbers may still change.`,
+    );
+  for (const a of anomaliesIn(ptDate(from - WEEK), ptDate(end)))
+    notes.push(
+      `Google's "Data anomalies in Search Console" page says that ${a.from === a.to ? `on ${a.from}` : `from ${a.from} to ${a.to}`} ${a.what}. This overlaps the hours compared, so they may not be comparable: ${a.url}`,
+    );
+  const base = {
+    property: sc.prop,
+    after,
+    before,
+    change,
+    hours,
+    stillCollectingFrom: isNaN(open) ? null : iso(open),
+    notes,
+  };
+  if (before.clicks < MIN_CLICKS)
+    return {
+      ...base,
+      state: "too-little-data",
+      text: `Too little data to tell: ${before.clicks} Google Search clicks in the same hours a week before, and a fair comparison needs at least ${MIN_CLICKS} (our own minimum). This isn't a drop. The ${span} had ${after.clicks} clicks and ${after.impressions} impressions.`,
+    };
+  if (change.clicks <= -DROP)
+    return {
+      ...base,
+      state: "warning",
+      text: `Google Search clicks fell ${-change.clicks}% in the ${span}: ${vs(after.clicks, before.clicks)}.${imp} A fall of ${DROP}% or more is our own line for this warning. Look at what the deploy changed, then check again in a few hours.`,
+    };
+  return {
+    ...base,
+    state: "ok",
+    text: `Google Search clicks in the ${span}: ${vs(after.clicks, before.clicks, change.clicks)}.${imp}`,
+  };
+}
+
+const LABEL = { ok: "OK", warning: "WARNING", blocker: "BLOCKER", skipped: "SKIPPED", "too-little-data": "INFO" };
+const NOISY =
+  "Hourly data is fresh and noisy: a slow hour, a holiday or a Google update can move it, so take it as a hint, not proof. This part never fails the deploy check.";
+const hourlyOf = h => [
+  "",
+  "Google Search clicks, hour by hour, from your Search Console:",
+  `  ${LABEL[h.state].padEnd(8)} ${h.text}`,
+  ...[...(h.notes || []), ...(h.state === "skipped" ? [] : [NOISY])].map(n => `           ${n}`),
+];
 export const textOf = r =>
   [
     `Deploy check for ${r.site} (${r.seconds} s)`,
@@ -316,27 +438,41 @@ export const textOf = r =>
       : r.warnings
         ? `No blockers, ${r.warnings} warning${r.warnings === 1 ? "" : "s"}. Fix ${r.warnings === 1 ? "it" : "them"} soon; a full audit gives the detail.`
         : "Everything checked is fine.",
+    ...(r.searchConsole ? hourlyOf(r.searchConsole) : []),
   ].join("\n");
+
+const USAGE = `Usage: node deploy-check.mjs --site https://www.example.com [--json] [--search-console [--since 2026-11-21T14:30Z]]
+The site's address must start with http:// or https://.
+--search-console also compares Google Search clicks since the deploy with the same hours a week before, from your own
+Search Console (sign in first with node google.mjs connect). --since is when the deploy went out, with its time zone,
+at most 2 days ago; without it, the last 24 hours. It only warns: it never fails the check.`;
 
 if (isMain(import.meta.url)) {
   const argv = process.argv.slice(2),
     i = argv.indexOf("--site"),
     site = i >= 0 ? argv[i + 1] : null;
+  const j = argv.indexOf("--since"),
+    since = j >= 0 ? (argv[j + 1] ?? "") : null,
+    gsc = argv.includes("--search-console");
   let ok = false;
   try {
     ok = !!site && /^https?:$/.test(new URL(site).protocol);
   } catch {}
+  if (since != null && !(gsc && SINCE.test(since) && !isNaN(Date.parse(since)))) ok = false;
   if (!ok) {
-    console.error(
-      "Usage: node deploy-check.mjs --site https://www.example.com [--json]\nThe site's address must start with http:// or https://.",
-    );
+    console.error(USAGE);
     process.exitCode = 2;
   } else {
     const note = proxyNote();
     if (note) console.error("note: " + note);
-    const r = await deployCheck(String(site));
+    const [r, hourly] = await Promise.all([
+      deployCheck(String(site)),
+      gsc ? searchHourly({ site: String(site), since }) : null,
+    ]);
+    if (hourly) r.searchConsole = hourly;
     console.log(argv.includes("--json") ? JSON.stringify(r, null, 2) : textOf(r));
-    // Not process.exit(): exiting while fetch's sockets close crashes Node on Windows.
+    // Only blockers fail the run; the Search Console part never does. Not process.exit(): exiting while fetch's sockets
+    // close crashes Node on Windows.
     process.exitCode = r.blockers ? 1 : 0;
   }
 }
