@@ -68,3 +68,53 @@ A short checklist per page type, for planning a page, building one, or reviewing
 - The same name, address and phone as the Business Profile, with the most specific LocalBusiness type in its schema (LOCAL-05, LOCAL-06).
 - Every claim about the place is true: no invented local customers, reviews or addresses (LOCAL-07).
 - Linked from the locations hub, and to the services offered there (LINK-03).
+
+## Comparison ("X vs Y", "alternatives to X", "best X")
+- Only competitors the owner names, and only facts from their own pages, linked and dated (SVC-05, SVC-08).
+- A short verdict first, then the table, then a section per criterion that says where each one wins (CONTENT-06, SVC-08).
+- Full prices as of a date, hidden costs included, and ratings from review sites as linked text, never in schema (SVC-08).
+- Calls to action after the verdict, after the table and at the end, never inside a competitor's section (SVC-08).
+- Article (or WebPage) and ItemList schema, with no invented scores or ratings (SVC-05, SCHEMA-04).
+
+## Case study
+Real work for a real client, published with the client's permission. Never invent a client, a number or a quote (CONTENT-10, TRUST-05). Skip any part the owner has no facts for. This is a common order, not a template; follow what the story needs:
+1. The result first, in one line: what changed, measured, and over what period.
+2. The client: who they are. Their name and logo only with permission.
+3. The challenge, in the client's terms.
+4. The approach: what was done, and by whom.
+5. The measured results: how they were measured, and the period. Before and after only from real data (CONTENT-10).
+6. The timeline.
+7. A testimonial in the client's own words, with their name, role and permission. It's never rewritten (`rewrite.md`).
+8. A next step into the matching service (SVC-04).
+
+Don't mark the testimonial up as a Review to win stars: Google treats reviews a business controls about itself as self-serving, and those pages are "ineligible for star review feature" (Google's review snippet docs; SVC-03, SCHEMA-04).
+
+## Hybrid (service plus education)
+For a phrase whose results mix guides and service pages (`strategy.md`, INTENT-01).
+- The offer first, briefly: what the service is, who it's for, the price or how pricing works, and the next step (CONTENT-06, SVC-02).
+- Then the teaching part: the questions searchers ask, each answered fully, with sources for facts (CONTENT-06, CONTENT-10).
+- Calls to action after the offer and at the end, not in every section.
+- A named writer or reviewer with credentials, since the teaching is advice (CONTENT-07).
+- Service schema for the offer (SVC-03). No schema for content the page doesn't show (SCHEMA-04).
+- One page, not a service page and a guide competing for the same phrase (INTENT-02).
+
+## Language or region version
+Read each version as a local customer would. The crawler checks hreflang and untranslated main text (META-08); these it can't:
+- **Money:** prices in that market's currency, written the local way.
+- **Units:** metric or imperial, and sizes (clothing, paper) as that market uses them.
+- **Dates, times and numbers:** the local format (21/11/2026 or 11/21/2026; 1,000.50 or 1.000,50).
+- **Local law:** the privacy and cookie notices, returns, warranty and claims fit that country. Legal text is the owner's (or their lawyer's): flag it, never write it.
+- **Brands and examples:** products, payment methods, carriers and examples that exist in that market, not ones only the home market knows.
+- **Untranslated bits:** buttons, form labels and error messages, alt text, the title and description, schema text, and the emails the site sends. `untranslated-copy` covers only the main text.
+- **Contact:** a local phone number and address where the business has one.
+
+Report what's wrong as owner items with `fixBy: "owner"`. Never machine-translate (SKILL.md fix step 12).
+
+**Targeting a country.** Google says country-code domains (`example.de`) "provide a strong signal to both users and search engines that your site is explicitly intended for a certain country". A `.com` with a folder per country (`/de/`) works too. Other signals Google names: local addresses and phone numbers, the local language and currency, links from other local sites, and a Business Profile. Google ignores locational meta tags. hreflang does a different job: it tells Google which version suits which language or region, and Google still uses it. Search Console's country setting is gone: "The International Targeting report has been deprecated", and its country targeting "is no longer supported". Sources: Google's "Managing multi-regional and multilingual sites" (developers.google.com/search/docs/specialty/international/managing-multi-regional-sites) and Search Console Help, "The International Targeting report is deprecated" (support.google.com/webmasters/answer/12474899), both checked 21 Nov 2026.
+
+**Google features that show only in some regions** (Google's "Regional differences in Search experience", developers.google.com/search/docs/appearance/aggregator-features, checked 21 Nov 2026):
+- **EEA:** aggregator and supplier units for hotels, flights, ground transport, local businesses, things to do and products; structured data carousels, which need structured data markup; job sites features; and an "ecosystem carousel" next to weather, sports, finance and translate answers.
+- **Türkiye:** places sites features, with links to aggregator sites for hotels and local businesses, and structured data carousels for hotels, local businesses and vacation rentals.
+- **South Africa:** a badge and refinement chip for South African businesses on some kinds of searches, and structured data carousels.
+
+Results checked from one country can look different from another, so record the market with the results (`strategy.md`). Never promise one of these features outside its region.

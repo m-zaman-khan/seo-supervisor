@@ -20,6 +20,11 @@ For each audience, check up to 5 key pages:
 
 Read each page as a visitor sees it: the running copy you crawled, or the live page. Read the whole page, not just the template.
 
+**Before the checklist, read the reviews and the voice:**
+- **Customer reviews:** the ones the site shows, or ones the owner shares (a Business Profile export, a review platform's export, support emails). Don't go looking for them on other sites. They show, in customers' words, what each audience asks and worries about, so you know what to look for under "Their questions" and "Worries". The `has` and `missing` lists still describe only the page.
+- **Reviews never add an audience** or a want the owner didn't name.
+- **The brand's voice:** read it as `rewrite.md` says ("Read the voice first"), so any wording you later suggest for a missing item sounds like the site.
+
 ## 3. The checklist
 
 For each audience and page, ask:

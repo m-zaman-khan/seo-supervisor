@@ -5,9 +5,11 @@
 > Target phrases come only from a recorded source: the last approved plan's `target`, the approved profile's "Target phrases" table (a draft profile doesn't count), or a page's own Search Console export. Pages without one are skipped and counted under Limits. INTENT-01 needs outside checks on (the phrase goes to a search provider); INTENT-02 to 04 come from `gsc-import.mjs`, which reads local files only.
 
 ### INTENT-01 · The page type matches what ranks · medium
-- **Check:** for each key page with a recorded target phrase, search the phrase and record the engine, the date and the type of each of the top 10 results (guide, product, category, tool, local listing, forum, video). Method: `strategy.md`.
-- **Pass:** the page is the kind of page most top results are. A product page aiming at a phrase where guides rank, or a blog post aiming at a phrase where product listings rank, fails.
+- **Check:** for each key page with a recorded target phrase, search the phrase and record the engine, the date and the type of each of the top 10 results (guide, service page, landing page, hybrid, product, category, tool, local listing, forum, video), plus the search features shown. Method: `strategy.md`.
+- **Pass:** the page is the kind of page most top results are. A product page aiming at a phrase where guides rank, or a blog post aiming at a phrase where product listings rank, fails. Where guides and service pages share the results, a hybrid page (service plus education, `page-types.md`) passes.
+- **One page:** when the owner names a single URL, run this check for that page alone and add the wireframe: `strategy.md`, "One page".
 - **Fix:** change the page to fit the intent (add the guide content, or the comparison table), or aim it at a phrase whose results match what it is. Content changes are the owner's call: set `fixBy: "owner"`.
+- **Never** from the phrase's words alone: an intent read from words like "how" or "best" is a guess for planning, never evidence for this finding.
 
 ### INTENT-02 · One page per query · medium
 - **Check:** `gsc-import.mjs` with per-page exports: two or more of the site's pages getting impressions for the same query.

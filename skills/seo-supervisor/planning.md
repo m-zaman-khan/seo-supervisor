@@ -131,7 +131,7 @@ Run fix mode (SKILL.md step 5) on every finding in `plan.alsoFixes`, most seriou
 
 ## 6. Draft the content the owner must approve
 
-- **One draft per page:** for each row that needs copy, write `seo-audit/drafts/<slug>.md`. It starts with the brief from `strategy.md` (Intent · Target and related phrases · Outline · Questions to answer · Facts needed from the owner · Internal links in and out), followed by the copy: an intro, the sections and FAQs based on real customer questions. The owner approves both with one yes.
+- **One draft per page:** for each row that needs copy, write `seo-audit/drafts/<slug>.md`. It starts with the brief from `strategy.md` (Intent · Target and related phrases · Title and description · What's new here · Outline · Questions to answer · Facts needed from the owner · Internal links in and out), followed by the copy: an intro, the sections and FAQs based on real customer questions. The owner approves both with one yes.
 - **Facts:** use only facts from the site or the owner. Write anything missing as a visible placeholder, such as `[owner: a real customer result to quote]`. Never invent it.
 - **Linking:** set the row's `owner.draft` to the file.
 - **Creating the page:** new pages other than missing parents are created only after the owner approves their draft. On a CMS site, create them as CMS drafts, with the go-ahead.

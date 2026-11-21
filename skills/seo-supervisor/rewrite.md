@@ -11,6 +11,15 @@ It runs only when the owner asks: "rewrite this page", or "rewrite what the writ
 
 To find each passage, use the notes' `examples`. Each long sentence is quoted by its first 12 words, and each stock phrase with a few words around it. Search the project's files for them. If a quote doesn't match, search for a few of its words: the source may use other quote marks, or markup. If you can't find the text in the project or the CMS, say so and ask the owner. Never edit built or live HTML.
 
+## Read the voice first
+
+Before you change a word, learn how the brand already speaks:
+- **A style or brand guide:** in the project (look for "brand", "style" or "voice" in file names and in the profile), or one the owner gives you.
+- **Without one, the site's own pages:** the home page, the about page and a page the owner likes. Note "we" or the company name, "you" or "customers", formal or casual, UK or US spelling, and words the brand always or never uses.
+- **Customer reviews:** the ones the site shows, or ones the owner shares with you. Don't go looking for reviews on other sites. Reviews show the words customers use for the problem and the result: when a plain word is needed, prefer theirs. Don't add review quotes to the text you rewrite, and never change what a review says.
+
+Keep that voice in every rewrite. A plain rewrite in a different voice is a worse rewrite. If the voice and plain language pull apart, for example a brand that likes long words, ask the owner which wins.
+
 ## What to change
 
 - **Long sentences** (over about 35 words): split them.
