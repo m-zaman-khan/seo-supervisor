@@ -3,12 +3,13 @@
 ### LAUNCH-01 · Crawl staging before launch · high
 - Run the crawler against staging (with auth, or a production build on localhost). Zero blockers and zero high findings in CRAWL, URL, REND and MAP before go-live.
 - Check the redirect map for the old site: every old URL that has traffic or backlinks 301s to its closest new page in one hop, and nothing that used to get traffic returns 404 (old blog posts, printed short links like `/go/review`).
+- **Moving to a new domain:** after the 301s are live, submit Change of Address in Search Console for every variant of the old domain (www, non-www and each subdomain), even ones not in use, each verified there, and keep the redirects at least a year. It isn't needed for http to https, www to non-www on the same domain, or path changes (Google's site move guide, variants added 17 Jun 2026).
 
 ### LAUNCH-02 · Launch day · high
 1. Switch the indexing variable on and run the production noindex check (CRAWL-03).
 2. Confirm `http` → `https` and the host redirects (URL-03).
 3. Submit the sitemap in Search Console and Bing, and ping IndexNow (`scripts/indexnow.mjs`, after deploy and with the owner's yes).
-4. Run URL Inspection on the home page, the main hubs and the 10 most important pages, and request indexing.
+4. Run URL Inspection on the home page, the main hubs and the 10 most important pages, and request indexing. Not Google's Indexing API: it "can only be used to crawl pages with either JobPosting or BroadcastEvent embedded in a VideoObject" (job and livestream pages; Indexing API quickstart, updated 7 Nov 2026).
 5. Re-run the crawler against production with `--concurrency 2`.
 
 ### LAUNCH-03 · The build fails on SEO regressions · high
@@ -42,6 +43,8 @@
 ### LAUNCH-08 · Traffic drops are checked against Google updates first · medium
 - Before diagnosing a drop as technical, compare its dates with the Google Search Status Dashboard (status.search.google.com). With outside checks on, `scripts/google-updates.mjs` reads it live for the period (`googleUpdates`, one line in the report). With them off, send the owner to the dashboard to check the dates themselves. Don't list update dates from memory: they go out of date.
 - Wait at least a week after an update finishes, compare by search type, and expect recovery to take months, through better content rather than technical tweaks.
+- **Smaller core updates aren't announced:** Google says it also makes smaller core updates that "are not announced because they aren't widely noticeable" (core updates doc, section added 9 Dec 2025). So a drop with no update on the dashboard can still be one, and a recovery can come between big updates.
+- **Search Console impressions in mid-September 2025 (third-party reports only):** Search Engine Roundtable (22 Sep 2025) reports that when Google stopped honouring the `&num=100` results parameter, many sites saw desktop impressions fall and average position rise. It matters only when comparing a period before September 2025 with one after.
 - **Search Console reports worth using:** Insights, query groups, the branded-queries filter, annotations, and Generative AI performance.
 - **EU click rates around March 2024:** from March 2024, Google changed its results in Europe for the Digital Markets Act: new units pointing to comparison sites, and some features removed, such as the Google Flights unit (blog.google, "Complying with the Digital Markets Act", 5 March 2024). Google expected more traffic to go to large aggregators and less to direct suppliers. Don't compare EU click-through rates from before March 2024 with later ones.
 

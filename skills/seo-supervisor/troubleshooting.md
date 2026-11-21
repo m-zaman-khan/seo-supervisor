@@ -50,6 +50,7 @@ It lists Node, Chrome or Edge, the optional add-ons, the settings folder, what's
 | "Not scored: no checked rules in this file" | The JSON has no findings and no passed rules | Copy `findings` and `passed` from the crawl into `seo-audit.json` (`report-format.md`). |
 | `--pdf` says no Chrome or Edge was found | Printing uses the installed browser | See "Chrome or Edge isn't installed" above. The HTML and Markdown are written anyway. |
 | The score looks different from Lighthouse or another tool | It's SEO Supervisor's own score, not Google's | It counts only the rules this audit checked (`report-format.md`, "The score"). |
+| "The site has no llms.txt" in the findings | A missing llms.txt is a low finding (MAP-07): a map of the key pages for AI tools, not a ranking factor | Add one from `examples/snippets.md`, or turn the check off with `"checks": { "off": ["llms-txt-missing"] }` in `seo-audit/settings.json`. |
 | An update notice every week | `update-check.mjs` asks npm once a week | `node update-check.mjs off`, or set `SEO_SUPERVISOR_NO_UPDATE_CHECK=1`. |
 
 Still stuck? Run the failing script on its own: each one prints its usage and a plain reason when it stops.

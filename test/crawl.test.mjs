@@ -1166,7 +1166,7 @@ test("Chinese, Japanese and Thai pages are counted in words, so thin-page and ne
   assert.ok(!pathsOf(r, "title-mismatch").includes("/ja/"), "“Boiler” is on the page, written next to Japanese");
 });
 
-test("a missing llms.txt is a note, not a finding (it's optional); a well-formed one passes MAP-07", async () => {
+test("a missing llms.txt is a low MAP-07 finding, not a note; a well-formed one passes MAP-07", async () => {
   const [none, good] = await Promise.all([
     crawlOnePage(),
     crawlSite(two(), {
@@ -1178,9 +1178,9 @@ test("a missing llms.txt is a note, not a finding (it's optional); a well-formed
       },
     }),
   ]);
-  assert.ok(!none.findings.some(f => f.rule === "MAP-07"));
-  assert.ok(!none.passed.some(p => p.rule === "MAP-07"), "nothing was measured, so MAP-07 doesn't pass either");
-  assert.ok(none.notes.some(n => /llms\.txt/.test(n) && /optional/.test(n)));
+  assert.ok(none.findings.some(f => f.check === "llms-txt-missing" && f.rule === "MAP-07" && f.severity === "low"));
+  assert.ok(!none.passed.some(p => p.rule === "MAP-07"));
+  assert.ok(!none.notes.some(n => /llms\.txt/.test(n)), "no llms.txt note");
   assert.ok(good.passed.some(p => p.rule === "MAP-07"));
 });
 
@@ -1193,7 +1193,7 @@ test("the rule text matches the checks: short titles, and Book actions still in 
   const sd = read("structured-data.md");
   assert.doesNotMatch(sd.split("**Gone:**")[1].split("\n>\n")[0], /Book/);
   assert.match(sd, /Book actions[^\n]*5 Nov 2025/);
-  assert.match(read("sitemaps-robots.md").split("### MAP-07 ·")[1].split("\n### ")[0], /note/);
+  assert.match(read("sitemaps-robots.md").split("### MAP-07 ·")[1].split("\n### ")[0], /`llms-txt-missing` \(low\)/);
 });
 
 test("every indexable page is checked for a language, not only the home page", async () => {

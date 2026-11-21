@@ -939,6 +939,16 @@ const CHECKS = {
     "The site returns Markdown to agents that ask for it, but without `Vary: Accept` a cache or CDN can serve that Markdown to browsers, or HTML to agents.",
     "Send `Vary: Accept` with every response whose body depends on the Accept header.",
   ],
+  // The quote is from Google's AI guide; in the llmstxt.org format only the H1 is required.
+  // https://developers.google.com/search/docs/fundamentals/ai-optimization-guide
+  // https://llmstxt.org
+  "llms-txt-missing": [
+    "MAP-07",
+    "low",
+    () => "The site has no llms.txt",
+    "llms.txt is a short Markdown map of a site's key pages, served at /llms.txt. Some AI tools and coding assistants read it to find their way around a site, which matters most for developer docs and API sites. SEO Supervisor asks for one because it makes the site easier for AI tools to read. It isn't a ranking factor: Google says an llms.txt file “will neither harm nor help your site's visibility or rankings in Google Search”, and no search engine says it ranks pages by it.",
+    'Serve a plain-text file at /llms.txt: a `# Site name` heading, a one-line `>` summary, then Markdown links to the key pages (`- [Page](https://…): one sentence`). A copy-ready example is in `examples/snippets.md`. Build it from the same data as the sitemap so it stays current. A site that doesn\'t want one can turn this check off in `seo-audit/settings.json`: `"checks": { "off": ["llms-txt-missing"] }`.',
+  ],
   "llms-structure": [
     "MAP-07",
     "low",
@@ -2943,14 +2953,17 @@ if (probe.status === 200)
     probe.chain[0].url,
     probe.chain.length > 1 ? `redirected to ${probe.finalUrl} (200)` : "returned 200",
   );
-// llms.txt is optional (MAP-07), so a missing one is a note, not a finding; one that exists has its format checked.
+// llms.txt (MAP-07): a missing one is only low and never a ranking fix, as Google says it neither harms nor helps
+// rankings. An HTML page there counts as missing; a file that exists has its format checked.
+evalRules("MAP-07");
 const llms = await get(START_ORIGIN + "/llms.txt", { manual: false });
 if (llms.status !== 200 || /<html/i.test(llms.body || ""))
-  notes.push(
-    `No /llms.txt (${llms.status === 200 ? "it returns an HTML page" : `status ${llms.status}`}). It's optional: Google ignores it and no major AI crawler documents reading it, so it isn't scored.`,
+  add(
+    "llms-txt-missing",
+    START_ORIGIN + "/llms.txt",
+    llms.status === 200 ? "returns an HTML page instead" : `status ${llms.status}`,
   );
 else {
-  evalRules("MAP-07");
   const problems = [
     !/^# \S/.test(llms.body.replace(/^\uFEFF/, "").trimStart()) && "no # heading first",
     !/\[[^\]]+\]\([^)\s]+\)/.test(llms.body) && "no Markdown links",

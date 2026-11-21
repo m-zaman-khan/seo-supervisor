@@ -1,6 +1,6 @@
 # Performance and Core Web Vitals (PERF)
 
-> Thresholds checked **16 Nov 2026**, unchanged since INP replaced FID (March 2024): LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1, measured at the 75th percentile of real mobile visits.
+> Thresholds checked **16 Nov 2026**, unchanged since INP replaced FID (March 2024): LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1, measured at the 75th percentile of real mobile visits. Claims that "good" LCP is now 2.0 s have no Google source: Google's Core Web Vitals page still says 2.5 s (updated 10 Dec 2025, read 22 Nov 2026).
 
 > Google says only Core Web Vitals are used by its ranking systems; other page-experience factors (HTTPS, popups) "don't directly help your website rank". Rate those by their effect on visitors and crawling, not as ranking levers.
 
