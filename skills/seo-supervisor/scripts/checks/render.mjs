@@ -128,7 +128,8 @@ export async function startGuard(siteUrl, { dns = lookup, env = process.env } = 
     sockets = new Set();
   const refuse = what => {
     if (blocked.length < 100) blocked.push(what);
-  }; // a request still being checked when Chrome hangs up or the guard closes opens nothing
+  };
+  let closed = false; // a request still being checked when Chrome hangs up or the guard closes opens nothing
   // Node connects to the checked addresses only, trying each in turn (localhost may be ::1 or 127.0.0.1).
   const pinned = list => (name, opts, cb) =>
     opts?.all
@@ -143,6 +144,7 @@ export async function startGuard(siteUrl, { dns = lookup, env = process.env } = 
       u = new URL(req.url);
       ips = /^http:$/.test(u.protocol) && (await check(u.hostname));
     } catch {}
+    if (closed || res.destroyed) return res.destroy();
     if (!ips) {
       if (u) refuse(u.href);
       res
@@ -169,22 +171,29 @@ export async function startGuard(siteUrl, { dns = lookup, env = process.env } = 
       },
     );
     up.on("error", () => res.destroy());
+    res.on("close", () => up.destroy());
     req.pipe(up);
   });
   server.on("connect", async (req, sock, head) => {
+    let target, ips, up;
     sockets.add(sock);
-    sock.on("close", () => sockets.delete(sock)).on("error", () => {});
-    let target, ips;
+    sock
+      .on("close", () => {
+        sockets.delete(sock);
+        up?.destroy();
+      })
+      .on("error", () => {});
     try {
       target = new URL(`http://${req.url}`);
       ips = await check(target.hostname);
     } catch {}
+    if (closed || sock.destroyed) return sock.destroy();
     if (!ips) {
       refuse(req.url);
       sock.end("HTTP/1.1 403 Forbidden\r\n\r\n");
       return;
     }
-    const up = connect(
+    up = connect(
       { host: target.hostname.replace(/^\[|\]$/g, ""), port: Number(target.port) || 443, lookup: pinned(ips) },
       () => {
         sock.write("HTTP/1.1 200 Connection Established\r\n\r\n");
@@ -193,8 +202,7 @@ export async function startGuard(siteUrl, { dns = lookup, env = process.env } = 
         sock.pipe(up);
       },
     );
-    sockets.add(up);
-    up.on("close", () => sockets.delete(up)).on("error", () => sock.destroy());
+    up.on("close", () => sock.destroy()).on("error", () => sock.destroy());
   });
   await new Promise(ok => server.listen(0, "127.0.0.1", ok));
   const port = server.address().port;
@@ -207,6 +215,7 @@ export async function startGuard(siteUrl, { dns = lookup, env = process.env } = 
       "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
     ],
     close: () => {
+      closed = true;
       for (const s of sockets) s.destroy();
       server.closeAllConnections();
       return new Promise(ok => server.close(() => ok()));

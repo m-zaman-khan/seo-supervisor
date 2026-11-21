@@ -482,6 +482,26 @@ test("the guard proxy lets the site's own addresses through and refuses private 
   );
 });
 
+test("a request still being checked when Chrome hangs up or the guard closes opens no connection, so the audit can exit", async () => {
+  // 192.0.2.1 (TEST-NET-1) never answers: an upstream connection to it would keep the process alive for many seconds.
+  const dir = tmp(),
+    script = join(dir, "late.mjs"),
+    at = JSON.stringify(new URL("../skills/seo-supervisor/scripts/checks/render.mjs", import.meta.url).href);
+  writeFileSync(
+    script,
+    `import { startGuard } from ${at};
+import { connect } from "node:net";
+const slow = (name, opts, cb) => setTimeout(() => cb(null, [{ address: "192.0.2.1", family: 4 }]), 300);
+const g = await startGuard("http://127.0.0.1:5000/", { dns: slow, env: {} });
+const c = connect(g.port, "127.0.0.1", () => { c.write("CONNECT slow.test:443 HTTP/1.1\\r\\nHost: slow.test:443\\r\\n\\r\\n"); setTimeout(() => { c.destroy(); g.close(); }, 50); });
+const h = connect(g.port, "127.0.0.1", () => h.write("GET http://slow.test/ HTTP/1.1\\r\\nHost: slow.test\\r\\n\\r\\n"));
+h.on("error", () => {});`,
+  );
+  const t0 = Date.now();
+  await node([script], { timeout: 15000 });
+  assert.ok(Date.now() - t0 < 5000, `exited after ${Date.now() - t0} ms`);
+});
+
 test("the render and Lighthouse get the guard's flags in place of a proxy, and the guard closes after the run", async () => {
   const args = renderArgs(
     "/tmp/p",
