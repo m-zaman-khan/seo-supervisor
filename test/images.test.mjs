@@ -336,6 +336,15 @@ test("images.mjs is a dry run without --yes and never touches originals", async 
   });
   assert.match(yesNoAddOn.stdout, /npx seo-supervisor --with-image-tools/);
   assert.deepEqual(p.files(), before, "without the add-on nothing is written, and it exits 0");
+  const moved = join(tmp(), "settings"),
+    there = await node([IMAGES, "--crawl", p.crawl, "--root", p.root], {
+      env: { ...env(home), SEO_SUPERVISOR_HOME: moved },
+      cwd: p.dir,
+    });
+  assert.ok(
+    there.stdout.includes(join(moved, "tools")),
+    "the add-on's folder is named as it really is, with SEO_SUPERVISOR_HOME",
+  );
 
   fakeSharp(home);
   await node([IMAGES, "--crawl", p.crawl, "--root", p.root, "--avif"], { env: env(home), cwd: p.dir });

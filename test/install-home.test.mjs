@@ -120,3 +120,31 @@ test("findLighthouse looks in the settings folder SEO_SUPERVISOR_HOME names", ()
   writeFileSync(join(bin, "lighthouse"), "");
   assert.equal(findLighthouse({ SEO_SUPERVISOR_HOME: home, PATH: "" }, "/nowhere", "linux"), join(bin, "lighthouse"));
 });
+
+test("a bad SEO_SUPERVISOR_CLIENT or SEO_SUPERVISOR_HOME gives a plain message, not a stack trace", async () => {
+  const { SCRIPTS, node } = await import("./helpers.mjs");
+  for (const [script, args] of [
+    ["connect-keys.mjs", ["status"]],
+    ["google.mjs", ["status"]],
+  ])
+    for (const extra of [{ SEO_SUPERVISOR_CLIENT: "acme corp" }, { SEO_SUPERVISOR_HOME: "relative/dir" }]) {
+      const env = { ...process.env, SEO_SUPERVISOR_CLIENT: "", SEO_SUPERVISOR_HOME: "", ...extra };
+      await assert.rejects(
+        node([join(SCRIPTS, script), ...args], { env }),
+        e => e.code === 2 && /SEO_SUPERVISOR_(CLIENT|HOME) must be/.test(e.stderr) && !/\n\s+at /.test(e.stderr),
+        `${script} ${JSON.stringify(extra)}`,
+      );
+    }
+});
+
+test("a bad SEO_SUPERVISOR_HOME doesn't crash the Lighthouse lookup a crawl makes", () => {
+  assert.equal(findLighthouse({ SEO_SUPERVISOR_HOME: "relative/dir", PATH: "" }, "/nowhere", "linux"), null);
+});
+
+test("odd outside answers are skipped, not fatal: an entity past Unicode in a feed, a null RDAP service", async () => {
+  const { blogPosts } = await import("../skills/seo-supervisor/scripts/google-updates.mjs");
+  const xml = `<rss><channel><item><title>Bad &#x110000; title</title><link>https://developers.google.com/search/blog/x</link><pubDate>Mon, 02 Nov 2026 10:00:00 GMT</pubDate></item></channel></rss>`;
+  assert.doesNotThrow(() => blogPosts(xml, { from: "2026-11-01", to: "2026-11-30" }));
+  const { serverFor } = await import("../skills/seo-supervisor/scripts/rdap.mjs");
+  assert.equal(serverFor([null, [["com"], ["https://rdap.example/"]]], ["acme", "com"])?.base, "https://rdap.example/");
+});

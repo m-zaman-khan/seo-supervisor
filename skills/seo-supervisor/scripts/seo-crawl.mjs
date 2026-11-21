@@ -1310,7 +1310,7 @@ const blocked = new Map(); // URL -> why it wasn't fetched
 const publicLookup = promisify(guarded(lookup));
 // A crawl of this machine may reach its other ports (a dev server redirecting to its API or asset server). Other
 // private addresses and cloud metadata stay blocked even then.
-const loopback = h => /^(localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[::1\])$/i.test(h);
+const loopback = h => /^(localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|0\.0\.0\.0|\[::1\])$/i.test(h); // 0.0.0.0: what Django and Rails print
 async function offLimits(u) {
   let x;
   try {
@@ -1895,7 +1895,6 @@ function analyze(url, html, headers, xRobotsLines) {
     titleCount,
     placeholder: phMatch ? phMatch[0] : null,
     hashLinks: anchors.filter(l => !l.href || l.href === "#" || /^javascript:/i.test(l.href)).length,
-    mixed: url.startsWith("https:") && /\ssrc\s*=\s*["']http:\/\//i.test(bodyRaw),
     scripts: (html.match(/<script\b[^>]*\bsrc=/gi) || []).length,
     bytes: Buffer.byteLength(html),
     noStore: /\bno-store\b/i.test(headers.get("cache-control") || ""),
@@ -1977,7 +1976,6 @@ function analyze(url, html, headers, xRobotsLines) {
 
   // http:// files in the head and body, judged later site-wide against the public origin.
   rec.insecure = insecureResources(html, headers.get("content-security-policy") || "");
-  rec.mixed = false;
 
   // Hrefs and srcs no URL parser can read, which the crawl would otherwise skip silently.
   rec.badUrls = [
@@ -2811,7 +2809,9 @@ else {
 // A Markdown response must vary on Accept so caches keep it apart from the HTML. AI-05 counts as checked only when
 // the site serves Markdown; otherwise the code-level check decides it.
 try {
+  // The Markdown request isn't followed, so only the crawled URL's own answer counts.
   const md = await fetch(START.href, {
+    redirect: "manual",
     headers: { "user-agent": UA, accept: "text/markdown" },
     signal: AbortSignal.timeout(15000),
   });
@@ -3098,7 +3098,6 @@ for (const p of htmlPages) {
   if (p.titleCount > 1) add("title-multiple", u, `${p.titleCount} <title> tags`);
   if (p.placeholder) add("placeholder-text", u, `“${p.placeholder}”`);
   if (p.hashLinks) add("href-hash", u, `${p.hashLinks} link(s)`);
-  if (p.mixed) add("mixed-content", u);
   if (!p.lang) add("lang-missing", u);
   if (sitewide.title.has(p)) add("title-missing-sitewide", u, p.title ? `“${p.title}”` : undefined);
   else if (!p.title) add("title-missing", u);
@@ -4040,7 +4039,9 @@ for (const p of htmlPages)
     const problems = cookieProblems(c, { https: p.finalUrl.startsWith("https:") });
     if (problems.length) add("cookie-flags", p.finalUrl, `“${name}”: ${problems.join(", ")}`);
   }
-const maxAge = /max-age\s*=\s*"?(\d+)/i.exec(home?.headers?.get("strict-transport-security") || "")?.[1];
+// A header browsers ignore is hsts-invalid and nothing else. https://www.rfc-editor.org/rfc/rfc6797#section-8.1
+const stsHeader = home?.headers?.get("strict-transport-security") || "",
+  maxAge = hstsRead(stsHeader)?.invalid ? null : /max-age\s*=\s*"?(\d+)/i.exec(stsHeader)?.[1];
 if (maxAge != null && +maxAge < 31536000) {
   const d = Math.round(maxAge / 86400);
   add(
@@ -4622,6 +4623,7 @@ else if (AI_PROBE)
         .filter(([, i]) => i.ai)
         .map(([s]) => s)
         .slice(0, 20),
+      aiCount: info.filter(([, i]) => i.ai).length,
       c2pa: info.filter(([, i]) => i.c2pa).length,
       noCreator: info
         .filter(([, i]) => !i.creator)
@@ -4641,6 +4643,7 @@ else if (AI_PROBE)
         .filter(([, i]) => i.uncached)
         .map(([s]) => s)
         .slice(0, 20),
+      uncachedCount: info.filter(([, i]) => i.uncached).length,
       cdn: info.map(([, i]) => i.cdn).find(Boolean) || null,
       otherHosts: Object.fromEntries(
         Object.entries(hosts)

@@ -1462,7 +1462,7 @@ if (isMain(import.meta.url)) {
     if (n) console.error("note: " + n);
   } // once, before any request is sent
   process.exitCode = await main(process.argv.slice(2)).then(null, e => {
-    if (!(e instanceof Fail)) throw e;
+    if (!(e instanceof Fail) && e.code !== "SEO_SETTINGS") throw e;
     console.error(e.message);
     return 2;
   });

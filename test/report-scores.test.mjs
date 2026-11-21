@@ -544,3 +544,27 @@ test("page scores match pages by path, so a local crawl's evidence still counts"
   const { html } = await renderAudit(local);
   assert.match(html, /Page scores/, "the panel shows for a local crawl too");
 });
+
+test("image counts are the real totals, not the 20 examples listed", async () => {
+  const data = JSON.parse(readFileSync(SAMPLE, "utf8")),
+    urls = Array.from({ length: 20 }, (_, i) => `https://example.com/img/${i}.jpg`);
+  data.media = {
+    imageCache: { checked: 60, uncached: urls, uncachedCount: 50 },
+    imageCredits: { read: 60, creator: 3, ai: urls, aiCount: 35, c2pa: 0, noCreator: [] },
+  };
+  const { md } = await renderAudit(data);
+  assert.match(md, /50 of 60 images are sent with no cache lifetime/);
+  assert.match(md, /35 are labelled as made with AI/);
+});
+
+test("the HSTS preload and Search Central lines sit under their own Markdown headings", async () => {
+  const data = JSON.parse(readFileSync(SAMPLE, "utf8"));
+  data.hstsPreload = { ready: false, missing: ["preload"] };
+  data.googleUpdates = {
+    ...(data.googleUpdates || {}),
+    posts: [{ title: "A launch", date: "2026-11-02", url: "https://developers.google.com/search/blog/x" }],
+  };
+  const { md } = await renderAudit(data);
+  assert.match(md, /## HSTS preload\n\nHSTS preload: not ready yet/);
+  assert.match(md, /## Google Search Central\n\nGoogle Search Central announcements in this period/);
+});

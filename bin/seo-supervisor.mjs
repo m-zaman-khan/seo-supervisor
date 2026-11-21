@@ -36,10 +36,10 @@ With no options it asks where to install and for which agents.
   --yes, -y         No questions: the agents it finds (Claude Code if none), user scope
   --uninstall       Remove what this installer added, in the chosen scope (user by default)
   --force           Replace a skill folder or command file that isn't SEO Supervisor's
-  --with-lighthouse Also install the optional Lighthouse add-on (about 170 MB, in ~/.seo-supervisor/tools, not your project)
+  --with-lighthouse Also install the optional Lighthouse add-on (about 170 MB, in the settings folder's tools: ~/.seo-supervisor/tools, or SEO_SUPERVISOR_HOME; not your project)
   --no-lighthouse   Don't ask about Lighthouse
-  --with-image-tools Also install the optional image add-on, sharp (about 20 MB, in ~/.seo-supervisor/tools), which scripts/images.mjs uses to convert images to WebP and AVIF
-  --with-browser    Also install Chrome for Testing (in ~/.seo-supervisor/tools), for containers and CI with no Chrome or Edge
+  --with-image-tools Also install the optional image add-on, sharp (about 20 MB, in the settings folder's tools), which scripts/images.mjs uses to convert images to WebP and AVIF
+  --with-browser    Also install Chrome for Testing (in the settings folder's tools), for containers and CI with no Chrome or Edge
   --zip [file]      Only write the skill as a zip (seo-supervisor.zip), to upload to claude.ai or the Claude desktop app
   --version         Print the version
 
@@ -101,7 +101,14 @@ if (opts.version) {
 
 const c = { home: homedir(), cwd: process.cwd(), env: process.env };
 const show = p => (p.startsWith(c.home) ? "~" + p.slice(c.home.length) : p).replace(/\\/g, "/");
-const TOOLS = toolsDir(c.env, c.home); // optional add-ons, outside the package and the project
+let TOOLS; // optional add-ons, outside the package and the project
+try {
+  TOOLS = toolsDir(c.env, c.home);
+} catch (e) {
+  if (e.code !== "SEO_SETTINGS") throw e;
+  console.error(e.message);
+  process.exit(2);
+}
 let scope = opts.scope || (opts.project ? "project" : null);
 if (scope && !["user", "project"].includes(scope)) {
   console.error(`Unknown scope: ${scope}. Use "user" or "project".`);

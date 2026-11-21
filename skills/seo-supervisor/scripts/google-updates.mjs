@@ -42,10 +42,12 @@ const unxml = s =>
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
     .replace(/&(#x[\da-f]+|#\d+|\w+);/gi, (m, e) =>
       e[0] === "#"
-        ? String.fromCodePoint(e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : +e.slice(1))
+        ? (n => (n <= 0x10ffff ? String.fromCodePoint(n) : m))(
+            e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : +e.slice(1),
+          )
         : (XML_ENT[e] ?? m),
     )
-    .trim();
+    .trim(); // code points past U+10FFFF stay as written
 const tag = (item, name) => unxml(item.match(new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)</${name}>`, "i"))?.[1] ?? "");
 // Event posts (Search Central Live and its Deep Dives) are left out by title; every other post counts.
 const EVENT = /\bSearch Central Live\b|\bDeep Dive\b/i;

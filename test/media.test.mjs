@@ -870,3 +870,11 @@ test("the report's media panel shows this information, escaped, and nothing with
   assert.doesNotMatch(html, /Hero <img>/);
   assert.match(md, /Hero \\<img\\>/);
 });
+
+test("images.mjs --label-ai with the same file named twice labels it once, no crash", async () => {
+  const dir = tmp();
+  writeFileSync(join(dir, "hero.jpg"), jpeg(400, 300));
+  const r = await node([join(SCRIPTS, "images.mjs"), "--label-ai", "hero.jpg,./hero.jpg", "--yes"], { cwd: dir });
+  assert.match(r.stdout, /hero\.jpg/);
+  assert.ok(existsSync(join(dir, "hero.original.jpg")));
+});

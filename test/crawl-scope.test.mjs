@@ -501,3 +501,34 @@ test("the report shows the site's sections, its size past --max and Search Conso
   assert.match(md, /\| `\/<x>\\\|y\/` \| 1 \| 25% \|/);
   assert.match(md, /at least 900 URLs/);
 });
+
+test("a broken HSTS header is hsts-invalid only, not also hsts-short", async () => {
+  const r = await crawlSite(
+    { "/": page("Boiler repairs and servicing in Leeds") },
+    { headers: { "/": { "Strict-Transport-Security": "max-age=600; max-age=600" } } },
+  );
+  assert.ok(findingOf(r, "hsts-invalid"), "the repeated directive is flagged");
+  assert.ok(!findingOf(r, "hsts-short"), "browsers ignore the whole header, so its max-age isn't judged too");
+});
+
+test("the Markdown probe never follows a redirect", async () => {
+  const hits = [],
+    other = await serve(tmp(), { before: req => (hits.push(req.headers.accept || ""), false) });
+  try {
+    await crawlSite(
+      { "/": page("Boiler repairs and servicing in Leeds") },
+      {
+        before: (req, res) =>
+          /text\/markdown/.test(req.headers.accept || "") &&
+          (res.writeHead(302, { Location: other.url + "/" }).end(), true),
+      },
+    );
+  } finally {
+    await other.close();
+  }
+  assert.deepEqual(
+    hits.filter(a => /markdown/.test(a)),
+    [],
+    "the probe asked the site only",
+  );
+});

@@ -6,12 +6,14 @@ import { isAbsolute, join, normalize } from "node:path";
 
 // ~ is expanded here, since GitHub Actions, .env files and PowerShell don't. A relative path is refused: it would put
 // logins and keys inside whatever folder a script runs from, usually the project, where a commit could take them.
+// Errors carry code SEO_SETTINGS so scripts show them as plain messages: the fix is in the environment, not the code.
+export const settingsError = msg => Object.assign(new Error(msg), { code: "SEO_SETTINGS" });
 export function settingsDir(env = process.env, home = homedir()) {
   const v = env.SEO_SUPERVISOR_HOME;
   if (!v) return join(home, ".seo-supervisor");
   const p = v === "~" ? home : /^~[\\/]/.test(v) ? join(home, v.slice(2)) : v;
   if (!isAbsolute(p))
-    throw new Error(
+    throw settingsError(
       `SEO_SUPERVISOR_HOME must be a full path, like ${join(home, ".seo-supervisor")} (got "${v}"), so logins and keys never land inside a project.`,
     );
   return normalize(p);
@@ -23,7 +25,7 @@ export function loginDir(env = process.env, home = homedir()) {
   const c = env.SEO_SUPERVISOR_CLIENT;
   if (!c) return settingsDir(env, home);
   if (!/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(c))
-    throw new Error(`SEO_SUPERVISOR_CLIENT must be a short name made of letters, digits, - and _ (got "${c}").`);
+    throw settingsError(`SEO_SUPERVISOR_CLIENT must be a short name made of letters, digits, - and _ (got "${c}").`);
   return join(settingsDir(env, home), "clients", c);
 }
 

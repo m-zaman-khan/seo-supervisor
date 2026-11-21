@@ -488,3 +488,23 @@ test("the AI panel shows the bot table, landmarks and Lighthouse's agentic check
   assert.ok(!/(^|[^\\])<img src=x/m.test(withAi.md));
   assert.equal(without.html.includes('class="how aibots"'), false, "nothing without the data");
 });
+
+test("with --verify-ips, the refused crawler's evidence page is one its real requests were refused on", async () => {
+  const lists = tmp();
+  writeFileSync(
+    join(lists, "searchbot.json"),
+    JSON.stringify({ creationTime: "2026-11-20T00:00:00Z", prefixes: [{ ipv4Prefix: "20.0.0.0/24" }] }),
+  );
+  const log = [
+    ...Array.from({ length: 6 }, (_, i) => logLine("20.0.0.5", AIUA.search, "/pricing/", 403, i)),
+    logLine("20.0.0.6", AIUA.search, "/", 200, 9),
+    ...Array.from({ length: 8 }, (_, i) => logLine("198.51.100.1", AIUA.search, "/fake-only/", 403, 10 + i)),
+  ];
+  const r = await scanLog(log, ["--verify-ips", lists]);
+  const f = findingOf(r, "ai-bots-blocked-in-practice");
+  assert.equal(
+    new URL(f.evidence[0].url, "https://x.example").pathname,
+    "/pricing/",
+    "not /fake-only/, which only spoofed requests asked for",
+  );
+});

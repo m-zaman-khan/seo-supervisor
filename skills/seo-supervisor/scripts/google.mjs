@@ -1040,7 +1040,7 @@ async function signIn(E, client, args, params, { cmd = "connect", intro = "" } =
 function leftInProject(f) {
   const rel = relative(process.cwd(), resolve(f));
   return rel && !isAbsolute(rel) && !/^\.\.([\\/]|$)/.test(rel)
-    ? `\nWarning: ${f} is inside this project and is no longer needed (its contents are saved in ~/.seo-supervisor). Delete it, and never commit it.`
+    ? `\nWarning: ${f} is inside this project and is no longer needed (its contents are saved in ${loginDir()}). Delete it, and never commit it.`
     : "";
 }
 
@@ -1387,7 +1387,7 @@ if (isMain(import.meta.url)) {
   }[cmd];
   // Exit by setting the code, not process.exit(): exiting while fetch's sockets close crashes Node on Windows.
   process.exitCode = await (run ? run(args) : Promise.reject(new Fail(USAGE))).then(null, e => {
-    if (!(e instanceof Fail)) throw e;
+    if (!(e instanceof Fail) && e.code !== "SEO_SETTINGS") throw e;
     console.error(e.message);
     return 2;
   });

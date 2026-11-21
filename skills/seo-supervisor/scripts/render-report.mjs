@@ -997,7 +997,7 @@ const hstsPreloadText = () => {
     : `HSTS preload: not ready yet. The header still needs ${missing.join(" and ")}. ${also}`;
 };
 const secHtml = () => (hstsPreloadText() ? `\n    <p class="quiet">${esc(hstsPreloadText())}</p>` : ""),
-  secMd = () => (hstsPreloadText() ? [noteMd(hstsPreloadText()), ""] : []);
+  secMd = () => (hstsPreloadText() ? ["## HSTS preload", "", noteMd(hstsPreloadText()), ""] : []);
 
 // Pages per top-level section show only with two or more; siteSize is set when the crawl stopped at --max, and
 // indexing is Search Console's indexed count. Paths are escaped.
@@ -1275,9 +1275,10 @@ const mediaLines = () => {
   const cr = obj(m.imageCredits);
   if (cr && Number.isInteger(cr.read) && cr.read > 0) {
     const ai = (Array.isArray(cr.ai) ? cr.ai : []).filter(str),
+      aiN = Number.isInteger(cr.aiCount) ? cr.aiCount : ai.length,
       none = (Array.isArray(cr.noCreator) ? cr.noCreator : []).filter(str);
     L.push(
-      `Image credits, read from ${plural(cr.read, "image")}: ${num(cr.creator || 0)} name a creator, ${num(ai.length)} ${ai.length === 1 ? "is" : "are"} labelled as made with AI${ai.length ? ` (${mediaList(ai, notePath)})` : ""}, ${num(cr.c2pa || 0)} carry Content Credentials (C2PA).${none.length ? ` No creator: ${mediaList(none, notePath)}.` : ""}`,
+      `Image credits, read from ${plural(cr.read, "image")}: ${num(cr.creator || 0)} name a creator, ${num(aiN)} ${aiN === 1 ? "is" : "are"} labelled as made with AI${ai.length ? ` (${mediaList(ai, notePath)})` : ""}, ${num(cr.c2pa || 0)} carry Content Credentials (C2PA).${none.length ? ` No creator: ${mediaList(none, notePath)}.` : ""}`,
     );
   }
   const ca = obj(m.imageCache),
@@ -1287,7 +1288,7 @@ const mediaLines = () => {
     L.push(
       [
         ca.checked > 0 &&
-          `Image caching: ${num(unc.length)} of ${plural(ca.checked, "image")} are sent with no cache lifetime${unc.length ? ` (${mediaList(unc, notePath)})` : ""}, so browsers download them again on every visit.`,
+          `Image caching: ${num(Number.isInteger(ca.uncachedCount) ? ca.uncachedCount : unc.length)} of ${plural(ca.checked, "image")} are sent with no cache lifetime${unc.length ? ` (${mediaList(unc, notePath)})` : ""}, so browsers download them again on every visit.`,
         str(ca.cdn) && `They come through ${ca.cdn}.`,
         hosts.length && `Images on other hosts: ${mediaList(hosts, ([h, n]) => `${h} (${num(n)})`)}.`,
       ]
@@ -1856,7 +1857,7 @@ const diffMoreMd = () => {
   const rows = timelineRows(),
     posts = googlePostsText();
   return [
-    ...(posts ? [posts, ""] : []),
+    ...(posts ? ["## Google Search Central", "", posts, ""] : []),
     ...(rows.length >= 3
       ? [
           "## Audit timeline",

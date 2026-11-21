@@ -23,10 +23,11 @@ const reason = e => e.cause?.code || e.message;
 
 // The longest match by whole labels from the right, preferring https. Base URLs take "domain/<name>" after a "/".
 // https://www.rfc-editor.org/rfc/rfc9224
-function serverFor(services, labels) {
+export function serverFor(services, labels) {
   let best = null;
-  for (const [entries, urls] of services)
+  for (const [entries, urls] of services.filter(Array.isArray))
     for (const e of entries || []) {
+      // a malformed entry is skipped
       const parts = String(e).toLowerCase().split(".");
       if (
         parts.length <= labels.length &&

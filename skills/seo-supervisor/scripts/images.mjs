@@ -175,14 +175,14 @@ async function main() {
     );
     if (!installed)
       console.log(
-        `It needs the optional image add-on (sharp, about 20 MB in ~/.seo-supervisor/tools, not your project): ${ADD_ON}`,
+        `It needs the optional image add-on (sharp, about 20 MB in ${toolsDir()}, not your project): ${ADD_ON}`,
       );
   }
   let failed = 0;
   if (todo.length && args.yes === true) {
     if (!installed) {
       console.log(
-        `\nNothing was converted: the optional image add-on isn't installed. Add it with ${ADD_ON} (sharp, about 20 MB in ~/.seo-supervisor/tools, not your project), then run this again.`,
+        `\nNothing was converted: the optional image add-on isn't installed. Add it with ${ADD_ON} (sharp, about 20 MB in ${toolsDir()}, not your project), then run this again.`,
       );
       return 0;
     }
@@ -348,10 +348,13 @@ function labelMain(args) {
   if (!AI_SOURCES.includes(source)) throw new Fail(`--source must be one of ${AI_SOURCES.join(", ")} (got ${source}).`);
   const show = p => relative(process.cwd(), p).replace(/\\/g, "/") || ".";
   const todo = [],
-    skipped = [];
+    skipped = [],
+    seen = new Set();
   for (const f of list) {
     const file = resolve(f),
       backup = file.slice(0, file.length - extname(file).length) + ".original" + extname(file);
+    if (seen.has(file)) continue; // the same file named twice ("a.jpg,./a.jpg") is labelled once
+    seen.add(file);
     if (!existsSync(file) || !statSync(file).isFile()) {
       skipped.push(`${f}: not found`);
       continue;
@@ -404,7 +407,7 @@ function labelMain(args) {
 // Sets the exit code instead of calling process.exit(), like the other scripts.
 if (isMain(import.meta.url))
   process.exitCode = await main().catch(e => {
-    if (!(e instanceof Fail)) throw e;
+    if (!(e instanceof Fail) && e.code !== "SEO_SETTINGS") throw e;
     console.error(e.message);
-    return e.code;
+    return e instanceof Fail ? e.code : 2;
   });

@@ -33,11 +33,14 @@ export function findLighthouse(env = process.env, home = homedir(), platform = p
     .split(delimiter)
     .filter(Boolean)
     .map(d => join(d, exe));
-  return (
-    [env.LIGHTHOUSE_PATH, join(toolsDir(env, home), "node_modules", ".bin", exe), ...path].find(
-      p => p && existsSync(p),
-    ) || null
-  );
+  const tools = (() => {
+    try {
+      return join(toolsDir(env, home), "node_modules", ".bin", exe);
+    } catch {
+      return null;
+    }
+  })(); // a bad SEO_SUPERVISOR_HOME: no add-on, no crash
+  return [env.LIGHTHOUSE_PATH, tools, ...path].find(p => p && existsSync(p)) || null;
 }
 
 // Windows can't start a .cmd without a shell, so an npm shim is followed to its script, run with this Node. Other .cmd

@@ -319,13 +319,14 @@ const handle = raw => {
     }
     const cls = `${Math.floor(r.status / 100)}xx`;
     if (cls in b.status) b.status[cls]++;
-    const p = b.paths.get(path) || b.paths.set(path, { n: 0, s5xx: 0, s404: 0, refused: 0 }).get(path);
+    const p = b.paths.get(path) || b.paths.set(path, { n: 0, s5xx: 0, s404: 0, refused: 0, realRefused: 0 }).get(path);
     p.n++;
     if (r.status >= 500) p.s5xx++;
     if (r.status === 404) p.s404++;
     if (r.status === 401 || r.status === 403) {
       p.refused++;
       b.refused++;
+      if (ipLists?.has(bot.name) && fromVendor(bot.name, r.ip)) p.realRefused++; // from the vendor's own addresses
     }
     if (time) {
       if (!b.first || time < b.first) b.first = time;
@@ -496,7 +497,7 @@ const refused = crawlers
   .map(b => [b, ...(checked(b) ? [b.ip.refused, b.ip.verified] : [b.refused, b.requests])])
   .filter(([, n, of]) => of >= 5 && n / of > 0.5)
   .map(([b, n, of]) => ({
-    url: url(top(b.paths, v => v.refused, 1)[0][0]),
+    url: url(top(b.paths, checked(b) ? v => v.realRefused : v => v.refused, 1)[0][0]),
     detail: `${b.bot.name}: ${n} of ${of} requests${checked(b) ? ` from ${b.bot.vendor}'s addresses` : ""} (${pct(n / of)}) refused with 403 or 401`,
   }));
 finding(

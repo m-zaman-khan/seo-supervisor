@@ -53,7 +53,13 @@ export function doctor({ env = process.env, cwd = process.cwd(), version = proce
       ? `Lighthouse: ${lh}`
       : `Lighthouse: not installed (optional). Add it with: npx seo-supervisor --with-lighthouse (about 170 MB${lhNode ? "" : `; it needs Node 22.19 or later, this is ${version}`})`,
   );
-  const sharp = existsSync(join(toolsDir(env), "node_modules", "sharp"));
+  let tools = null;
+  try {
+    tools = toolsDir(env);
+  } catch (e) {
+    add("bad", e.message);
+  }
+  const sharp = !!tools && existsSync(join(tools, "node_modules", "sharp"));
   add(
     sharp ? "ok" : "off",
     sharp
@@ -61,11 +67,12 @@ export function doctor({ env = process.env, cwd = process.cwd(), version = proce
       : "Image add-on (sharp): not installed (optional). Add it with: npx seo-supervisor --with-image-tools (about 20 MB)",
   );
 
-  const dir = settingsDir(env);
-  add(
-    canWrite(dir) ? "ok" : "warn",
-    `Settings folder: ${dir}${existsSync(dir) ? "" : " (not made yet; it's made the first time a login or key is saved)"}${canWrite(dir) ? "" : ". It can't be written to, so logins and keys can't be saved. Choose another folder with SEO_SUPERVISOR_HOME"}`,
-  );
+  const dir = tools && settingsDir(env);
+  if (dir)
+    add(
+      canWrite(dir) ? "ok" : "warn",
+      `Settings folder: ${dir}${existsSync(dir) ? "" : " (not made yet; it's made the first time a login or key is saved)"}${canWrite(dir) ? "" : ". It can't be written to, so logins and keys can't be saved. Choose another folder with SEO_SUPERVISOR_HOME"}`,
+    );
   let logins = null;
   try {
     logins = loginDir(env);
