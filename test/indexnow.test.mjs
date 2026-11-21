@@ -374,6 +374,25 @@ test("--from-sitemap reads <loc>s and follows a sitemap index one level", async 
   }
 });
 
+test("--from-sitemap reads gzipped sitemaps too, as the crawler does", async () => {
+  const { gzipSync } = await import("node:zlib");
+  const gz = body => ({ type: "application/gzip", body: gzipSync(body) });
+  const hold = { files: {} },
+    live = await fake(hold),
+    u = live.url,
+    dir = tmp();
+  hold.files["/sitemap.xml.gz"] = gz(
+    `<?xml version="1.0"?><sitemapindex><sitemap><loc>${u}/s1.xml.gz</loc></sitemap></sitemapindex>`,
+  );
+  hold.files["/s1.xml.gz"] = gz(`<urlset><url><loc>${u}/a/</loc></url><url><loc>${u}/b/</loc></url></urlset>`);
+  try {
+    await submit(live, dir, ["--from-sitemap", u + "/sitemap.xml.gz"]);
+    assert.deepEqual(dryRun(dir).urls, [u + "/a/", u + "/b/"]);
+  } finally {
+    await live.close();
+  }
+});
+
 test("bad input fails with exit code 2", async () => {
   const dir = tmp();
   await assert.rejects(

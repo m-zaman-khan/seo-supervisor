@@ -13,7 +13,7 @@
 - **Know the difference:**
   - **Search** crawlers decide whether you're cited: `OAI-SearchBot` (ChatGPT search), `Claude-SearchBot`, `PerplexityBot`, and Bingbot (Copilot uses Bing's index).
   - **Training** crawlers: `GPTBot`, `ClaudeBot`, `Google-Extended` (Gemini training and grounding in Gemini Apps, **not** AI Overviews), `CCBot`, `Applebot-Extended`.
-  - **User-triggered** fetchers: `ChatGPT-User`, `Claude-User`, `Perplexity-User`. These may not follow robots.txt.
+  - **User-triggered** fetchers: `ChatGPT-User`, `Claude-User`, `Perplexity-User`. OpenAI and Perplexity say robots.txt may not apply to these visits a user asked for. Anthropic says its bots, Claude-User included, honour robots.txt (support.claude.com/en/articles/8896518).
 - **Pass:** blocking training while allowing search is a valid policy. Blocking GPTBot does **not** remove a site from ChatGPT search. The WAF allows each vendor's published IP lists (`openai.com/searchbot.json`, `perplexity.ai/perplexitybot.json`) so verified bots aren't challenged. Rules are repeated on every subdomain.
 - **Emerging:** a shared training opt-out, `User-Agent: __usage_ai-training` / `Disallow: /` (IETF draft; Anthropic honours it, Google plans to in 2027). Optional, and a `*` group doesn't match it.
 - **Logs:** `log-scan.mjs` shows what AI crawlers actually got. Google-Extended and Applebot-Extended never appear in logs: they're robots.txt tokens, and the crawling is done by Googlebot and Applebot. Having no AI search visits is normal and isn't a finding.

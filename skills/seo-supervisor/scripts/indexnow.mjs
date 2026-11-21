@@ -5,6 +5,7 @@
 // https://www.indexnow.org/documentation
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, statSync } from "node:fs";
 import { randomBytes } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 import { dirname, join, resolve } from "node:path";
 import { proxyNote } from "./lib/proxy.mjs";
 import { changedPages } from "./seo-diff.mjs";
@@ -51,7 +52,13 @@ const getText = async u => {
     fail(`couldn't fetch ${u} (${e.cause?.code || e.message})`);
   }
   if (!r.ok) fail(`${u} returned ${r.status}`);
-  return r.text();
+  // A gzipped sitemap (sitemap.xml.gz) starts with gzip's magic bytes 1f 8b; a server that already decoded it doesn't.
+  const b = Buffer.from(await r.arrayBuffer());
+  try {
+    return (b[0] === 0x1f && b[1] === 0x8b ? gunzipSync(b) : b).toString("utf8");
+  } catch {
+    fail(`${u} looks gzipped but couldn't be unpacked`);
+  }
 };
 const ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
 const decode = s =>
@@ -64,8 +71,6 @@ const decode = s =>
     );
 const locs = (xml, tag) =>
   [...xml.matchAll(new RegExp(`<${tag}\\b[\\s\\S]*?<loc>([\\s\\S]*?)</loc>`, "gi"))].map(m => decode(m[1]));
-// An index is followed one level, to children on its own host or a public address: the index itself may be local, but
-// it can't point this script at a private network.
 async function sitemapLocs(u) {
   const xml = await getText(u);
   if (!/<sitemapindex\b/i.test(xml)) return locs(xml, "url");
