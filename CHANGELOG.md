@@ -198,7 +198,7 @@ Deeper checks, optional real-world data and search intent. Everything still work
   - A `reciprocal` kind in `worthALook`.
   - backlinks.mjs records each link's text and nofollow, sites whose links are all nofollow, and page-level nofollow.
   - The crawler counts `linksToOtherSites`.
-  - New `commoncrawl.mjs`: the site in Common Crawl's newest crawl, and whether saved copies of known linking pages link to it.
+  - New `commoncrawl.mjs`: the site in Common Crawl's newest crawl, and whether saved copies of known linking pages link to it. `--rank` streams the web graph's ranks file (stops at the domain or 500 MB, stores nothing, reused for 90 days) for the domain's harmonic-centrality and PageRank positions, or "not in the top N".
 - **Connections.**
   - New `rdap.mjs` (domain age, no key), plus Moz and the YouTube Data API in `connect-keys.mjs`.
   - Bing per-page and sister-site links.

@@ -1603,6 +1603,16 @@ const cc = (c =>
         sites: asArray(c.linkingSites, asString),
       }
     : null)(obj(raw.commonCrawl));
+// commoncrawl.mjs --rank: the domain's place in Common Crawl's web graph by harmonic centrality, or how far down it
+// isn't.
+const rankInfo = (r =>
+  r &&
+  asString(r.domain) &&
+  asString(r.release) &&
+  asInt(r.domains) &&
+  (r.found === true ? asInt(r.harmonicPos) : r.found === false && asInt(r.scanned))
+    ? r
+    : null)(obj(obj(raw.commonCrawl)?.rank));
 const out = (o =>
   o && obj(o.pages) && Object.keys(o.pages).length
     ? {
@@ -1654,10 +1664,15 @@ const extraLines = () => {
       ]);
     if (cc.pages.length)
       L.push([
-        `${num(linked)} of ${num(cc.pages.length)} known linking pages link to you in Common Crawl's saved copies${absent ? `; ${num(absent)} ${absent === 1 ? "isn't" : "aren't"} in its newest crawl` : ""}. Its full web graph, with each site's rank, is too big to download, so your rank there isn't shown.`,
+        `${num(linked)} of ${num(cc.pages.length)} known linking pages link to you in Common Crawl's saved copies${absent ? `; ${num(absent)} ${absent === 1 ? "isn't" : "aren't"} in its newest crawl` : ""}. commoncrawl.mjs --rank adds your domain's rank in its web graph.`,
         cc.sites.slice(0, 5).map(h => [h, ""]),
       ]);
   }
+  if (rankInfo)
+    L.push([
+      `Common Crawl's web graph (${rankInfo.release}): ${rankInfo.found ? `${rankInfo.domain} is #${num(rankInfo.harmonicPos)} of ${num(rankInfo.domains)} domains by how well linked it is (harmonic centrality)${asInt(rankInfo.pageRankPos) ? `, #${num(rankInfo.pageRankPos)} by PageRank` : ""}` : `${rankInfo.domain} isn't in the top ${num(rankInfo.scanned)} of ${num(rankInfo.domains)} domains${rankInfo.capped ? " (the read stopped there)" : ""}`}. Common Crawl's own number, not Google's, and information only.`,
+      [],
+    ]);
   if (out) {
     const n = out.pages.filter(c => c > 0).length,
       top = [...out.domains].sort((a, b) => b[1] - a[1]).slice(0, 5);

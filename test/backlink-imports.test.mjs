@@ -527,7 +527,7 @@ test("Common Crawl without --yes is a dry run that says what it would download, 
   assert.match(r.stdout, /index\.commoncrawl\.org/);
   assert.match(r.stdout, /2 known linking pages/);
   assert.match(r.stdout, /at most \d+(\.\d)? MB/);
-  assert.match(r.stdout, /2\.4 GB/, "says why the full web graph isn't downloaded");
+  assert.match(r.stdout, /rank .*isn't read without --rank/, "the web graph's big rank file is read only with --rank");
   assert.match(r.stdout, /--yes/);
   assert.ok(!existsSync(file), "a dry run writes nothing");
 });

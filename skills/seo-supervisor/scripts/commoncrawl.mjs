@@ -1,26 +1,27 @@
 #!/usr/bin/env node
-// Common Crawl's view of a site: its pages in the newest crawl, and whether the saved copies of known linking pages
-// link to it. The linking sites themselves are never visited.
-// The site's rank isn't read: for cc-main-2026-aug-sep-oct the domain graph's ranks alone are 2.4 GiB of gzipped text
-// with no per-domain lookup. So linking sites come only from linking pages already known.
-// https://data.commoncrawl.org/projects/hyperlinkgraph/cc-main-2026-aug-sep-oct/index.html
+// Common Crawl's view of a site: its pages in the newest crawl, its domain rank, and whether the saved copies of known
+// linking pages link to it. The linking sites themselves are never visited.
 // Only the newest crawl is asked; add older ones from collinfo.json if too few linking pages turn up. One request at a
 // time, 1 s apart: Common Crawl calls the index's rate limits strict but publishes no number. A busy answer stops all
 // further lookups. Only Common Crawl's own hosts are asked: the index must be on collinfo.json's host, and redirects
 // aren't followed. A byte-range request reads just one saved copy, a few KB.
 // https://commoncrawl.org/blog/you-can-now-build-directly-on-common-crawl-from-the-browser
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { gunzipSync } from "node:zlib";
+import { Readable } from "node:stream";
+import { createGunzip, gunzipSync } from "node:zlib";
 import { setTimeout as sleep } from "node:timers/promises";
 import { isMain } from "./lib/is-main.mjs";
 import { Fail, linkingPages, linksTo, pageNofollow } from "./backlinks.mjs";
 
 const USAGE =
-  'usage: node commoncrawl.mjs --site https://www.example.com [--keys seo-audit/keys.json] [--csv "Latest links.csv"] [--urls links.txt] [--out seo-audit/commoncrawl.json] [--yes]';
+  'usage: node commoncrawl.mjs --site https://www.example.com [--keys seo-audit/keys.json] [--csv "Latest links.csv"] [--urls links.txt] [--rank [--rank-max-mb 500]] [--out seo-audit/commoncrawl.json] [--yes]';
+// SEO_CC_* point the script at the tests' local servers.
 const UA = "seo-supervisor-commoncrawl",
-  COLLINFO = "https://index.commoncrawl.org/collinfo.json",
+  COLLINFO = process.env.SEO_CC_COLLINFO || "https://index.commoncrawl.org/collinfo.json",
   DATA = "https://data.commoncrawl.org/";
+const GRAPHINFO = process.env.SEO_CC_GRAPHINFO || "https://index.commoncrawl.org/graphinfo.json",
+  GRAPH = process.env.SEO_CC_GRAPH || "https://data.commoncrawl.org/projects/hyperlinkgraph/";
 const MAX = 20,
   KB = 1024,
   MB = 1024 * KB,
@@ -72,6 +73,141 @@ function warc(buf) {
     .filter(([k, v]) => v != null && k.trim().toLowerCase() === "x-robots-tag")
     .map(([, v]) => v.trim());
   return { headers, body: s.slice(b + 4) };
+}
+
+// The domain ranks file is gzipped TSV, most-linked first, with reversed domains: harmonicc_pos, harmonicc_val,
+// pr_pos, pr_val, host_rev, n_hosts. With no per-domain lookup it's streamed (about 2.5 GB in all) and never stored,
+// stopping at the domain or the cap; 500 MB covers about the top 27 million domains. The edges file is never read, so
+// linking sites come only from linking pages already known.
+// https://data.commoncrawl.org/projects/hyperlinkgraph/
+export const RANK_CAP_MB = 500;
+// The registered domain, reversed as the graph writes it (shop.acme.co.uk gives uk.co.acme). A two-letter TLD after a
+// label of 3 letters or fewer counts as the suffix; use the Public Suffix List if a domain comes out wrong.
+export function rankDomain(hostname) {
+  const l = bare(hostname).split(".");
+  return l
+    .slice(l.length >= 3 && l.at(-1).length === 2 && l.at(-2).length <= 3 ? -3 : -2)
+    .reverse()
+    .join(".");
+}
+export async function domainRank(site, { graphinfo = GRAPHINFO, graph = GRAPH, capBytes = RANK_CAP_MB * MB } = {}) {
+  const rev = rankDomain(new URL(site).hostname),
+    domain = rev.split(".").reverse().join("."),
+    checked = new Date().toISOString().slice(0, 10);
+  let g;
+  try {
+    const r = await get(graphinfo, CAP.list),
+      list = r.status === 200 && r.body ? JSON.parse(r.body) : null;
+    // The id goes into a URL path, so only letters, digits, . _ and -, never "..".
+    // A host-only graph has no domain ranks.
+    g =
+      Array.isArray(list) &&
+      list.find(
+        x =>
+          typeof x?.id === "string" &&
+          /^[A-Za-z0-9._-]+$/.test(x.id) &&
+          !x.id.includes("..") &&
+          x.stats?.domain?.nodes > 0,
+      );
+  } catch (e) {
+    return {
+      domain,
+      checked,
+      found: null,
+      note: `Couldn't read Common Crawl's list of web graphs (${why(e)}), so the rank wasn't looked up.`,
+    };
+  }
+  if (!g)
+    return {
+      domain,
+      checked,
+      found: null,
+      note: "Common Crawl's list of web graphs had no domain graph, so the rank wasn't looked up.",
+    };
+  const domains = g.stats.domain.nodes,
+    ac = new AbortController();
+  let res;
+  try {
+    res = await fetch(`${graph}${g.id}/domain/${g.id}-domain-ranks.txt.gz`, {
+      headers: { "user-agent": UA },
+      redirect: "error",
+      signal: ac.signal,
+    });
+  } catch (e) {
+    return {
+      release: g.id,
+      domain,
+      checked,
+      found: null,
+      note: `Couldn't reach Common Crawl's rank file (${why(e)}).`,
+    };
+  }
+  if (res.status !== 200 || !res.body) {
+    ac.abort();
+    return {
+      release: g.id,
+      domain,
+      checked,
+      found: null,
+      note: `Common Crawl's rank file answered ${res.status}, so the rank wasn't read.`,
+    };
+  }
+  const src = Readable.fromWeb(res.body),
+    gz = createGunzip();
+  let bytes = 0,
+    capped = false,
+    scanned = 0,
+    hit = null,
+    rest = "";
+  src.on("error", () => {});
+  src.pipe(gz);
+  // Added after pipe(), so the chunk that crosses the cap still reaches gunzip.
+  src.on("data", c => {
+    bytes += c.length;
+    if (bytes > capBytes && !capped) {
+      capped = true;
+      src.unpipe(gz);
+      gz.end();
+    }
+  });
+  try {
+    read: for await (const chunk of gz) {
+      const lines = (rest + chunk).split("\n");
+      rest = lines.pop();
+      for (const line of lines) {
+        if (!line || line[0] === "#") continue;
+        const f = line.split("\t");
+        scanned = Number(f[0]) || scanned;
+        if (f[4] === rev) {
+          hit = f;
+          break read;
+        }
+      }
+    }
+  } catch {
+    /* A stream cut at the cap ends in a gzip error; lines already read still count. */
+  }
+  if (!hit && !capped && rest) {
+    const f = rest.split("\t");
+    if (f[4] === rev) hit = f;
+  } // a last line with no newline
+  ac.abort();
+  src.destroy();
+  gz.destroy();
+  if (hit)
+    return {
+      release: g.id,
+      domain,
+      checked,
+      found: true,
+      harmonicPos: Number(hit[0]),
+      harmonic: Number(hit[1]),
+      pageRankPos: Number(hit[2]),
+      pageRank: Number(hit[3]),
+      hosts: Number(hit[5]),
+      domains,
+    };
+  return { release: g.id, domain, checked, found: false, capped, scanned, domains, readMB: Math.round(bytes / MB) };
 }
 
 // pages are known linking pages. collinfo, data and pause are for tests.
@@ -248,7 +384,24 @@ async function main(argv) {
     ),
   ];
   const n = Math.min(pages.length, MAX),
-    host = bare(site.hostname);
+    host = bare(site.hostname),
+    out = resolve(str("out") || "seo-audit/commoncrawl.json");
+  const capMb = str("rank-max-mb") ? Number(args["rank-max-mb"]) : RANK_CAP_MB;
+  if (args.rank && !(Number.isFinite(capMb) && capMb >= 10 && capMb <= 3000))
+    throw new Fail(
+      "commoncrawl: --rank-max-mb must be a number of MB from 10 to 3000 (the whole rank file is about 2,500).",
+    );
+  // A rank under 90 days old is reused: the graph changes monthly and the read is large.
+  let saved = null;
+  try {
+    const r = JSON.parse(readFileSync(out, "utf8"))?.commonCrawl?.rank;
+    if (
+      r?.domain === rankDomain(site.hostname).split(".").reverse().join(".") &&
+      r.found !== null &&
+      Date.now() - Date.parse(r.checked) < 90 * 864e5
+    )
+      saved = r;
+  } catch {}
 
   if (args.yes !== true) {
     const most = CAP.list + CAP.site + n * (CAP.page + CAP.record);
@@ -259,21 +412,37 @@ async function main(argv) {
         ...(pages.length > MAX
           ? [`${pages.length - MAX} more linking pages would be left out: at most ${MAX} are looked up per run.`]
           : []),
-        "Common Crawl's full web graph isn't downloaded: its domain ranks alone are 2.4 GB, so the site's rank there isn't read.",
+        args.rank
+          ? saved
+            ? `The site's rank in Common Crawl's web graph was looked up on ${saved.checked} and would be reused, with no download.`
+            : `With --rank it would also read the site's rank from Common Crawl's web graph (data.commoncrawl.org): the ranks file is about 2.5 GB in all, read as it downloads and never stored, stopping once ${rankDomain(site.hostname).split(".").reverse().join(".")} is found or after ${capMb} MB. Well-linked sites are found early.`
+          : "The site's rank in Common Crawl's web graph isn't read without --rank: that streams a large file.",
         "Re-run with --yes once the owner agrees.",
       ].join("\n"),
     );
     return 0;
   }
   const result = await commonCrawl(site.href, pages);
-  const out = resolve(str("out") || "seo-audit/commoncrawl.json");
+  if (args.rank) {
+    const rank = saved || (await domainRank(site.href, { capBytes: capMb * MB }));
+    if (rank.note) result.notes.push(rank.note);
+    result.commonCrawl = { ...(result.commonCrawl || {}), rank };
+  }
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(result, null, 2));
   for (const note of result.notes) console.log("commoncrawl: " + note);
   const cc = result.commonCrawl,
-    s = cc?.site;
+    s = cc?.site,
+    rk = cc?.rank,
+    num = x => x.toLocaleString("en-US");
+  const rankLine =
+    !rk || rk.found === null
+      ? ""
+      : rk.found
+        ? ` · rank #${num(rk.harmonicPos)} of ${num(rk.domains)} domains (${rk.release})`
+        : ` · not in the top ${num(rk.scanned)} of ${num(rk.domains)} domains${rk.capped ? ` (read ${rk.readMB} MB)` : ""}`;
   console.log(
-    `commoncrawl: ${cc ? `${cc.crawl.name}: ${s ? `${s.capped ? "1,000 or more" : s.captures} saved page(s) of ${host}` : "the site wasn't looked up"}${n ? ` · ${cc.linkingSites.length} linking site(s) found linking to you in its copies` : ""}` : "nothing looked up"} · wrote ${out}`,
+    `commoncrawl: ${cc?.crawl ? `${cc.crawl.name}: ${s ? `${s.capped ? "1,000 or more" : s.captures} saved page(s) of ${host}` : "the site wasn't looked up"}${n ? ` · ${cc.linkingSites.length} linking site(s) found linking to you in its copies` : ""}` : "the index wasn't looked up"}${rankLine} · wrote ${out}`,
   );
   return 0;
 }

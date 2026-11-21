@@ -261,7 +261,7 @@ A few more things reach out, each only after its own yes:
 - **Product copy lookup** sends one sentence from one product description to the agent's web search, to see whether it's copied from the maker.
 - **OpenStreetMap** (`osm.mjs`) sends your business's address to OpenStreetMap to check it, and asks for similar businesses nearby. A service-area business's street is never sent.
 - **Domain age** (`rdap.mjs`) sends your domain and any competitors' to their registries' public RDAP servers.
-- **Common Crawl** (`commoncrawl.mjs`) asks Common Crawl's public index about your site and the pages that link to you.
+- **Common Crawl** (`commoncrawl.mjs`) asks Common Crawl's public index about your site and the pages that link to you. With `--rank` it also reads your domain's rank in Common Crawl's web graph, streaming up to 500 MB of its public rank file (nothing is stored).
 - **Bot IP check** (`log-scan.mjs --verify-ips`) downloads the AI vendors' public IP lists. Nothing about your site is sent.
 - **The browser add-on** (`npx seo-supervisor --with-browser`) downloads Chrome for Testing when no Chrome or Edge is installed.
 - **The connections** below send your site's address and domain names to Google, Bing, Open PageRank, Ahrefs, Moz or YouTube. Matomo and PostHog get only your site or project ID and a request for search visits, sent to your own Matomo or PostHog server.
