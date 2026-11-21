@@ -1,0 +1,24 @@
+# SEO Supervisor (opt-in): fails the job when an English page in the built site reads harder than your pass mark.
+# Reading ease is Flesch's 1948 formula (0 to 100, higher is easier). This is SEO Supervisor's own check, not Google's,
+# and it never changes the audit score. It lists every page with its score; pages in other languages or under 100 words
+# are skipped. --min sets the pass mark (default 60, where Flesch's table moves from "standard" to "fairly difficult").
+# Install: copy to .github/workflows/reading-ease.yml, then set your build command and output folder
+# (out/ for a Next.js static export, dist/ for Vite and Astro, build/, _site/ ...).
+name: Reading ease
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  reading-ease:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci && npm run build
+      - name: Check reading ease
+        run: node .agents/skills/seo-supervisor/scripts/checks/writing.mjs dist --min 60

@@ -18,3 +18,9 @@ Hook formats checked against each vendor's docs on 19 Nov 2026.
 | `copilot-hooks.json` | `.github/hooks/schema-check.json` ([CLI hooks reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference)). | `postToolUse` on `edit` and `create`; the errors go back to Copilot as `additionalContext`. |
 | `pre-commit` | `.git/hooks/pre-commit`, then `chmod +x` it. POSIX sh. | Lists the errors and stops the commit. It checks the files as they are on disk. |
 | `github-actions.yml` | `.github/workflows/structured-data.yml`. Set your build command and output folder. | Fails the job. |
+
+## Reading ease in CI (opt-in)
+
+`reading-ease.yml` goes in `.github/workflows/`. It runs `scripts/checks/writing.mjs` on the built site, lists every English page with its Flesch reading ease (0 to 100, higher is easier), and fails the job when a page scores below the pass mark you pick with `--min` (default 60, where Flesch's 1948 table moves from "standard" to "fairly difficult").
+
+It's SEO Supervisor's own check, not Google's, and it never changes the audit score. It reads the page's `<main>` (or the body without header, nav, footer and aside), only its paragraphs, and leaves out code and tables. Pages in other languages, and pages under 100 words, are skipped. Run it by hand the same way: `node scripts/checks/writing.mjs dist --min 60`.

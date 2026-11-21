@@ -1,3 +1,14 @@
+// Plain-language writing notes for English pages, and a reading-ease check for CI when run on its own.
+// English only: the thresholds, the phrases and the formula are all English ones. Over 35 words a sentence or 150 a
+// paragraph is long: rough local guides, not Google's. Stock phrases come from a short local list.
+// Reading ease: Flesch, "A new readability yardstick", Journal of Applied Psychology 32(3), 1948. Syllables are
+// counted by vowel groups, so it's a rough guide.
+// The CI check (examples/hooks/reading-ease.yml): the default pass mark, 60, is where Flesch's table moves from
+// "standard" to "fairly difficult". It never touches the audit or its score.
+import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { join, relative, sep } from "node:path";
+import { isMain } from "../lib/is-main.mjs";
+
 // Filler and stock phrases: a short local list.
 const STOCK = [
   "in today's fast-paced world",
@@ -126,4 +137,58 @@ export function writingFeatures(text, lang) {
       ...stock.map(([, c]) => c),
     ],
   };
+}
+
+// The opt-in CI check (examples/hooks/reading-ease.yml). The default pass mark, 60, is where Flesch's table moves from
+// "standard" to "fairly difficult". It never touches the audit or its score.
+if (isMain(import.meta.url)) {
+  const args = process.argv.slice(2),
+    at = args.indexOf("--min"),
+    min = at >= 0 ? Number(args[at + 1]) : 60;
+  const inputs = args.filter((a, i) => !a.startsWith("--") && !(at >= 0 && i === at + 1));
+  if (!inputs.length || !(min >= 0 && min <= 100) || inputs.some(p => !existsSync(p))) {
+    console.error(
+      "usage: node writing.mjs <file|folder ...> [--min 60]   (the pass mark is a reading ease from 0 to 100; every path must exist)",
+    );
+    process.exit(2);
+  }
+  const walk = d =>
+    readdirSync(d, { withFileTypes: true }).flatMap(e =>
+      e.isDirectory()
+        ? e.name.startsWith(".") || e.name === "node_modules"
+          ? []
+          : walk(join(d, e.name))
+        : /\.html?$/i.test(e.name)
+          ? [join(d, e.name)]
+          : [],
+    );
+  const pages = inputs.flatMap(p =>
+    statSync(p).isDirectory() ? walk(p).map(f => [f, relative(p, f).split(sep).join("/")]) : [[p, p]],
+  );
+  const scored = [];
+  for (const [file, name] of pages) {
+    const html = readFileSync(file, "utf8"),
+      lang = html.match(/<html\b[^>]*\blang\s*=\s*["']?([\w-]+)/i)?.[1];
+    const body = html.replace(/^[\s\S]*?<body\b[^>]*>/i, "");
+    const main =
+      body.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
+      body.replace(/<(header|nav|footer|aside)\b[\s\S]*?<\/\1>/gi, " ");
+    const ease = writingFeatures(writingText(main), lang).readingEase;
+    if (ease != null) scored.push([ease, name]);
+  }
+  const low = scored.filter(([e]) => e < min);
+  console.log(
+    `Reading ease (Flesch 1948: 0 to 100, higher is easier). SEO Supervisor's own check, not Google's; it never changes the audit score.\nPass mark: ${min}.`,
+  );
+  for (const [e, name] of scored) console.log(`${String(e).padStart(5)}  ${name}${e < min ? `  below ${min}` : ""}`);
+  if (pages.length > scored.length)
+    console.log(`Skipped ${pages.length - scored.length} page(s): not English, or under 100 words.`);
+  console.log(
+    !scored.length
+      ? "No English page had 100 words or more to score."
+      : low.length
+        ? `${low.length} of ${scored.length} pages scored below ${min}.`
+        : `All ${scored.length} pages scored ${min} or more.`,
+  );
+  process.exitCode = low.length ? 1 : 0;
 }

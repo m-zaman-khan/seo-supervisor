@@ -477,6 +477,272 @@ test("CJK titles, shared endings with their share, hidden bidi controls, stale d
   );
 });
 
+// ---------- the crawler ----------
+const FILL = [
+  "Our engineers carry common parts on the van, so most jobs finish on the first visit.",
+  "We tidy up after every job and take the old parts away with us.",
+  "You get a written price before we start, and it doesn't change unless you ask for more work.",
+  "Most people find us through a neighbour or a friend.",
+  "We work on weekdays from eight until six, and on Saturday mornings.",
+  "Every engineer carries an ID card and shows it at the door.",
+].join(" ");
+const fill = n => `<p>${Array(n).fill(FILL).join(" ")}</p>`;
+const longDate = t =>
+  new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+const PAGES = {
+  "/": [
+    "en",
+    "Northwind Plumbing | Northwind",
+    "Northwind fixes boilers, leaks and blocked drains across Leeds, answers the phone in under a minute and gives a fixed price before any work starts.",
+    `<h1>Northwind Plumbing</h1><p>Northwind fixes boilers, leaks and blocked drains across Leeds. We answer the phone in under a minute and give a fixed price before any work starts.</p>${fill(2)}`,
+  ],
+  "/boiler-repair/": [
+    "en",
+    "Boiler repair in Leeds | Northwind",
+    "Same-day boiler repair in Leeds for gas and oil boilers, with a fixed price before we start and a 12-month guarantee on parts and labour.",
+    `<h1>Boiler repair in Leeds</h1><p>Boiler repair in Leeds, done the same day for gas and oil boilers. We give a fixed price before we start, and every repair has a 12-month guarantee on parts and labour.</p>${fill(4)}<h2>What a boiler repair costs</h2><p>Most jobs cost a fixed fee plus parts, and we tell you both first.</p>`,
+  ],
+  "/guides/bleed-radiator/": [
+    "en",
+    "How to bleed a radiator | Northwind",
+    "How to bleed a radiator in five steps, from turning the heating off to checking the boiler pressure once the air is out of the system.",
+    `<h1>How to bleed a radiator</h1><p>Updated ${iso(Date.now() - 30 * DAY)}</p><p>To bleed a radiator, turn the heating off, open the valve with a radiator key, let the air out, close it and check the boiler pressure.</p>${fill(2)}`,
+    `<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"How to bleed a radiator","datePublished":"2018-01-01","dateModified":"${iso(Date.now() - 30 * DAY)}"}</script>`,
+  ],
+  "/guides/winter-boiler/": [
+    "en",
+    "Winter boiler guide | Northwind",
+    "Keeping a boiler running through winter: pressure checks, frozen condensate pipes and what to do when the heating stops on a cold morning.",
+    `<h1>Winter boiler guide</h1><p>Last updated: ${longDate(Date.now() - 900 * DAY)}</p><p>Keeping a boiler running through winter means pressure checks, thawing frozen condensate pipes and knowing what to do when the heating stops on a cold morning.</p>${fill(2)}`,
+  ],
+  "/gas-safety/": [
+    "en",
+    "Gas safety checks | Northwind",
+    "Luxury bathroom renovations with marble tiles, freestanding tubs and underfloor warmth designed by award-winning interior architects.",
+    `<h1>Gas safety checks</h1><p>A gas safety check tests every gas appliance, pipe and flue in the home, and you get a certificate the same day.</p>${fill(1)}`,
+  ],
+  "/leak-detection/": [
+    "en",
+    "Leak detection | Northwind",
+    "We find hidden leaks behind walls and under floors with thermal cameras and acoustic sensors, without lifting a single floor tile. | Northwind",
+    `<h1>Leak detection</h1><p>We find hidden leaks behind walls and under floors with thermal cameras and acoustic sensors, without lifting a single floor tile.</p>${fill(1)}`,
+  ],
+  "/history/": [
+    "en",
+    "Our history | Northwind",
+    "Two gas engineers started Northwind in a rented garage, and the team of nine still answers the phone, prices jobs and turns up on time.",
+    `<h1>Our history</h1><p>Two gas engineers started Northwind in a <tt>rented garage</tt>, and the team of nine still answers the phone, prices jobs and turns up on <strike>Mondays</strike> time.</p>${fill(1)}`,
+  ],
+  "/stuffed/": [
+    "en",
+    "Cheap boiler repair Leeds | Northwind",
+    "Cheap boiler repair in Leeds from engineers who carry common parts on the van, so most jobs finish on the first visit at a written price.",
+    `<h1>Cheap boiler repair Leeds</h1>${fill(1)}<h2>Cheap boiler repair Leeds prices</h2>${fill(1)}<h2>Why choose cheap boiler repair Leeds</h2>${fill(1)}<h2>Cheap boiler repair Leeds near me</h2>${fill(1)}`,
+  ],
+  "/zh/": ["zh", "北京管道维修服务中心", "", `<h1>北京管道维修服务中心</h1><p>我们提供管道维修服务。</p>`],
+  "/zh-long/": [
+    "zh",
+    "北京市朝阳区专业管道维修与水管漏水检测服务中心全年无休随叫随到价格公道",
+    "",
+    `<h1>北京管道维修</h1><p>我们提供管道维修服务。</p>`,
+  ],
+  ...Object.fromEntries(
+    ["Leeds", "York", "Hull"].map(t => [
+      `/areas/${t.toLowerCase()}/`,
+      [
+        "en",
+        `Plumbers in ${t} | Northwind`,
+        `Plumbers in ${t} for leaks, boilers and blocked drains, with a fixed price before any work starts and engineers on call. Call us today.`,
+        `<h1>Plumbers in ${t}</h1><p>Plumbers in ${t} for leaks, boilers and blocked drains, with a fixed price before any work starts and engineers on call.</p>${fill(1)}`,
+      ],
+    ]),
+  ),
+};
+const NORMAL_PAGES = ["/", "/boiler-repair/", "/guides/bleed-radiator/", "/zh/"];
+let contentRun;
+function contentSite() {
+  return (contentRun ||= (async () => {
+    const dir = tmp(),
+      out = join(tmp(), "crawl.json");
+    const links = Object.keys(PAGES)
+      .map(p => `<a href="${p}">${p}</a>`)
+      .join(" ");
+    for (const [p, [lang, title, desc, body, head = ""]] of Object.entries(PAGES)) {
+      mkdirSync(join(dir, p), { recursive: true });
+      writeFileSync(
+        join(dir, p, "index.html"),
+        `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>${desc ? `<meta name="description" content="${desc}">` : ""}${head}</head><body><main>${body}</main><footer>${links}</footer></body></html>`,
+      );
+    }
+    writeFileSync(join(dir, "robots.txt"), "User-agent: *\nAllow: /\n");
+    const site = await serve(dir);
+    try {
+      await node([
+        join(SCRIPTS, "seo-crawl.mjs"),
+        "--url",
+        site.url,
+        "--site-origin",
+        "https://site.example",
+        "--out",
+        out,
+      ]);
+    } finally {
+      await site.close();
+    }
+    return JSON.parse(readFileSync(out, "utf8"));
+  })());
+}
+const at = (r, check) => (r.findings.find(f => f.check === check)?.evidence || []).map(e => new URL(e.url).pathname);
+
+test("crawler: ordinary pages stay quiet on every one of these checks", async () => {
+  const r = await contentSite();
+  for (const check of [
+    "desc-mismatch",
+    "desc-brand-tail",
+    "templated-desc",
+    "stale-guide",
+    "obsolete-tags",
+    "title-short",
+    "title-long",
+  ])
+    for (const p of NORMAL_PAGES) assert.ok(!at(r, check).includes(p), `${check} on ${p}`);
+  assert.ok(
+    !r.keywordUse.pages.some(k => new URL(k.url).pathname === "/boiler-repair/"),
+    "natural keyword use isn't listed",
+  );
+});
+
+test("crawler: mismatched and brand-tailed descriptions, CJK titles, stock endings, obsolete tags and stale guides", async () => {
+  const r = await contentSite();
+  assert.deepEqual(at(r, "desc-mismatch"), ["/gas-safety/"]);
+  assert.match(
+    r.findings.find(f => f.check === "desc-mismatch").evidence[0].detail,
+    /: 0 of 14 main words are on the page$/,
+  );
+  assert.deepEqual(at(r, "desc-brand-tail"), ["/leak-detection/"]);
+  assert.ok(at(r, "title-long").includes("/zh-long/"), "35 CJK characters are as wide as 70 Latin ones");
+  assert.match(
+    r.findings.find(f => f.check === "title-long").evidence.find(e => e.url.endsWith("/zh-long/")).detail,
+    /^35 characters, about as wide as 70 Latin ones: /,
+  );
+  assert.ok(!at(r, "title-short").includes("/zh/"), "10 CJK characters aren't short");
+  assert.deepEqual(at(r, "templated-desc").sort(), ["/areas/hull/", "/areas/leeds/", "/areas/york/"]);
+  assert.equal(r.findings.find(f => f.check === "templated-desc").rule, "META-02");
+  assert.deepEqual(r.templatedDescriptions, {
+    pages: 11,
+    templated: 3,
+    share: 0.27,
+    clusters: [{ section: "/areas/", pages: 3, templated: 3 }],
+    outsideClusters: 0,
+    verdict: "cluster",
+  });
+  assert.deepEqual(
+    r.findings.find(f => f.check === "obsolete-tags").evidence.map(e => [new URL(e.url).pathname, e.detail]),
+    [["/history/", "<tt>, <strike>"]],
+  );
+  assert.deepEqual(at(r, "stale-guide"), ["/guides/winter-boiler/"]);
+  const stale = r.findings.find(f => f.check === "stale-guide");
+  assert.equal(stale.rule, "CONTENT-07");
+  assert.match(stale.evidence[0].detail, /^newest date \d{4}-\d{2}-\d{2}, from a visible date$/);
+});
+
+test("crawler: keyword use per English page, information only", async () => {
+  const r = await contentSite();
+  const stuffed = r.keywordUse.pages.find(k => new URL(k.url).pathname === "/stuffed/");
+  assert.equal(stuffed.verdict, "forced");
+  assert.equal(stuffed.phrase, "cheap boiler repair");
+  assert.deepEqual(
+    r.keywordUse.counts,
+    { natural: 4, missing: 0, repetitive: 0, forced: 1 },
+    "the 5 English pages with 150+ words of main text",
+  );
+  assert.ok(!r.findings.some(f => /keyword/i.test(f.check)), "never a finding");
+});
+
+const render = async data => {
+  const dir = tmp();
+  writeFileSync(join(dir, "a.json"), JSON.stringify(data));
+  await node([join(SCRIPTS, "render-report.mjs"), join(dir, "a.json"), "--out", join(dir, "a.html")]);
+  return { html: readFileSync(join(dir, "a.html"), "utf8"), md: readFileSync(join(dir, "a.md"), "utf8") };
+};
+
+test("report: the templated share with its verdict and keyword use show in one panel that never changes the score", async () => {
+  const r = await contentSite(),
+    evil = "<img src=x onerror=alert(1)>";
+  const data = {
+    ...r,
+    keywordUse: {
+      counts: { ...r.keywordUse.counts, missing: 1 },
+      pages: [
+        ...r.keywordUse.pages,
+        { url: `https://site.example/${evil}`, phrase: evil, verdict: "missing", density: 0, spots: [] },
+        { url: "/x", phrase: "bad", verdict: evil },
+      ],
+    },
+  };
+  const withInfo = await render(data),
+    without = await render({ ...r, templatedDescriptions: undefined, keywordUse: undefined });
+  const panel = withInfo.html.match(/\n {4}<details class="how content">[\s\S]*?<\/details>/)?.[0] || "";
+  assert.ok(panel, "a Descriptions and keyword use panel");
+  assert.equal(
+    withInfo.html.replace(panel, ""),
+    without.html,
+    "the panel is the only change: the score and areas are the same",
+  );
+  assert.match(panel, /3 of 11 descriptions \(27%\)/);
+  assert.match(panel, /Verdict: a cluster\. Most are in <code>\/areas\/<\/code> \(3 of 3 pages\)/);
+  assert.match(panel, /4 natural · 1 missing · 0 repetitive · 1 forced/);
+  assert.match(panel, /<code>\/stuffed\/<\/code><\/b><span>“cheap boiler repair”: forced/);
+  assert.match(panel, /never change the score/);
+  assert.ok(
+    !panel.includes("<img src=x") && panel.includes("&lt;img src=x onerror=alert(1)&gt;"),
+    "crawled text is escaped",
+  );
+  assert.ok(!panel.includes("/x<"), "a row with an unknown verdict is dropped");
+  const section = withInfo.md.match(/## Descriptions and keyword use\n[\s\S]*?\n\n(?=## |$)/)?.[0] || "";
+  assert.ok(section && withInfo.md.replace(section, "") === without.md, "the Markdown gains only its section");
+  assert.match(section, /- `\/stuffed\/` “cheap boiler repair”: forced/);
+  assert.ok(!/(^|[^\\])<img src=x/m.test(section) && section.includes("\\<img src=x onerror=alert(1)\\>"));
+});
+
+test("the reading-ease check for CI lists each English page with its score and fails below the pass mark", async () => {
+  const dir = tmp();
+  const doc = (lang, body) =>
+    `<!doctype html><html lang="${lang}"><head><title>x</title></head><body><nav><p>${"Home About Contact. ".repeat(40)}</p></nav><main>${body}</main></body></html>`;
+  const EASY = `<p>${"The cat sat on the mat. ".repeat(25)}</p>`; // 150 words, reading ease 100
+  const HARD = `<p>${"Happy children quickly enter wooden houses. ".repeat(25)}</p>`; // reading ease 32
+  for (const d of ["blog", "node_modules/x", ".cache"]) mkdirSync(join(dir, d), { recursive: true });
+  writeFileSync(join(dir, "index.html"), doc("en", EASY));
+  writeFileSync(join(dir, "blog", "hard.html"), doc("en-GB", HARD));
+  writeFileSync(join(dir, "de.html"), doc("de", HARD));
+  writeFileSync(join(dir, "short.htm"), doc("en", "<p>Too short to score.</p>"));
+  writeFileSync(join(dir, "node_modules", "x", "index.html"), doc("en", HARD));
+  writeFileSync(join(dir, ".cache", "index.html"), doc("en", HARD));
+  const run = args =>
+    node([join(SCRIPTS, "checks", "writing.mjs"), ...args]).then(
+      r => ({ code: 0, out: r.stdout }),
+      e => ({ code: e.code, out: e.stdout, err: e.stderr }),
+    );
+  const fail = await run([dir]);
+  assert.equal(fail.code, 1, fail.out);
+  assert.match(fail.out, /SEO Supervisor's own check, not Google's/);
+  assert.match(fail.out, /never changes the audit score/);
+  assert.match(fail.out, /^ +100 {2}index\.html$/m);
+  assert.match(fail.out, /^ +32 {2}blog\/hard\.html {2}below 60$/m);
+  assert.match(fail.out, /Skipped 2 page\(s\): not English, or under 100 words\./);
+  assert.match(fail.out, /1 of 2 pages scored below 60\./);
+  assert.ok(
+    !/node_modules|\.cache|de\.html/.test(fail.out),
+    "dot folders, node_modules and skipped pages aren't listed",
+  );
+  const pass = await run([dir, "--min", "30"]);
+  assert.equal(pass.code, 0);
+  assert.match(pass.out, /All 2 pages scored 30 or more\./);
+  assert.equal((await run([join(dir, "index.html")])).code, 0, "a single file");
+  assert.equal((await run([dir, "--min", "abc"])).code, 2);
+  assert.equal((await run([])).code, 2);
+});
+
 test("tag characters, bidi controls and other hidden characters; real scripts and emoji flags stay quiet", () => {
   const code = t => invisibleChar(t)?.code ?? null;
   assert.equal(code("Ignore\u{E0020}\u{E0061}ll"), "U+E0020");
