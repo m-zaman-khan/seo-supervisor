@@ -65,6 +65,8 @@ import { parseCsv } from "./lib/csv.mjs";
 
 import { SUPERSEDED, placeholderIn } from "./schema-check.mjs";
 
+import { merchantProblems, sellsWithOffer } from "./schema-check.mjs";
+
 import {
   CHECKS as CONTENT_CHECKS,
   titleWidth,
@@ -1177,6 +1179,78 @@ Object.assign(CHECKS, {
   ],
 });
 
+// schema-check.mjs holds the value lists (ISO 4217, ItemAvailability). The 3-page shared-H1 cut-off is a local choice.
+// https://developers.google.com/search/docs/appearance/structured-data/merchant-listing
+// https://developers.google.com/search/docs/specialty/explicit/guidelines
+Object.assign(CHECKS, {
+  "product-image-missing": [
+    "SHOP-05",
+    "medium",
+    n => `${n} product page(s) sell a product with no image in its schema`,
+    "Google's merchant listings require an `image` for a Product sold with an Offer, so these products can't show as merchant listings.",
+    "Add the product photos to the Product schema's `image`, from the same data that shows them on the page. Google suggests several high-resolution images in 16:9, 4:3 and 1:1.",
+  ],
+  "product-price-zero": [
+    "SHOP-05",
+    "low",
+    n => `${n} product page(s) give a price of 0 in their schema`,
+    "Google's merchant listings need a price above zero, so a product priced 0 can't show as one. A 0 can also be a price that didn't load when the page was built.",
+    "Fill `price` from the live price the page shows. If the product really is free, leave it: product snippets accept a price of 0.",
+  ],
+  "product-currency-invalid": [
+    "SHOP-05",
+    "medium",
+    n => `${n} product page(s) give a currency that isn't an ISO 4217 code`,
+    "Google wants `priceCurrency` as a three-letter ISO 4217 code (USD, EUR, GBP), and merchant listings require it. A symbol such as £ or a word such as Euro isn't one.",
+    'Use the three-letter code, such as `"priceCurrency": "GBP"`, from the shop\'s currency setting.',
+  ],
+  "product-availability-invalid": [
+    "SHOP-05",
+    "low",
+    n => `${n} product page(s) give a stock status that isn't one of schema.org's values`,
+    "Google lists schema.org's ItemAvailability values for `availability`, as the full URL (`https://schema.org/InStock`) or the short name (`InStock`), and asks for one. Free text such as “in stock”, or several values at once, isn't one of them.",
+    "Map the shop's stock status to one value: `https://schema.org/InStock`, `OutOfStock`, `BackOrder`, `PreOrder` and so on.",
+  ],
+  "product-brand-placeholder": [
+    "SHOP-05",
+    "low",
+    n => `${n} product page(s) give “N/A” or a similar stand-in as the brand`,
+    "N/A, None, Generic or an empty name isn't a brand. Google's Merchant Center help says to leave the brand out when in doubt, rather than guess or make one up.",
+    "Leave `brand` out for products that have none. For products the shop makes itself, use the shop's name as the brand, as Merchant Center asks.",
+  ],
+  "product-price-expired": [
+    "SHOP-05",
+    "medium",
+    n => `${n} product page(s) have a price whose priceValidUntil date has passed`,
+    "Google says a merchant listing may not show when `priceValidUntil` is in the past.",
+    "Give `priceValidUntil` only for a sale price that really ends, from the same data as the sale, or leave it out.",
+  ],
+  "product-adult-unlabelled": [
+    "SHOP-05",
+    "medium",
+    n => `${n} adult product page(s) don't label their products as adult in the schema`,
+    'These pages label themselves adult for SafeSearch (`<meta name="rating" content="adult">`), but their Product schema has no `hasAdultConsideration`. Google says adult products must use it to label them, and they\'re subject to age and country restrictions.',
+    'Add `"hasAdultConsideration": "https://schema.org/SexualContentConsideration"` to each adult Product. It\'s the only value Google Search supports.',
+  ],
+  "product-h1-reused": [
+    "CONTENT-04",
+    "medium",
+    n => `${n} product page(s) share an H1 that doesn't name their product`,
+    "Three or more product pages have the same H1, and it isn't the name of any of their products. It's usually a template heading, such as “Product details” or the shop's name, so each page's main heading says nothing about what it sells.",
+    "Make the product's name the H1 of its page, and use H2s for the sections below it (description, specifications, delivery and returns, reviews).",
+  ],
+});
+// Merchant listing fields Google recommends where a product has them; the report counts them.
+const SHOP_FIELDS = {
+  brand: ["brand"],
+  gtin: ["gtin", "gtin8", "gtin12", "gtin13", "gtin14", "isbn", "mpn"],
+  sku: ["sku"],
+  color: ["color"],
+  size: ["size"],
+  material: ["material"],
+  category: ["category"],
+};
+
 Object.assign(CHECKS, CONTENT_CHECKS);
 RULES["CONTENT-07"] ??= ["People and dates are behind the advice", "Headings & content"]; // stale-guide's rule; never passed here
 
@@ -1899,6 +1973,35 @@ function analyze(url, html, headers, xRobotsLines) {
     };
   nodes.forEach(n => pick(n, 0));
   rec.schemaImages = [...schemaImages];
+
+  // Per Product: merchant listing problems, a missing required image, no adult label on a page rated adult for
+  // SafeSearch, and the recommended fields given. A stand-in brand doesn't count as one.
+  const shopNodes = nodes.filter(n => typesOf(n).includes("Product"));
+  if (shopNodes.length) {
+    const adult = metas.some(
+      m =>
+        (m.name || "").toLowerCase() === "rating" &&
+        /^(adult|RTA-5042-1996-1400-1577-RTA)$/i.test((m.content || "").trim()),
+    );
+    const filled = (n, k) => n[k] != null && n[k] !== "" && !(Array.isArray(n[k]) && !n[k].length);
+    rec.shop = shopNodes.map(n => {
+      const problems = merchantProblems(n);
+      if (sellsWithOffer(n) && !filled(n, "image")) problems.push({ check: "image-missing" });
+      if (
+        adult &&
+        ![]
+          .concat(n.hasAdultConsideration ?? [])
+          .some(x => /SexualContentConsideration$/.test(typeof x === "string" ? x : x?.["@id"] || ""))
+      )
+        problems.push({ check: "adult-unlabelled" });
+      const fields = Object.keys(SHOP_FIELDS).filter(
+        f =>
+          SHOP_FIELDS[f].some(k => filled(n, k)) &&
+          !(f === "brand" && problems.some(x => x.check === "brand-placeholder")),
+      );
+      return { name: typeof n.name === "string" && n.name ? n.name : "a product", problems, fields };
+    });
+  }
 
   // The rest of HTML's obsolete tags (REND-10), a guide's newest date (CONTENT-07) and keyword use on English pages
   // (CONTENT-03). Dates are read from the whole body, not the main text, since an article's <header> often holds them.
@@ -4252,6 +4355,37 @@ if (blocked.size)
   if (schemaImgs.size > 50) notes.push(`Schema images were checked for the first 50 of ${schemaImgs.size}.`);
 }
 
+// ---------- product pages: site-wide ----------
+// On indexable pages with Product schema: one finding per check per page. An H1 shared by 3+ product pages counts as
+// reused unless it names one of their products (a variant's "Wool coat" names "Wool coat, small"). The report counts
+// how many products give each recommended field.
+{
+  const shop = htmlPages.filter(p => p.shop && indexable(p)),
+    byH1 = new Map();
+  for (const p of shop) {
+    const seen = new Set();
+    for (const pr of p.shop)
+      for (const x of pr.problems)
+        if (!seen.has(x.check)) {
+          seen.add(x.check);
+          add(`product-${x.check}`, p.finalUrl, x.key ? `${pr.name}: ${x.key} “${x.value}”` : pr.name);
+        }
+    const h = p.headings.find(x => x.level === 1)?.text,
+      k = h && norm(h);
+    if (k) (byH1.get(k) || byH1.set(k, { h, pages: [] }).get(k)).pages.push(p);
+  }
+  for (const [k, { h, pages: ps }] of byH1)
+    if (ps.length >= 3 && !ps.some(p => p.shop.some(pr => norm(pr.name).includes(k))))
+      for (const p of ps) add("product-h1-reused", p.finalUrl, `“${h}” on ${ps.length} product pages`);
+  const all = shop.flatMap(p => p.shop);
+  if (all.length)
+    extra.productFields = {
+      products: all.length,
+      ...Object.fromEntries(Object.keys(SHOP_FIELDS).map(f => [f, all.filter(pr => pr.fields.includes(f)).length])),
+    };
+}
+
+// ---------- content: site-wide ----------
 // META-02: descriptions that barely match their page, end with the title's brand or are templated; CONTENT-07: guides
 // last dated over a year ago; CONTENT-03: keyword use. A description's main words are read as META-09 reads a
 // title's, matched by stem or acronym. The 4-word minimum, a quarter on the page and the one-year guide age are local

@@ -1109,8 +1109,23 @@ const aiCrawlersHtml = () => "",
 const schemaHtml = () => "",
   schemaMd = () => [];
 
-const shopHtml = () => "",
-  shopMd = () => [];
+// How many Products give each recommended merchant listing field. Numbers only, so nothing crawled is shown.
+const fields = obj(raw.productFields),
+  FIELDS = [
+    ["brand", "a brand"],
+    ["gtin", "a GTIN or MPN"],
+    ["sku", "a SKU"],
+    ["color", "a colour"],
+    ["size", "a size"],
+    ["material", "a material"],
+    ["category", "a category"],
+  ];
+const shopLine =
+  fields && countOf(fields.products) && fields.products > 0 && FIELDS.every(([k]) => countOf(fields[k]))
+    ? `Of ${plural(fields.products, "product")} in the schema: ${FIELDS.map(([k, w]) => `${num(fields[k])} with ${w}`).join(", ")}. Google recommends each one where the product has it, so a GTIN, colour or material can rightly be missing. Information only: it doesn't change the score.`
+    : "";
+const shopHtml = () => (shopLine ? `\n    <p class="quiet">${esc(shopLine)}</p>` : ""),
+  shopMd = () => (shopLine ? ["## Product data", "", shopLine, ""] : []);
 
 const mediaHtml = () => "",
   mediaMd = () => [];

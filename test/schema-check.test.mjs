@@ -85,8 +85,16 @@ test("Google's required properties: a missing Offer price is an error, a missing
   );
   const { image, ...noImage } = PRODUCT;
   assert.deepEqual(
-    issues(noImage).map(i => `${i.severity} ${i.check}`),
+    issues({
+      ...noImage,
+      offers: { "@type": "AggregateOffer", lowPrice: "19.99", highPrice: "24.99", offerCount: 2, priceCurrency: "USD" },
+    }).map(i => `${i.severity} ${i.check}`),
     ["warning recommended-missing"],
+  );
+  assert.deepEqual(
+    issues(noImage).map(i => `${i.severity} ${i.check}`),
+    ["error required-missing"],
+    "sold with an Offer, it's a merchant listing, which needs an image",
   );
   // Breadcrumbs: the last item may leave out `item`; a Review on its own needs itemReviewed, nested it doesn't.
   const crumbs = {
