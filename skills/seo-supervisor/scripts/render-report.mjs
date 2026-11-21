@@ -2514,6 +2514,123 @@ const answersMd = () =>
         ]),
       ]
     : [];
+// geoGrid comes from geo-grid.json. Google's terms forbid Places results on a non-Google map, so it's a plain grid
+// with north at the top, credited "Google Maps". Counts come from the cells, never the file's own totals, and the
+// label is written here, not read from the file.
+// https://cloud.google.com/maps-platform/terms/maps-service-terms
+const GRID_SIZES = new Set([5, 7, 9]);
+const grid = (g => {
+  if (!g || !GRID_SIZES.has(g.size) || !Array.isArray(g.keywords)) return null;
+  const n = g.size,
+    inGrid = c => obj(c) && [c.row, c.col].every(v => Number.isInteger(v) && v >= 0 && v < n);
+  const rankOf = r => (Number.isInteger(r) && r >= 1 && r <= 20 ? r : r === "error" ? "error" : null);
+  const keywords = g.keywords
+    .filter(k => obj(k) && typeof k.keyword === "string" && k.keyword.trim() && Array.isArray(k.cells))
+    .slice(0, 3)
+    .map(k => {
+      const at = Array.from({ length: n }, () => Array(n).fill(undefined));
+      for (const c of k.cells.filter(inGrid)) at[c.row][c.col] = rankOf(c.rank);
+      const seen = at.flat().filter(v => v !== undefined),
+        count = f => seen.filter(f).length,
+        ranked = r => typeof r === "number";
+      return {
+        keyword: k.keyword.trim(),
+        at,
+        points: seen.length,
+        top3: count(r => ranked(r) && r <= 3),
+        top10: count(r => ranked(r) && r <= 10),
+        notFound: count(r => r === null),
+        failed: count(r => r === "error"),
+      };
+    })
+    .filter(k => k.points === n * n); // a grid with holes would mislead, so it isn't drawn
+  if (!keywords.length) return null;
+  return {
+    n,
+    keywords,
+    km: Number.isFinite(g.spacingKm) && g.spacingKm > 0 && g.spacingKm <= 50 ? g.spacingKm : null,
+    date: /^\d{4}-\d{2}-\d{2}$/.test(g.date) ? g.date : null,
+  };
+})(obj(raw.geoGrid));
+const GRID_BANDS = [
+  ["top3", "1–3"],
+  ["top10", "4–10"],
+  ["top20", "11–20"],
+  ["out", "Not in the top 20"],
+  ["err", "Not checked"],
+];
+const gridBand = r => (r === "error" ? "err" : r === null ? "out" : r <= 3 ? "top3" : r <= 10 ? "top10" : "top20");
+const gridIntro = () =>
+  `Where your business appears in the list Google's Places API returns near each spot: an approximation of Google Maps results, not a copy. Each square is a spot${grid.km ? ` ${+grid.km.toFixed(2)} km` : ""} apart around your business, north at the top, and the outlined square is your business.${grid.date ? ` Checked on ${fmtDate(grid.date)}.` : ""} Information only: it doesn't change the score.`;
+const gridLine = k =>
+  `Top 3 at ${k.top3} of ${k.points} spots · top 10 at ${k.top10} · not in the top 20 at ${k.notFound}${k.failed ? ` · ${k.failed} not checked` : ""}`;
+// Where a square is, from the business: "2 km north, 1 km west".
+const gridWhere = (row, col) => {
+  const c = (grid.n - 1) / 2,
+    away = (d, plus, minus) =>
+      d &&
+      `${grid.km ? `${+(Math.abs(d) * grid.km).toFixed(2)} km` : plural(Math.abs(d), "square")} ${d > 0 ? plus : minus}`;
+  return row === c && col === c
+    ? "Your business"
+    : [away(row - c, "south", "north"), away(col - c, "east", "west")].filter(Boolean).join(", ");
+};
+const gridSay = r =>
+  r === "error" ? "not checked, the request failed" : r === null ? "not in the top 20" : `position ${r}`;
+const gridHtml = () =>
+  grid
+    ? `\n    <details class="how geogrid"><summary>Local rank grid</summary><p>${esc(gridIntro())}</p>` +
+      `<p class="gg-legend">${GRID_BANDS.filter(([b]) => b !== "err" || grid.keywords.some(k => k.failed))
+        .map(([b, t]) => `<span><i class="gg-${b}" aria-hidden="true"></i>${esc(t)}</span>`)
+        .join("")}</p><div class="gg-list">` +
+      grid.keywords
+        .map(
+          k =>
+            `<figure class="gg"><figcaption><b>${esc(k.keyword)}</b><span>${esc(gridLine(k))}</span></figcaption><span class="gg-north" aria-hidden="true">North</span>` +
+            `<div class="gg-grid" style="--n:${grid.n}" role="img" aria-label="${esc(`${k.keyword}: ${gridLine(k).replace(/^Top/, "top")}`)}">` +
+            k.at
+              .map((row, i) =>
+                row
+                  .map(
+                    (r, j) =>
+                      `<span class="gg-c gg-${gridBand(r)}${i === (grid.n - 1) / 2 && j === i ? " gg-centre" : ""}" title="${esc(`${gridWhere(i, j)}: ${gridSay(r)}`)}">${r === "error" ? "–" : r === null ? "20+" : r}</span>`,
+                  )
+                  .join(""),
+              )
+              .join("") +
+            `</div><p class="gg-credit">Places data: Google Maps</p></figure>`,
+        )
+        .join("") +
+      `</div></details>`
+    : "";
+const gridMd = () =>
+  grid
+    ? [
+        "## Local rank grid",
+        "",
+        noteMd(gridIntro()),
+        "",
+        ...grid.keywords.flatMap(k => [
+          `### ${noteMd(k.keyword)}`,
+          "",
+          noteMd(gridLine(k)),
+          "",
+          "```",
+          "North",
+          ...k.at.map((row, i) =>
+            row
+              .map((r, j) => {
+                const t = r === "error" ? "-" : r === null ? "20+" : String(r);
+                return (i === (grid.n - 1) / 2 && j === i ? `[${t}]` : t).padStart(3);
+              })
+              .join(" "),
+          ),
+          "```",
+          "",
+        ]),
+        "Places data: Google Maps",
+        "",
+      ]
+    : [];
 const panelsHtml = () =>
   [
     secHtml,
@@ -2539,6 +2656,7 @@ const panelsHtml = () =>
     flowHtml,
     scoreHtml,
     answersHtml,
+    gridHtml,
   ]
     .map(f => f())
     .join("");
@@ -2567,6 +2685,7 @@ const panelsMd = () =>
     flowMd,
     scoreMd,
     answersMd,
+    gridMd,
   ].flatMap(f => f());
 
 // audiences (audience.md) is written into seo-audit.json and may quote page text, so every string is escaped.
@@ -3083,6 +3202,22 @@ html:not(.js) .tp::before{content:attr(data-title);font:600 20px var(--sans)}
 .how summary{cursor:pointer;color:var(--blue);font-size:13.5px;font-weight:600;list-style:none}
 .how summary::-webkit-details-marker{display:none}
 .how p{margin-top:8px;font-size:13.5px;color:var(--mute);max-width:70ch}
+.geogrid .gg-legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px}
+.gg-legend span{display:inline-flex;align-items:center;gap:6px}
+.gg-legend i{width:12px;height:12px;border-radius:3px;flex:none}
+.gg-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:22px 32px;margin-top:16px}
+.gg{margin:0;display:grid;gap:6px;align-content:start;max-width:340px}
+.gg figcaption{display:grid;gap:2px;margin-bottom:4px}
+.gg figcaption b{font-size:14px;color:var(--ink);overflow-wrap:anywhere}
+.gg figcaption span{font-size:12.5px;color:var(--mute)}
+.gg-north{font-size:12px;color:var(--mute);text-align:center}
+.gg-grid{container-type:inline-size;display:grid;grid-template-columns:repeat(var(--n),1fr);gap:3px}
+.gg-c,.gg-legend i{background:color-mix(in srgb,var(--c,var(--neutral)) var(--k,30%),var(--panel));-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.gg-c{aspect-ratio:1;display:grid;place-items:center;border-radius:4px;font-size:clamp(9.5px,4.4cqi,14px);font-weight:600;line-height:1;color:var(--ink)}
+.gg-top3{--c:var(--b5);--k:54%}.gg-top10{--c:var(--b4);--k:34%}.gg-top20{--c:var(--b3);--k:30%}.gg-out{--c:var(--b1);--k:26%}
+.gg-c.gg-err,.gg-legend i.gg-err{background:transparent;border:1px dashed var(--line2);color:var(--mute)}
+.gg-c.gg-centre{box-shadow:inset 0 0 0 2px var(--ink)}
+.how .gg-credit{margin-top:2px;font-size:11.5px}
 .area-list{list-style:none;margin:14px 0 0;padding:0}
 .area{display:grid;grid-template-columns:14px minmax(0,1fr) minmax(80px,160px) 64px;gap:14px;align-items:center;padding:11px 8px;margin:0 -8px;border-top:1px solid var(--line);color:inherit;text-decoration:none;border-radius:6px}
 .area-list li:first-child .area{border-top:0}
