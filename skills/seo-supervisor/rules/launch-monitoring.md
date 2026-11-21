@@ -27,6 +27,7 @@
 
 ### LAUNCH-04 · Measure what visitors do · medium
 - Analytics events on the actions that matter (form submit, tool run, call click, add to cart, next-step link clicks). Never send what a visitor typed, secrets or scanned domains. Tool sites: use the event list in TOOL-12.
+- **Consent Mode (EU):** with Google's Consent Mode, a visitor who declines analytics cookies isn't counted like the others. The basic setup blocks the Google tag until consent, so nothing is collected. The advanced setup sends cookieless pings, which Analytics models only when the property qualifies (support.google.com/analytics/answer/9976101). Either way, Analytics counts fewer search visits from the EU than Search Console counts clicks. Compare trends, not totals, and don't read the gap as lost traffic.
 
 ### LAUNCH-05 · Watch Search Console every week · medium
 - **Pages report:** "Crawled, currently not indexed" on templated pages usually means thin or duplicate content (CONTENT-04/05).
@@ -41,6 +42,7 @@
 - Before diagnosing a drop as technical, compare its dates with the Google Search Status Dashboard (status.search.google.com). With outside checks on, `scripts/google-updates.mjs` reads it live for the period (`googleUpdates`, one line in the report). With them off, send the owner to the dashboard to check the dates themselves. Don't list update dates from memory: they go out of date.
 - Wait at least a week after an update finishes, compare by search type, and expect recovery to take months, through better content rather than technical tweaks.
 - **Search Console reports worth using:** Insights, query groups, the branded-queries filter, annotations, and Generative AI performance.
+- **EU click rates around March 2024:** from March 2024, Google changed its results in Europe for the Digital Markets Act: new units pointing to comparison sites, and some features removed, such as the Google Flights unit (blog.google, "Complying with the Digital Markets Act", 5 March 2024). Google expected more traffic to go to large aggregators and less to direct suppliers. Don't compare EU click-through rates from before March 2024 with later ones.
 
 ### LAUNCH-06 · The 404 page helps · low
 - A real 404 status, noindex, a short message, and links to the main hubs and popular pages.

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-// Services connected by an API key alone: Bing Webmaster Tools, Open PageRank, Ahrefs' free Domain Rating, Matomo and
-// PostHog. Keys, with Matomo's and PostHog's addresses and IDs, are saved in ~/.seo-supervisor/keys.json, never in the
-// project; a service's environment variable wins over its saved value. fetch sends the site's address and domain
-// names to these services, and submit-bing asks Bing to crawl URLs, so without --yes each is a dry run that prints
-// what it would send. *_ENDPOINT variables point the services at the tests' fakes; Matomo and PostHog use their
-// saved address instead.
+// Services connected by an API key alone: Bing Webmaster Tools, Open PageRank, Ahrefs' free Domain Rating, Moz, the
+// YouTube Data API, Matomo and PostHog. Keys, with Matomo's and PostHog's addresses and IDs, are saved in
+// ~/.seo-supervisor/keys.json, never in the project; a service's environment variable wins over its saved value.
+// fetch sends the site's address and domain names to these services, test sends a token, and submit-bing asks Bing
+// to crawl URLs, so without --yes each is a dry run that prints what it would send. *_ENDPOINT variables point the
+// services at the tests' fakes; Matomo and PostHog use their saved address instead.
+import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, mkdirSync, chmodSync, existsSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -99,6 +100,9 @@ export const SERVICES = {
       `4. In your own terminal run: ${setLine("matomo")}`,
       "   It asks for the address and the site ID (shown as you type), then the token. Paste the token and press Enter. It isn't shown, so it stays out of chats and your command history.",
       "If fetch says the segment hasn't been created, your Matomo only reports on saved segments. Above any report, open the segment menu → Add new segment, choose Channel Type, Is, search, and save it with its reports pre-processed. Matomo fills it in within a few hours; then fetch again.",
+      "To check the connection first: node connect-keys.mjs test matomo --yes (it shows your Matomo's version).",
+      // https://matomo.org/faq/troubleshooting/faq_50/
+      "Matomo's numbers won't match Google Analytics exactly. Matomo doesn't sample data, and Google Analytics can. A visitor who accepts one tool in the consent banner but not the other is counted by only one. And the two tools spot bots and count visits in their own ways. Compare the trends, not the totals.",
     ],
   },
   posthog: {
@@ -137,13 +141,56 @@ export const SERVICES = {
       "   Not the project key in your site's tracking code (it starts with phc_): that one can only send data, not read it.",
       `4. In your own terminal run: ${setLine("posthog")}`,
       "   It asks for the address (type us, eu or your own address) and the project ID, shown as you type, then the key. Paste the key and press Enter. It isn't shown, so it stays out of chats and your command history.",
+      "To check the connection first: node connect-keys.mjs test posthog --yes (it counts the project's pageviews in the last 7 days).",
+    ],
+  },
+  // optional keeps a service off fetch's Limits list when no key is set.
+  // https://moz.com/api/docs/guides/authentication
+  // https://moz.com/api/docs/methods/DataSiteMetricsFetchAction
+  moz: {
+    name: "Moz",
+    env: "MOZ_TOKEN",
+    endpointEnv: "MOZ_ENDPOINT",
+    endpoint: "https://api.moz.com/jsonrpc",
+    optional: true,
+    adds: "Moz's Domain Authority, Spam Score and linking domains for the site and the competitors you name",
+    where: "moz.com/api/dashboard",
+    guide: [
+      "Moz adds its Domain Authority (1 to 100), Spam Score and the number of sites linking to you, for your site and the competitors you name: a second opinion next to Open PageRank and Ahrefs.",
+      "1. Sign up for the Moz API at https://moz.com/products/api/pricing and pick the free plan. The API is separate from a Moz Pro subscription. Moz asks for a card but charges nothing unless you upgrade.",
+      "2. Open https://moz.com/api/dashboard and generate a token.",
+      `3. Copy the token, then in your own terminal run: ${setLine("moz")}`,
+      PASTE,
+      "The free plan has 50 rows a month and each domain uses one, so fetch reads at most 10 domains a run, your site first. The rows refill every month.",
+    ],
+  },
+  // https://developers.google.com/youtube/v3/determine_quota_cost
+  // https://developers.google.com/youtube/v3/docs/search/list
+  // https://developers.google.com/youtube/v3/docs/channels/list
+  youtube: {
+    name: "YouTube Data API",
+    env: "YOUTUBE_API_KEY",
+    endpointEnv: "YOUTUBE_ENDPOINT",
+    endpoint: "https://www.googleapis.com/youtube/v3",
+    optional: true,
+    adds: "the YouTube videos that rank for your topics, and your channel's subscribers, videos and views",
+    where: "console.cloud.google.com → APIs & Services → Credentials",
+    guide: [
+      "The YouTube Data API adds the videos that rank on YouTube for the topics you name, and your own channel's subscribers, videos and views. It needs a Google Cloud project and an API key; Google gives each project a daily quota.",
+      "1. Open https://console.cloud.google.com and pick or create a project.",
+      '2. Open APIs & Services → Library, search for "YouTube Data API v3" and click Enable.',
+      "3. Open APIs & Services → Credentials → Create credentials → API key. Under API restrictions, limit the key to YouTube Data API v3.",
+      `4. Copy the key, then in your own terminal run: ${setLine("youtube")}`,
+      PASTE,
+      'Then fetch with --topics "topic one, topic two" and --youtube-channel @yourhandle. YouTube allows 100 searches a day, so fetch searches at most 5 topics a run.',
     ],
   },
 };
-const USAGE = `usage: node connect-keys.mjs set bing|openpagerank|ahrefs|matomo|posthog [<key>]   (no key: it asks, hidden)
+const USAGE = `usage: node connect-keys.mjs set bing|openpagerank|ahrefs|matomo|posthog|moz|youtube [<key>]   (no key: it asks, hidden)
        node connect-keys.mjs set matomo [--url <address>] [--site-id <id>] | set posthog [--host us|eu|<address>] [--project-id <id>]
-       node connect-keys.mjs status | remove <service> | guide <service>
+       node connect-keys.mjs status | remove <service> | guide <service> | test matomo|posthog [--yes]
        node connect-keys.mjs fetch --site https://www.example.com [--competitors a.com,b.com] [--days 90] [--out seo-audit/keys.json] [--yes]
+            [--topics "topic one, topic two"] [--youtube-channel @handle] [--bing-pages /a,/b] [--bing-sister https://sister.example]
        node connect-keys.mjs submit-bing --site https://www.example.com (--urls changed.txt | --from-diff seo-audit/seo-diff.json) [--yes]`;
 const UA = "seo-supervisor-connect-keys";
 const ATTRIBUTION = { text: "Domain Rating by Ahrefs", url: "https://ahrefs.com/" };
@@ -157,7 +204,11 @@ const fail = msg => {
 const serviceOf = id =>
   Object.hasOwn(SERVICES, id)
     ? id
-    : fail(`there's no "${id}" connection. Use bing, openpagerank, ahrefs, matomo or posthog.`);
+    : fail(
+        `there's no "${id}" connection. Use ${Object.keys(SERVICES)
+          .join(", ")
+          .replace(/, (\w+)$/, " or $1")}.`,
+      );
 // A typed address, kept as origin and path ending in "/": https:// added when missing, a page such as index.php and
 // anything after it dropped. Plain http only on this computer, since the token travels with it.
 function address(s, what) {
@@ -173,14 +224,14 @@ function address(s, what) {
 function idOf(s, what, where) {
   return /^\d+$/.test(s) ? s : fail(`the ${what} is a number, like 1 or 3 (got "${s}"). Find it ${where}.`);
 }
-function siteOf(s) {
+function siteOf(s, flag = "--site") {
   let u;
   try {
     u = new URL(s);
   } catch {}
   return u && /^https?:$/.test(u.protocol)
     ? u
-    : fail(`--site must be the site's address, like https://www.example.com (got ${s})`);
+    : fail(`${flag} must be the site's address, like https://www.example.com (got ${s})`);
 }
 
 // ---------- keys ----------
@@ -360,6 +411,22 @@ function refusal(id, status, body, retryAfter, host, moved) {
     if (m) return m;
   }
   const bing = id === "bing" ? BING_ERRORS[body?.ErrorCode] : null;
+  // Moz's -32670 (HTTP 403, insufficient-quota) is a used-up month; it's checked before the call runs, so it costs
+  // nothing. https://moz.com/api/docs/guides/error-handling
+  if (id === "moz" && (body?.error?.code === -32670 || /quota/i.test(body?.error?.data?.issue || "")))
+    return `Moz says the rows for this month are used up (the free plan has 50 rows a month, one per domain). Nothing was charged for this request. The rows refill next month, or you can upgrade at moz.com/products/api/pricing.`;
+  // quotaExceeded and rateLimitExceeded are YouTube's; a turned-off API and a bad key are Google Cloud's general
+  // errors, matched by reason or message as google.mjs does. https://developers.google.com/youtube/v3/docs/errors
+  if (id === "youtube") {
+    const why = String(body?.error?.errors?.[0]?.reason || body?.error?.status || ""),
+      msg = String(body?.error?.message || "");
+    if (/quotaExceeded|rateLimitExceeded/.test(why))
+      return `YouTube Data API says the key's quota is used up for now (search has 100 calls a day, everything else 10,000 units a day). Try again tomorrow.`;
+    if (/accessNotConfigured|SERVICE_DISABLED/.test(why) || /has not been used|is disabled/i.test(msg))
+      return `YouTube Data API v3 isn't turned on in the key's Google Cloud project. Open console.cloud.google.com → APIs & Services → Library, search "YouTube Data API v3" and click Enable, wait a minute, then fetch again.`;
+    if (/keyInvalid|API_KEY_INVALID/.test(why) || /API key not valid/i.test(msg))
+      return `YouTube Data API didn't accept the key: it's mistyped, deleted, or limited to other APIs. Check it at ${s.where}, then run: ${setLine(id)}`;
+  }
   if (status === 401 || bing === "key")
     return `${s.name} didn't accept the key (${status === 401 ? 401 : "InvalidApiKey"}): it's mistyped, or it was deleted or replaced. Get the current key at ${s.where}, then run: ${setLine(id)}`;
   if (id === "openpagerank" && status === 403)
@@ -375,7 +442,12 @@ function refusal(id, status, body, retryAfter, host, moved) {
   if (status === 403)
     return `${s.name} refused the request (403): the key isn't allowed to do this. Check the key at ${s.where}, then run: ${setLine(id)}`;
   const detail =
-    body?.Message || body?.message || body?.detail || body?.error || (Array.isArray(body) ? body.join(" ") : "");
+    body?.Message ||
+    body?.message ||
+    body?.detail ||
+    body?.error?.message ||
+    (typeof body?.error === "string" ? body.error : "") ||
+    (Array.isArray(body) ? body.join(" ") : "");
   return `${s.name} answered ${status}${detail ? ` (${detail})` : ""}. Try again later; if it keeps happening, the service may have changed.`;
 }
 async function call(id, url, init = {}) {
@@ -466,7 +538,17 @@ async function bingSite(get, site) {
   return match.Url;
 }
 
-async function fetchBing(key, site, base, notes) {
+const linksOf = d => (d?.Details || []).map(l => ({ url: l.Url, anchorText: l.AnchorText }));
+const hostOf = u => {
+  try {
+    return bare(new URL(u).hostname);
+  } catch {
+    return null;
+  }
+};
+const MAX_CHOSEN = 20;
+// pages: extra pages to read links for; sister: another site in the same Bing account to compare with.
+async function fetchBing(key, site, base, notes, { pages: chosen = [], sister = null } = {}) {
   const get = bingGet(key, base),
     want = new URL(site).hostname,
     siteUrl = await bingSite(get, site);
@@ -507,8 +589,72 @@ async function fetchBing(key, site, base, notes) {
   }
   if (total > MAX_LINK_PAGES)
     notes.push(`Bing lists inbound links in ${total} pages of results; only the first ${MAX_LINK_PAGES} were read.`);
-  const links = await get("GetUrlLinks", { siteUrl, link: new URL("/", siteUrl).href, page: 0 });
-  const sample = (links?.Details || []).map(l => ({ url: l.Url, anchorText: l.AnchorText }));
+  const sample = linksOf(await get("GetUrlLinks", { siteUrl, link: new URL("/", siteUrl).href, page: 0 }));
+
+  // GetUrlLinks takes any page of the site; only the first page of results is read for each chosen one.
+  // https://learn.microsoft.com/dotnet/api/microsoft.bing.webmaster.api.interfaces.iwebmasterapi.geturllinks
+  let byPage = null;
+  if (chosen.length) {
+    byPage = {};
+    const own = new Set(),
+      off = [];
+    for (const p of chosen) {
+      let u;
+      try {
+        u = new URL(p, siteUrl);
+      } catch {}
+      if (u && bare(u.hostname) === bare(want)) own.add(u.pathname + u.search);
+      else off.push(p);
+    }
+    if (off.length)
+      notes.push(
+        `Bing links: left out ${off.length} chosen page(s) that aren't on ${want}: ${off.slice(0, 5).join(", ")}.`,
+      );
+    if (own.size > MAX_CHOSEN) notes.push(`Bing links: read the first ${MAX_CHOSEN} of ${own.size} chosen pages.`);
+    for (const path of [...own].slice(0, MAX_CHOSEN)) {
+      try {
+        byPage[path] = linksOf(await get("GetUrlLinks", { siteUrl, link: new URL(path, siteUrl).href, page: 0 }));
+      } catch (e) {
+        if (!(e instanceof Refused)) throw e;
+        notes.push(`Bing didn't give the links to ${path}: ${e.message}`);
+      }
+    }
+  }
+
+  // The sites that link to a sister site but not to this one: the linking pages of each site's 5 most-linked pages
+  // (the first page of results each), so it's a sample, not every link.
+  let sisterOut = null;
+  if (sister) {
+    try {
+      const sisterUrl = await bingSite(get, sister),
+        skip = new Set([bare(want), hostOf(sisterUrl)]);
+      const hostsOf = async (url, list) => {
+        const hosts = new Set();
+        for (const p of list.slice(0, 5))
+          for (const l of linksOf(await get("GetUrlLinks", { siteUrl: url, link: p.url, page: 0 }))) {
+            const h = hostOf(l.url);
+            if (h && !skip.has(h)) hosts.add(h);
+          }
+        return hosts;
+      };
+      const theirPages = ((await get("GetLinkCounts", { siteUrl: sisterUrl, page: 0 }))?.Links || [])
+        .map(l => ({ url: l.Url, count: l.Count }))
+        .sort((a, b) => b.count - a.count);
+      const ours = await hostsOf(
+          siteUrl,
+          [...pages].sort((a, b) => b.count - a.count),
+        ),
+        theirs = [...(await hostsOf(sisterUrl, theirPages))];
+      sisterOut = {
+        site: sisterUrl,
+        onlySister: theirs.filter(h => !ours.has(h)).slice(0, 50),
+        shared: theirs.filter(h => ours.has(h)).length,
+      };
+    } catch (e) {
+      if (!(e instanceof Refused)) throw e;
+      notes.push(`Bing: the sister site wasn't compared. ${e.message}`);
+    }
+  }
 
   let crawlIssues = null;
   try {
@@ -531,8 +677,9 @@ async function fetchBing(key, site, base, notes) {
     period: dates.length ? { from: day(Math.min(...dates)), to: day(Math.max(...dates)) } : null,
     traffic: Object.fromEntries(p),
     queries,
-    backlinks: { pages: pages.sort((a, b) => b.count - a.count), sample },
+    backlinks: { pages: pages.sort((a, b) => b.count - a.count), sample, ...(byPage && { byPage }) },
     crawlIssues,
+    ...(sister && { sister: sisterOut }),
   };
 }
 
@@ -605,36 +752,86 @@ export async function submitBing({ key, site, urls, endpoint }) {
 // The same days google.mjs reads Google Analytics for, ending 3 days ago, so the numbers line up.
 const periodFor = days => ({ from: day(Date.now() - (days + 2) * 864e5), to: day(Date.now() - 3 * 864e5) });
 // Matomo: visits from a search engine (segment referrerType==search) by entry page, most first. Only token_auth goes
-// in the POST body; the other parameters aren't secret. The splits, the same visits by device type and by country,
-// cover the whole site ID; their rows are { label, code, nb_visits }.
+// in the POST body; the other parameters aren't secret. The splits cover the whole site ID: the same visits by
+// device type and country, every visit by channel (no segment), and search visits by engine. With period=day,
+// VisitsSummary.get gives search visits per date, [] for a day with none.
 // https://developer.matomo.org/api-reference/reporting-api-legacy
-const MATOMO_SPLITS = { byDevice: "DevicesDetection.getType", byCountry: "UserCountry.getCountry" };
+const MATOMO_SPLITS = {
+  byDevice: "DevicesDetection.getType",
+  byCountry: "UserCountry.getCountry",
+  byChannel: "Referrers.getReferrerType",
+  byEngine: "Referrers.getSearchEngines",
+};
+const MATOMO_ALL = "Referrers.getReferrerType",
+  MATOMO_DAILY = "VisitsSummary.get";
 const matomoUrl = (k, p, method = "Actions.getEntryPageUrls") =>
   `${k.url}index.php?${new URLSearchParams({
     module: "API",
     method,
     idSite: k.siteId,
-    period: "range",
+    period: method === MATOMO_DAILY ? "day" : "range",
     date: `${p.from},${p.to}`,
-    segment: "referrerType==search",
+    ...(method === MATOMO_ALL ? {} : { segment: "referrerType==search" }),
     ...(method === "Actions.getEntryPageUrls"
-      ? { flat: 1, filter_limit: ROWS, filter_sort_column: "entry_nb_visits" }
-      : { filter_limit: 10, filter_sort_column: "nb_visits" }),
-    filter_sort_order: "desc",
+      ? { flat: 1, filter_limit: ROWS, filter_sort_column: "entry_nb_visits", filter_sort_order: "desc" }
+      : method === MATOMO_DAILY
+        ? {}
+        : { filter_limit: 10, filter_sort_column: "nb_visits", filter_sort_order: "desc" }),
     format: "JSON",
   })}`;
 // PostHog: sessions it files as Organic Search (a search engine as referrer or utm_source, paid search left out, as
 // in GA4), by entry page. The site's host is matched here, not sent.
-const posthogQuery = p =>
-  `SELECT domainWithoutWWW($entry_current_url) AS host, $entry_pathname AS path, count() AS visits FROM sessions WHERE $channel_type = 'Organic Search' AND toDate($start_timestamp) BETWEEN toDate('${p.from}') AND toDate('${p.to}') GROUP BY host, path ORDER BY visits DESC LIMIT ${ROWS}`;
+// Without $channel_type, the fallback counts sessions referred by a search engine. These LIKE patterns can count a
+// little paid search and Google's other sites; port PostHog's channel_definitions.json if that matters.
+// https://posthog.com/docs/data/channel-type
+const ENGINES = [
+  "%google.%",
+  "%bing.com",
+  "%duckduckgo.com",
+  "%search.yahoo.%",
+  "%yandex.%",
+  "%baidu.com",
+  "%ecosia.org",
+  "%qwant.com",
+  "%startpage.com",
+  "%search.brave.com",
+  "%naver.com",
+  "%seznam.cz",
+];
+const organic = (fallback, pre = "") =>
+  fallback
+    ? `(${ENGINES.map(e => `${pre}$entry_referring_domain LIKE '${e}'`).join(" OR ")})`
+    : `${pre}$channel_type = 'Organic Search'`;
+const between = (p, field) => `toDate(${field}) BETWEEN toDate('${p.from}') AND toDate('${p.to}')`;
+const posthogQuery = (p, fb) =>
+  `SELECT domainWithoutWWW($entry_current_url) AS host, $entry_pathname AS path, count() AS visits FROM sessions WHERE ${organic(fb)} AND ${between(p, "$start_timestamp")} GROUP BY host, path ORDER BY visits DESC LIMIT ${ROWS}`;
 // sessions has no device or country, so the splits use its pageviews' $device_type and $geoip_country_code through
 // events' `session` join. The events' dates bound the scan; a session starting in the period has its first pageview
 // in it.
 // https://posthog.com/docs/data/sessions
-const POSTHOG_SPLITS = { byDevice: "properties.$device_type", byCountry: "properties.$geoip_country_code" };
-const posthogSplit = (p, prop) =>
-  `SELECT domainWithoutWWW(session.$entry_current_url) AS host, ${prop} AS k, count(DISTINCT $session_id) AS visits FROM events WHERE event = '$pageview' AND session.$channel_type = 'Organic Search' AND toDate(session.$start_timestamp) BETWEEN toDate('${p.from}') AND toDate('${p.to}') AND toDate(timestamp) BETWEEN toDate('${p.from}') AND toDate('${p.to}') GROUP BY host, k ORDER BY visits DESC LIMIT 1000`;
+const posthogSplit = (p, prop, fb) =>
+  `SELECT domainWithoutWWW(session.$entry_current_url) AS host, ${prop} AS k, count(DISTINCT $session_id) AS visits FROM events WHERE event = '$pageview' AND ${organic(fb, "session.")} AND ${between(p, "session.$start_timestamp")} AND ${between(p, "timestamp")} GROUP BY host, k ORDER BY visits DESC LIMIT 1000`;
+// byReferrer: every session by its referring domain ($direct when there was none), not only those from search.
+const POSTHOG_SPLITS = {
+  byDevice: (p, fb) => posthogSplit(p, "properties.$device_type", fb),
+  byCountry: (p, fb) => posthogSplit(p, "properties.$geoip_country_code", fb),
+  byReferrer: p =>
+    `SELECT domainWithoutWWW($entry_current_url) AS host, $entry_referring_domain AS k, count() AS visits FROM sessions WHERE ${between(p, "$start_timestamp")} GROUP BY host, k ORDER BY visits DESC LIMIT 1000`,
+};
+// Pageviews and visitors (distinct_id) per day, in the sessions from search.
+const posthogDaily = (p, fb) =>
+  `SELECT domainWithoutWWW(session.$entry_current_url) AS host, toString(toDate(timestamp)) AS d, count() AS pageviews, count(DISTINCT distinct_id) AS visitors FROM events WHERE event = '$pageview' AND ${organic(fb, "session.")} AND ${between(p, "session.$start_timestamp")} AND ${between(p, "timestamp")} GROUP BY host, d ORDER BY d LIMIT 1000`;
+const POSTHOG_TEST = "SELECT count() FROM events WHERE event = '$pageview' AND timestamp > now() - INTERVAL 7 DAY";
 const posthogUrl = k => `${k.host}api/projects/${k.projectId}/query/`;
+async function posthogRead(k, query) {
+  const b = await call("posthog", posthogUrl(k), {
+    ...POST,
+    headers: { authorization: `Bearer ${k.key}`, "content-type": "application/json" },
+    body: JSON.stringify({ query: { kind: "HogQLQuery", query } }),
+  });
+  if (!Array.isArray(b?.results)) throw new Refused(refusal("posthog", 200, null, null, new URL(k.host).host));
+  return b.results;
+}
 // [name, visits] pairs to { name: { visits } } for the top 10; a pair without a name or visits is dropped.
 const top10 = pairs => {
   const m = new Map();
@@ -646,8 +843,15 @@ const top10 = pairs => {
       .map(([k, visits]) => [k, { visits }]),
   );
 };
-const SPLIT_NAME = { byDevice: "by device", byCountry: "by country" };
-// A split that fails is noted; the visits by landing page stay.
+const SPLIT_NAME = {
+  byDevice: "visits from search engines by device",
+  byCountry: "visits from search engines by country",
+  byChannel: "visits by channel",
+  byEngine: "visits from search engines by search engine",
+  byReferrer: "visits by referrer",
+  daily: "visits from search engines per day",
+};
+// A split that fails is noted; the visits by landing page stay. once: one read that isn't a top 10 (the daily trend).
 async function splits(name, fields, read, notes) {
   const out = {};
   for (const [field, what] of Object.entries(fields)) {
@@ -655,11 +859,21 @@ async function splits(name, fields, read, notes) {
       out[field] = top10(await read(what, field));
     } catch (e) {
       if (!(e instanceof Refused)) throw e;
-      notes.push(`${name}'s visits from search engines ${SPLIT_NAME[field]} weren't read: ${e.message}`);
+      notes.push(`${name}'s ${SPLIT_NAME[field]} weren't read: ${e.message}`);
     }
   }
   return out;
 }
+async function once(name, field, fn, notes) {
+  try {
+    return { [field]: await fn() };
+  } catch (e) {
+    if (!(e instanceof Refused)) throw e;
+    notes.push(`${name}'s ${SPLIT_NAME[field]} weren't read: ${e.message}`);
+    return {};
+  }
+}
+const isDay = d => /^\d{4}-\d\d-\d\d$/.test(d);
 // One page's http/https, www/apex and tracking-parameter variants add up, by path as GA4's landing page is.
 const addVisits = (map, path, n) => {
   map[path] = { visits: (map[path]?.visits || 0) + n };
@@ -672,12 +886,14 @@ const POST = { method: "POST", redirect: "manual" };
 async function fetchMatomo(k, site, period, notes) {
   const want = bare(new URL(site).hostname),
     traffic = {};
-  const read = async method => {
+  // list: a report's rows; otherwise one object (the daily trend's dates).
+  const read = async (method, list = true) => {
     const rows = await call("matomo", matomoUrl(k, period, method), {
       ...POST,
       body: new URLSearchParams({ token_auth: k.key }),
     });
-    if (!Array.isArray(rows)) throw new Refused(refusal("matomo", 200, rows, null, new URL(k.url).host));
+    if (list ? !Array.isArray(rows) : !rows || typeof rows !== "object" || rows.result === "error")
+      throw new Refused(refusal("matomo", 200, rows, null, new URL(k.url).host));
     return rows;
   };
   const rows = await read();
@@ -695,7 +911,7 @@ async function fetchMatomo(k, site, period, notes) {
   if (rows.length >= ROWS) notes.push(tooMany("Matomo"));
   // Countries by code, upper case as PostHog's; "xx" is Matomo's Unknown, not a country.
   const name = (r, field) =>
-    field === "byDevice" ? r?.label : r?.code !== "xx" && typeof r?.code === "string" ? r.code.toUpperCase() : null;
+    field !== "byCountry" ? r?.label : r?.code !== "xx" && typeof r?.code === "string" ? r.code.toUpperCase() : null;
   return {
     period,
     traffic,
@@ -705,44 +921,160 @@ async function fetchMatomo(k, site, period, notes) {
       async (method, field) => (await read(method)).map(r => [name(r, field), r?.nb_visits]),
       notes,
     )),
-  };
-}
-
-async function fetchPosthog(k, site, period, notes) {
-  const want = bare(new URL(site).hostname),
-    traffic = {};
-  const read = async query => {
-    const b = await call("posthog", posthogUrl(k), {
-      ...POST,
-      headers: { authorization: `Bearer ${k.key}`, "content-type": "application/json" },
-      body: JSON.stringify({ query: { kind: "HogQLQuery", query } }),
-    });
-    if (!Array.isArray(b?.results)) throw new Refused(refusal("posthog", 200, null, null, new URL(k.host).host));
-    return b.results;
-  };
-  const mine = rows => rows.filter(r => Array.isArray(r) && bare(String(r[0] ?? "")) === want);
-  const rows = await read(posthogQuery(period));
-  for (const [, path, n] of mine(rows)) if (/^\//.test(path) && Number(n) > 0) addVisits(traffic, path, Number(n));
-  if (rows.length >= ROWS) notes.push(tooMany("PostHog"));
-  return {
-    period,
-    traffic,
-    ...(await splits(
-      "PostHog",
-      POSTHOG_SPLITS,
-      async (prop, field) =>
-        mine(await read(posthogSplit(period, prop))).map(([, v, n]) => [
-          field === "byCountry" && typeof v === "string" ? v.toUpperCase() : v,
-          n,
-        ]),
+    ...(await once(
+      "Matomo",
+      "daily",
+      async () =>
+        Object.fromEntries(
+          Object.entries(await read(MATOMO_DAILY, false))
+            .filter(([d]) => isDay(d))
+            .map(([d, v]) => [d, Number(v?.nb_visits) || 0]),
+        ),
       notes,
     )),
   };
 }
 
+async function fetchPosthog(k, site, period, notes) {
+  const want = bare(new URL(site).hostname),
+    traffic = {},
+    read = q => posthogRead(k, q);
+  const mine = rows => rows.filter(r => Array.isArray(r) && bare(String(r[0] ?? "")) === want);
+  let fallback = false,
+    rows;
+  try {
+    rows = await read(posthogQuery(period));
+  } catch (e) {
+    if (!(e instanceof Refused) || !/channel_type/.test(e.message)) throw e;
+    fallback = true;
+    rows = await read(posthogQuery(period, true));
+    notes.push(
+      "PostHog couldn't use $channel_type here (an older PostHog?), so visits from search were counted from search engines' referring domains instead. That list is our own and may count a little paid search.",
+    );
+  }
+  for (const [, path, n] of mine(rows)) if (/^\//.test(path) && Number(n) > 0) addVisits(traffic, path, Number(n));
+  if (rows.length >= ROWS) notes.push(tooMany("PostHog"));
+  const split = await splits(
+    "PostHog",
+    POSTHOG_SPLITS,
+    async (q, field) =>
+      mine(await read(q(period, fallback))).map(([, v, n]) => [
+        field === "byCountry" && typeof v === "string" ? v.toUpperCase() : v,
+        n,
+      ]),
+    notes,
+  );
+  const daily = await once(
+    "PostHog",
+    "daily",
+    async () =>
+      Object.fromEntries(
+        mine(await read(posthogDaily(period, fallback)))
+          .filter(r => isDay(r[1]))
+          .map(([, d, pv, v]) => [d, { pageviews: Number(pv) || 0, visitors: Number(v) || 0 }]),
+      ),
+    notes,
+  );
+  // Zero visits from search mean something only if PostHog records referrers at all ($direct is its value for none).
+  const check = {};
+  if (!Object.keys(traffic).length && split.byReferrer) {
+    const seen = Object.keys(split.byReferrer);
+    check.referrersCaptured = seen.some(r => r !== "$direct");
+    if (!check.referrersCaptured)
+      notes.push(
+        seen.length
+          ? "PostHog shows zero visits from search, but no visit to this site in the period has a referrer ($direct only), so PostHog can't tell visits from search apart. Check that the site's PostHog setup keeps the referrer; until then, don't trust the zero."
+          : "PostHog shows zero visits from search, but it recorded no visits to this site at all in the period, so the zero says nothing. Check that PostHog's code is on the site and that the project ID is this site's, and that referrers reach it.",
+      );
+  }
+  return { period, organicBy: fallback ? "referrer" : "channel", traffic, ...split, ...daily, ...check };
+}
+
+// Connection tests (test matomo|posthog --yes). API.getMatomoVersion answers { value: "5.x" } to a valid token.
+async function testMatomo(k) {
+  const b = await call(
+    "matomo",
+    `${k.url}index.php?${new URLSearchParams({ module: "API", method: "API.getMatomoVersion", format: "JSON" })}`,
+    { ...POST, body: new URLSearchParams({ token_auth: k.key }) },
+  );
+  if (typeof b?.value !== "string") throw new Refused(refusal("matomo", 200, b, null, new URL(k.url).host));
+  return `Matomo ${b.value} at ${k.url} accepted the token.`;
+}
+async function testPosthog(k) {
+  const n = Number((await posthogRead(k, POSTHOG_TEST))[0]?.[0]) || 0,
+    who = `PostHog project ${k.projectId} at ${k.host} accepted the key`;
+  return n
+    ? `${who}: ${num(n)} pageviews in the last 7 days.`
+    : `${who}, but has no $pageview events in the last 7 days. Check that PostHog's code is on the site and sends pageviews.`;
+}
+
+// ---------- YouTube ----------
+// channels.list costs 1 unit of 10,000 a day; search.list has its own bucket of 100 calls a day, so a run makes at
+// most YT_TOPICS searches. The key goes as ?key=. It's never printed, and call()'s errors name the host, not the URL.
+const YT_TOPICS = 5,
+  CHANNEL_ID = /^UC[\w-]{22}$/;
+async function fetchYoutube(key, base, { topics, channel }, notes) {
+  const get = (path, params) => call("youtube", `${base}/${path}?${new URLSearchParams({ ...params, key })}`);
+  const n = v => (v != null && Number(v) >= 0 ? Number(v) : null),
+    out = { channel: null, topics: [] };
+  if (channel) {
+    const c = (
+        await get("channels", {
+          part: "snippet,statistics",
+          ...(CHANNEL_ID.test(channel) ? { id: channel } : { forHandle: channel }),
+        })
+      )?.items?.[0],
+      st = c?.statistics || {};
+    if (c)
+      out.channel = {
+        id: c.id,
+        title: c.snippet?.title ?? null,
+        subscribers: st.hiddenSubscriberCount ? null : n(st.subscriberCount),
+        videos: n(st.videoCount),
+        views: n(st.viewCount),
+      };
+    else
+      notes.push(
+        `YouTube has no channel ${channel}. Check the handle (it starts with @) or the channel ID (it starts with UC).`,
+      );
+  }
+  if (topics.length > YT_TOPICS)
+    notes.push(
+      `YouTube: searched the first ${YT_TOPICS} of ${topics.length} topics. Search allows 100 calls a day; run fetch again another day with the rest.`,
+    );
+  for (const topic of topics.slice(0, YT_TOPICS)) {
+    const items = (await get("search", { part: "snippet", type: "video", maxResults: 10, q: topic }))?.items || [];
+    out.topics.push({
+      topic,
+      videos: items
+        .filter(i => typeof i?.id?.videoId === "string")
+        .map(({ id: { videoId }, snippet: s = {} }) => ({
+          id: videoId,
+          url: `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`,
+          title: s.title ?? "",
+          channel: s.channelTitle ?? "",
+          published: isDay(String(s.publishedAt).slice(0, 10)) ? s.publishedAt.slice(0, 10) : null,
+          own: !!out.channel && s.channelId === out.channel.id,
+        })),
+    });
+  }
+  return out;
+}
+
 // Each service runs only when its key is set. problems holds the refusals, also kept in result.notes.
 // bingPages and bingSister add Bing's links to chosen pages and to a sister site in the same account.
-export async function fetchKeys({ site, competitors = [], keys = activeKeys(), endpoints = {}, days = 90 }) {
+const MOZ_MAX = 10;
+export async function fetchKeys({
+  site,
+  competitors = [],
+  keys = activeKeys(),
+  endpoints = {},
+  days = 90,
+  topics = [],
+  channel = null,
+  bingPages = [],
+  bingSister = null,
+}) {
   const siteUrl = new URL("/", site).href,
     notes = [],
     problems = [],
@@ -758,13 +1090,15 @@ export async function fetchKeys({ site, competitors = [], keys = activeKeys(), e
   let bing = null,
     attribution = null,
     matomo = null,
-    posthog = null;
+    posthog = null,
+    moz = null,
+    youtube = null;
   const run = async (id, fn) => {
     const s = SERVICES[id];
     // Analytics services (those with fields) go under Limits only when the site uses one, which SKILL.md decides.
     // Optional extras never do.
     if (!keys[id]) {
-      if (!s.fields)
+      if (!s.fields && !s.optional)
         notChecked.push({
           area: `${s.name}: ${s.adds}`,
           reason: `No key set. To connect it: node connect-keys.mjs guide ${id}`,
@@ -781,7 +1115,7 @@ export async function fetchKeys({ site, competitors = [], keys = activeKeys(), e
     }
   };
   await run("bing", async key => {
-    bing = await fetchBing(key, siteUrl, end("bing"), notes);
+    bing = await fetchBing(key, siteUrl, end("bing"), notes, { pages: bingPages, sister: bingSister });
   });
   await run("openpagerank", async key => {
     for (const list of chunks(domains, 100)) {
@@ -813,6 +1147,46 @@ export async function fetchKeys({ site, competitors = [], keys = activeKeys(), e
       };
     }
   });
+  // Moz's data.site.metrics.fetch with scope "domain" uses one row a call, and the free plan has 50 rows a month, so a
+  // run reads at most MOZ_MAX domains. Domains already read are kept on a refusal.
+  await run("moz", async key => {
+    moz = [];
+    if (domains.length > MOZ_MAX)
+      notes.push(
+        `Moz: read the first ${MOZ_MAX} of ${domains.length} domains. Each uses one of the free plan's 50 rows a month.`,
+      );
+    for (const domain of domains.slice(0, MOZ_MAX)) {
+      const b = await call("moz", end("moz"), {
+        method: "POST",
+        headers: { "x-moz-token": key, "content-type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: randomUUID(),
+          method: "data.site.metrics.fetch",
+          params: { data: { site_query: { query: domain, scope: "domain" } } },
+        }),
+      });
+      if (b?.error) throw new Refused(refusal("moz", Number(b.error.status || b.error.httpStatus) || 400, b));
+      const m = b?.result?.site_metrics || {},
+        n = v => (typeof v === "number" && v >= 0 ? v : null); // Spam Score -1: Moz has none
+      moz.push({
+        domain,
+        domainAuthority: n(m.domain_authority),
+        spamScore: n(m.spam_score),
+        linkingDomains: n(m.root_domains_to_root_domain),
+        inboundLinks: n(m.external_pages_to_root_domain),
+      });
+    }
+  });
+  await run("youtube", async key => {
+    if (!topics.length && !channel) {
+      notes.push(
+        "A YouTube key is set, but fetch got no --topics or --youtube-channel, so YouTube wasn't asked anything.",
+      );
+      return;
+    }
+    youtube = await fetchYoutube(key, end("youtube"), { topics, channel }, notes);
+  });
   const period = periodFor(days);
   await run("matomo", async k => {
     matomo = await fetchMatomo(k, siteUrl, period, notes);
@@ -828,6 +1202,8 @@ export async function fetchKeys({ site, competitors = [], keys = activeKeys(), e
       bing,
       authority,
       attribution,
+      moz,
+      youtube,
       matomo,
       posthog,
       findings: crawlFinding(bing),
@@ -875,6 +1251,25 @@ async function main(argv) {
   } else if (cmd === "guide") {
     if (!pos[0]) throw new Fail(USAGE);
     console.log(SERVICES[serviceOf(pos[0])].guide.join("\n"));
+  } else if (cmd === "test") {
+    const id = pos[0] && serviceOf(pos[0]);
+    if (id !== "matomo" && id !== "posthog")
+      fail("test works for matomo or posthog: node connect-keys.mjs test matomo|posthog [--yes]");
+    const k = activeKeys()[id];
+    if (!k) fail(`${SERVICES[id].name} isn't set up yet. To connect it: node connect-keys.mjs guide ${id}`);
+    if (args.yes !== true) {
+      console.log(
+        `connect-keys: dry run, nothing sent. With --yes it would send your ${id === "matomo" ? `token to ${new URL(k.url).host} and ask for Matomo's version (API.getMatomoVersion)` : `key to ${new URL(k.host).host} and count project ${k.projectId}'s pageviews in the last 7 days (the query: ${POSTHOG_TEST})`}. Re-run with --yes once the owner agrees.`,
+      );
+      return 0;
+    }
+    try {
+      console.log("connect-keys: " + (await (id === "matomo" ? testMatomo(k) : testPosthog(k))));
+    } catch (e) {
+      if (!(e instanceof Refused)) throw e;
+      console.log("connect-keys: " + e.message);
+      return 1;
+    }
   } else if (cmd === "status") {
     const keys = activeKeys();
     for (const [id, s] of Object.entries(SERVICES)) {
@@ -906,25 +1301,51 @@ async function main(argv) {
     );
     const domains = domainsFor(siteUrl, competitors);
     const skipNote = skipped.map(c => `Skipped competitor "${c}": it's not a domain name like rival.com.`);
+    const listOf = s =>
+      (s || "")
+        .split(",")
+        .map(x => x.trim())
+        .filter(Boolean);
+    const topics = listOf(str("topics")),
+      channel = str("youtube-channel"),
+      bingPages = listOf(str("bing-pages"));
+    const bingSister = str("bing-sister") && siteOf(args["bing-sister"], "--bing-sister").href;
 
     if (args.yes !== true) {
-      const list = domains.slice(0, 10).join(", ") + (domains.length > 10 ? ` … and ${domains.length - 10} more` : "");
+      const list = ds => ds.slice(0, 10).join(", ") + (ds.length > 10 ? ` … and ${ds.length - 10} more` : "");
       const { matomo: m, posthog: p } = keys;
+      const yt =
+        topics.length || channel
+          ? `your key, ${Math.min(topics.length, YT_TOPICS)} topic search(es)${topics.length ? ` (${topics.slice(0, YT_TOPICS).join(", ")})` : ""}${channel ? ` and the channel ${channel}` : ""}`
+          : "nothing (no --topics or --youtube-channel given)";
+      const bingWhat = `your site's address (${siteUrl})${bingPages.length ? `, ${bingPages.length} chosen page(s) for their links` : ""}${bingSister ? `, the sister site ${bingSister}` : ""}`;
       const lines = Object.entries(SERVICES).map(([id, s]) =>
         !keys[id]
           ? `  ${s.name}: not set, skipped (to add it: node connect-keys.mjs guide ${id})`
           : id === "matomo"
-            ? `  Matomo: your token (in the request body, never in the address) and site ID ${m.siteId}, to ${new URL(m.url).host}:${[undefined, ...Object.values(MATOMO_SPLITS)].map(method => `\n    POST ${matomoUrl(m, period, method)}`).join("")}`
+            ? `  Matomo: your token (in the request body, never in the address) and site ID ${m.siteId}, to ${new URL(m.url).host}:${[undefined, ...Object.values(MATOMO_SPLITS), MATOMO_DAILY].map(method => `\n    POST ${matomoUrl(m, period, method)}`).join("")}`
             : id === "posthog"
-              ? `  PostHog: your key and project ID ${p.projectId}, to ${new URL(p.host).host}:${[posthogQuery(period), ...Object.values(POSTHOG_SPLITS).map(prop => posthogSplit(period, prop))].map(q => `\n    POST ${posthogUrl(p)} with the query: ${q}`).join("")}`
-              : `  ${s.name}: ${id === "bing" ? `your site's address (${siteUrl})` : `${domains.length} domain name(s) (${list})`} and your key, to ${new URL(endpoints[id]).host}`,
+              ? `  PostHog: your key and project ID ${p.projectId}, to ${new URL(p.host).host}:${[posthogQuery(period), ...Object.values(POSTHOG_SPLITS).map(q => q(period)), posthogDaily(period)].map(q => `\n    POST ${posthogUrl(p)} with the query: ${q}`).join("")}`
+              : id === "youtube"
+                ? `  YouTube Data API: ${yt}, to ${new URL(endpoints[id]).host}`
+                : `  ${s.name}: ${id === "bing" ? bingWhat : id === "moz" ? `${Math.min(domains.length, MOZ_MAX)} domain name(s) (${list(domains.slice(0, MOZ_MAX))})` : `${domains.length} domain name(s) (${list(domains)})`} and your key, to ${new URL(endpoints[id]).host}`,
       );
       console.log(
         `connect-keys: dry run, nothing sent. With --yes it would send:\n${lines.join("\n")}${skipNote.length ? "\n" + skipNote.join("\n") : ""}\nThese go to outside services, so re-run with --yes once the owner agrees.`,
       );
       return 0;
     }
-    const { result, problems } = await fetchKeys({ site: siteUrl, competitors, keys, endpoints, days });
+    const { result, problems } = await fetchKeys({
+      site: siteUrl,
+      competitors,
+      keys,
+      endpoints,
+      days,
+      topics,
+      channel,
+      bingPages,
+      bingSister,
+    });
     result.notes.push(...skipNote);
     const out = resolve(str("out") || "seo-audit/keys.json");
     mkdirSync(dirname(out), { recursive: true });
@@ -933,7 +1354,7 @@ async function main(argv) {
     const b = result.bing,
       visits = (name, x) => (x ? `${name} ${Object.keys(x.traffic).length} pages · ` : "");
     console.log(
-      `connect-keys: ${b ? `Bing ${Object.keys(b.traffic).length} pages, ${b.queries.length} queries, ${b.backlinks.pages.length} linked pages${b.crawlIssues ? `, ${b.crawlIssues.length} crawl issues` : ""} · ` : ""}${result.authority.length ? `authority for ${result.authority.length} domain(s) · ` : ""}${visits("Matomo", result.matomo)}${visits("PostHog", result.posthog)}${result.findings.length} finding(s) · wrote ${out}`,
+      `connect-keys: ${b ? `Bing ${Object.keys(b.traffic).length} pages, ${b.queries.length} queries, ${b.backlinks.pages.length} linked pages${b.crawlIssues ? `, ${b.crawlIssues.length} crawl issues` : ""} · ` : ""}${result.authority.length ? `authority for ${result.authority.length} domain(s) · ` : ""}${result.moz?.length ? `Moz for ${result.moz.length} domain(s) · ` : ""}${result.youtube ? `YouTube ${result.youtube.topics.length} topic(s) · ` : ""}${visits("Matomo", result.matomo)}${visits("PostHog", result.posthog)}${result.findings.length} finding(s) · wrote ${out}`,
     );
     return problems.length ? 1 : 0;
   } else if (cmd === "submit-bing") {

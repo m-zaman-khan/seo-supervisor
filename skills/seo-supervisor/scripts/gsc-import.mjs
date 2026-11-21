@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Reads an unzipped Search Console Performance export into traffic per page and findings.
+// Reads an unzipped Search Console Performance export, and the AI report exports, into traffic per page and findings.
 // google.mjs builds the same output from the API and reuses addTraffic() and gscFindings().
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -119,21 +119,86 @@ export function gscFindings(traffic, pageQueries, urls) {
   return findings;
 }
 
+// Search Console's AI export has the page column, then Impressions, with "~" and "-" downloaded as zeros. Bing doesn't
+// document its columns, so the number is the column named like `metric`, else the first number column after the pages.
+// https://support.google.com/webmasters/answer/16984139
+const toCount = s => {
+  const d = String(s ?? "").replace(/\D/g, "");
+  return d ? Number(d) : NaN;
+};
+export function aiReport(rows, metric, host) {
+  const cols = Object.keys(rows[0] || {}),
+    isUrl = v => /^https?:\/\//i.test(v || "");
+  const page = cols.find(c => rows.some(r => isUrl(r[c])));
+  const value =
+    cols.find(c => c !== page && new RegExp(metric, "i").test(c)) ||
+    cols.slice(cols.indexOf(page) + 1).find(c => rows.every(r => !r[c] || !isNaN(toCount(r[c]))));
+  if (!page || !value) return null;
+  const pages = {};
+  for (const r of rows) {
+    let u;
+    try {
+      u = new URL(r[page]);
+    } catch {
+      continue;
+    }
+    const n = toCount(r[value]);
+    if (n > 0 && (!host || u.hostname.replace(/^www\./, "") === host))
+      pages[u.pathname + u.search] = { [metric]: (pages[u.pathname + u.search]?.[metric] || 0) + n };
+  }
+  const sorted = Object.entries(pages).sort((a, b) => b[1][metric] - a[1][metric]);
+  return { [metric]: sorted.reduce((s, [, v]) => s + v[metric], 0), pages: Object.fromEntries(sorted) };
+}
+
 if (isMain(import.meta.url)) {
   const args = {};
   for (let i = 2; i < process.argv.length; i++) {
     const k = process.argv[i].replace(/^--/, "");
     args[k] = process.argv[i + 1] && !process.argv[i + 1].startsWith("--") ? process.argv[++i] : true;
   }
-  if (typeof args.pages !== "string") {
+  const AI = [
+    ["ai-google", "google", "impressions", "Search Console Generative AI performance", "then Impressions"],
+    ["ai-bing", "bing", "citations", "Bing Webmaster Tools AI Performance", "and a Citations column"],
+  ].filter(([flag]) => typeof args[flag] === "string");
+  if (typeof args.pages !== "string" && !AI.length) {
     console.error(
-      "usage: node gsc-import.mjs --pages Pages.csv [--queries Queries.csv] [--page-queries dir/] [--site-origin https://x] [--out seo-audit/gsc.json]",
+      "usage: node gsc-import.mjs --pages Pages.csv [--queries Queries.csv] [--page-queries dir/] [--site-origin https://x] [--out seo-audit/gsc.json]\n       node gsc-import.mjs --ai-google Pages.csv [--ai-bing ai-pages.csv] [--site-origin https://x] [--out seo-audit/ai-reports.json]",
     );
     process.exit(2);
   }
-  const OUT = resolve(typeof args.out === "string" ? args.out : "seo-audit/gsc.json");
+  const OUT = resolve(
+    typeof args.out === "string"
+      ? args.out
+      : typeof args.pages === "string"
+        ? "seo-audit/gsc.json"
+        : "seo-audit/ai-reports.json",
+  );
   const host =
     typeof args["site-origin"] === "string" ? new URL(args["site-origin"]).hostname.replace(/^www\./, "") : null;
+  const aiReports = AI.length
+    ? Object.fromEntries(
+        AI.map(([flag, id, metric, what, cols]) => {
+          const r = aiReport(parseCsv(readFileSync(args[flag], "utf8")), metric, host);
+          if (!r) {
+            console.error(
+              `gsc-import: ${args[flag]} isn't a ${what} export of pages. Expected a column of page addresses ${cols}, as the report's download writes them.`,
+            );
+            process.exit(2);
+          }
+          return [id, r];
+        }),
+      )
+    : null;
+  if (typeof args.pages !== "string") {
+    mkdirSync(dirname(OUT), { recursive: true });
+    writeFileSync(OUT, JSON.stringify({ source: "ai-reports", aiReports }, null, 2));
+    console.log(
+      `gsc-import: AI reports for ${Object.values(aiReports)
+        .map(r => Object.keys(r.pages).length)
+        .join(" and ")} pages · wrote ${OUT}`,
+    );
+    process.exit(0);
+  }
 
   // Search Console writes the dimension, Clicks, Impressions, CTR and Position in that order in every UI language,
   // so columns are read by position. Counts drop every separator ("10.000", "1 234"); CTR and position take
@@ -211,7 +276,11 @@ if (isMain(import.meta.url)) {
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(
     OUT,
-    JSON.stringify({ source: "search-console", period, traffic, queries, pageQueries, findings }, null, 2),
+    JSON.stringify(
+      { source: "search-console", period, traffic, queries, pageQueries, findings, ...(aiReports && { aiReports }) },
+      null,
+      2,
+    ),
   );
   console.log(
     `gsc-import: ${Object.keys(traffic).length} pages, ${queries.length} queries, ${Object.keys(pageQueries).length} per-page exports, ${findings.length} findings · wrote ${OUT}`,

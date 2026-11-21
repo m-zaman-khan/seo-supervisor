@@ -354,7 +354,8 @@ export async function fetchGoogle({
     pageQueries = {},
     pq = {};
   let queries = [],
-    pagesRead = false;
+    pagesRead = false,
+    queriesRead = false;
   await attempt(
     `${prop} in Search Console`,
     SC_API,
@@ -368,6 +369,7 @@ export async function fetchGoogle({
       }
       pagesRead = true;
       queries = (await rowsFor(["query"])).map(r => ({ query: r.keys[0], ...metrics(r) }));
+      queriesRead = true;
       for (const r of await rowsFor(["page", "query"])) {
         const p = pathOf(r.keys[0]);
         if (p) {
@@ -380,6 +382,17 @@ export async function fetchGoogle({
     },
     true,
   );
+
+  // A query with no dimensions gives the totals Search Console's chart shows, including the clicks of anonymized
+  // queries that query rows leave out. `complete` is null when the queries weren't read.
+  // https://developers.google.com/search/blog/2022/10/performance-data-deep-dive
+  let siteTotals = null;
+  await attempt(`the site totals for ${prop} in Search Console`, SC_API, async () => {
+    const t = (await sa({})).rows?.[0];
+    if (!t) return;
+    const queryClicks = queries.reduce((s, q) => s + q.clicks, 0);
+    siteTotals = { ...metrics(t), queryClicks, complete: queriesRead ? queryClicks >= t.clicks : null };
+  });
 
   // The period before has the same length. A drop is at least 20 clicks and 30% lost: below 20 a small page's
   // weekly swing looks like a drop, and a big page loses 20 to noise.
@@ -533,6 +546,8 @@ export async function fetchGoogle({
     }
     const x = r.indexStatusResult || {},
       rr = r.richResultsResult;
+    // referringUrls are pages linking to the URL, directly or indirectly; the first 10 are kept.
+    // https://developers.google.com/webmaster-tools/v1/urlInspection.index/UrlInspectionResult
     inspection.push({
       url,
       verdict: x.verdict ?? null,
@@ -543,6 +558,8 @@ export async function fetchGoogle({
       googleCanonical: x.googleCanonical ?? null,
       userCanonical: x.userCanonical ?? null,
       lastCrawlTime: x.lastCrawlTime ?? null,
+      crawledAs: x.crawledAs ?? null,
+      referringUrls: Array.isArray(x.referringUrls) ? x.referringUrls.slice(0, 10) : [],
       link: r.inspectionResultLink ?? null,
       richResults: rr
         ? {
@@ -581,7 +598,8 @@ export async function fetchGoogle({
 
   // GA4: --ga4-property, else the one property whose web stream is this site (even when it's the only one).
   const analytics = {};
-  let gaProp = ga4Property ? String(ga4Property).replace(/^properties\//, "") : null;
+  let gaProp = ga4Property ? String(ga4Property).replace(/^properties\//, "") : null,
+    gaRead = false;
   if (!scope.includes(GA))
     notes.push(
       "Google Analytics wasn't included when you signed in, so there's no visit data. To add it, run node google.mjs connect again and leave the Google Analytics box ticked.",
@@ -648,8 +666,69 @@ export async function fetchGoogle({
         }
         if (rep.rowCount > 25000)
           notes.push(`Google Analytics has ${rep.rowCount} organic landing pages; only the top 25,000 are included.`);
+        gaRead = true;
       });
   }
+  // Only after the landing pages were read: a refusal or a used-up quota there would only repeat here.
+  // GA4's default channel group files ChatGPT, Gemini, Copilot and the like under "AI Assistant".
+  // https://support.google.com/analytics/answer/9756891
+  let analyticsDetail = null;
+  if (gaRead)
+    await attempt(
+      `Google Analytics property ${gaProp} (users, days, devices, countries and AI assistants)`,
+      DATA_API,
+      async () => {
+        const rows = async (dimension, value = "Organic Search") =>
+          (
+            (
+              await g.call(`${E.analyticsData}/properties/${gaProp}:runReport`, {
+                dateRanges: [{ startDate, endDate }],
+                ...(dimension ? { dimensions: [{ name: dimension }] } : {}),
+                metrics: [{ name: "sessions" }, { name: "totalUsers" }],
+                dimensionFilter: {
+                  filter: { fieldName: "sessionDefaultChannelGroup", stringFilter: { matchType: "EXACT", value } },
+                },
+                limit: 1000,
+              })
+            ).rows || []
+          ).map(r => [
+            r.dimensionValues?.[0]?.value,
+            Number(r.metricValues?.[0]?.value) || 0,
+            Number(r.metricValues?.[1]?.value) || 0,
+          ]);
+        const byName = (list, n = list.length) =>
+          Object.fromEntries(
+            list
+              .filter(([k, s]) => typeof k === "string" && k && k !== "(not set)" && s > 0)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, n)
+              .map(([k, sessions, users]) => [k, { sessions, users }]),
+          );
+        const [[, sessions = 0, users = 0] = []] = await rows();
+        const daily = Object.fromEntries(
+          (await rows("date"))
+            .filter(([d]) => /^\d{8}$/.test(d))
+            .sort()
+            .map(([d, s, u]) => [`${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}`, { sessions: s, users: u }]),
+        );
+        const byDevice = byName(await rows("deviceCategory")),
+          byCountry = byName(await rows("country"), 10);
+        // GA4's default channel group files ChatGPT, Gemini, Copilot and the like under "AI Assistant".
+        // https://support.google.com/analytics/answer/9756891
+        const ai = Object.entries(byName(await rows("sessionSource", "AI Assistant"), 10)).map(([k, v]) => [
+          k,
+          { sessions: v.sessions },
+        ]);
+        analyticsDetail = {
+          sessions,
+          users,
+          daily,
+          byDevice,
+          byCountry,
+          aiAssistant: { sessions: ai.reduce((s, [, v]) => s + v.sessions, 0), bySource: Object.fromEntries(ai) },
+        };
+      },
+    );
 
   // ---------- findings ----------
   const own = [];
@@ -769,6 +848,7 @@ export async function fetchGoogle({
     traffic,
     queries,
     positions: positionShares(queries),
+    siteTotals,
     pageQueries,
     trafficChange,
     searchTypes,
@@ -777,6 +857,7 @@ export async function fetchGoogle({
     inspection,
     sitemaps,
     analytics,
+    analyticsDetail,
     anomalies,
     findings,
     notes,

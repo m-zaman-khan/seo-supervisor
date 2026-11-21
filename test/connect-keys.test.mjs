@@ -17,6 +17,8 @@ const envFor = (home, srv, extra = {}) => ({
   BING_WEBMASTER_KEY: "",
   OPENPAGERANK_KEY: "",
   AHREFS_KEY: "",
+  MOZ_TOKEN: "",
+  YOUTUBE_API_KEY: "",
   MATOMO_TOKEN_AUTH: "",
   MATOMO_URL: "",
   MATOMO_SITE_ID: "",
@@ -230,8 +232,8 @@ test("set, status and remove keep keys in the home folder, private, and never in
   assert.match((await cli(["status"], env)).stdout, /Bing Webmaster Tools: not set/);
 
   await assert.rejects(
-    cli(["set", "moz", "x"], env),
-    e => e.code === 2 && /bing, openpagerank, ahrefs, matomo or posthog/.test(e.stderr),
+    cli(["set", "majestic", "x"], env),
+    e => e.code === 2 && /bing, openpagerank, ahrefs, matomo, posthog, moz or youtube/.test(e.stderr),
   );
   await assert.rejects(cli(["set"], env), e => e.code === 2 && /usage/i.test(e.stderr));
 });
@@ -253,11 +255,11 @@ test("names that only exist on every object, like toString, aren't services", as
   const env = envFor(tmp());
   await assert.rejects(
     cli(["set", "toString", "k-123456"], env),
-    e => e.code === 2 && /bing, openpagerank, ahrefs, matomo or posthog/.test(e.stderr),
+    e => e.code === 2 && /bing, openpagerank, ahrefs, matomo, posthog, moz or youtube/.test(e.stderr),
   );
   await assert.rejects(
     cli(["guide", "constructor"], env),
-    e => e.code === 2 && /bing, openpagerank, ahrefs, matomo or posthog/.test(e.stderr),
+    e => e.code === 2 && /bing, openpagerank, ahrefs, matomo, posthog, moz or youtube/.test(e.stderr),
   );
 });
 
@@ -690,7 +692,11 @@ test("Matomo: search-engine visits by landing page for Google Analytics' period,
     srv = await fake();
   try {
     const r = await fetchCli(home, srv, MATOMO_ENV(srv), ["--yes"]);
-    assert.equal(srv.hits.length, 3, "the landing pages, then the device and country splits");
+    assert.equal(
+      srv.hits.length,
+      6,
+      "the landing pages, the device, country, channel and search-engine splits, then the visits per day",
+    );
     const h = srv.hits[0];
     assert.equal(h.verb, "POST");
     assert.equal(h.path, "/matomo/index.php");
@@ -728,7 +734,11 @@ test("PostHog: organic-search sessions by entry page through the Query API", asy
     srv = await fake();
   try {
     await fetchCli(home, srv, POSTHOG_ENV(srv), ["--yes"]);
-    assert.equal(srv.hits.length, 3, "the landing pages, then the device and country splits");
+    assert.equal(
+      srv.hits.length,
+      5,
+      "the landing pages, the device, country and referrer splits, then the visits per day",
+    );
     const h = srv.hits[0];
     assert.equal(h.verb, "POST");
     assert.equal(h.path, "/posthog/api/projects/12345/query/");
@@ -851,16 +861,29 @@ test("Matomo and PostHog device and country splits are fetched and drawn as one 
       p = srv.hits.filter(h => h.route === "posthog");
     assert.deepEqual(
       m.map(h => h.query.get("method")),
-      ["Actions.getEntryPageUrls", "DevicesDetection.getType", "UserCountry.getCountry"],
+      [
+        "Actions.getEntryPageUrls",
+        "DevicesDetection.getType",
+        "UserCountry.getCountry",
+        "Referrers.getReferrerType",
+        "Referrers.getSearchEngines",
+        "VisitsSummary.get",
+      ],
     );
     for (const h of m) {
+      // Every channel is read without the search segment (connections.test.mjs covers it).
       assert.deepEqual(
         [h.verb, h.query.get("segment"), h.query.get("date"), h.query.has("token_auth")],
-        ["POST", "referrerType==search", `${day(92)},${day(3)}`, false],
+        [
+          "POST",
+          h.query.get("method") === "Referrers.getReferrerType" ? null : "referrerType==search",
+          `${day(92)},${day(3)}`,
+          false,
+        ],
       );
       assert.equal(new URLSearchParams(h.body).get("token_auth"), "matomo-token-0001");
     }
-    assert.equal(p.length, 3);
+    assert.equal(p.length, 5);
     for (const [h, prop] of [
       [p[1], "properties.$device_type"],
       [p[2], "properties.$geoip_country_code"],

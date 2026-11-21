@@ -1155,8 +1155,96 @@ const localHtml = () => "",
 const backlinksHtml = () => "",
   backlinksMd = () => [];
 
-const connHtml = () => "",
-  connMd = () => [];
+// Third-party text (registrars, video titles, referrers, paths) is escaped by the callers.
+const connLines = () => {
+  const n = x => Number(x) || 0,
+    fin = Number.isFinite,
+    arr = x => (Array.isArray(x) ? x.filter(obj) : []),
+    isDay = s => /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const top = (map, k, max = 10, label = s => s) =>
+    Object.entries(obj(map) || {})
+      .map(([name, v]) => [name, n(v?.[k])])
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, max)
+      .map(([name, v]) => `${label(name)} ${num(v)}`)
+      .join(" · ");
+  const when = x => (isoDates(x) ? ` (${isoDates(x)})` : "");
+  const ages = arr(raw.domainAge).filter(d => typeof d.domain === "string" && isDay(d.registered));
+  const moz = arr(raw.moz).filter(m => typeof m.domain === "string" && fin(m.domainAuthority));
+  const yt = obj(raw.youtube),
+    ch = obj(yt?.channel),
+    st = obj(raw.siteTotals),
+    ad = obj(raw.analyticsDetail),
+    ai = obj(ad?.aiAssistant);
+  const sister = obj(bing?.sister),
+    others = Array.isArray(sister?.onlySister) ? sister.onlySister.filter(h => typeof h === "string" && h) : [];
+  const sisterHost = (() => {
+    try {
+      return new URL(sister.site).hostname;
+    } catch {
+      return "";
+    }
+  })();
+  const report = (x, k, what, on) => {
+    const r = obj(x),
+      pages = Object.keys(obj(r?.pages) || {}).length;
+    return (
+      r &&
+      n(r[k]) > 0 &&
+      `${what}: ${plural(n(r[k]), k.slice(0, -1))} ${on} ${plural(pages, "page")}${pages ? ` (top: ${top(r.pages, k, 3)})` : ""}`
+    );
+  };
+  return [
+    ages.length &&
+      `Domain age (RDAP): ${ages.map(d => `${d.domain} registered ${d.registered}${typeof d.registrar === "string" && d.registrar ? ` (${d.registrar})` : ""}`).join(" · ")}`,
+    moz.length &&
+      `Moz: ${moz.map(m => [`${m.domain} Domain Authority ${m.domainAuthority}`, fin(m.spamScore) && `Spam Score ${m.spamScore}`, fin(m.linkingDomains) && plural(m.linkingDomains, "linking domain")].filter(Boolean).join(", ")).join(" · ")}`,
+    ch &&
+      typeof ch.title === "string" &&
+      `YouTube channel ${ch.title}: ${[fin(ch.subscribers) && plural(ch.subscribers, "subscriber"), fin(ch.videos) && plural(ch.videos, "video"), fin(ch.views) && plural(ch.views, "view")].filter(Boolean).join(" · ")}`,
+    ...arr(yt?.topics)
+      .filter(t => typeof t.topic === "string" && arr(t.videos).length)
+      .map(t => {
+        const v = arr(t.videos);
+        return `Top YouTube videos for “${t.topic}”: ${ch ? `${v.filter(x => x.own === true).length} of ${v.length} from your channel · ` : ""}first: ${v[0].title}${v[0].channel ? ` (${v[0].channel})` : ""}`;
+      }),
+    st &&
+      n(st.clicks) > 0 &&
+      `Search Console totals for the whole property: ${plural(n(st.clicks), "click")} · ${plural(n(st.impressions), "impression")}. ${st.complete === false ? `The queries listed cover ${Math.round((100 * n(st.queryClicks)) / n(st.clicks))}% of the clicks; Google doesn't list rare queries.` : st.complete ? "The queries listed cover every click." : ""}`.trim(),
+    ad &&
+      n(ad.sessions) > 0 &&
+      `Google Analytics organic: ${plural(n(ad.sessions), "session")}${n(ad.users) ? ` from ${plural(n(ad.users), "user")}` : ""}${top(ad.byDevice, "sessions") ? ` · ${top(ad.byDevice, "sessions")}` : ""}${raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : ""}`,
+    ad &&
+      top(ad.byCountry, "sessions") &&
+      `Google Analytics organic sessions by country: ${top(ad.byCountry, "sessions")}`,
+    ai &&
+      n(ai.sessions) > 0 &&
+      `Google Analytics AI Assistant channel: ${plural(n(ai.sessions), "session")}${top(ai.bySource, "sessions") ? ` (${top(ai.bySource, "sessions")})` : ""}`,
+    top(matomo?.byChannel, "visits") && `Matomo visits by channel: ${top(matomo.byChannel, "visits")}${when(matomo)}`,
+    top(matomo?.byEngine, "visits") &&
+      `Matomo search visits by search engine: ${top(matomo.byEngine, "visits")}${when(matomo)}`,
+    top(posthog?.byReferrer, "visits") &&
+      `PostHog visits by referrer: ${top(posthog.byReferrer, "visits", 10, k => (k === "$direct" ? "direct" : k))}${when(posthog)}`,
+    posthog?.referrersCaptured === false &&
+      "PostHog: no visit in this period has a referrer, so it can't tell visits from search apart. Its zero visits from search may be wrong.",
+    report(raw.aiReports?.google, "impressions", "Google AI Overviews and AI Mode", "on"),
+    report(raw.aiReports?.bing, "citations", "Bing AI answers", "of"),
+    others.length &&
+      sisterHost &&
+      `Bing: ${plural(others.length, "site")} ${others.length === 1 ? "links" : "link"} to ${sisterHost} but not to this site: ${others.slice(0, 10).join(", ")}${others.length > 10 ? ` and ${others.length - 10} more` : ""}`,
+  ].filter(Boolean);
+};
+const connHtml = () => {
+  const l = connLines();
+  return l.length
+    ? `\n    <details class="how conn"><summary>From your connections</summary>${l.map(t => `\n    <p class="quiet">${esc(t)}</p>`).join("")}</details>`
+    : "";
+};
+const connMd = () => {
+  const l = connLines();
+  return l.length ? ["## From your connections", "", ...l.flatMap(t => [noteMd(t), ""])] : [];
+};
 
 const diffMoreHtml = () => "",
   diffMoreMd = () => [];
