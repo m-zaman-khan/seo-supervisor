@@ -430,7 +430,11 @@ test("a report without Search Console, Bing or Analytics data has no traffic or 
     none.html + none.md,
     /Search Console:|Bing|Google Analytics|Matomo|PostHog|Links from other sites/,
   );
-  assert.match(none.html, /<\/ol>\n    <\/section>\n    <\/div>\n  <\/div>/, "nothing added after the score factors");
+  assert.match(
+    none.html.replace(/\n    <details class="how pagescores">.*<\/details>/, ""),
+    /<\/ol>\n    <\/section>\n    <\/div>\n  <\/div>/,
+    "nothing but the page scores added after the score factors",
+  );
   assert.doesNotMatch(none.md, /\n\n\n/, "no empty lines");
   assert.doesNotMatch(none.html, /<p class="quiet"><\/p>/);
 });

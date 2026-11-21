@@ -286,7 +286,7 @@ footer .wrap{padding-block:20px 40px;display:flex;flex-wrap:wrap;gap:6px 18px;ju
       </div>
       
       <details class="how"><summary>How this score works</summary>
-        <p>Every checked rule is worth 10 points. A rule that passes, or whose findings are all fixed, earns 10. A rule with open findings earns by its worst one: low 8, medium or decision 6, high 3, blocker 0. The score is the share of points earned. Each open blocker caps it: one at 59, two at 49, three at 39. While a blocker is open, the panel also shows the score you reach once it is fixed. Area scores use the same rules within each area.</p>
+        <p>Every checked rule is worth 10 points. A rule that passes, or whose findings are all fixed, earns 10. A rule with open findings earns by its worst one: low 8, medium or decision 6, high 3, blocker 0. The score is the share of points earned. Each open blocker caps it: one at 59, two at 49, three at 39. While a blocker is open, the panel also shows the score you reach once it is fixed. Area scores use the same rules within each area. This is SEO Supervisor's own score, not Google's: it counts only the rules this audit checked, and search engines don't use it.</p>
       </details>
     </section>
     <section class="panel stats" aria-label="Issues, fixes and rules">
@@ -332,6 +332,7 @@ footer .wrap{padding-block:20px 40px;display:flex;flex-wrap:wrap;gap:6px 18px;ju
           <span class="an"><b>6 areas pass in full</b><span>Internal linking, Performance, Rendering, Sitemaps &amp; robots, Structured data, URLs &amp; canonicals · 2 fixed this run</span></span>
           <span class="meter" aria-hidden="true"></span><span class="as ok">0<small>pts</small></span></a></li></ol>
     </section>
+    <details class="how pagescores"><summary>Page scores</summary><p>Each page with open findings, scored with the same rules as the site but counting only the findings listed for that page. It's SEO Supervisor's own score, not Google's, and it doesn't change the site score. Pages come from the findings' examples, so a finding with more cases than examples can affect pages not listed here.</p><div class="tablewrap"><table><thead><tr><th scope="col">Page</th><th scope="col">Score</th><th scope="col">Open findings</th></tr></thead><tbody><tr><td><code>/r/8f2k1/</code></td><td>59</td><td><a href="#F-001">F-001</a></td></tr><tr><td><code>/tools/mx-lookup/</code></td><td>59</td><td><a href="#F-002">F-002</a></td></tr><tr><td><code>/seo-supervisor-404-probe-x1/</code></td><td>97</td><td><a href="#F-005">F-005</a></td></tr><tr><td><code>/tools/ssl-checker/</code></td><td>98</td><td><a href="#F-007">F-007</a></td></tr></tbody></table></div></details>
     </div>
   </div>
   <section class="panel fixfirst" aria-labelledby="h-first">

@@ -31,6 +31,17 @@ Real-user speed (mobile): LCP 2.4 s (good) · INP 180 ms (good) · CLS 0.05 (goo
 | Structured data | 100 | 0 | All checks pass |
 | URLs & canonicals | 100 | 0 | All checks pass |
 
+## Page scores
+
+Each page with open findings, scored with the same rules as the site but counting only the findings listed for that page. It's SEO Supervisor's own score, not Google's, and it doesn't change the site score. Pages come from the findings' examples, so a finding with more cases than examples can affect pages not listed here.
+
+| Page | Score | Open findings |
+| --- | ---: | --- |
+| `/r/8f2k1/` | 59/100 | F-001 |
+| `/tools/mx-lookup/` | 59/100 | F-002 |
+| `/seo-supervisor-404-probe-x1/` | 97/100 | F-005 |
+| `/tools/ssl-checker/` | 98/100 | F-007 |
+
 ## SEO plan
 
 Status: Built (approved 2026-11-16) · Progress: 83% · 1 already right, 4 built, 1 to create · 2 need you
@@ -279,4 +290,4 @@ Search Console: 960 clicks · 31,200 impressions (last 3 months) on `/tools/ssl-
 
 ## How the score works
 
-Every checked rule is worth 10 points. A rule that passes, or whose findings are all fixed, earns 10. A rule with open findings earns by its worst one: low 8, medium or decision 6, high 3, blocker 0. The score is the share of points earned. Each open blocker caps it: one at 59, two at 49, three at 39. While a blocker is open, the panel also shows the score you reach once it is fixed. Area scores use the same rules within each area.
+Every checked rule is worth 10 points. A rule that passes, or whose findings are all fixed, earns 10. A rule with open findings earns by its worst one: low 8, medium or decision 6, high 3, blocker 0. The score is the share of points earned. Each open blocker caps it: one at 59, two at 49, three at 39. While a blocker is open, the panel also shows the score you reach once it is fixed. Area scores use the same rules within each area. This is SEO Supervisor's own score, not Google's: it counts only the rules this audit checked, and search engines don't use it.
