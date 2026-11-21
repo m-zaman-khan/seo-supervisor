@@ -20,9 +20,17 @@ export const CHECKS = {
   "render-changes-head": [
     "REND-06",
     "high",
-    n => `JavaScript changes the title, canonical, robots tag, meta description or H1 on ${n} page(s)`,
-    "Search engines read the raw HTML first and the rendered page later. When the two disagree, which value wins isn't predictable, and a robots or canonical change can drop a page. Crawlers that don't run JavaScript, most AI crawlers among them, only ever see the raw title, description and H1.",
-    "Output the final title, canonical, robots tag, meta description and H1 in the server HTML and don't change them in client code.",
+    n => `JavaScript changes the title, canonical or robots tag on ${n} page(s)`,
+    "Search engines read the raw HTML first and the rendered page later. When the two disagree, which value wins isn't predictable, and a robots or canonical change can drop a page.",
+    "Output the final title, canonical and robots tag in the server HTML and don't change them in client code.",
+  ],
+  // Low: Google accepts a title or description set by JavaScript, so this matters only to crawlers that don't run it.
+  "render-changes-text": [
+    "REND-06",
+    "low",
+    n => `JavaScript changes the meta description or H1 on ${n} page(s)`,
+    "Google runs the page's JavaScript and uses what it sets, and says changing the meta description this way is fine. Crawlers that don't run JavaScript, most AI crawlers among them, only ever see the server's description and H1, so they get a different summary of the page.",
+    "If the server HTML's description or H1 is a placeholder or out of date, output the final one in the server HTML. If both versions are fine, nothing needs to change.",
   ],
   "render-adds-content": [
     "REND-01",
@@ -400,8 +408,8 @@ export function compareRendered(rawHtml, renderedHtml) {
   return out;
 }
 // An H1 only JavaScript adds is render-adds-content's, with the JSON-LD, words and link count.
-export const changesHead = x =>
-  ["title", "canonical", "robots", "description"].includes(x.field) || (x.field === "h1" && !!x.raw);
+export const changesHead = x => ["title", "canonical", "robots"].includes(x.field);
+export const changesText = x => x.field === "description" || (x.field === "h1" && !!x.raw);
 
 // A login screen or paywall where the page should be, or null; never filled in or clicked through. A login needs the
 // title or H1 to say so, so a login box in the header doesn't count. tp-modal and tp-backdrop are Piano's paywall.

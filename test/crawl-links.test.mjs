@@ -8,6 +8,7 @@ import { SCRIPTS, node, tmp } from "./helpers.mjs";
 import {
   CHECKS as RENDER_CHECKS,
   changesHead,
+  changesText,
   compareRendered,
 } from "../skills/seo-supervisor/scripts/checks/render.mjs";
 import { CHECKS, brake, fragmentLinks, hasName, slowNote } from "../skills/seo-supervisor/scripts/checks/crawl.mjs";
@@ -160,7 +161,7 @@ test("#name helpers: the #names worth checking, and names matched as written or 
   assert.deepEqual(CHECKS["link-fragment-missing"].slice(0, 2), ["CRAWL-07", "low"]);
 });
 
-test("item 21: JavaScript changing the meta description, or an H1 the raw HTML had, is a head change; an H1 only JavaScript adds stays REND-01", () => {
+test("item 21: JavaScript changing the meta description, or an H1 the raw HTML had, is a low text change; title, canonical and robots stay high; an H1 only JavaScript adds stays REND-01", () => {
   const doc = ({ desc, h1 } = {}) =>
     `<!doctype html><html><head><title>T</title>${desc == null ? "" : `<meta name="description" content="${desc}">`}</head><body>${h1 == null ? "" : `<h1>${h1}</h1>`}</body></html>`;
   const raw = doc({ desc: "Boiler repairs in Leeds", h1: "Boiler repairs" });
@@ -175,29 +176,37 @@ test("item 21: JavaScript changing the meta description, or an H1 the raw HTML h
     { field: "description", raw: "Boiler repairs in Leeds", rendered: "Loading…" },
     { field: "h1", raw: "Boiler repairs", rendered: "Please wait" },
   ]);
-  assert.ok(changed.every(changesHead));
+  assert.ok(changed.every(x => changesText(x) && !changesHead(x)));
   assert.deepEqual(
-    compareRendered(doc({}), doc({ desc: "Set by script", h1: "Added by script" })).map(x => [x.field, changesHead(x)]),
+    compareRendered(doc({}), doc({ desc: "Set by script", h1: "Added by script" })).map(x => [x.field, changesText(x)]),
     [
       ["description", true],
       ["h1", false],
     ],
   );
   assert.deepEqual(
-    compareRendered(raw, doc({})).map(x => [x.field, changesHead(x)]),
+    compareRendered(raw, doc({})).map(x => [x.field, changesText(x)]),
     [
       ["description", true],
       ["h1", true],
     ],
     "removed by JavaScript",
   );
-  assert.ok(["title", "canonical", "robots"].every(field => changesHead({ field })));
-  assert.ok(!["jsonld-count", "link-count"].some(field => changesHead({ field, raw: 1 })));
-  const [rule, severity, title, why, fix] = RENDER_CHECKS["render-changes-head"];
+  assert.ok(["title", "canonical", "robots"].every(field => changesHead({ field }) && !changesText({ field })));
+  assert.ok(
+    !["jsonld-count", "link-count"].some(field => changesHead({ field, raw: 1 }) || changesText({ field, raw: 1 })),
+  );
+  const [rule, severity, title] = RENDER_CHECKS["render-changes-head"];
   assert.deepEqual([rule, severity], ["REND-06", "high"]);
-  assert.match(title(2), /meta description or H1 on 2 page/);
-  assert.match(why, /not all|don't run JavaScript/);
-  assert.match(fix, /meta description and H1/);
+  assert.match(title(2), /title, canonical or robots tag on 2 page/);
+  // Google allows JavaScript to set or change the meta description, so this one is low.
+  // https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics
+  const [rule2, severity2, title2, why2, fix2] = RENDER_CHECKS["render-changes-text"];
+  assert.deepEqual([rule2, severity2], ["REND-06", "low"]);
+  assert.match(title2(2), /meta description or H1 on 2 page/);
+  assert.match(why2, /Google/);
+  assert.match(why2, /don't run JavaScript/);
+  assert.match(fix2, /server HTML/);
 });
 
 test("a 503 makes the crawler wait for Retry-After and ask again, a dropped connection pauses it too, and one note says so", async () => {
