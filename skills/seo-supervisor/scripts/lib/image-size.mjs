@@ -44,3 +44,34 @@ export function imageSize(b) {
   }
   return null;
 }
+
+// Who made an image and how, from the first bytes of a JPEG, PNG or AVIF file: { creator, sourceType, ai, c2pa }.
+// creator is XMP's dc:creator, else IIM's 2:80 By-line; sourceType is the term ending XMP's
+// Iptc4xmpExt:DigitalSourceType URI (IPTC Photo Metadata Standard 2025.1). ai: one of the four terms Google reads as
+// made by an algorithm. c2pa: a JUMBF box labelled "c2pa" in JPEG's APP11 segments or PNG's caBX chunk (C2PA 2.2,
+// appendix A.3). WebP keeps XMP and C2PA at the end of the file, so they're rarely in the first bytes.
+// https://developers.google.com/search/docs/appearance/structured-data/image-license-metadata
+export const AI_SOURCES = [
+  "trainedAlgorithmicMedia",
+  "compositeWithTrainedAlgorithmicMedia",
+  "compositeSynthetic",
+  "algorithmicMedia",
+];
+export function imageMeta(b) {
+  const s = b.toString("latin1"),
+    x0 = s.indexOf("<x:xmpmeta"),
+    x1 = s.indexOf("</x:xmpmeta>", x0);
+  const xmp = x0 >= 0 && x1 > x0 ? b.toString("utf8", x0, x1) : "";
+  const dst =
+    /:DigitalSourceType\s*=\s*"([^"]+)"|:DigitalSourceType\b[^>]*?rdf:resource\s*=\s*"([^"]+)"|:DigitalSourceType\s*>\s*([^<\s]+)\s*</.exec(
+      xmp,
+    );
+  const sourceType = dst ? (dst[1] || dst[2] || dst[3]).replace(/^.*\//, "") : null;
+  const i = s.indexOf("\x1c\x02\x50"),
+    byline =
+      i >= 0 && i + 5 <= b.length
+        ? b.toString("utf8", i + 5, Math.min(b.length, i + 5 + b.readUInt16BE(i + 3))).trim()
+        : "";
+  const creator = /<dc:creator\b[^>]*>[\s\S]*?<rdf:li\b[^>]*>([^<]+)</.exec(xmp)?.[1].trim() || byline || null;
+  return { creator, sourceType, ai: AI_SOURCES.includes(sourceType), c2pa: /jumd[\s\S]{17}c2pa/.test(s) };
+}

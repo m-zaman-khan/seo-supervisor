@@ -1150,8 +1150,160 @@ const shopLine =
 const shopHtml = () => (shopLine ? `\n    <p class="quiet">${esc(shopLine)}</p>` : ""),
   shopMd = () => (shopLine ? ["## Product data", "", shopLine, ""] : []);
 
-const mediaHtml = () => "",
-  mediaMd = () => [];
+// Speed and image details, in one collapsed panel on the Overview (a section in the Markdown). Crawled and
+// third-party text (paths, element labels, hosts, versions) is escaped by the two callers.
+const mediaNums = (a, n) => Array.isArray(a) && a.length === n && a.every(Number.isFinite);
+const mediaPair = (k, [a, b]) =>
+  k === "cls"
+    ? `CLS ${a} → ${b}`
+    : k === "inp"
+      ? `INP ${Math.round(a)} → ${Math.round(b)} ms`
+      : `LCP ${(a / 1000).toFixed(1)} → ${(b / 1000).toFixed(1)} s`;
+const mediaPairs = (o, keys = ["lcp", "inp", "cls"]) =>
+  keys
+    .filter(k => mediaNums(o?.[k], 2))
+    .map(k => mediaPair(k, o[k]))
+    .join(" · ");
+const mediaDay = (s, year) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(s)
+    ? new Date(s + "T00:00:00Z").toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        ...(year && { year: "numeric" }),
+        timeZone: "UTC",
+      })
+    : null;
+const mediaList = (xs, f, max = 5) =>
+  xs.slice(0, max).map(f).join(" · ") + (xs.length > max ? ` and ${num(xs.length - max)} more` : "");
+const mediaLines = () => {
+  const s = obj(raw.speed),
+    m = obj(raw.media) || {},
+    L = [],
+    arr = x => (Array.isArray(x) ? x.filter(obj) : []),
+    str = x => typeof x === "string" && x !== "";
+  const samples = arr(s?.samples),
+    v = obj(samples.find(x => obj(x.origin))?.origin) || obj(samples.find(x => obj(x.field))?.field);
+  const KEYS = ["lcp", "inp", "cls", "fcp", "ttfb"],
+    pct = x => `${Math.round(x * 100)}%`;
+  const shares = KEYS.filter(k => mediaNums(v?.shares?.[k], 3)).map(
+    k => `${k.toUpperCase()} ${v.shares[k].map(pct).join(" / ")}`,
+  );
+  if (shares.length) L.push(`Share of real visits that were good / needs improvement / poor: ${shares.join(" · ")}.`);
+  const other = ["fcp", "ttfb"]
+    .filter(k => Number.isFinite(v?.[k]))
+    .map(k => `${k.toUpperCase()} ${(v[k] / 1000).toFixed(1)} s (${band(k, v[k])})`);
+  if (other.length)
+    L.push(
+      `Other real-user numbers, not Core Web Vitals: ${other.join(" · ")}. Google's lines: FCP good up to 1.8 s, poor over 3 s; TTFB good up to 0.8 s, poor over 1.8 s, as a rough guide.`,
+    );
+  const t = obj(s?.trend),
+    p = obj(t?.period),
+    weeks = Number.isInteger(t?.weeks) ? t.weeks : 0;
+  if (p && mediaDay(p.from) && mediaDay(p.to))
+    L.push(`Real-user data period: CrUX's latest 28 days, ${mediaDay(p.from)} – ${mediaDay(p.to, true)}.`);
+  else if (v) L.push("Real-user data period: PageSpeed's numbers cover the last 28 days of Chrome visits.");
+  const late = mediaPairs(t, ["inp", "cls"]),
+    avg = mediaPairs(obj(t?.avg4));
+  if (weeks && (late || avg))
+    L.push(
+      [
+        late && `Over ${weeks} weeks (first week → latest): ${late}.`,
+        avg && `4-week averages: ${avg} (the first four weeks against the last four).`,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+  const pt = obj(s?.pageTrend),
+    ptw = mediaPairs(obj(pt?.trend));
+  if (ptw && str(pt.url))
+    L.push(
+      `${notePath(pt.url) === "/" ? "Home page" : notePath(pt.url)} alone: ${ptw} over ${num(pt.trend.weeks || 0)} weeks.`,
+    );
+  const tab = obj(s?.tablet),
+    tl = obj(tab?.trend)?.lcp,
+    tb = obj(tab?.lcpBreakdown);
+  if (mediaNums(tl, 2)) {
+    const [k] = Object.keys(LCP_PART).sort((x, y) => (tb?.[y] || 0) - (tb?.[x] || 0));
+    L.push(
+      `Tablet (whole site): ${mediaPair("lcp", tl)} over ${num(tab.trend.weeks || 0)} weeks${tb && Number.isFinite(tb[k]) ? `; most of the LCP goes on ${LCP_PART[k][0]} (${(tb[k] / 1000).toFixed(1)} s)` : ""}.`,
+    );
+  }
+  const heroes = arr(m.heroImages).filter(h => str(h.url) && str(h.element));
+  if (heroes.length)
+    L.push(
+      `Largest paint in the lab (the LCP element): ${mediaList(heroes, h => `${notePath(h.url)} → ${str(h.src) ? `${h.src} (${h.element})` : h.element}${str(h.source) ? `, ${h.source}` : ""}`)}.`,
+    );
+  const med = obj(m.lighthouseMedians),
+    medParts = [
+      ["Performance", "performance"],
+      ["SEO", "seo"],
+      ["Accessibility", "accessibility"],
+      ["Best practices", "bestPractices"],
+    ]
+      .filter(([, k]) => Number.isFinite(med?.[k]))
+      .map(([n, k]) => `${n} ${med[k]}`);
+  if (medParts.length && Number.isInteger(med.pages))
+    L.push(`Lighthouse medians across ${num(med.pages)} pages: ${medParts.join(" · ")}.`);
+  const runs = arr(raw.lighthouse).filter(x => str(x.url) && Number.isInteger(x.passed)),
+    ver = runs.find(x => str(x.version))?.version;
+  if (runs.length)
+    L.push(
+      `Lighthouse${ver ? ` ${ver}` : ""}: ${mediaList(runs, x => `${notePath(x.url)} passed ${num(x.passed)} audits, failed ${num(Array.isArray(x.detail) ? x.detail.length : 0)}`)}.`,
+    );
+  const psiVer = samples.map(x => obj(x.lab)?.version).find(str);
+  if (psiVer) L.push(`PageSpeed's lab runs used Lighthouse ${psiVer}.`);
+  const st = obj(m.serverTimes),
+    slow = arr(st?.slow).filter(x => str(x.url) && Number.isFinite(x.ms));
+  if (st && [st.pages, st.median, st.p95].every(Number.isFinite))
+    L.push(
+      `Server response time, one request per page from this machine, ${num(st.pages)} pages: median ${num(st.median)} ms, the slowest 5% from ${num(st.p95)} ms.${slow.length ? ` Over 0.8 s (web.dev's “good” time to first byte for real visitors): ${mediaList(slow, x => `${notePath(x.url)} ${(x.ms / 1000).toFixed(1)} s`)}.` : ""}`,
+    );
+  const ds = obj(m.domShape),
+    deep = arr(ds?.deep).filter(d => str(d.url) && Number.isFinite(d.depth)),
+    wide = arr(ds?.wide).filter(d => str(d.url) && str(d.tag) && Number.isFinite(d.children));
+  if (deep.length)
+    L.push(
+      `Nested more than 32 levels deep (our own line, from older Lighthouse advice): ${mediaList(deep, d => `${notePath(d.url)} ${d.depth} levels`)}. Deep nesting usually means wrapper elements that could go.`,
+    );
+  if (wide.length)
+    L.push(
+      `An element with more than 60 children (our own line): ${mediaList(wide, d => `${notePath(d.url)} ${d.tag} (${num(d.children)})`)}. Long lists can load in parts.`,
+    );
+  const cr = obj(m.imageCredits);
+  if (cr && Number.isInteger(cr.read) && cr.read > 0) {
+    const ai = (Array.isArray(cr.ai) ? cr.ai : []).filter(str),
+      none = (Array.isArray(cr.noCreator) ? cr.noCreator : []).filter(str);
+    L.push(
+      `Image credits, read from ${plural(cr.read, "image")}: ${num(cr.creator || 0)} name a creator, ${num(ai.length)} ${ai.length === 1 ? "is" : "are"} labelled as made with AI${ai.length ? ` (${mediaList(ai, notePath)})` : ""}, ${num(cr.c2pa || 0)} carry Content Credentials (C2PA).${none.length ? ` No creator: ${mediaList(none, notePath)}.` : ""}`,
+    );
+  }
+  const ca = obj(m.imageCache),
+    unc = (Array.isArray(ca?.uncached) ? ca.uncached : []).filter(str),
+    hosts = Object.entries(obj(ca?.otherHosts) || {}).filter(([h, n]) => str(h) && Number.isInteger(n));
+  if (ca && ((Number.isInteger(ca.checked) && ca.checked > 0) || hosts.length))
+    L.push(
+      [
+        ca.checked > 0 &&
+          `Image caching: ${num(unc.length)} of ${plural(ca.checked, "image")} are sent with no cache lifetime${unc.length ? ` (${mediaList(unc, notePath)})` : ""}, so browsers download them again on every visit.`,
+        str(ca.cdn) && `They come through ${ca.cdn}.`,
+        hosts.length && `Images on other hosts: ${mediaList(hosts, ([h, n]) => `${h} (${num(n)})`)}.`,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+  return L;
+};
+const MEDIA_INTRO = "Information only: none of this changes the score.";
+const mediaHtml = () => {
+  const L = mediaLines();
+  return L.length
+    ? `\n    <details class="how media"><summary>Speed and image details</summary><p>${esc(MEDIA_INTRO)}</p>${L.map(t => `<p>${esc(t)}</p>`).join("")}</details>`
+    : "";
+};
+const mediaMd = () => {
+  const L = mediaLines();
+  return L.length ? ["## Speed and image details", "", MEDIA_INTRO, "", ...L.flatMap(t => [noteMd(t), ""])] : [];
+};
 
 const renderHtml = () => "",
   renderMd = () => [];

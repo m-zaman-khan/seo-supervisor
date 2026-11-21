@@ -229,7 +229,12 @@ test("with a CrUX key, the 25-week speed trend is fetched for the public origin;
       "without real-user parts, PageSpeed's lab run of the home page",
     );
     const r = await crawlWith({ CRUX_API_KEY: "test-key" });
-    assert.equal(crux.hits.length, 1, "the LCP parts come in the same request as the trend");
+    // Then the tablet and home-page trends, which media.test.mjs covers.
+    assert.equal(
+      crux.hits.filter(h => h.body.origin && h.body.formFactor === "PHONE").length,
+      1,
+      "the LCP parts come in the same request as the trend",
+    );
     assert.match(crux.hits[0].url, /key=test-key/);
     assert.equal(crux.hits[0].body.origin, "https://zero.example");
     assert.ok(crux.hits[0].body.metrics.includes("largest_contentful_paint_image_resource_load_delay"));

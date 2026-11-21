@@ -1,10 +1,21 @@
 #!/usr/bin/env node
-// Converts the heavy JPEG and PNG files an audit found to WebP or AVIF, with sharp, the optional image add-on.
+// Converts the heavy JPEG and PNG files an audit found to WebP or AVIF, and labels images as AI-made in their XMP.
 import { createRequire } from "node:module";
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import {
+  constants,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
+import { AI_SOURCES, imageMeta } from "./lib/image-size.mjs";
 
 // Rough saving in bytes. Lossy WebP is 25–34% smaller than JPEG at the same SSIM and lossless WebP 26% smaller than
 // PNG; the low end is used. https://developers.google.com/speed/webp
@@ -40,6 +51,7 @@ async function main() {
     const k = process.argv[i].replace(/^--/, "");
     args[k] = process.argv[i + 1] && !process.argv[i + 1].startsWith("--") ? process.argv[++i] : true;
   }
+  if (args["label-ai"] !== undefined) return labelMain(args);
   if (typeof args.crawl !== "string" || typeof args.root !== "string")
     throw new Fail(
       "usage: node images.mjs --crawl seo-audit/seo-crawl.json --root <public folder> [--avif] [--max-width 1600] [--out-dir <dir>] [--follow-links] [--yes]",
@@ -220,6 +232,172 @@ async function main() {
     );
   }
   return failed ? 1 : 0;
+}
+
+// ---------- the AI label ----------
+// Only the metadata changes, so the image isn't re-encoded and sharp isn't needed.
+// Iptc4xmpExt:DigitalSourceType takes a URI from IPTC's digitalsourcetype vocabulary.
+// https://www.iptc.org/std/photometadata/specification/IPTC-PhotoMetadata
+// XMP sits in a JPEG APP1 segment after XMP_ID, and in a PNG iTXt chunk keyed PNG_KEY (XMP specification, part 3).
+const IPTC_NS = "http://iptc.org/std/Iptc4xmpExt/2008-02-29/",
+  DST = "http://cv.iptc.org/newscodes/digitalsourcetype/";
+const XMP_ID = "http://ns.adobe.com/xap/1.0/\0",
+  PNG_KEY = "XML:com.adobe.xmp";
+// The label added to the packet's first rdf:Description, or a new packet when the file has none.
+function labelPacket(xmp, source) {
+  const attr = ` Iptc4xmpExt:DigitalSourceType="${DST}${source}"`;
+  if (!xmp)
+    return `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" xmlns:Iptc4xmpExt="${IPTC_NS}"${attr}/></rdf:RDF></x:xmpmeta><?xpacket end="w"?>`;
+  const m = /<rdf:Description\b[^>]*?(?=\/?>)/.exec(xmp);
+  if (!m) throw new Error("its XMP has no rdf:Description to add the label to");
+  const end = m.index + m[0].length;
+  return (
+    xmp.slice(0, end) +
+    (/\sxmlns:Iptc4xmpExt\s*=/.test(m[0]) ? "" : ` xmlns:Iptc4xmpExt="${IPTC_NS}"`) +
+    attr +
+    xmp.slice(end)
+  );
+}
+const CRC = Array.from({ length: 256 }, (_, n) => {
+  for (let k = 0; k < 8; k++) n = n & 1 ? 0xedb88320 ^ (n >>> 1) : n >>> 1;
+  return n >>> 0;
+});
+const crc32 = b => {
+  let c = ~0;
+  for (const x of b) c = CRC[(c ^ x) & 255] ^ (c >>> 8);
+  return ~c >>> 0;
+};
+const pngChunk = (type, data) => {
+  const t = Buffer.from(type, "latin1"),
+    n = Buffer.alloc(4),
+    c = Buffer.alloc(4);
+  n.writeUInt32BE(data.length);
+  c.writeUInt32BE(crc32(Buffer.concat([t, data])));
+  return Buffer.concat([n, t, data, c]);
+};
+function labelJpeg(b, source) {
+  // The leading APPn segments (JFIF, Exif, XMP…): an XMP one is edited in place, else the new one goes after them.
+  let i = 2,
+    seg = null;
+  while (i + 4 <= b.length && b[i] === 0xff && b[i + 1] >= 0xe0 && b[i + 1] <= 0xef) {
+    const end = i + 2 + b.readUInt16BE(i + 2);
+    if (b[i + 1] === 0xe1 && b.toString("latin1", i + 4, i + 4 + XMP_ID.length) === XMP_ID) seg = [i, end];
+    i = end;
+  }
+  const old = seg ? b.toString("utf8", seg[0] + 4 + XMP_ID.length, seg[1]) : "";
+  const body = Buffer.concat([Buffer.from(XMP_ID, "latin1"), Buffer.from(labelPacket(old, source), "utf8")]),
+    head = Buffer.from([0xff, 0xe1, 0, 0]);
+  if (body.length + 2 > 0xffff) throw new Error("its XMP would be over the 64 KB one JPEG segment holds");
+  head.writeUInt16BE(body.length + 2, 2);
+  const [s, e] = seg || [i, i];
+  return Buffer.concat([b.subarray(0, s), head, body, b.subarray(e)]);
+}
+function labelPng(b, source) {
+  let i = 8,
+    seg = null,
+    idat = null;
+  while (i + 12 <= b.length) {
+    const n = b.readUInt32BE(i),
+      type = b.toString("latin1", i + 4, i + 8);
+    if (type === "iTXt" && b.toString("latin1", i + 8, i + 9 + PNG_KEY.length) === PNG_KEY + "\0")
+      seg = [i, i + 12 + n];
+    if (type === "IDAT") idat ??= i;
+    i += 12 + n;
+  }
+  if (idat == null) throw new Error("it has no image data (IDAT)");
+  let old = "";
+  if (seg) {
+    // keyword\0, compression flag, method, language\0, translated keyword\0, then the text
+    const d = b.subarray(seg[0] + 8, seg[1] - 4),
+      k = PNG_KEY.length + 1;
+    if (d[k] !== 0) throw new Error("its XMP is compressed, which this doesn't edit");
+    const lang = d.indexOf(0, k + 2) + 1;
+    old = d.toString("utf8", d.indexOf(0, lang) + 1);
+  }
+  const data = Buffer.concat([
+    Buffer.from(PNG_KEY + "\0\0\0\0\0", "latin1"),
+    Buffer.from(labelPacket(old, source), "utf8"),
+  ]);
+  const [s, e] = seg || [idat, idat]; // XMP goes before the image data
+  return Buffer.concat([b.subarray(0, s), pngChunk("iTXt", data), b.subarray(e)]);
+}
+/** The file's bytes with the AI label added to its XMP, image data untouched; throws when it can't be labelled. */
+export function withAiLabel(b, source = "trainedAlgorithmicMedia") {
+  if (!AI_SOURCES.includes(source))
+    throw new Error(`the source must be one of ${AI_SOURCES.join(", ")} (got ${source})`);
+  const jpeg = b[0] === 0xff && b[1] === 0xd8,
+    png = b.toString("latin1", 0, 8) === "\x89PNG\r\n\x1a\n";
+  if (!jpeg && !png) throw new Error("only a JPEG or PNG file can be labelled here");
+  const had = imageMeta(b).sourceType;
+  if (had) throw new Error(`already labelled: ${had}`);
+  return jpeg ? labelJpeg(b, source) : labelPng(b, source);
+}
+
+function labelMain(args) {
+  const list =
+    typeof args["label-ai"] === "string"
+      ? args["label-ai"]
+          .split(",")
+          .map(s => s.trim())
+          .filter(Boolean)
+      : [];
+  const source = typeof args.source === "string" ? args.source : "trainedAlgorithmicMedia";
+  if (!list.length)
+    throw new Fail("usage: node images.mjs --label-ai <file>[,<file>…] [--source trainedAlgorithmicMedia] [--yes]");
+  if (!AI_SOURCES.includes(source)) throw new Fail(`--source must be one of ${AI_SOURCES.join(", ")} (got ${source}).`);
+  const show = p => relative(process.cwd(), p).replace(/\\/g, "/") || ".";
+  const todo = [],
+    skipped = [];
+  for (const f of list) {
+    const file = resolve(f),
+      backup = file.slice(0, file.length - extname(file).length) + ".original" + extname(file);
+    if (!existsSync(file) || !statSync(file).isFile()) {
+      skipped.push(`${f}: not found`);
+      continue;
+    }
+    let out;
+    try {
+      out = withAiLabel(readFileSync(file), source);
+    } catch (e) {
+      skipped.push(`${f}: ${e.message}`);
+      continue;
+    }
+    if (existsSync(backup)) {
+      skipped.push(`${f}: ${show(backup)} already exists, so the original couldn't be kept`);
+      continue;
+    }
+    todo.push({ file, backup, out });
+  }
+  console.log(
+    todo.length
+      ? `images: ${todo.length} file(s) to label as made with generative AI (IPTC digital source type ${source}):`
+      : "images: no file here can be labelled.",
+  );
+  for (const t of todo) console.log(`  ${show(t.file)}`);
+  if (skipped.length) console.log(`Left alone:\n${skipped.map(s => `  ${s}`).join("\n")}`);
+  let failed = 0;
+  if (todo.length && args.yes !== true)
+    console.log(
+      `\nDry run: nothing was written. With --yes each file gets the label in its XMP metadata (the image itself isn't re-encoded), and the original is kept next to it as name.original.ext.`,
+    );
+  else
+    for (const t of todo) {
+      copyFileSync(t.file, t.backup, constants.COPYFILE_EXCL);
+      writeFileSync(t.file, t.out);
+      const back = imageMeta(readFileSync(t.file)).sourceType;
+      if (back === source) {
+        console.log(`  labelled ${show(t.file)}, original kept as ${show(t.backup)}; read back: ${back}`);
+        continue;
+      }
+      copyFileSync(t.backup, t.file); // put the original back
+      failed++;
+      console.log(`  couldn't label ${show(t.file)}: the label didn't read back, so the original was put back`);
+    }
+  if (todo.length && args.yes === true)
+    console.log(
+      "\nImage CDNs and optimisers often strip metadata. Run the audit again once these are live: it reads the label from the served files.",
+    );
+  return failed || skipped.length ? 1 : 0;
 }
 
 // Sets the exit code instead of calling process.exit(), like the other scripts.

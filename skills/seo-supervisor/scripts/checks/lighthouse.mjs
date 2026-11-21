@@ -5,7 +5,7 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
-import { labLcpParts } from "./speed.mjs";
+import { labLcpParts, labLcpElement } from "./speed.mjs";
 import { containerArgs } from "../lib/cdp.mjs";
 import { chromeProxyArgs } from "../lib/proxy.mjs";
 import { redact } from "../lib/redact.mjs";
@@ -92,6 +92,14 @@ function parse(lhr, url) {
     scores: map(CATEGORIES, id => (cats[id]?.score == null ? null : Math.round(cats[id].score * 100))),
     metrics: map(METRICS, id => audits[id]?.numericValue ?? null),
     lcpParts: labLcpParts(audits),
+    lcpElement: labLcpElement(audits),
+    // Each audit at 0.9 or more counts once, as Lighthouse's "Passed audits" list counts them.
+    passed: new Set(
+      Object.values(cats)
+        .flatMap(c => c.auditRefs.map(r => r.id))
+        .filter(id => audits[id]?.score >= 0.9 && !UNSCORED.has(audits[id].scoreDisplayMode)),
+    ).size,
+    version: typeof lhr.lighthouseVersion === "string" ? lhr.lighthouseVersion : null,
     // By points lost in the category, so a heavy metric that nearly passes ranks below a light audit that fails.
     failed: failed
       .sort((a, b) => b.cost - a.cost)
@@ -227,7 +235,25 @@ export async function checkLighthouse(
   ];
   if (all && urls.length > max)
     notes.push(
-      `Lighthouse stopped at ${max} pages, its cap for a run on every page; ${urls.length - max} more page(s) weren't run.`,
+      `Lighthouse stopped at ${max} pages, ${max === ALL_CAP ? "its cap for a run on every page" : "the number asked for"}; ${urls.length - max} more page(s) weren't run.`,
     );
   return { results, notes };
+}
+
+/** The median score per category across the runs that have one (the middle two's mean, rounded, for an even count). */
+export function medianScores(results) {
+  const mid = xs => {
+    const s = [...xs].sort((a, b) => a - b),
+      h = s.length >> 1;
+    return s.length % 2 ? s[h] : Math.round((s[h - 1] + s[h]) / 2);
+  };
+  return {
+    pages: results.length,
+    ...Object.fromEntries(
+      Object.keys(CATEGORIES)
+        .map(k => [k, results.map(r => r.scores?.[k]).filter(Number.isFinite)])
+        .filter(([, xs]) => xs.length)
+        .map(([k, xs]) => [k, mid(xs)]),
+    ),
+  };
 }

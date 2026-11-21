@@ -7,7 +7,7 @@
 - **Pass:** every image that should be found uses `<img src>` (Google doesn't index CSS background images), with a fallback `src` on `srcset`/`<picture>`. Inline SVG uses `<title>`.
 
 ### MEDIA-02 · Images are described and named · medium
-- **Check:** crawler `img-alt`; filenames in the image folder or CMS.
+- **Check:** crawler `img-alt`, and `img-alt-quality` (low, under CONTENT-08): alt text that is a file name (`IMG_4032.jpg`, the image's own file name), a bare word such as "image" or "photo", a list of four or more short comma-separated keywords (Google's image guide warns against keyword-stuffed alt text), or over 150 characters (our own line; a long description belongs in the text or a caption). Empty alt on decorative images is right and isn't flagged. Filenames in the image folder or CMS.
 - **Pass:** alt text describes the image in context (CONTENT-08); filenames are descriptive (`ssl-certificate-chain-diagram.webp`, not `IMG_4032.jpg`) and translated per locale; the same image uses the same URL everywhere; formats are BMP, GIF, JPEG, PNG, WebP, SVG or AVIF, with an extension that matches.
 
 ### MEDIA-03 · Each page signals its preferred thumbnail · medium
@@ -32,3 +32,11 @@
 - **Key moments:** `Clip` (name, `startOffset`, a `?t=` URL, unique starts) or `SeekToAction` (a target with `{seek_to_second_number}`). The video must be at least 30 seconds long, and `nosnippet` turns key moments off.
 - **Live streams:** `BroadcastEvent`.
 - After launch, watch Search Console's Video indexing report.
+
+### MEDIA-07 · Images say who made them, and whether AI did · low
+> Checked **21 Nov 2026** against Google's image metadata documentation, IPTC's Photo Metadata Standard 2025.1 (iptc.org) and the C2PA 2.2 specification (spec.c2pa.org).
+- **Why:** Google Images reads the IPTC fields in an image file: Creator, Credit Line and Copyright Notice, and the Digital Source Type, where `trainedAlgorithmicMedia`, `compositeWithTrainedAlgorithmicMedia`, `compositeSynthetic` and `algorithmicMedia` mark an image made or changed by an algorithm. It can also show C2PA Content Credentials (version 2.1 or later) in "About this image" (developers.google.com/search/docs/appearance/structured-data/image-license-metadata).
+- **How it's stored:** IPTC's Creator is XMP `dc:creator` (IIM 2:80 By-line); Digital Source Type is XMP `Iptc4xmpExt:DigitalSourceType`, a URI from `http://cv.iptc.org/newscodes/digitalsourcetype/`, with no IIM equivalent. C2PA embeds its manifest in JPEG APP11 segments, a PNG `caBX` chunk, or a WebP `C2PA` chunk at the end of the file.
+- **Crawler (information only):** for the images PERF-08 weighs, `media.imageCredits` counts those naming a creator, lists those labelled as made with AI and those without a creator, and counts those with Content Credentials. It reads the first 64 KB of each file, where JPEG and PNG keep their metadata; WebP keeps it at the end, so a WebP's label usually isn't seen. Image CDNs and optimisers often strip metadata, so read the served files, not the originals.
+- **Pass:** images made or edited with generative AI carry the Digital Source Type, and photos the site owns name their creator.
+- **Fix:** `scripts/images.mjs --label-ai public/hero.jpg,public/team.png [--source compositeWithTrainedAlgorithmicMedia]` writes the label into the XMP of the JPEG and PNG files the owner names (default `trainedAlgorithmicMedia`, "Created using Generative AI"), next to any metadata already there, without re-encoding the image. It's a dry run until `--yes` and the owner's yes; it keeps each original as `hero.original.jpg`, reads the label back from the new file, and leaves alone a file that's already labelled or isn't JPEG or PNG. Make sure the image pipeline or CDN keeps metadata, then re-run the audit to confirm the label survives.

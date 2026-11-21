@@ -69,6 +69,10 @@ import { SUPERSEDED, placeholderIn } from "./schema-check.mjs";
 
 import { merchantProblems, sellsWithOffer } from "./schema-check.mjs";
 
+import { CHECKS as MEDIA_CHECKS, altProblem, lazySrc, hintsOf, domShape, cdnOf, uncached } from "./checks/media.mjs";
+import { imageMeta } from "./lib/image-size.mjs";
+import { medianScores, ALL_CAP } from "./checks/lighthouse.mjs";
+
 import {
   CHECKS as CONTENT_CHECKS,
   titleWidth,
@@ -1004,8 +1008,8 @@ const CHECKS = {
     "PERF-03",
     "low",
     n => `${n} page(s) lazy-load the first image`,
-    "If the first image is the largest element, lazy-loading it delays LCP.",
-    'Load the hero image eagerly with high priority (`priority` / `fetchpriority="high"`).',
+    "If the first image is the largest element, lazy-loading it delays LCP. A lazy-loading script (an image whose real file is in `data-src` behind a placeholder) delays it even more, as the script has to run first.",
+    'Load the hero image eagerly with high priority (`priority` / `fetchpriority="high"`). In a lazy-loading plugin (Perfmatters, EWWW, WP Rocket, LiteSpeed), exclude the first images or the hero.',
   ],
   "render-blocking": [
     "PERF-03",
@@ -1260,6 +1264,8 @@ const SHOP_FIELDS = {
   category: ["category"],
 };
 
+Object.assign(CHECKS, MEDIA_CHECKS);
+
 Object.assign(CHECKS, CONTENT_CHECKS);
 RULES["CONTENT-07"] ??= ["People and dates are behind the advice", "Headings & content"]; // stale-guide's rule; never passed here
 
@@ -1325,6 +1331,7 @@ async function get(url, { manual = true, text = true, ua = UA } = {}) {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       if (calmUntil > Date.now()) await sleep(calmUntil - Date.now());
+      const t = performance.now(); // ms: the time to the response headers
       const res = await fetch(url, {
         redirect: "manual",
         headers: { "user-agent": ua, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
@@ -1337,11 +1344,12 @@ async function get(url, { manual = true, text = true, ua = UA } = {}) {
         await res.arrayBuffer().catch(() => {});
         continue;
       }
-      const ct = res.headers.get("content-type") || "";
+      const ms = Math.round(performance.now() - t),
+        ct = res.headers.get("content-type") || "";
       let body = "";
       if (text && res.status < 300 && /html|xml|text\/plain/.test(ct)) body = await res.text();
       else await res.arrayBuffer().catch(() => {});
-      return { status: res.status, headers: res.headers, ct, body, location: res.headers.get("location") };
+      return { status: res.status, headers: res.headers, ct, body, location: res.headers.get("location"), ms };
     } catch (e) {
       if (attempt === 1) return { status: 0, error: String(e.message || e), headers: new Headers(), ct: "", body: "" };
       await sleep(500);
@@ -1396,6 +1404,7 @@ async function firstBytes(url, max = 65536) {
       return {
         status: r.status,
         type: r.headers.get("content-type") || "",
+        headers: r.headers,
         bytes: Buffer.concat(chunks),
         size:
           Number(
@@ -2012,6 +2021,16 @@ function analyze(url, html, headers, xRobotsLines) {
     });
   }
 
+  // A lazy-loading script's image (data-src behind a placeholder) is read as its real file, so it's weighed and named,
+  // and the first image's counts for lazy-lcp. Also image preloads, rel=prerender, and the page's depth and widest
+  // element.
+  const lazy = imgs.map(lazySrc);
+  rec.firstScriptLazy = !!lazy[0];
+  imgs.forEach((i, k) => {
+    if (lazy[k]) i.src = lazy[k];
+  });
+  Object.assign(rec, hintsOf(html), { domShape: domShape(bodyRaw) });
+
   // The rest of HTML's obsolete tags (REND-10), a guide's newest date (CONTENT-07) and keyword use on English pages
   // (CONTENT-03). Dates are read from the whole body, not the main text, since an article's <header> often holds them.
   rec.obsolete.push(...obsoleteMore(html));
@@ -2450,6 +2469,7 @@ async function crawlOne(u) {
     chain: r.chain,
     error: r.error || null,
     headers: r.headers,
+    ms: r.ms,
   };
   pages.set(u, rec);
   if (r.status === 200 && /html/.test(r.ct) && r.body) {
@@ -3117,7 +3137,8 @@ for (const p of htmlPages) {
     i => !(i.width && i.height) && i["data-nimg"] !== "fill" && !/position:\s*absolute/i.test(i.style || ""),
   ).length;
   if (noDim) add("img-dimensions", u, `${noDim} image(s)`);
-  if (p.imgs[0] && (p.imgs[0].loading || "").toLowerCase() === "lazy") add("lazy-lcp", u, p.imgs[0].src || "");
+  if (p.imgs[0] && ((p.imgs[0].loading || "").toLowerCase() === "lazy" || p.firstScriptLazy))
+    add("lazy-lcp", u, p.imgs[0].src || "");
   // Counts stylesheets, not sizes: one or two are normal, six or more usually means plugin CSS loaded everywhere.
   const blocking = [
     p.blockingJs.length && `${p.blockingJs.length} script(s) without async or defer, e.g. ${p.blockingJs[0]}`,
@@ -3295,6 +3316,7 @@ checkHreflang(htmlPages, {
 const onSiteImages = [...images].filter(([src]) => new URL(src).origin === START_ORIGIN),
   imageList = onSiteImages.slice(0, 50);
 const imageRows = [];
+const imageInfo = new Map(); // caching, CDN and creator data per weighed image
 let weighed = 0; // PERF-08 counts as checked only once an image is weighed
 for (let i = 0; i < imageList.length; i += CONC)
   await Promise.all(
@@ -3306,7 +3328,10 @@ for (let i = 0; i < imageList.length; i += CONC)
         type = r.type.split(";")[0].trim().toLowerCase(),
         px = imageSize(r.bytes),
         kb = Math.round(size / 1024);
-      if (size > 200 * 1024) add("heavy-image", page, `${src} · ${kb} KB`);
+      imageInfo.set(src, { uncached: uncached(r.headers), cdn: cdnOf(r.headers), ...imageMeta(r.bytes) });
+      // 500 KB is a local threshold, not Google's; that finding replaces heavy-image rather than adding to it.
+      if (size > 500 * 1024) add("image-over-500kb", page, `${src} · ${kb} KB`);
+      else if (size > 200 * 1024) add("heavy-image", page, `${src} · ${kb} KB`);
       if (/^image\/(jpeg|png)$/.test(type) && size > 100 * 1024)
         add("legacy-image-format", page, `${src} · ${type} · ${kb} KB`);
       imageRows.push({
@@ -3828,11 +3853,13 @@ else if (LIGHTHOUSE && !lighthouseBin)
 else if (lighthouseBin) {
   // all: every page meant to rank, without the sample's one-per-folder pick; the estimate prints before the runs.
   const every = [...new Set(htmlPages.filter(p => indexable(p) && !p.refreshTo).map(p => p.finalUrl))];
-  const r = await checkLighthouse(lighthouseBin, LIGHTHOUSE_ALL ? every : renderSample, {
-    chromePath: browser,
-    all: LIGHTHOUSE_ALL,
-    log: console.log,
-  });
+  // --lighthouse 20: that many pages meant to rank, the sample first and then the rest, up to all mode's cap.
+  const asked = /^\d+$/.test(args.lighthouse) ? Math.min(Number(args.lighthouse), ALL_CAP) : 0;
+  const r = await checkLighthouse(
+    lighthouseBin,
+    LIGHTHOUSE_ALL ? every : asked ? [...new Set([...renderSample, ...every])] : renderSample,
+    { chromePath: browser, all: LIGHTHOUSE_ALL || asked > 0, ...(asked ? { max: asked } : {}), log: console.log },
+  );
   if (r.results.length) lighthouse = r.results;
   notes.push(...r.notes);
 }
@@ -4473,6 +4500,122 @@ else if (AI_PROBE)
       products: all.length,
       ...Object.fromEntries(Object.keys(SHOP_FIELDS).map(f => [f, all.filter(pr => pr.fields.includes(f)).length])),
     };
+}
+
+// ---------- images and speed: site-wide ----------
+// Alt text, image preload and prerender findings on the pages the per-page checks read, then `media`: the lab LCP
+// element per page (Chrome's fetchpriority check is a finding), server response times, deep or wide pages, image
+// credits and AI labels, caching and CDN, and Lighthouse's medians. With the CrUX key, the tablet and home-page
+// trends. Depth over 32 and over 60 children are local lines taken from older Lighthouse advice.
+{
+  const media = {},
+    live = htmlPages.filter(p => indexable(p) && !p.clientOnly),
+    path = u => urlOr(u)?.pathname ?? u;
+  for (const p of live) {
+    const u = p.finalUrl,
+      bad = p.imgs
+        .filter(i => "alt" in i)
+        .map(i => [i.alt, altProblem(i.alt, i.src)])
+        .filter(([, why]) => why);
+    if (bad.length)
+      add("img-alt-quality", u, `${bad.length} image(s), e.g. “${bad[0][0].trim().slice(0, 60)}” (${bad[0][1]})`);
+    if (p.imagePreloads > 1)
+      add("image-preloads", u, `${p.imagePreloads} image preloads: ${p.preloadHrefs.join(", ")}`);
+    if (p.prerender.length) add("prerender-hint", u, `<link rel="prerender" href="${p.prerender[0]}">`);
+  }
+  const heroes = new Map();
+  for (const [source, runs] of [
+    ["PageSpeed", (speed?.samples || []).map(s => [s.url, s.lab?.lcpElement])],
+    ["Lighthouse", (lighthouse || []).map(x => [x.url, x.lcpElement])],
+  ])
+    for (const [url, el] of runs)
+      if (el && !heroes.has(path(url)))
+        heroes.set(path(url), {
+          url,
+          element: el.element,
+          ...(el.src ? { src: el.src } : {}),
+          source,
+          hinted: el.fetchpriorityHigh,
+        });
+  for (const h of heroes.values()) if (h.hinted === false && h.src) add("hero-no-fetchpriority", h.url, h.src);
+  if (heroes.size) media.heroImages = [...heroes.values()].map(({ hinted, ...h }) => h);
+  const times = htmlPages
+    .filter(p => Number.isFinite(p.ms))
+    .map(p => ({ url: p.finalUrl, ms: p.ms }))
+    .sort((a, b) => a.ms - b.ms);
+  // 0.8 s is web.dev's "good" TTFB for real visitors, applied here to a single request from this machine.
+  // https://web.dev/articles/ttfb
+  if (times.length)
+    media.serverTimes = {
+      pages: times.length,
+      median: times[(times.length - 1) >> 1].ms,
+      p95: times[Math.ceil(times.length * 0.95) - 1].ms,
+      slow: times
+        .filter(t => t.ms > 800)
+        .reverse()
+        .slice(0, 10),
+    };
+  const deep = live
+    .filter(p => p.domShape.depth > 32)
+    .map(p => ({ url: p.finalUrl, depth: p.domShape.depth }))
+    .sort((a, b) => b.depth - a.depth);
+  const wide = live
+    .filter(p => p.domShape.widest.children > 60)
+    .map(p => ({ url: p.finalUrl, ...p.domShape.widest }))
+    .sort((a, b) => b.children - a.children);
+  if (deep.length || wide.length) media.domShape = { deep: deep.slice(0, 20), wide: wide.slice(0, 20) };
+  const info = [...imageInfo],
+    hosts = {};
+  if (info.length)
+    media.imageCredits = {
+      read: info.length,
+      creator: info.filter(([, i]) => i.creator).length,
+      ai: info
+        .filter(([, i]) => i.ai)
+        .map(([s]) => s)
+        .slice(0, 20),
+      c2pa: info.filter(([, i]) => i.c2pa).length,
+      noCreator: info
+        .filter(([, i]) => !i.creator)
+        .map(([s]) => s)
+        .slice(0, 20),
+    };
+  for (const p of live)
+    for (const i of p.imgs) {
+      const x = urlOr(i.src, p.base);
+      if (x && /^https?:$/.test(x.protocol) && ![START_ORIGIN, EXPECT_ORIGIN].includes(x.origin))
+        hosts[x.host] = (hosts[x.host] || 0) + 1;
+    }
+  if (info.length || Object.keys(hosts).length)
+    media.imageCache = {
+      checked: info.length,
+      uncached: info
+        .filter(([, i]) => i.uncached)
+        .map(([s]) => s)
+        .slice(0, 20),
+      cdn: info.map(([, i]) => i.cdn).find(Boolean) || null,
+      otherHosts: Object.fromEntries(
+        Object.entries(hosts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10),
+      ),
+    };
+  if (lighthouse?.length > 1) media.lighthouseMedians = medianScores(lighthouse);
+  if (Object.keys(media).length) extra.media = media;
+  // Only once the phone trend came back: a site without it has no tablet or page data either. A 404 is no news.
+  if (SPEED_ON && CRUX_KEY && speed?.trend) {
+    const [tab, homeT] = [
+      await speedTrend(EXPECT_ORIGIN, { key: CRUX_KEY, endpoint: CRUX_AT, formFactor: "TABLET" }).catch(e => ({
+        note: `CrUX history (tablet) failed (${e.message}).`,
+      })),
+      await speedTrend(EXPECT_ORIGIN + "/", { key: CRUX_KEY, endpoint: CRUX_AT, page: true }).catch(e => ({
+        note: `CrUX history for the home page failed (${e.message}).`,
+      })),
+    ];
+    for (const t of [tab, homeT]) if (t.note && !/not enough Chrome visits/.test(t.note)) notes.push(t.note);
+    if (tab.trend) speed.tablet = { trend: tab.trend, ...(tab.lcpBreakdown ? { lcpBreakdown: tab.lcpBreakdown } : {}) };
+    if (homeT.trend) speed.pageTrend = { url: EXPECT_ORIGIN + "/", trend: homeT.trend };
+  }
 }
 
 // ---------- content: site-wide ----------

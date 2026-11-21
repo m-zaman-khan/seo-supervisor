@@ -22,12 +22,14 @@ const LCP_PARTS = {
   renderDelay: "largest_contentful_paint_image_element_render_delay",
 };
 
-// The origin's p75s over CrUX History's 25 weekly periods, as [first, last] per metric, plus the latest LCP parts
-// in ms. formFactor is PHONE or DESKTOP.
-// https://developer.chrome.com/docs/crux/history-api
+const TREND = { lcp: "largest_contentful_paint", inp: "interaction_to_next_paint", cls: "cumulative_layout_shift" };
+const day = d => (d?.year ? `${d.year}-${String(d.month).padStart(2, "0")}-${String(d.day).padStart(2, "0")}` : null);
+// p75s over CrUX History's 25 weekly periods, as [first, last] per metric, plus the latest LCP parts in ms. With page,
+// target is a URL rather than an origin. avg4 averages the first and last four weeks with data, steadier than single
+// weeks. https://developer.chrome.com/docs/crux/history-api
 export async function speedTrend(
-  origin,
-  { key, endpoint = CRUX_HISTORY_ENDPOINT, fetchFn = fetch, formFactor = "PHONE" },
+  target,
+  { key, endpoint = CRUX_HISTORY_ENDPOINT, fetchFn = fetch, formFactor = "PHONE", page = false },
 ) {
   const q = new URL(endpoint);
   q.searchParams.set("key", key);
@@ -35,43 +37,51 @@ export async function speedTrend(
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      origin,
+      [page ? "url" : "origin"]: target,
       formFactor,
-      metrics: [
-        "largest_contentful_paint",
-        "interaction_to_next_paint",
-        "cumulative_layout_shift",
-        ...Object.values(LCP_PARTS),
-      ],
+      metrics: [...Object.values(TREND), ...Object.values(LCP_PARTS)],
     }),
     signal: AbortSignal.timeout(30000),
   });
   if (!r.ok)
     return {
-      note: `CrUX history${formFactor === "PHONE" ? "" : ` (${formFactor.toLowerCase()})`}: ${r.status === 404 ? "not enough Chrome visits to this site for a trend" : `answered ${r.status}${r.status === 403 ? " (enable the Chrome UX Report API for this key)" : ""}`}.`,
+      note: `CrUX history${page ? ` for ${target}` : formFactor === "PHONE" ? "" : ` (${formFactor.toLowerCase()})`}: ${r.status === 404 ? `not enough Chrome visits to this ${page ? "page" : "site"} for a trend` : `answered ${r.status}${r.status === 403 ? " (enable the Chrome UX Report API for this key)" : ""}`}.`,
     };
   const rec = (await r.json()).record || {},
-    m = rec.metrics || {};
+    m = rec.metrics || {},
+    periods = rec.collectionPeriods || [];
   // A period with too few visits is null: skipped, never read as 0.
+  const weekly = s =>
+    (s?.percentilesTimeseries?.p75s || []).map(x => (x == null || isNaN(Number(x)) ? null : Number(x)));
   const ends = s => {
-    const xs = (s?.percentilesTimeseries?.p75s || [])
-      .filter(x => x != null)
-      .map(Number)
-      .filter(x => !isNaN(x));
+    const xs = weekly(s).filter(x => x != null);
     return xs.length ? [xs[0], xs[xs.length - 1]] : null;
   };
+  const mean = (xs, k) => {
+    const v = xs.reduce((a, b) => a + b, 0) / xs.length;
+    return k === "cls" ? Math.round(v * 100) / 100 : Math.round(v);
+  };
+  const avg4 = Object.fromEntries(
+    Object.entries(TREND).flatMap(([k, id]) => {
+      const xs = weekly(m[id]).filter(x => x != null);
+      return xs.length >= 8 ? [[k, [mean(xs.slice(0, 4), k), mean(xs.slice(-4), k)]]] : [];
+    }),
+  );
   const latest = Object.entries(LCP_PARTS).map(([k, name]) => [k, m[name]?.percentilesTimeseries?.p75s?.at(-1)]);
   const lcpBreakdown = latest.every(([, v]) => v != null) && {
     source: "real visitors",
-    url: origin,
+    url: target,
     ...Object.fromEntries(latest.map(([k, v]) => [k, Math.round(Number(v))])),
   };
+  const last = periods.at(-1);
   return {
     trend: {
-      weeks: (rec.collectionPeriods || []).length,
-      lcp: ends(m.largest_contentful_paint),
-      inp: ends(m.interaction_to_next_paint),
-      cls: ends(m.cumulative_layout_shift),
+      weeks: periods.length,
+      ...Object.fromEntries(Object.entries(TREND).map(([k, id]) => [k, ends(m[id])])),
+      avg4,
+      series: Object.fromEntries(Object.entries(TREND).map(([k, id]) => [k, weekly(m[id])])),
+      periods: periods.map(p => day(p.lastDate)),
+      ...(last ? { period: { from: day(last.firstDate), to: day(last.lastDate) } } : {}),
     },
     ...(lcpBreakdown ? { lcpBreakdown } : {}),
   };
@@ -90,6 +100,24 @@ export function labLcpParts(audits) {
       }
     : null;
 }
+// The LCP node of a Lighthouse 13 run, its image from the snippet's src or first srcset candidate, and the discovery
+// checklist: priorityHinted (fetchpriority="high", images only), eagerlyLoaded (not lazy, or preloaded) and
+// requestDiscoverable (started by a preload or the HTML, not CSS or a script).
+// https://github.com/GoogleChrome/lighthouse/blob/main/core/audits/insights/lcp-discovery-insight.js
+export function labLcpElement(audits) {
+  const items = id => audits?.[id]?.details?.items || [];
+  const n = [...items("lcp-breakdown-insight"), ...items("lcp-discovery-insight")].find(i => i?.type === "node");
+  if (!n) return null;
+  const tag = typeof n.snippet === "string" ? n.snippet : "",
+    attr = k => new RegExp(`\\s${k}\\s*=\\s*"([^"]*)"`, "i").exec(tag)?.[1]?.replace(/&amp;/g, "&");
+  const src = /^<img\b/i.test(tag) ? attr("src") || attr("srcset")?.trim().split(/\s+/)[0] : null;
+  const hinted = items("lcp-discovery-insight").find(i => i?.type === "checklist")?.items?.priorityHinted?.value;
+  return {
+    element: String(n.nodeLabel || n.selector || tag).slice(0, 200),
+    ...(src ? { src: src.slice(0, 300) } : {}),
+    ...(typeof hinted === "boolean" ? { fetchpriorityHigh: hinted } : {}),
+  };
+}
 // Lab runs ({ url, lcpParts }): the home page's breakdown, else the first one.
 export function labLcpBreakdown(runs) {
   const l = runs.filter(x => x.lcpParts),
@@ -100,18 +128,45 @@ export function labLcpBreakdown(runs) {
 // https://web.dev/articles/defining-core-web-vitals-thresholds
 export const BANDS = { lcp: [2500, 4000], inp: [200, 500], cls: [0.1, 0.25] };
 export const LIMITS = Object.fromEntries(Object.entries(BANDS).map(([k, [good]]) => [k, good]));
-export const band = (metric, value) =>
-  value <= BANDS[metric][0] ? "good" : value <= BANDS[metric][1] ? "needs improvement" : "poor";
+// FCP and TTFB aren't Core Web Vitals, so they stay out of BANDS and never count toward passing or the
+// since-last-audit comparison.
+// https://web.dev/articles/fcp
+// https://web.dev/articles/ttfb
+export const OTHER_BANDS = { fcp: [1800, 3000], ttfb: [800, 1800] };
+export const band = (metric, value) => {
+  const [good, poor] = BANDS[metric] || OTHER_BANDS[metric];
+  return value <= good ? "good" : value <= poor ? "needs improvement" : "poor";
+};
 
-// PageSpeed reports CLS as its percentile × 100.
-const cwv = m =>
-  m && m.LARGEST_CONTENTFUL_PAINT_MS
-    ? {
-        lcp: m.LARGEST_CONTENTFUL_PAINT_MS.percentile,
-        inp: m.INTERACTION_TO_NEXT_PAINT?.percentile ?? null,
-        cls: m.CUMULATIVE_LAYOUT_SHIFT_SCORE ? m.CUMULATIVE_LAYOUT_SHIFT_SCORE.percentile / 100 : null,
-      }
-    : null;
+// PageSpeed reports CLS × 100. shares holds each metric's good, needs-improvement and poor proportions.
+const PSI_METRICS = {
+  lcp: "LARGEST_CONTENTFUL_PAINT_MS",
+  inp: "INTERACTION_TO_NEXT_PAINT",
+  cls: "CUMULATIVE_LAYOUT_SHIFT_SCORE",
+  fcp: "FIRST_CONTENTFUL_PAINT_MS",
+  ttfb: "EXPERIMENTAL_TIME_TO_FIRST_BYTE",
+};
+const cwv = m => {
+  if (!m?.LARGEST_CONTENTFUL_PAINT_MS) return null;
+  const shares = Object.fromEntries(
+    Object.entries(PSI_METRICS).flatMap(([k, id]) => {
+      const d = m[id]?.distributions;
+      return Array.isArray(d) && d.length === 3
+        ? [[k, d.map(b => Math.round((Number(b?.proportion) || 0) * 1000) / 1000)]]
+        : [];
+    }),
+  );
+  const fcp = m.FIRST_CONTENTFUL_PAINT_MS?.percentile,
+    ttfb = m.EXPERIMENTAL_TIME_TO_FIRST_BYTE?.percentile;
+  return {
+    lcp: m.LARGEST_CONTENTFUL_PAINT_MS.percentile,
+    inp: m.INTERACTION_TO_NEXT_PAINT?.percentile ?? null,
+    cls: m.CUMULATIVE_LAYOUT_SHIFT_SCORE ? m.CUMULATIVE_LAYOUT_SHIFT_SCORE.percentile / 100 : null,
+    ...(fcp != null ? { fcp } : {}),
+    ...(ttfb != null ? { ttfb } : {}),
+    ...(Object.keys(shares).length ? { shares } : {}),
+  };
+};
 export const passes = v =>
   v.lcp <= LIMITS.lcp && (v.inp == null || v.inp <= LIMITS.inp) && (v.cls == null || v.cls <= LIMITS.cls);
 export const fmtCwv = v =>
@@ -179,12 +234,16 @@ export async function checkSpeed(urls, { add, endpoint = PSI_ENDPOINT, key, fetc
     const field = le && !le.origin_fallback ? cwv(le.metrics) : null,
       origin = cwv(data.originLoadingExperience?.metrics);
     const a = data.lighthouseResult?.audits || {};
-    const lcpParts = labLcpParts(a);
+    const lcpParts = labLcpParts(a),
+      lcpElement = labLcpElement(a),
+      version = data.lighthouseResult?.lighthouseVersion;
     const lab = {
       lcp: a["largest-contentful-paint"]?.numericValue ?? null,
       cls: a["cumulative-layout-shift"]?.numericValue ?? null,
       tbt: a["total-blocking-time"]?.numericValue ?? null,
       ...(lcpParts ? { lcpParts } : {}),
+      ...(lcpElement ? { lcpElement } : {}),
+      ...(typeof version === "string" ? { version } : {}),
     };
     samples.push({ url, field, origin, lab });
     if (field && !passes(field)) add("cwv-fail", url, `${fmtCwv(field)} (75th percentile of real ${strategy} visits)`);
