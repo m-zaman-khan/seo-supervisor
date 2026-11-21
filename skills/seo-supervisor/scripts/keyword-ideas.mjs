@@ -3,7 +3,7 @@
 // Keyword ideas from real sources only, each labelled with its source. No volumes or difficulty: keyword-data.mjs adds
 // those.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 import { addTraffic } from "./gsc-import.mjs";
 import { classify, withSiteName } from "./links-import.mjs";
@@ -39,7 +39,7 @@ const STOP = new Set(
     "per della delle dei degli gli che come nel nella nei sul sulla dove quale quali perche"
   ).split(" "),
 );
-const mainWords = s => [
+export const mainWords = s => [
   ...new Set(
     norm(s)
       .split(" ")
@@ -79,7 +79,7 @@ const valid = r =>
   r && typeof r.query === "string" && r.query.trim() && Number.isFinite(r.impressions) && Number.isFinite(r.position);
 
 // search is google.json or gsc.json; words is the page-words file that crawl.pageWords names, or null.
-export function keywordIdeas({ search, crawl = null, brand, extra = [] }) {
+export function keywordIdeas({ search, crawl = null, brand, extra = [], words = null }) {
   const notes = [];
   const pageQueries = search.pageQueries && typeof search.pageQueries === "object" ? search.pageQueries : {};
   let rows = (Array.isArray(search.queries) ? search.queries : []).filter(valid);
@@ -226,6 +226,105 @@ export function keywordIdeas({ search, crawl = null, brand, extra = [] }) {
       };
     });
 
+  // From the crawl's page words: searches a page shows for whose words its text lacks by covers()'s rule, and pages
+  // that hold a search's words but don't link to its top page. Within one site, pages whose title and paragraphs match
+  // the questions people ask are cited more by AI answers (a preprint). https://arxiv.org/abs/2610.15033
+  const pw = crawl?.pageWords,
+    side =
+      pw && words?.stamp === pw.stamp && Array.isArray(words.pages)
+        ? words.pages.filter(p => typeof p?.path === "string" && typeof p.words === "string")
+        : null;
+  const why = !Object.values(pageQueries).some(l => Array.isArray(l) && l.some(valid))
+    ? "the Search Console data has no per-page queries (google.mjs fetch reads them; with exports, use gsc-import.mjs --page-queries)"
+    : !crawl
+      ? "there's no --crawl"
+      : !pw
+        ? "the crawl has no page words, so an older crawler made it (run seo-crawl.mjs again)"
+        : !side
+          ? `${pw.file} is missing or from another crawl (run seo-crawl.mjs again)`
+          : null;
+  let linkIdeas = null,
+    queryGaps = null;
+  if (why) notes.push(`Internal link ideas and searches a page doesn't mention weren't checked: ${why}.`);
+  else {
+    const pairs = Object.entries(pageQueries)
+      .flatMap(([path, list]) =>
+        (Array.isArray(list) ? list : [])
+          .filter(
+            r =>
+              valid(r) &&
+              r.impressions >= MIN_IMPRESSIONS &&
+              !NOSPACE.test(r.query) &&
+              classify(r.query, brandName || "") === "other",
+          )
+          .map(r => ({ path, r, w: mainWords(r.query) })),
+      )
+      .filter(x => x.w.length)
+      .sort((a, b) => b.r.impressions - a.r.impressions);
+    // Each page's words are read once, against the searches' words only, and matched as same() matches them: a page
+    // word holds a search word equal to it, one it starts with plus up to 3 letters, or one that starts with it plus up
+    // to 3.
+    const want = new Set(pairs.flatMap(x => x.w)),
+      longer = new Map(),
+      withWord = new Map(),
+      push = (m, k, v) => (m.get(k) || m.set(k, []).get(k)).push(v);
+    for (const s of want) for (let i = 1; i <= 3 && s.length - i >= 3; i++) push(longer, s.slice(0, -i), s);
+    const held = side.map(p => {
+      const h = new Set();
+      for (const w of p.words.split(" ")) {
+        if (want.has(w)) h.add(w);
+        for (let i = 1; i <= 3 && w.length - i >= 3; i++) if (want.has(w.slice(0, -i))) h.add(w.slice(0, -i));
+        for (const s of longer.get(w) || []) h.add(s);
+      }
+      return h;
+    });
+    held.forEach((h, i) => {
+      for (const s of h) push(withWord, s, i);
+    });
+    const at = new Map(side.map((p, i) => [p.path, i])),
+      enough = (n, w) => n >= (w.length >= 3 ? w.length - 1 : w.length); // covers()'s rule
+    const unread = new Set(),
+      spaceless = new Set(),
+      pages = n => `${n} page${n === 1 ? "" : "s"}`;
+    linkIdeas = [];
+    queryGaps = [];
+    for (const { path, r, w } of pairs) {
+      const x = at.get(path),
+        ev = { page: path, query: r.query, impressions: r.impressions, clicks: r.clicks ?? 0, position: r.position };
+      if (x === undefined) {
+        unread.add(path);
+        continue;
+      }
+      const missing = w.filter(s => !held[x].has(s));
+      if (side[x].nospace) spaceless.add(path);
+      else if (!enough(w.length - missing.length, w)) queryGaps.push({ ...ev, missing });
+      // One page to link to for each search; past MAX + 1 ideas, the rest aren't looked for (most impressions come
+      // first).
+      if (linkIdeas.length > MAX || top.get(r.query.toLowerCase())?.path !== path) continue;
+      const count = new Map();
+      for (const s of w) for (const a of withWord.get(s) || []) count.set(a, (count.get(a) || 0) + 1);
+      // Pages holding every word first, then the crawl's order (roughly nearest the home page first).
+      const from = [...count]
+        .filter(([a, n]) => a !== x && enough(n, w) && !(Array.isArray(side[a].links) && side[a].links.includes(x)))
+        .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+        .slice(0, 3)
+        .map(([a]) => side[a].path);
+      if (from.length) linkIdeas.push({ ...ev, from });
+    }
+    if (linkIdeas.length > MAX) {
+      notes.push(`Internal link ideas: only the ${MAX} with the most impressions are listed, and there are more.`);
+      linkIdeas.length = MAX;
+    }
+    if (unread.size)
+      notes.push(
+        `${pages(unread.size)} with Search Console queries ${unread.size === 1 ? "isn't" : "aren't"} among the crawl's indexable pages (not reached, noindex, pointing elsewhere with a canonical, or built in the browser), so ${unread.size === 1 ? "it wasn't" : "they weren't"} checked for link ideas or searches ${unread.size === 1 ? "it doesn't" : "they don't"} mention.`,
+      );
+    if (spaceless.size)
+      notes.push(
+        `${pages(spaceless.size)} ${spaceless.size === 1 ? "is" : "are"} mostly in a script written without spaces between words, so which searches ${spaceless.size === 1 ? "it doesn't" : "they don't"} mention wasn't judged.`,
+      );
+  }
+
   const cap = (name, g) => {
     if (g && g.length > MAX)
       notes.push(`${name}: only the first ${MAX} of ${g.length} are listed, most impressions first.`);
@@ -246,6 +345,8 @@ export function keywordIdeas({ search, crawl = null, brand, extra = [] }) {
     gaps: cap("Shown for, but no page is about it", gaps),
     questions: cap("Questions people search", questions),
     extra: cap("Ideas from search results and competitors", fromOutside),
+    linkIdeas: cap("Internal link ideas", linkIdeas),
+    queryGaps: cap("Searches a page doesn't mention", queryGaps),
     notes,
   };
 }
@@ -272,6 +373,24 @@ const GROUPS = [
     "Phrases collected with outside checks on. Each keeps the source it came from.",
   ],
 ];
+const LIMITS = `Searches with at least ${MIN_IMPRESSIONS} impressions on the page, brand searches left out. At most ${MAX}, most impressions first (our own limit).`;
+// https://developers.google.com/search/docs/crawling-indexing/links-crawlable
+const PAGE_GROUPS = /** @type {[string, string, string, string, (i: any) => string[]][]} */ ([
+  [
+    "linkIdeas",
+    "Internal link ideas",
+    `A page shows in Google for a search, and other pages mention that search in their title, H1 or main text but don't link to it. Google uses links to find pages and to judge what they're about, and a link's words tell people and Google what the page is. So a link from those pages, in a sentence about the search, could help. ${LIMITS} Up to 3 pages each (our own limit), those using every word first.`,
+    "Pages that mention it but don't link to it",
+    i => i.from,
+  ],
+  [
+    "queryGaps",
+    "Searches a page doesn't mention",
+    `Searches a page shows in Google for, whose words its title, H1 and main text don't use. A page can't answer a search well if it never mentions it. A 2026 study of AI answers found that, within one site, pages whose title and paragraphs match the questions people ask get cited more (Chen and Koudas, a preprint, not yet peer reviewed). Add the words only where they fit what the page is about. ${LIMITS}`,
+    "Words the page doesn't use",
+    i => i.missing,
+  ],
+]);
 
 export function ideasMarkdown(r) {
   const n = x => Number(x).toLocaleString("en-US");
@@ -301,6 +420,27 @@ export function ideasMarkdown(r) {
       L.push(`| ${md(i.phrase)} | ${md(i.source)} | ${ev} | ${md(i.use)} |`);
     }
     L.push("");
+  }
+  for (const [key, title, what, col, list] of PAGE_GROUPS) {
+    L.push(`## ${title}`, "", what, "");
+    const g = r[key];
+    if (!g) {
+      L.push("Not checked: the notes say why.", "");
+      continue;
+    }
+    if (!g.length) {
+      L.push("None.", "");
+      continue;
+    }
+    L.push(
+      `| Page | Search | Evidence | ${col} |`,
+      "| --- | --- | --- | --- |",
+      ...g.map(
+        i =>
+          `| ${md(i.page)} | ${md(i.query)} | ${n(i.impressions)} impressions on this page, ${n(i.clicks)} clicks, position ${i.position} | ${list(i).map(md).join(", ")} |`,
+      ),
+      "",
+    );
   }
   L.push("## Notes", "", ...r.notes.map(x => `- ${md(x)}`), "");
   return L.join("\n");
@@ -339,14 +479,23 @@ function main(argv) {
     throw new Fail(
       `keyword-ideas: ${file} has no search queries. Import Search Console's Queries export with gsc-import.mjs --queries, or run google.mjs fetch, then try again.`,
     );
-  const r = keywordIdeas({ search, crawl, brand: str("brand"), extra });
+  // Only pageWords' file name is used, so nothing outside the crawl's folder is read. keywordIdeas notes a missing
+  // file.
+  let words = null;
+  if (typeof crawl?.pageWords?.file === "string")
+    try {
+      words = JSON.parse(readFileSync(join(dirname(resolve(args.crawl)), basename(crawl.pageWords.file)), "utf8"));
+    } catch {
+      /* noted */
+    }
+  const r = keywordIdeas({ search, crawl, brand: str("brand"), extra, words });
   const out = resolve(str("out") || "seo-audit/keyword-ideas.json"),
     mdOut = out.replace(/\.json$/i, "") + ".md";
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(r, null, 2));
   writeFileSync(mdOut, ideasMarkdown(r));
   console.log(
-    `keyword-ideas: ${r.almostThere.length} almost there, ${r.gaps ? `${r.gaps.length} with no page about them` : "pages not checked (no --crawl)"}, ${r.questions.length} questions, ${r.extra.length} from outside checks · wrote ${out} and ${mdOut}`,
+    `keyword-ideas: ${r.almostThere.length} almost there, ${r.gaps ? `${r.gaps.length} with no page about them` : "pages not checked (no --crawl)"}, ${r.questions.length} questions, ${r.extra.length} from outside checks, ${r.linkIdeas ? `${r.linkIdeas.length} internal link ideas, ${r.queryGaps.length} searches a page doesn't mention` : "link ideas not checked (see the notes)"} · wrote ${out} and ${mdOut}`,
   );
   return 0;
 }

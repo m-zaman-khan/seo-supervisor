@@ -1281,6 +1281,9 @@ const CLEAN_SHOTS = !!args["clean-screenshots"];
 Object.assign(CHECKS, CONTENT_CHECKS);
 RULES["CONTENT-07"] ??= ["People and dates are behind the advice", "Headings & content"]; // stale-guide's rule; never passed here
 
+// keyword-ideas.mjs's own word rules, so the words file matches its searches exactly.
+const { mainWords: pickMainWords } = await import("./keyword-ideas.mjs");
+
 const findings = new Map(); // key -> {evidence:[], count}
 function add(key, url, detail) {
   if (!CHECKS[key]) throw new Error("unknown check " + key);
@@ -1993,6 +1996,15 @@ function analyze(url, html, headers, xRobotsLines) {
       [...anchors.map(a => a.href), ...imgs.map(i => i.src)].filter(h => h?.trim() && !urlOr(h.trim(), rec.base)),
     ),
   ];
+
+  // Words of the title, H1s and main text, for keyword-ideas.mjs. Runs of a script written without spaces are dropped
+  // (no words to match), and a page mostly in one is marked, so no missing search is claimed for it.
+  {
+    const t = [rec.title || "", ...headings.filter(h => h.level === 1).map(h => h.text), textOf(mainHtml)].join(" "),
+      ns = (t.match(NOSPACE_RUN) || []).join("").length;
+    rec.mainWordsText = pickMainWords(t.replace(NOSPACE_RUN, " ")).join(" ");
+    rec.mainNoSpace = ns * 2 > (t.match(/\p{L}/gu) || []).length;
+  }
 
   // Bing's AI rules (AI-03), kept only on pages that have any.
   {
@@ -4490,8 +4502,36 @@ for (const p of htmlPages) {
   const bad = prefs.filter(x => !BING_PREFS[x.name].includes(x.value));
   if (bad.length) add("ai-preference-invalid", p.finalUrl, bad.map(x => `${x.name}:${x.value}`).join(", "));
 }
-// Click-only elements (AI-05) and missing main, nav, header or footer landmarks on indexable, server-rendered pages;
-// the first 20 lacking a landmark are listed.
+// Each indexable page's words and links (as indexes into the same list, redirects followed) for keyword-ideas.mjs.
+// A file of its own, so seo-crawl.json doesn't grow: a few KB a page, some 10–25 MB for 5,000 pages. seo-crawl.json
+// names the file and both carry the crawl's start time, so keyword-ideas can tell a file left from another crawl.
+{
+  const kept = htmlPages.filter(p => indexable(p) && !p.clientOnly && typeof p.mainWordsText === "string"),
+    at = new Map(kept.map((p, i) => [p.finalUrl, i]));
+  const file = OUT.replace(/\.json$/i, "") + ".words.json",
+    pathOf = u => {
+      const x = new URL(u);
+      return x.pathname + x.search;
+    };
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(
+    file,
+    JSON.stringify({
+      tool: "seo-supervisor-crawler-words",
+      stamp: t0,
+      pages: kept.map(p => ({
+        path: pathOf(p.finalUrl),
+        words: p.mainWordsText,
+        links: [...new Set(p.links.map(l => at.get(finalOf(l.url))).filter(i => i !== undefined))],
+        ...(p.mainNoSpace ? { nospace: true } : {}),
+      })),
+    }),
+  );
+  extra.pageWords = { file: basename(file), stamp: t0, pages: kept.length };
+}
+
+// Click-only elements and missing landmarks on indexable, server-rendered pages; the first 20 lacking a landmark are
+// listed.
 {
   const bare = [];
   let checked = 0;

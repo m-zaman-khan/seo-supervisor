@@ -2043,8 +2043,66 @@ const pageHtml = () => "",
   pageMd = () => [];
 const aiPrefsHtml = () => "",
   aiPrefsMd = () => [];
-const linkIdeasHtml = () => "",
-  linkIdeasMd = () => [];
+// linkIdeas and queryGaps (keyword-ideas.mjs), copied into the audit as they are. Searches and paths are escaped. Up
+// to 10 of each on the page, all of them (50 at most) in the Markdown.
+const aiRows = (key, list) =>
+  (Array.isArray(raw[key]) ? raw[key] : []).filter(
+    i =>
+      obj(i) &&
+      typeof i.page === "string" &&
+      typeof i.query === "string" &&
+      Number.isFinite(i.impressions) &&
+      Array.isArray(i[list]) &&
+      i[list].length &&
+      i[list].every(s => typeof s === "string"),
+  );
+// Google uses links for relevance and to find pages; the query-gap idea is from Chen and Koudas, a preprint.
+// https://developers.google.com/search/docs/crawling-indexing/links-crawlable
+// https://arxiv.org/abs/2610.15033
+const aiGroups = (code, text) =>
+  /** @type {[string, string, string, string[][]][]} */ ([
+    [
+      "linkideas",
+      "Internal link ideas",
+      "Pages that mention a search another page shows for in Google, but don't link to that page. A link from them, in a sentence about the search, helps people and Google find the page that answers it. From Search Console and the crawl. Information only: none of this changes the score.",
+      aiRows("linkIdeas", "from").map(i => [
+        code(i.page),
+        `${text(`gets ${plural(i.impressions, "impression")} for “${i.query}”. Pages that mention it but don't link to it:`)} ${i.from.map(code).join(", ")}`,
+      ]),
+    ],
+    [
+      "querygaps",
+      "Searches a page doesn't mention",
+      "Searches a page shows for in Google whose words its title, H1 and main text don't use. A page can't answer a search well if it never mentions it, and a 2026 study of AI answers (Chen and Koudas, a preprint, not yet peer reviewed) found that pages whose title and paragraphs match the questions people ask get cited more. Add the words only where they fit the page. Information only: none of this changes the score.",
+      aiRows("queryGaps", "missing").map(i => [
+        code(i.page),
+        text(
+          `shows for “${i.query}” (${plural(i.impressions, "impression")}), but doesn't use: ${i.missing.join(", ")}.`,
+        ),
+      ]),
+    ],
+  ]).filter(([, , , rows]) => rows.length);
+const linkIdeasHtml = () =>
+  aiGroups(s => `<code>${esc(s)}</code>`, esc)
+    .map(
+      ([cls, title, intro, rows]) =>
+        `\n    <details class="how ${cls}"><summary>${esc(title)}</summary><p>${esc(intro)}</p><ul class="lim">${rows
+          .slice(0, 10)
+          .map(([k, v]) => `<li><b>${k}</b><span>${v}</span></li>`)
+          .join(
+            "",
+          )}</ul>${rows.length > 10 ? `<p>${num(rows.length - 10)} more in <code>seo-audit/keyword-ideas.md</code>.</p>` : ""}</details>`,
+    )
+    .join("");
+const linkIdeasMd = () =>
+  aiGroups(noteCode, noteMd).flatMap(([, title, intro, rows]) => [
+    `## ${title}`,
+    "",
+    intro,
+    "",
+    ...rows.map(([k, v]) => `- ${k} ${v}`),
+    "",
+  ]);
 // changeCheck, from change-check.mjs: one clicks line, never offered as a cause. Numbers are validated; the callers
 // escape text.
 const changeLine = () => {
