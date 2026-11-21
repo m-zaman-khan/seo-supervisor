@@ -255,7 +255,16 @@ A few more things reach out, each only after its own yes:
 - **Desktop speed** (`--desktop`) sends the same sample URLs to Google PageSpeed again, for desktop. It's also asked about separately.
 - **Testing every page in a browser** (`--render all`) runs every page's own scripts, analytics included, up to 200 pages. It's asked about separately, with the time it will take.
 - **Bing URL submission** (`connect-keys.mjs submit-bing`) sends the URLs you choose to Bing Webmaster Tools, within Bing's daily quota. It only sends after your yes. IndexNow already tells Bing about changed pages.
-- **The connections** below send your site's address and domain names to Google, Bing, Open PageRank or Ahrefs. Matomo and PostHog get only your site or project ID and a request for search visits, sent to your own Matomo or PostHog server.
+- **hreflang on other sites** (`--hreflang-other-sites`) visits up to 20 of your language versions hosted on other sites, to check that they link back.
+- **The AI crawler test** (`--ai-bot-probe`) asks up to 3 of your pages again as ChatGPT's, Claude's and Perplexity's search crawlers, to see whether a firewall turns them away.
+- **Competitor analysis** visits a few pages on each competitor site you name.
+- **Product copy lookup** sends one sentence from one product description to the agent's web search, to see whether it's copied from the maker.
+- **OpenStreetMap** (`osm.mjs`) sends your business's address to OpenStreetMap to check it, and asks for similar businesses nearby. A service-area business's street is never sent.
+- **Domain age** (`rdap.mjs`) sends your domain and any competitors' to their registries' public RDAP servers.
+- **Common Crawl** (`commoncrawl.mjs`) asks Common Crawl's public index about your site and the pages that link to you.
+- **Bot IP check** (`log-scan.mjs --verify-ips`) downloads the AI vendors' public IP lists. Nothing about your site is sent.
+- **The browser add-on** (`npx seo-supervisor --with-browser`) downloads Chrome for Testing when no Chrome or Edge is installed.
+- **The connections** below send your site's address and domain names to Google, Bing, Open PageRank, Ahrefs, Moz or YouTube. Matomo and PostHog get only your site or project ID and a request for search visits, sent to your own Matomo or PostHog server.
 
 To switch them on for one run, say so: `/seo-audit with outside checks`. Real-user speed needs a free PageSpeed Insights API key from Google Cloud in `PSI_API_KEY`: Google refuses almost all requests without one. The render and intent checks need no key. Add `CRUX_API_KEY` too and the Overview shows whether real-user speed got better or worse over the last 25 weeks, and which part of the main image's load real visitors wait on. With outside checks off, these checks are listed under the report's Limits.
 

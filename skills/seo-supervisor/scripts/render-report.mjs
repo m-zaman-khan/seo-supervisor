@@ -776,6 +776,8 @@ const notePath = u => {
 const AGENT_FILE = {
   "/.well-known/api-catalog": "API catalog (RFC 9727)",
   "/.well-known/agent-card.json": "A2A agent card",
+  "/.well-known/oauth-protected-resource": "OAuth protected resource (RFC 9728)",
+  "/.well-known/oauth-authorization-server": "OAuth authorization server (RFC 8414)",
 };
 const agentRows = (() => {
   const a = obj(raw.agents),
