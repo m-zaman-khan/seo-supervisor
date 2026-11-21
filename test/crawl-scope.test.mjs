@@ -197,6 +197,45 @@ test("an indexable copy of a page under a URL parameter is flagged; tracking, pa
   assert.match(f.evidence[0].detail, /color, size/);
 });
 
+test("a language version on ?lang= and a different page on ?page_id= aren't copies", async () => {
+  const fr = page(
+    "À propos de nos chauffagistes à Leeds",
+    "",
+    `<link rel="alternate" hreflang="fr" href="${ORIGIN}/about/?lang=fr"><link rel="alternate" hreflang="en" href="${ORIGIN}/about/">`,
+  );
+  const r = await crawlSite(
+    {
+      "/": page("Boiler repairs and servicing in Leeds"),
+      "/about/": page(
+        "About our Leeds heating engineers",
+        "",
+        `<link rel="alternate" hreflang="en" href="${ORIGIN}/about/"><link rel="alternate" hreflang="fr" href="${ORIGIN}/about/?lang=fr">`,
+      ),
+    },
+    {
+      robots: `User-agent: *\nAllow: /\nSitemap: ${ORIGIN}/sitemap.xml\n`,
+      files: { "/sitemap.xml": urlset(["/", "/about/", "/about/?lang=fr", "/?page_id=2"]) },
+      before: (req, res) => {
+        if (req.url === "/about/?lang=fr")
+          return (res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(fr), true);
+        if (req.url === "/?page_id=2")
+          return (
+            res
+              .writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
+              .end(page("Sample page for our boiler guide")),
+            true
+          );
+        return false;
+      },
+    },
+  );
+  assert.deepEqual(
+    pathsOf(r, "parameter-page-indexable"),
+    [],
+    JSON.stringify(findingOf(r, "parameter-page-indexable")?.evidence),
+  );
+});
+
 test("link hrefs and image srcs no URL parser can read are listed", async () => {
   const r = await crawlSite({
     "/": page(

@@ -4225,11 +4225,28 @@ if (robots?.versioned.length) {
 {
   const TRACKING = /^(utm_\w+|gclid|gbraid|wbraid|dclid|fbclid|msclkid|yclid|igshid|mc_cid|mc_eid|_gl|_ga)$/i,
     PAGING = /^(page|p|pg|paged|offset|start)$/i;
-  const cleanPaths = new Set(htmlPages.filter(p => !new URL(p.finalUrl).search).map(p => new URL(p.finalUrl).pathname));
+  // A copy is the same page: same title as the page without the parameters. A different title is a different page
+  // (WordPress's /?page_id=2), and a page listing itself in its own hreflang is a language version (WPML's ?lang=fr).
+  const norm = t =>
+    String(t || "")
+      .trim()
+      .toLowerCase();
+  const cleanTitles = new Map(
+    htmlPages.filter(p => !new URL(p.finalUrl).search).map(p => [new URL(p.finalUrl).pathname, norm(p.title)]),
+  );
+  const listsItself = p =>
+    (p.hreflang || []).some(h => {
+      try {
+        return new URL(h.href, p.finalUrl).href === p.finalUrl;
+      } catch {
+        return false;
+      }
+    });
   for (const p of htmlPages) {
     const x = new URL(p.finalUrl),
       keys = [...new Set(x.searchParams.keys())].filter(k => !TRACKING.test(k) && !PAGING.test(k));
-    if (!keys.length || p.clientOnly || !indexable(p) || !cleanPaths.has(x.pathname)) continue;
+    if (!keys.length || p.clientOnly || !indexable(p) || !cleanTitles.has(x.pathname)) continue;
+    if (cleanTitles.get(x.pathname) !== norm(p.title) || listsItself(p)) continue;
     evalRules("CRAWL-10");
     const c = canonicalFor(p);
     if (!c || urlOr(c)?.search)
