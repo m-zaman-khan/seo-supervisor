@@ -4,9 +4,10 @@ import { homedir } from "node:os";
 
 // Query parameters whose value is a secret: a token, key, password, signature or credential (X-Amz-Signature,
 // X-Goog-Credential) as a whole word of the name, so "keyword" or "monkey" aren't. Session IDs stay: the sitemap check
-// shows them as evidence.
+// shows them as evidence. "key" and "pass" alone are often filters (?key=blue), so they need a prefix (api_key,
+// access-key); a bare auth= is a token (Firebase's REST API).
 const SECRET_PARAM =
-  /([?&;](?:[\w.-]*[-_.])?(?:token|key|apikey|secret|password|passwd|pwd|pass|signature|sig|credential|auth)=)[^&#\s"'<>;,]*/gi;
+  /([?&;](?:(?:[\w.-]*[-_.])?(?:token|apikey|secret|password|passwd|pwd|signature|sig|credential|auth)|[\w.-]*[-_.](?:key|pass))=)[^&#\s"'<>;,]*/gi;
 // Tokens recognisable on their own: bearer tokens and Basic logins, Google API keys (AIza…), OAuth access and refresh
 // tokens (ya29., 1//) and client secrets (GOCSPX-), JWTs, GitHub token prefixes, Slack tokens and webhook URLs, Stripe
 // secret and restricted keys, AWS access key IDs (AKIA, temporary ASIA), PostHog personal keys and Perplexity keys.
@@ -38,10 +39,23 @@ export const hideSecrets = s =>
     String(s).replace(SECRET_PARAM, "$1[hidden]"),
   );
 
+// Web addresses: a site's own /home/ or /Users/ path is a page, not a home folder, so folder masking skips them.
+const URL_RE = /https?:\/\/[^\s"'<>]+/gi;
+
 /** hideSecrets, plus home folders as ~ outside web addresses and, unless emails: false, email addresses as [email]. */
 export function redact(s, { home = homedir(), emails = true } = {}) {
-  let t = hideSecrets(s);
-  if (home && home.length > 3) for (const h of new Set([home, home.replace(/\\/g, "/")])) t = t.split(h).join("~");
-  t = t.replace(HOMES, "~");
-  return emails ? t.replace(EMAIL, "[email]") : t;
+  const t = hideSecrets(s);
+  const folders = part => {
+    let x = part;
+    if (home && home.length > 3) for (const h of new Set([home, home.replace(/\\/g, "/")])) x = x.split(h).join("~");
+    x = x.replace(HOMES, "~");
+    return emails ? x.replace(EMAIL, "[email]") : x;
+  };
+  let out = "",
+    at = 0;
+  for (const m of t.matchAll(URL_RE)) {
+    out += folders(t.slice(at, m.index)) + m[0];
+    at = m.index + m[0].length;
+  }
+  return out + folders(t.slice(at));
 }

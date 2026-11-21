@@ -109,6 +109,24 @@ test("Content-Signal placement, line by line", () => {
   assert.deepEqual(signalPlacement("# policy\nContent-Signal: search=yes\n", blocks), [
     "line 2: Content-Signal comes before any User-agent line, so it belongs to no group",
   ]);
+  // Cloudflare's managed block in front of the site's own rules makes two * groups, which a crawler merges into one.
+  // https://www.rfc-editor.org/rfc/rfc9309#section-2.2.1
+  assert.deepEqual(
+    signalPlacement(
+      "User-agent: *\nContent-Signal: search=yes, ai-train=no\nAllow: /\n\nUser-agent: *\nDisallow: /wp-admin/\n",
+      blocks,
+    ),
+    [],
+    "repeated groups for the same crawler are one group",
+  );
+  assert.deepEqual(
+    signalPlacement(
+      "User-agent: *\nContent-Signal: search=yes\nAllow: /\n\nUser-agent: Bingbot\nDisallow: /tmp/\n",
+      blocks,
+    ),
+    ["the User-agent: Bingbot group has no Content-Signal line, though other groups do"],
+    "a different crawler's group without a signal is still flagged",
+  );
 });
 
 test("click-only elements and missing landmarks", () => {

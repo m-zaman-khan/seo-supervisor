@@ -32,6 +32,37 @@ test("findBrowser falls back to the browser --with-browser installed, in the set
   );
 });
 
+test("a guide's schema date that isn't a date is skipped, never a crash", async () => {
+  const { newestDate } = await import("../skills/seo-supervisor/scripts/checks/content.mjs");
+  for (const bad of ["", "N/A", "{{date}}", "Mon, 03 Jun 24", "2024-13-45"])
+    assert.equal(
+      newestDate("<p>How to bleed a radiator</p>", [{ dateModified: bad }], Date.UTC(2026, 10, 21)),
+      null,
+      JSON.stringify(bad),
+    );
+  assert.equal(
+    newestDate("", [{ dateModified: "N/A", datePublished: "2025-03-01" }], Date.UTC(2026, 10, 21)).date,
+    "2025-03-01",
+    "the good date still counts",
+  );
+});
+
+test("masking secrets leaves ordinary site URLs alone", async () => {
+  const { redact } = await import("../skills/seo-supervisor/scripts/lib/redact.mjs");
+  for (const u of [
+    "https://example.com/home/garden/",
+    "https://example.com/c/home/kitchen?sort=asc",
+    "https://example.com/Users/guide/",
+    "https://shop.example/p?key=blue",
+  ])
+    assert.equal(redact(u), u, u);
+  assert.equal(
+    redact("https://example.com/x?api_key=abcd1234efgh5678"),
+    "https://example.com/x?api_key=[hidden]",
+    "a real secret is still masked",
+  );
+});
+
 test("findLighthouse looks in the settings folder SEO_SUPERVISOR_HOME names", () => {
   const home = tmp(),
     bin = join(home, "tools", "node_modules", ".bin");

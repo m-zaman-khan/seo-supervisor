@@ -223,12 +223,12 @@ const DATE = String.raw`(\d{4}-\d{2}-\d{2}|\d{1,2}(?:st|nd|rd|th)?\s+${MON},?\s+
 const VISIBLE = new RegExp(String.raw`\b(?:updated|reviewed|modified|published|posted)(?:\s+on)?\s*:?\s*${DATE}`, "gi");
 const timeOf = s => {
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return Date.parse(s.slice(0, 10));
-  const l = s.toLowerCase();
-  return Date.UTC(
-    +l.match(/\d{4}/)[0],
-    MONTHS.findIndex(m => l.includes(m)),
-    +(l.match(/\b(\d{1,2})(?:st|nd|rd|th)?\b/)?.[1] || 1),
-  );
+  // Schema values can be anything ("N/A", "{{date}}"), so no four-digit year or no month name means NaN.
+  const l = s.toLowerCase(),
+    year = l.match(/\b\d{4}\b/)?.[0],
+    month = MONTHS.findIndex(m => l.includes(m));
+  if (!year || month < 0) return NaN;
+  return Date.UTC(+year, month, +(l.match(/\b(\d{1,2})(?:st|nd|rd|th)?\b/)?.[1] || 1));
 };
 // The page's newest date from schema, <time datetime> or a visible "updated" date, ignoring dates over two days
 // ahead. Returns { time, date, from } or null.

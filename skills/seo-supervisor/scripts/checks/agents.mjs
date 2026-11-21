@@ -234,10 +234,29 @@ export function signalPlacement(txt, blocksAll) {
       else out.push(`line ${i + 1}: Content-Signal comes before any User-agent line, so it belongs to no group`);
     } else if ((k === "allow" || k === "disallow") && cur) cur.rules.push({ allow: k === "allow", path: v });
   });
+  // A crawler reads every group naming it as one, and Cloudflare's managed block often sits in front of the site's
+  // own `User-agent: *` group, so groups are merged per crawler first.
+  // https://www.rfc-editor.org/rfc/rfc9309#section-2.2.1
+  const byAgent = new Map();
+  for (const g of groups)
+    for (const a of g.agents) {
+      const k = a.toLowerCase(),
+        m = byAgent.get(k) || byAgent.set(k, { agents: [a], rules: [], signal: false }).get(k);
+      m.rules.push(...g.rules);
+      m.signal ||= g.signal;
+    }
+  const unsignalled = a => {
+      const m = byAgent.get(a.toLowerCase());
+      return !m.signal && !blocksAll(m);
+    },
+    told = new Set();
   if (groups.some(g => g.signal))
-    for (const g of groups)
-      if (!g.signal && !blocksAll(g))
-        out.push(`the User-agent: ${g.agents.join(", ")} group has no Content-Signal line, though other groups do`);
+    for (const g of groups) {
+      const names = g.agents.filter(a => unsignalled(a) && !told.has(a.toLowerCase()));
+      names.forEach(a => told.add(a.toLowerCase()));
+      if (names.length)
+        out.push(`the User-agent: ${names.join(", ")} group has no Content-Signal line, though other groups do`);
+    }
   return out;
 }
 

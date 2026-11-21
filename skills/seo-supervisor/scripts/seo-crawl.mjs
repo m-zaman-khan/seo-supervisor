@@ -2487,12 +2487,22 @@ async function crawlOne(u) {
   if (r.status === 200 && /html/.test(r.ct) && r.body) {
     // Only a crawler prefix makes the joined header ambiguous, so the lines are read apart only then.
     const xrt = r.headers.get("x-robots-tag");
-    const a = analyze(
-      r.finalUrl,
-      r.body,
-      r.headers,
-      xrt && xrt.toLowerCase().split(",").some(agentRule) ? await xRobotsLines(r.finalUrl) : null,
-    );
+    // A check that throws skips this page's checks with a note. The page answered 200, so it's never reported as a
+    // server error or a broken link.
+    let a;
+    try {
+      a = analyze(
+        r.finalUrl,
+        r.body,
+        r.headers,
+        xrt && xrt.toLowerCase().split(",").some(agentRule) ? await xRobotsLines(r.finalUrl) : null,
+      );
+    } catch (e) {
+      notes.push(
+        `A check couldn't read ${r.finalUrl} (${String(e.message).split("\n")[0].slice(0, 120)}), so that page's checks were skipped.`,
+      );
+      return;
+    }
     Object.assign(rec, a, { html: true, productImages: productImages(r.body) });
     rec.links = [];
     rec.mainLinks = new Set(a.mainHrefs.map(h => clean(h, a.base)).filter(Boolean));
@@ -4334,8 +4344,15 @@ if (typeof args["gsc-indexing"] === "string") {
     for (let i = 0; i < list.length; i += CONC)
       await Promise.all(
         list.slice(i, i + CONC).map(async ([target, from]) => {
+          // A page on another site that trips a check is "couldn't check", never the end of the crawl.
           const r = await follow(target),
-            there = pageOf(r);
+            there = (() => {
+              try {
+                return pageOf(r);
+              } catch {
+                return null;
+              }
+            })();
           if (r.status === 404 || r.status === 410)
             for (const f of from) add("hreflang-bad-target", f.url, `${f.lang} → ${target} (status ${r.status})`);
           else if (!there) away.push(`${target} (${r.error || `status ${r.status}`})`);
