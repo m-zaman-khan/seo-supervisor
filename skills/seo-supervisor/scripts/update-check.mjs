@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // Weekly at most, says when a newer version is on npm. It never updates anything and sends only the package name.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
+import { settingsDir } from "./lib/settings-dir.mjs";
 
 export const VERSION = "2.0.0"; // kept equal to package.json by test/update-check.test.mjs
 const WEEK = 7 * 864e5;
-const dir = () => join(homedir(), ".seo-supervisor");
+const dir = () => settingsDir(); // ~/.seo-supervisor, or SEO_SUPERVISOR_HOME
 const readJson = f => {
   try {
     return JSON.parse(readFileSync(f, "utf8"));

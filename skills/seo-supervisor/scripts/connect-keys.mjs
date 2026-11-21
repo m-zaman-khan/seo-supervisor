@@ -7,10 +7,10 @@
 // services at the tests' fakes; Matomo and PostHog use their saved address instead.
 import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, mkdirSync, chmodSync, existsSync, renameSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { isMain } from "./lib/is-main.mjs";
+import { loginDir } from "./lib/settings-dir.mjs";
 import { proxyNote } from "./lib/proxy.mjs";
 import { changedPages } from "./seo-diff.mjs";
 
@@ -235,7 +235,7 @@ function siteOf(s, flag = "--site") {
 }
 
 // ---------- keys ----------
-export const keyFile = () => join(homedir(), ".seo-supervisor", "keys.json");
+export const keyFile = () => join(loginDir(), "keys.json"); // honours SEO_SUPERVISOR_HOME and SEO_SUPERVISOR_CLIENT
 export function savedKeys() {
   const f = keyFile();
   if (!existsSync(f)) return {};

@@ -7,12 +7,13 @@ import { dirname, resolve, basename } from "node:path";
 import { planStats, planHtml, planMarkdown, PLAN_CSS } from "./report-plan.mjs";
 import { fmtCwv, passes } from "./checks/speed.mjs";
 import { VERSION } from "./update-check.mjs";
+import { SEV, EARN, isOpen, normalise, buildRules as rulesOf, score, bandOf, OWN_SCORE } from "./lib/score.mjs";
 
 const argv = process.argv.slice(2);
 const inPath = argv.find(a => !a.startsWith("--"));
 if (!inPath) {
   console.error(
-    "Usage: node render-report.mjs <audit.json|seo-crawl.json|content-scan.json> [--out report.html] [--md report.md] [--no-md]",
+    "Usage: node render-report.mjs <audit.json|seo-crawl.json|content-scan.json> [--out report.html] [--md report.md] [--no-md] [--pdf]",
   );
   process.exit(2);
 }
@@ -52,7 +53,6 @@ if (isCrawl)
     auditor: "seo-crawl.mjs " + raw.version,
   });
 if (isScan) Object.assign(run, { mode: "content scan", date: raw.scannedAt, auditor: "content-scan.mjs" });
-const SEV = ["blocker", "high", "needs-decision", "medium", "low"];
 const SEV_LABEL = { blocker: "Blocker", high: "High", "needs-decision": "Decision", medium: "Medium", low: "Low" };
 const STATUS_LABEL = {
   open: "Open",
@@ -61,15 +61,7 @@ const STATUS_LABEL = {
   "needs-decision": "Needs decision",
   "in-progress": "In progress",
 };
-const findings = (raw.findings || []).map((f, i) => ({
-  evidence: [],
-  ...f,
-  id: f.id || `F-${String(i + 1).padStart(3, "0")}`,
-  severity: SEV.includes(f.severity) ? f.severity : "low",
-  status: f.status || (f.severity === "needs-decision" ? "needs-decision" : "open"),
-  category: f.category || "Other",
-}));
-const isOpen = f => f.status !== "fixed";
+const findings = normalise(raw.findings);
 findings.sort(
   (a, b) =>
     !isOpen(a) - !isOpen(b) || SEV.indexOf(a.severity) - SEV.indexOf(b.severity) || (b.count || 0) - (a.count || 0),
@@ -93,53 +85,8 @@ const open = findings.filter(isOpen),
   fixed = findings.filter(f => !isOpen(f));
 const countSev = s => open.filter(f => f.severity === s).length;
 
-// ---------- score model (documented in report-format.md) ----------
-// Every checked rule is worth 10 points. A passing rule (or one whose findings are all fixed) earns 10;
-// a rule with open findings earns by its worst one: low 8, medium 6, decision 6, high 3, blocker 0.
-// Score = earned / possible. Open blockers cap it: 1 → 59, 2 → 49, 3 → 39 … (never below 9).
-const EARN = { blocker: 0, high: 3, "needs-decision": 6, medium: 6, low: 8 };
-// fixedCountsAsOpen: the score before this run's fixes. assume: findings to treat as fixed (for the "once blockers
-// are fixed" score).
-function buildRules({ fixedCountsAsOpen = false, assume = () => false } = {}) {
-  const rules = new Map();
-  for (const f of findings) {
-    const key = f.rule || f.id;
-    const r = rules.get(key) || { key, area: f.category, worst: null };
-    if (
-      !assume(f) &&
-      (fixedCountsAsOpen || isOpen(f)) &&
-      (r.worst === null || SEV.indexOf(f.severity) < SEV.indexOf(r.worst))
-    )
-      r.worst = f.severity;
-    rules.set(key, r);
-  }
-  for (const p of passed)
-    if (!rules.has(p.rule)) rules.set(p.rule, { key: p.rule, area: p.category || "Other", worst: null });
-  return [...rules.values()];
-}
-function score(rules) {
-  if (!rules.length) return null;
-  const earned = rules.reduce((s, r) => s + (r.worst ? EARN[r.worst] : 10), 0);
-  const rawScore = Math.round((100 * earned) / (rules.length * 10));
-  const blockers = rules.filter(r => r.worst === "blocker").length;
-  const cap = blockers ? Math.max(9, 69 - 10 * blockers) : 100;
-  return {
-    value: Math.min(rawScore, cap),
-    raw: rawScore,
-    cap: blockers ? cap : null,
-    blockers,
-    rules: rules.length,
-    passing: rules.filter(r => !r.worst).length,
-  };
-}
-const BANDS = [
-  [90, "Excellent", "b5"],
-  [75, "Good", "b4"],
-  [60, "Fair", "b3"],
-  [40, "Poor", "b2"],
-  [0, "Critical", "b1"],
-];
-const bandOf = v => BANDS.find(([min]) => v >= min);
+// ---------- score model (lib/score.mjs, documented in report-format.md) ----------
+const buildRules = opts => rulesOf(findings, passed, opts);
 const rules = buildRules();
 const overall = score(rules);
 const areaNames = [...new Set(rules.map(r => r.area))];
@@ -1686,8 +1633,70 @@ const diffMoreMd = () => {
   ];
 };
 
-const reportHtml = () => "",
-  reportMd = () => [];
+// The health score is a local formula, and "How this score works" says so. Each page with open findings is scored by
+// the site's model, counting only findings whose examples name it (buildRules' assume). Evidence URLs on other hosts,
+// and files such as sitemaps and robots.txt, are left out. Paths are escaped.
+const SCORE_IS_OURS = `This is ${OWN_SCORE}: it counts only the rules this audit checked, and search engines don't use it.`;
+const PAGE_INTRO = `Each page with open findings, scored with the same rules as the site but counting only the findings listed for that page. It's ${OWN_SCORE}, and it doesn't change the site score. Pages come from the findings' examples, so a finding with more cases than examples can affect pages not listed here.`;
+const PAGE_FILE = /\.(xml|txt|json|gz|js|css)$/i; // files are told from pages by extension alone, so a file with no extension counts as a page
+const hostOf = u => {
+  try {
+    return new URL(u).host.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+};
+const pageScores = (() => {
+  if (!overall) return [];
+  const pages = new Map(),
+    home = hostOf(site.url);
+  for (const f of open)
+    for (const e of f.evidence || []) {
+      let u;
+      try {
+        u = new URL(e.url);
+      } catch {
+        continue;
+      }
+      if (!/^https?:$/.test(u.protocol) || (home && hostOf(u.href) !== home) || PAGE_FILE.test(u.pathname)) continue;
+      const p = u.pathname + u.search;
+      (pages.get(p) || pages.set(p, new Set()).get(p)).add(f);
+    }
+  return [...pages]
+    .map(([path, fs]) => ({
+      path,
+      ids: [...fs].map(f => f.id),
+      value: score(buildRules({ assume: f => !fs.has(f) })).value,
+    }))
+    .sort((a, b) => a.value - b.value || b.ids.length - a.ids.length || a.path.localeCompare(b.path));
+})();
+const reportHtml = () =>
+  pageScores.length
+    ? `\n    <details class="how pagescores"><summary>Page scores</summary><p>${PAGE_INTRO}</p><div class="tablewrap"><table><thead><tr><th scope="col">Page</th><th scope="col">Score</th><th scope="col">Open findings</th></tr></thead><tbody>${pageScores
+        .slice(0, 10)
+        .map(
+          p =>
+            `<tr><td><code>${esc(p.path)}</code></td><td>${p.value}</td><td>${p.ids.map(id => `<a href="#${esc(id)}">${esc(id)}</a>`).join(", ")}</td></tr>`,
+        )
+        .join(
+          "",
+        )}</tbody></table></div>${pageScores.length > 10 && mdFile ? `<p>The 10 lowest. All ${num(pageScores.length)} pages are listed in <code>${esc(mdFile)}</code>.</p>` : ""}</details>`
+    : "";
+const reportMd = () =>
+  pageScores.length
+    ? [
+        "## Page scores",
+        "",
+        PAGE_INTRO,
+        "",
+        "| Page | Score | Open findings |",
+        "| --- | ---: | --- |",
+        ...pageScores.map(
+          p => `| ${cellMd(noteCode(p.path))} | ${p.value}/100 | ${p.ids.map(id => cellMd(noteMd(id))).join(", ")} |`,
+        ),
+        "",
+      ]
+    : [];
 
 const panelsHtml = () =>
   [
@@ -1797,7 +1806,7 @@ function overviewHtml() {
       ${unlockHtml(delta)}
       ${delta && !delta.inUnlock ? `<p class="delta ${delta.dir}">${delta.html}</p>` : ""}
       <details class="how"><summary>How this score works</summary>
-        <p>Every checked rule is worth 10 points. A rule that passes, or whose findings are all fixed, earns 10. A rule with open findings earns by its worst one: low 8, medium or decision 6, high 3, blocker 0. The score is the share of points earned. Each open blocker caps it: one at 59, two at 49, three at 39. While a blocker is open, the panel also shows the score you reach once it is fixed. Area scores use the same rules within each area.</p>
+        <p>Every checked rule is worth 10 points. A rule that passes, or whose findings are all fixed, earns 10. A rule with open findings earns by its worst one: low 8, medium or decision 6, high 3, blocker 0. The score is the share of points earned. Each open blocker caps it: one at 59, two at 49, three at 39. While a blocker is open, the panel also shows the score you reach once it is fixed. Area scores use the same rules within each area. ${SCORE_IS_OURS}</p>
       </details>
     </section>
     <section class="panel stats" aria-label="Issues, fixes and rules">
@@ -2597,15 +2606,75 @@ function markdown() {
   L.push(
     "## How the score works",
     "",
-    "Every checked rule is worth 10 points. A rule that passes, or whose findings are all fixed, earns 10. A rule with open findings earns by its worst one: low 8, medium or decision 6, high 3, blocker 0. The score is the share of points earned. Each open blocker caps it: one at 59, two at 49, three at 39. While a blocker is open, the panel also shows the score you reach once it is fixed. Area scores use the same rules within each area.",
+    `Every checked rule is worth 10 points. A rule that passes, or whose findings are all fixed, earns 10. A rule with open findings earns by its worst one: low 8, medium or decision 6, high 3, blocker 0. The score is the share of points earned. Each open blocker caps it: one at 59, two at 49, three at 39. While a blocker is open, the panel also shows the score you reach once it is fixed. Area scores use the same rules within each area. ${SCORE_IS_OURS}`,
     "",
   );
   return L.join("\n");
 }
 
+// Prints the page with its print styles: every tab in turn, findings open, light colours. The browser modules load
+// only for --pdf.
+async function printPdf(htmlPath, pdf) {
+  const [{ findBrowser }, { launchChrome }, { installedBrowser }, { pathToFileURL }] = await Promise.all([
+    import("./checks/render.mjs"),
+    import("./lib/cdp.mjs"),
+    import("./lib/settings-dir.mjs"),
+    import("node:url"),
+  ]);
+  const browser = findBrowser() || installedBrowser();
+  if (!browser)
+    throw new Error(
+      "no Chrome or Edge found, so no PDF was made (the HTML report is ready). Install Chrome or Edge, or set CHROME_PATH to it; in a container or CI, run npx seo-supervisor --with-browser.",
+    );
+  const chrome = await launchChrome(browser, { timeoutMs: 60000 });
+  try {
+    const page = await chrome.newPage();
+    await page.send("Page.enable");
+    const loaded = new Promise((ok, no) => {
+      page.on("Page.loadEventFired", ok);
+      setTimeout(
+        no,
+        60000,
+        new Error("the report didn't finish loading in Chrome within 60 s, so no PDF was made."),
+      ).unref();
+    });
+    await page.send("Page.navigate", { url: pathToFileURL(htmlPath).href });
+    await loaded;
+    await page.send("Runtime.evaluate", { expression: "document.fonts.ready.then(() => true)", awaitPromise: true });
+    const { data } = await page.send("Page.printToPDF", {
+      printBackground: true,
+      paperWidth: 8.27,
+      paperHeight: 11.69,
+    }); // A4, in inches
+    writeFileSync(pdf, Buffer.from(data, "base64"));
+  } finally {
+    await chrome.close();
+  }
+}
+
 mkdirSync(dirname(outPath), { recursive: true });
 writeFileSync(outPath, html);
 if (mdPath) writeFileSync(mdPath, markdown());
+const pdfPath = argv.includes("--pdf") ? outPath.replace(/\.html?$/i, "") + ".pdf" : null;
+const pdfError = pdfPath
+  ? await printPdf(outPath, pdfPath).then(
+      () => null,
+      e => e.message,
+    )
+  : null;
+
 console.log(
-  `render-report: ${findings.length} findings (${open.length} open, ${fixed.length} fixed), score ${overall ? overall.value : "n/a"} → ${outPath}${mdPath ? " + " + basename(mdPath) : ""}`,
+  [
+    overall ? `SEO health score: ${overall.value}/100 (${bandOf(overall.value)[1]}). ${verdict}.` : verdict,
+    unlock &&
+      `Fixing the ${openBlockers.length === 1 ? "blocker" : `${openBlockers.length} blockers`} raises it to ${unlock.value}/100 (${bandOf(unlock.value)[1]}).`,
+    `Open: ${open.length} (${SEV.map(s => `${countSev(s)} ${SEV_LABEL[s].toLowerCase()}`).join(", ")}) · fixed: ${fixed.length}${overall ? ` · rules passing: ${overall.passing} of ${overall.rules}` : ""}`,
+    `Wrote: ${[outPath, mdPath, pdfPath && !pdfError && pdfPath].filter(Boolean).join(", ")}`,
+  ]
+    .filter(Boolean)
+    .join("\n"),
 );
+if (pdfError) {
+  console.error(`render-report: ${pdfError}`);
+  process.exitCode = 1;
+}

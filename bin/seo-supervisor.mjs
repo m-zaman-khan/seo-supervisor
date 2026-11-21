@@ -2,16 +2,27 @@
 // Installs the skill into the chosen coding agents (bin/agents.mjs), with its /seo-* commands for Claude Code.
 // No dependencies.
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { deflateRawSync } from "node:zlib";
 import { AGENTS, agentByKey, allTargets, detectAgents, targetsFor } from "./agents.mjs";
 import { multiSelect, select } from "./prompt.mjs";
+import { browserFile, toolsDir } from "../skills/seo-supervisor/scripts/lib/settings-dir.mjs";
 
 const NAME = "seo-supervisor";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const { version } = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+
+// Subcommands that run a skill script directly, with no agent.
+const SCRIPT = { doctor: "doctor.mjs", dashboard: "dashboard.mjs" }[process.argv[2]];
+if (SCRIPT)
+  process.exit(
+    spawnSync(process.execPath, [join(ROOT, "skills", NAME, "scripts", SCRIPT), ...process.argv.slice(3)], {
+      stdio: "inherit",
+    }).status ?? 1,
+  );
 
 const HELP = `SEO Supervisor ${version}
 
@@ -28,7 +39,16 @@ With no options it asks where to install and for which agents.
   --with-lighthouse Also install the optional Lighthouse add-on (about 170 MB, in ~/.seo-supervisor/tools, not your project)
   --no-lighthouse   Don't ask about Lighthouse
   --with-image-tools Also install the optional image add-on, sharp (about 20 MB, in ~/.seo-supervisor/tools), which scripts/images.mjs uses to convert images to WebP and AVIF
+  --with-browser    Also install Chrome for Testing (in ~/.seo-supervisor/tools), for containers and CI with no Chrome or Edge
+  --zip [file]      Only write the skill as a zip (seo-supervisor.zip), to upload to claude.ai or the Claude desktop app
   --version         Print the version
+
+Commands that run here, with no agent:
+  npx seo-supervisor doctor                  Check Node, Chrome or Edge, the add-ons and the connections (changes nothing)
+  npx seo-supervisor dashboard [folders...]  Every audit's score, lowest first; --out dashboard.html writes a page
+
+The settings folder (~/.seo-supervisor) moves with SEO_SUPERVISOR_HOME. SEO_SUPERVISOR_CLIENT=<name> keeps a
+client's logins and keys apart, in clients/<name> inside it.
 
 Agent keys: ${AGENTS.map(a => a.key).join(", ")}
 `;
@@ -46,12 +66,17 @@ for (let n = 0; n < argv.length; n++) {
     opts.lighthouse = a === "--with-lighthouse";
     continue;
   }
+  if (a === "--zip") {
+    opts.zip = argv[n + 1] && !argv[n + 1].startsWith("-") ? argv[++n] : `${NAME}.zip`;
+    continue;
+  }
   const flag = {
     "--project": "project",
     "--agents": "agents",
     "--uninstall": "uninstall",
     "--force": "force",
     "--with-image-tools": "imageTools",
+    "--with-browser": "browser",
     "--yes": "yes",
     "-y": "yes",
     "--help": "help",
@@ -76,7 +101,7 @@ if (opts.version) {
 
 const c = { home: homedir(), cwd: process.cwd(), env: process.env };
 const show = p => (p.startsWith(c.home) ? "~" + p.slice(c.home.length) : p).replace(/\\/g, "/");
-const TOOLS = join(c.home, ".seo-supervisor", "tools"); // the optional Lighthouse add-on, outside the package and the project
+const TOOLS = toolsDir(c.env, c.home); // optional add-ons, outside the package and the project
 let scope = opts.scope || (opts.project ? "project" : null);
 if (scope && !["user", "project"].includes(scope)) {
   console.error(`Unknown scope: ${scope}. Use "user" or "project".`);
@@ -118,6 +143,92 @@ const ownsCommand = file => {
   }
 };
 
+// ---- --zip: the skill for claude.ai and the Claude desktop app, which take an uploaded zip ----
+// The skill folder sits at the zip's root, named like the skill.
+// https://support.claude.com/en/articles/12512198
+// https://support.claude.com/en/articles/12512180
+// Deflated entries with UTF-8 names, per PKWARE APPNOTE 4.3.
+const CRC = Array.from({ length: 256 }, (_, n) => {
+  for (let k = 0; k < 8; k++) n = n & 1 ? 0xedb88320 ^ (n >>> 1) : n >>> 1;
+  return n >>> 0;
+});
+const crc32 = b => {
+  let x = ~0;
+  for (const v of b) x = CRC[(x ^ v) & 255] ^ (x >>> 8);
+  return ~x >>> 0;
+};
+function zipFolder(src, root, out) {
+  const files = readdirSync(src, { recursive: true })
+    .filter(f => statSync(join(src, f)).isFile())
+    .map(f => f.split(sep).join("/"))
+    .sort();
+  const d = new Date(),
+    time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1),
+    date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  const parts = [],
+    dir = [];
+  let at = 0;
+  for (const f of files) {
+    const data = readFileSync(join(src, f)),
+      packed = deflateRawSync(data),
+      name = Buffer.from(`${root}/${f}`),
+      crc = crc32(data);
+    // version needed 2.0, flags: UTF-8 names, method 8 (deflate), time, date, CRC-32, sizes, name length
+    const common = [
+      [20, 2],
+      [0x0800, 2],
+      [8, 2],
+      [time, 2],
+      [date, 2],
+      [crc, 4],
+      [packed.length, 4],
+      [data.length, 4],
+      [name.length, 2],
+    ];
+    const head = (sig, extra) => {
+      const b = Buffer.alloc(sig === 0x04034b50 ? 30 : 46);
+      let o = 0;
+      const put = ([v, n]) => {
+        n === 2 ? b.writeUInt16LE(v, o) : b.writeUInt32LE(v, o);
+        o += n;
+      };
+      put([sig, 4]);
+      extra.forEach(put);
+      return b;
+    };
+    parts.push(head(0x04034b50, [...common, [0, 2]]), name, packed);
+    dir.push(head(0x02014b50, [[20, 2], ...common, [0, 2], [0, 2], [0, 2], [0, 2], [0, 4], [at, 4]]), name);
+    at += 30 + name.length + packed.length;
+  }
+  const cd = Buffer.concat(dir),
+    end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(cd.length, 12);
+  end.writeUInt32LE(at, 16);
+  mkdirSync(dirname(out), { recursive: true });
+  writeFileSync(out, Buffer.concat([...parts, cd, end]));
+  return files.length;
+}
+if (opts.zip) {
+  const out = resolve(opts.zip),
+    n = zipFolder(SRC_SKILL, NAME, out);
+  console.log(`Wrote ${show(out)}: the ${NAME} skill folder, ${n} files.
+
+To use it in Claude on the web (claude.ai) or in the Claude desktop app:
+  1. Turn on code execution: Settings → Capabilities → "Code execution and file creation" (or "Create and edit files").
+     On a Team or Enterprise plan, an owner may have to allow skills first.
+  2. Open Customize → Skills, click +, then Create skill → Upload a skill, and choose ${show(out)}.
+  3. Ask: "audit the SEO of https://www.example.com".
+
+Skills uploaded there don't sync with Claude Code or other agents (install those with npx seo-supervisor), and they
+don't update themselves: upload a new zip after an update. There, the crawler reaches your site only if your code
+execution settings allow network access, it can't reach a site running on your own computer, and the checks that
+need Chrome or Edge may not run.`);
+  process.exit(0);
+}
+
 // ---- uninstall ----
 if (opts.uninstall) {
   scope ||= "user";
@@ -141,7 +252,7 @@ if (opts.uninstall) {
   console.log(removed ? "\nSEO Supervisor uninstalled." : `\nNothing to remove in the ${scope} scope.`);
   if (existsSync(TOOLS))
     console.log(
-      `The optional add-ons (Lighthouse, about 170 MB; sharp for images, about 20 MB) stay in ${show(TOOLS)}, shared by every install. To remove them too, delete that folder: ${TOOLS}`,
+      `The optional add-ons (Lighthouse, about 170 MB; sharp for images, about 20 MB; Chrome for Testing) stay in ${show(TOOLS)}, shared by every install. To remove them too, delete that folder: ${TOOLS}`,
     );
   process.exit(0);
 }
@@ -230,19 +341,25 @@ for (const t of targetsFor(keys, scope, c)) {
 }
 
 // ---- optional add-ons in TOOLS: a failure never fails the install, since the skill works without them ----
-// Returns null on success, else the reason.
-function npmInstall(spec) {
-  const npm = c.env.SEO_SUPERVISOR_NPM || "npm",
-    args = ["install", "--prefix", TOOLS, spec, "--no-audit", "--no-fund"];
+// error is null on success, else the reason. capture also returns npm's stdout, still printing it.
+function npm(args, capture = false) {
+  const bin = c.env.SEO_SUPERVISOR_NPM || "npm",
+    o = { stdio: capture ? ["inherit", "pipe", "inherit"] : "inherit", encoding: "utf8" };
   // A .js bin runs with this Node. On Windows npm is npm.cmd, which only starts through a shell. Only parts with spaces
   // are quoted: cmd gives a quoted batch name found on PATH the wrong %~dp0, and npm.cmd then can't find npm.
-  const r = /\.[cm]?js$/i.test(npm)
-    ? spawnSync(process.execPath, [npm, ...args], { stdio: "inherit" })
+  const r = /\.[cm]?js$/i.test(bin)
+    ? spawnSync(process.execPath, [bin, ...args], o)
     : process.platform === "win32"
-      ? spawnSync([npm, ...args].map(a => (/\s/.test(a) ? `"${a}"` : a)).join(" "), { stdio: "inherit", shell: true })
-      : spawnSync(npm, args, { stdio: "inherit" });
-  return r.status === 0 ? null : r.error ? r.error.message : `npm exited with code ${r.status}`;
+      ? spawnSync([bin, ...args].map(a => (/\s/.test(a) ? `"${a}"` : a)).join(" "), { ...o, shell: true })
+      : spawnSync(bin, args, o);
+  if (capture && r.stdout) process.stdout.write(r.stdout);
+  return {
+    error: r.status === 0 ? null : r.error ? r.error.message : `npm exited with code ${r.status}`,
+    stdout: r.stdout || "",
+  };
 }
+// Returns null on success, else the reason.
+const npmInstall = spec => npm(["install", "--prefix", TOOLS, spec, "--no-audit", "--no-fund"]).error;
 if (opts.lighthouse) {
   const [major, minor] = process.versions.node.split(".").map(Number);
   if (major < 22 || (major === 22 && minor < 19))
@@ -268,6 +385,37 @@ if (opts.imageTools) {
   else
     console.error(
       `sharp wasn't installed (${err}). The skill works without it; try again later with npx seo-supervisor --with-image-tools.`,
+    );
+}
+// Chrome for Testing for containers and CI without Chrome or Edge, from the Chrome team's @puppeteer/browsers run with
+// npm exec, never as a dependency. It prints "chrome@<build> <executable>"; settings-dir.mjs reads the saved path.
+// --install-deps adds Chrome's system libraries; it needs root and works on Debian and Ubuntu.
+// https://pptr.dev/browsers-api
+if (opts.browser) {
+  console.log(`\nInstalling Chrome for Testing into ${show(join(TOOLS, "browsers"))}...`);
+  const deps = process.platform === "linux" && process.getuid?.() === 0 ? ["--install-deps"] : [];
+  const r = npm(
+    [
+      "exec",
+      "--yes",
+      "--",
+      "@puppeteer/browsers@3",
+      "install",
+      "chrome@stable",
+      "--path",
+      join(TOOLS, "browsers"),
+      ...deps,
+    ],
+    true,
+  );
+  const exe = r.stdout.match(/^chrome@\S+ (.+?)\s*$/m)?.[1];
+  if (!r.error && exe) {
+    mkdirSync(TOOLS, { recursive: true });
+    writeFileSync(browserFile(c.env, c.home), exe + "\n");
+    console.log(`chrome   ${exe}  (Chrome for Testing; the scripts also use it when CHROME_PATH points to it)`);
+  } else
+    console.error(
+      `The browser wasn't installed (${r.error || "npm didn't say where it went"}). The skill works without it: the checks that need Chrome or Edge are listed under Limits. ${deps.length || process.platform !== "linux" ? "" : "On Linux, Chrome also needs system libraries: run this as root on Debian or Ubuntu, or install them with your package manager. "}Try again later with npx seo-supervisor --with-browser.`,
     );
 }
 

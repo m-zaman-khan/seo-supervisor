@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Search Console and GA4 data for the audit. Read-only, except submit-sitemap, which writes only with --yes.
-// The sign-in is saved in the home folder, never in the project.
+// The sign-in is saved in the settings folder, never in the project.
 // Each Google address can be overridden with SEO_GOOGLE_<NAME>_URL, e.g. SEO_GOOGLE_SEARCH_CONSOLE_URL.
 // SEO_GOOGLE_SHARED_CLIENT_ID and SEO_GOOGLE_SHARED_CLIENT_SECRET override the shared client; empty means none.
 import { createHash, randomBytes, sign } from "node:crypto";
@@ -9,7 +9,9 @@ import { spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { isMain } from "./lib/is-main.mjs";
+import { loginDir } from "./lib/settings-dir.mjs";
 import { proxyNote } from "./lib/proxy.mjs";
 import { SHARED_CLIENT } from "./lib/google-client.mjs";
 import { addTraffic, gscFindings } from "./gsc-import.mjs";
@@ -84,8 +86,9 @@ export function pkce() {
 }
 
 // ---------- the saved sign-in ----------
-const tokenFile = (home = homedir()) => join(home, ".seo-supervisor", "google.json");
-const pendingFile = () => join(homedir(), ".seo-supervisor", "pending-signin.txt");
+// In the settings folder, per client with SEO_SUPERVISOR_CLIENT (lib/settings-dir.mjs).
+const tokenFile = (home = homedir()) => join(loginDir(process.env, home), "google.json");
+const pendingFile = () => join(loginDir(), "pending-signin.txt");
 const load = file => {
   try {
     return JSON.parse(readFileSync(file, "utf8"));
@@ -930,6 +933,47 @@ const waitForCode = (server, state, cmd) =>
     });
   });
 
+// A browser on another computer can't reach this machine's 127.0.0.1, so the address it ended on is pasted here. PKCE
+// and the state check apply as with the loopback redirect.
+// https://developers.google.com/identity/protocols/oauth2/native-app
+async function pastedCode(state, redirect, cmd) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const closed = new Promise(ok => rl.once("close", () => ok(null)));
+  let line;
+  try {
+    line = await Promise.race([
+      rl.question("Copy that whole address from the browser's address bar and paste it here: ", {
+        signal: AbortSignal.timeout(5 * 60000),
+      }),
+      closed,
+    ]);
+  } catch {
+    fail(
+      `google: no address was pasted within 5 minutes, so nothing was saved. Run node google.mjs ${cmd} --paste again when you're ready.`,
+    );
+  } finally {
+    rl.close();
+  }
+  let q;
+  try {
+    const u = new URL(String(line ?? "").trim());
+    if (u.origin === new URL(redirect).origin) q = u.searchParams;
+  } catch {}
+  if (!q || (!q.has("code") && !q.has("error")))
+    fail(
+      `google: that isn't the address the browser ended on, which starts with ${redirect}/?state=. Nothing was saved. Run node google.mjs ${cmd} --paste again.`,
+    );
+  if (q.get("state") !== state)
+    fail(
+      `google: that address is from a different sign-in, so it doesn't match this one. Nothing was saved. Run node google.mjs ${cmd} --paste again.`,
+    );
+  if (q.has("error"))
+    fail(
+      `google: sign-in didn't finish (${q.get("error")}), so nothing was saved. Run node google.mjs ${cmd} --paste to try again.`,
+    );
+  return q.get("code");
+}
+
 const revoke = async (E, s) => {
   const r = await fetch(E.revoke, {
     method: "POST",
@@ -962,16 +1006,21 @@ async function signIn(E, client, args, params, { cmd = "connect", intro = "" } =
   const server = createServer();
   await new Promise((ok, no) => server.once("error", no).listen(0, "127.0.0.1", ok));
   const redirect_uri = `http://127.0.0.1:${server.address().port}`;
+  // --paste: nothing listens, so the browser's redirect fails at once and its address can be copied (pastedCode).
+  const paste = args.paste === true;
+  if (paste) server.close();
   const url = `${E.auth}?${new URLSearchParams({ client_id: client.id, redirect_uri, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state, access_type: "offline", prompt: "consent", ...params })}`;
   // The link also goes to a file, for a caller running this in the background that can't see its output yet.
   const pending = pendingFile();
   let code;
   try {
     save(pending, url + "\n");
-    const text = `${args["print-url"] === true ? url + "\n" : ""}${intro}google: opening Google's sign-in page in your browser. If it doesn't open, copy this link into your browser:\n\n  ${url}\n\nThe link is also in ${pending} until signing in is done.\nWaiting for you to finish signing in (up to 5 minutes)...\n`;
+    const text = paste
+      ? `${args["print-url"] === true ? url + "\n" : ""}${intro}google: open this link in a browser on any computer and sign in:\n\n  ${url}\n\nThe link is also in ${pending} until signing in is done.\nAfter you allow access, the browser goes to an address that starts with ${redirect_uri} and shows an error page. That's expected.\n`
+      : `${args["print-url"] === true ? url + "\n" : ""}${intro}google: opening Google's sign-in page in your browser. If it doesn't open, copy this link into your browser:\n\n  ${url}\n\nThe link is also in ${pending} until signing in is done.\nWaiting for you to finish signing in (up to 5 minutes)...\n`;
     await new Promise(ok => process.stdout.write(text, ok)); // flushed before the wait, also into a pipe
-    if (args["no-browser"] !== true) openBrowser(url);
-    code = await waitForCode(server, state, cmd);
+    if (args["no-browser"] !== true && !paste) openBrowser(url);
+    code = paste ? await pastedCode(state, redirect_uri, cmd) : await waitForCode(server, state, cmd);
   } finally {
     rmSync(pending, { force: true });
     server.close();
@@ -1310,7 +1359,7 @@ async function fetchCli(args) {
 }
 
 const str = v => (typeof v === "string" ? v : null);
-const USAGE = `usage: node google.mjs connect [--client-file client_secret.json | --service-account key.json] [--no-browser] [--print-url]
+const USAGE = `usage: node google.mjs connect [--client-file client_secret.json | --service-account key.json] [--no-browser] [--print-url] [--paste]
        node google.mjs guide | status | disconnect
        node google.mjs fetch --site https://www.example.com [--days 90] [--ga4-property <id>] [--crawl seo-audit/seo-crawl.json] [--inspect pages.txt] [--inspect-urls /a/,/b/] [--out seo-audit/google.json]
        node google.mjs submit-sitemap --site https://www.example.com --sitemap https://www.example.com/sitemap.xml [--yes] [--no-browser] [--print-url]`;

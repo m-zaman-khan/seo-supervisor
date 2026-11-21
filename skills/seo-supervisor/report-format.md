@@ -3,6 +3,11 @@
 The audit is one JSON file, `seo-audit/seo-audit.json`. The same file carries the fix history, so a later fix run updates it instead of starting over. `scripts/render-report.mjs` turns it into two files:
 - **`seo-audit/seo-audit.html`:** a self-contained page (offline, light and dark, phone, print). The Overview tab shows the health score, area scores, charts and "Fix first". The Findings, Decisions, Changes, Passed and Limits tabs hold the detail, showing up to 10 evidence rows per finding.
 - **`seo-audit/seo-audit.md`:** the full report as Markdown, with every evidence row. Use it for reading in an editor, diffing between runs, and pasting into tickets.
+- **`seo-audit/seo-audit.pdf`,** only with `--pdf`: the HTML report printed by the installed Chrome or Edge, every tab in turn, for a client or a manager. Without a browser it says so and writes the other two.
+
+The renderer ends with a short receipt: the score and band, what fixing the blockers unlocks, the open counts and the files written. Repeat it in chat.
+
+**Several sites:** `node scripts/dashboard.mjs <folder> <folder> … [--out dashboard.html]` (or `npx seo-supervisor dashboard`) reads each folder's `seo-audit.json` and prints one line per site, lowest score first, with the same score model. `--out` also writes one offline HTML page linking to each report. It reads local files only.
 
 ## The score (computed by the renderer, never by hand)
 
@@ -11,6 +16,8 @@ The audit is one JSON file, `seo-audit/seo-audit.json`. The same file carries th
 - **Score** = points earned ÷ points possible × 100, rounded.
 - **Blocker cap:** each open blocker caps the score. One caps it at 59, two at 49, three at 39, and so on, never below 9. The report says when the cap applies, and shows the score the site reaches once the open blockers are fixed: the same model, with those blockers treated as fixed. After a fix run it shows the change: the total's, or the checked-rules score's when the cap holds the total still.
 - **Area scores** use the same rules within each `category`.
+- **It's our score, not Google's.** "How this score works" says so: it counts only the rules the audit checked, and search engines don't use it. Never call it a Google score or a ranking.
+- **Page scores:** each page with open findings gets its own score, shown collapsed on the Overview (the 10 lowest) and in full in the Markdown. It's the same model over the site's checked rules, counting only the open findings whose `evidence` names that page. Pages come from evidence URLs on the site's own host (`www.` or not); other sites' pages and files such as `sitemap.xml` and `robots.txt` are left out. It's labelled "SEO Supervisor's own score, not Google's" and never changes the site or area scores. Since evidence holds examples, a finding with a bigger `count` can touch pages not listed.
 - **Score views:** with `trustSignals`, the Overview adds a "Score views" panel. **Trust signals (E-E-A-T)** is signals found ÷ signals that apply × 100, rounded (8 of 11 is 73), labelled "SEO Supervisor's own check, not a Google score". Missing signals are suggestions listed with what to add: they aren't findings and never change the overall or area scores. **Local SEO** and **Content quality** are the "Local business" and "Headings & content" area scores under those names, each shown only when its area has checked rules.
 - **Bands:**
 
@@ -31,7 +38,19 @@ Consequences for the JSON:
 ## Build it in this order
 
 1. Start from `seo-audit/seo-crawl.json` and, if you ran it, `seo-audit/content-scan.json`. Copy their `findings`, `passed`, `notChecked` and `notes`. Their findings already carry `what`, `why` and `fix`; rewrite `what` in plainer words when you can say more than the example.
-2. Review each finding against the SEO profile. Keep it, change its severity, or drop it and say why in `notes`. **Merge** findings that share a root cause into one: e.g. near-duplicate pages (crawler), templated intros (content scan) and reused FAQs all come from one template, so they become one finding listing every symptom in `what`.
+2. Review each finding against the SEO profile. Keep it, change its severity, or drop it and say why in `notes`. **Merge** findings that share a root cause into one: e.g. near-duplicate pages (crawler), templated intros (content scan) and reused FAQs all come from one template, so they become one finding listing every symptom in `what`. Then look **across areas** for the patterns below. When the same pages show both signs, write one finding about the cause: name its rule as the field rules say, list the other rules as "Related:" in `what`, and take the highest severity.
+
+   | Same pages show | Usually means | The one finding |
+   | --- | --- | --- |
+   | Thin pages (CONTENT-05) and two pages for one query (INTENT-02) | Several weak pages split one topic | Merge them into one hub page and 301 the rest to it (URL-07). Merging and removing pages is the owner's call: `fixBy: "owner"`. |
+   | Templated text (CONTENT-04) and duplicate titles or descriptions (META-01, META-02) | One template fills them all | Fix the template, with each page's own facts. |
+   | Orphan pages (LINK-02) also missing from the sitemap (MAP-03) | Pages the site has forgotten | Link them from their hub and list them, or let the owner retire them. |
+   | Sitemap URLs that redirect or fail (CRAWL-06) and canonicals that disagree (URL-04) | Sitemap and canonical are built from different URL sources | Build both from the one URL helper. |
+   | Content, links or H1 only after JavaScript (REND-01) and missing H1 or schema in the crawl (CONTENT-01, SCHEMA-03) | The page is built in the browser | One REND-01 finding listing what's missing from the server HTML. |
+   | Slow LCP (PERF-01) and heavy images (PERF-08) | The hero image | One PERF-01 finding naming the image and its fix. |
+   | noindex (CRAWL-02) on pages the sitemap lists (MAP-02) | The two signals disagree | One finding with a decision: which is meant? |
+
+   These are our own rules of thumb, not Google's. Merge only when the evidence shows the same pages; two problems that only sit in the same area stay two findings.
 3. Add the findings from the code and content inspection, with `file` and `line` evidence.
 4. Add `decisions` for questions only the owner can answer.
 5. Add `notChecked` for anything you couldn't verify or that doesn't apply, with the reason (e.g. "Core Web Vitals field data: site not live yet", "SHOP rules: not an e-commerce site").

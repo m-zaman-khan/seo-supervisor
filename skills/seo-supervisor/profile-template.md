@@ -14,6 +14,14 @@ Last reviewed: {YYYY-MM-DD} · Owner: {role}
 - **Brand in titles:** "{Brand}", template `%s | {Brand}`
 - **Content source:** {where titles, slugs, FAQs and publish flags live, e.g. `src/data/tools.ts`, Sanity, Postgres}
 
+## Goals
+Asked once, in setup or grow mode, in the owner's own words. Never guessed; "not sure" is a fine answer.
+- **What the site is for:** {e.g. quote requests by phone, product sign-ups, ad revenue}
+- **The number that shows it's working (KPI):** {e.g. quote calls from search each month} · measured in {GA4 event / Search Console clicks / the CRM}
+- **Budget:** {who does the work: the agent and the owner only / a writer / an agency} · {money for content, tools or photos, or none}
+- **Timeline:** {a launch date, a busy season, or no deadline}
+- **Out of scope:** {e.g. no blog, no paid links, no new pages before the redesign}
+
 ## Decisions
 | Decision | Value | Why |
 | --- | --- | --- |
@@ -60,6 +68,14 @@ Only audiences the owner named, 1 to 4. Never invented personas. Used by the aud
 | Audience | What they come for | Key pages |
 | --- | --- | --- |
 | {Landlords} | {a fixed price for a gas safety certificate} | {/gas-safety/, /pricing/} |
+
+## Connections
+Which accounts belong to this site. IDs only: logins and keys stay in the settings folder, never here.
+- **Settings client:** {acme} · for agencies: run every script with `SEO_SUPERVISOR_CLIENT=acme`, so this client's Google sign-in and keys stay in their own folder. Leave it out for a single site.
+- **Search Console property:** {sc-domain:example.com} · `google.mjs fetch` picks the domain property, else the longest URL prefix; check it names this one.
+- **Google Analytics 4 property:** {123456789} · passed as `google.mjs fetch --ga4-property 123456789`.
+- **Bing Webmaster Tools site:** {https://www.example.com/}
+- **Matomo site ID / PostHog project ID:** {…}
 
 ## Outside checks
 **Outside checks:** {on / off} · asked {date}
