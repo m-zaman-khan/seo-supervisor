@@ -3,7 +3,9 @@
 // HTML is read with regexes, as in the crawler; swap in a real parser if a site breaks them.
 
 export const HIDDEN_MIN = 3; // links to other sites hidden on one page before it's flagged
-export const PDF_PAGES = 3; // pages linking one PDF before the report lists it (a local cut-off)
+export const PDF_PAGES = 3; // pages linking one PDF before the report lists it
+// Caps on the site's script files read for secret keys, so huge bundles can't stall the crawl.
+export const JS_CAPS = { files: 50, each: 5 * 1024 * 1024, all: 50 * 1024 * 1024 };
 
 export const CHECKS = {
   // A Google tag configured twice may duplicate data unless "Ignore duplicate instances" is on. Google also advises
@@ -26,7 +28,7 @@ export const CHECKS = {
     "TRUST-01",
     "high",
     n => `${n} page(s) send a secret key to every visitor`,
-    "The HTML of these pages holds a key that its provider says must stay secret. Anyone who opens the page source can copy it and act as you: take payments, read data or post messages, depending on the key. Only key formats that are always secret are flagged: Stripe live secret and restricted keys (sk_live_, rk_live_), GitHub tokens (ghp_, github_pat_, gho_, ghu_, ghs_, ghr_), Slack tokens (xoxb-, xoxp-, xapp-, xwfp-) and private-key blocks. Keys made for browsers, such as Google and Firebase web API keys and Stripe publishable keys (pk_live_), aren't. The evidence shows only the key's type and first characters.",
+    `The HTML of these pages, or a script file on your site that they load, holds a key that its provider says must stay secret. Anyone who opens the page source or the script can copy it and act as you: take payments, read data or post messages, depending on the key. A key in a script file usually got there when the site was built, from a setting meant for the server. Only key formats that are always secret are flagged: Stripe live secret and restricted keys (sk_live_, rk_live_), GitHub tokens (ghp_, github_pat_, gho_, ghu_, ghs_, ghr_), Slack tokens (xoxb-, xoxp-, xapp-, xwfp-) and private-key blocks. Keys made for browsers, such as Google and Firebase web API keys and Stripe publishable keys (pk_live_), aren't. Only script files on your own site are read, never other sites', up to our own limits of ${JS_CAPS.files} files, ${JS_CAPS.each / 1048576} MB each and ${JS_CAPS.all / 1048576} MB in all. The evidence shows only the key's type and first characters.`,
     "Treat it as an emergency. First revoke the key with its provider (Stripe's API keys page, GitHub's token settings, the Slack app's settings) and make a new one: taking it off the page isn't enough, because copies and caches may already exist. Then keep the new key on the server only, read from an environment variable, and check that the build doesn't copy server settings into the page.",
   ],
   // Google's spam policies count CSS-hidden links as content injection, and allow menus, tabs and panels that show and

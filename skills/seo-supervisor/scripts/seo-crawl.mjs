@@ -1313,6 +1313,7 @@ import {
   CHECKS as HYGIENE_CHECKS,
   HIDDEN_MIN,
   PDF_PAGES,
+  JS_CAPS,
   APP_FILES,
   analyticsTwice,
   secretsIn,
@@ -1403,8 +1404,19 @@ const retryAfter = v => {
   const ms = /^\d+$/.test(v?.trim() || "") ? v * 1000 : Date.parse(v ?? "") - Date.now();
   return Number.isFinite(ms) ? Math.min(Math.max(ms, 0), 30000) : 2000;
 };
-// manual: false goes through follow(), so each hop passes the guard.
-async function get(url, { manual = true, text = true, ua = UA } = {}) {
+// manual: false goes through follow(), so each hop passes the guard. accept is the Accept header. text is the
+// content-type pattern of 2xx bodies to read (true: HTML, XML, plain text), and a body over max comes back empty and
+// marked `over`.
+async function get(
+  url,
+  {
+    manual = true,
+    text = /** @type {boolean | RegExp} */ (true),
+    ua = UA,
+    accept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    max = 0,
+  } = {},
+) {
   if (!manual) return follow(url, ua);
   const own = ua === UA && urlOr(url)?.origin === START_ORIGIN;
   let waited = false;
@@ -1414,7 +1426,7 @@ async function get(url, { manual = true, text = true, ua = UA } = {}) {
       const t = performance.now(); // ms: the time to the response headers
       const res = await fetch(url, {
         redirect: "manual",
-        headers: { "user-agent": ua, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
+        headers: { "user-agent": ua, accept },
         signal: AbortSignal.timeout(20000),
       });
       if ((res.status === 429 || (res.status === 503 && own)) && !waited) {
@@ -1427,10 +1439,17 @@ async function get(url, { manual = true, text = true, ua = UA } = {}) {
       }
       const ms = Math.round(performance.now() - t),
         ct = res.headers.get("content-type") || "";
-      let body = "";
-      if (text && res.status < 300 && /html|xml|text\/plain/.test(ct)) body = await res.text();
-      else await res.arrayBuffer().catch(() => {});
-      return { status: res.status, headers: res.headers, ct, body, location: res.headers.get("location"), ms };
+      const want = text === true ? /html|xml|text\/plain/ : text;
+      let body = "",
+        over = false;
+      if (want && res.status < 300 && want.test(ct)) {
+        if (!max) body = await res.text();
+        else {
+          const b = res.body ? await upTo(res.body, max) : Buffer.alloc(0);
+          if (!(over = b.length > max)) body = new TextDecoder().decode(b);
+        }
+      } else await res.arrayBuffer().catch(() => {});
+      return { status: res.status, headers: res.headers, ct, body, location: res.headers.get("location"), ms, over };
     } catch (e) {
       if (attempt === 1) return { status: 0, error: String(e.message || e), headers: new Headers(), ct: "", body: "" };
       if (own) {
@@ -2097,10 +2116,14 @@ function analyze(url, html, headers, xRobotsLines) {
   {
     const keys = secretsIn(html),
       navHrefs = [...body.matchAll(/<nav\b[\s\S]*?<\/nav>/gi)].flatMap(m => tagsOf(m[0], "a").map(a => a.href));
-    const pdfOf = h => {
+    const own = h => {
       const x = urlOr((h || "").trim(), rec.base),
         c = x && /^https?:$/.test(x.protocol) ? clean(toCrawl(x.href)) : null;
-      return c && new URL(c).origin === START_ORIGIN && /\.pdf$/i.test(new URL(c).pathname) ? c : null;
+      return c && new URL(c).origin === START_ORIGIN ? c : null;
+    };
+    const pdfOf = h => {
+      const c = own(h);
+      return c && /\.pdf$/i.test(new URL(c).pathname) ? c : null;
     };
     rec.hygieneSignals = {
       analytics: analyticsTwice(html),
@@ -2111,17 +2134,26 @@ function analyze(url, html, headers, xRobotsLines) {
       schema: reviewEventProblems(nodes),
       pdfs: [...new Set(anchors.map(a => pdfOf(a.href)).filter(Boolean))],
       navPdfs: [...new Set(navHrefs.map(pdfOf).filter(Boolean))],
+      js: [
+        ...new Set(
+          tagsOf(html.replace(/<!--[\s\S]*?-->/g, " "), "script")
+            .map(s => s.src && own(s.src))
+            .filter(Boolean),
+        ),
+      ],
     };
   }
 
-  // Words for the Markdown comparison: the main text, and all a reader sees (body, title, description). Only the start
-  // page, the only one asked for Markdown.
-  if (url === START.href) {
-    const w = s => pickMainWords(s.replace(NOSPACE_RUN, " "));
-    rec.markdownWords = {
-      main: w(textOf(mainHtml)),
-      all: new Set(w([rec.title, rec.description, rec.ogTitle, rec.ogDescription, text].join(" "))),
-    };
+  // Words for the Markdown comparison: the main text, and all a reader sees. Kept on every page with 50+ main words,
+  // as the Markdown sample is picked after the crawl, and joined into strings to save memory.
+  {
+    const w = s => pickMainWords(s.replace(NOSPACE_RUN, " ")),
+      main = w(textOf(mainHtml));
+    if (main.length >= 50)
+      rec.markdownWords = {
+        main: main.join(" "),
+        all: w([rec.title, rec.description, rec.ogTitle, rec.ogDescription, text].join(" ")).join(" "),
+      };
   }
 
   // Words of the title, H1s and main text, for keyword-ideas.mjs. Runs of a script written without spaces are dropped
@@ -2971,7 +3003,10 @@ else {
   if (problems.length) add("llms-structure", START_ORIGIN + "/llms.txt", problems.join(", "));
 }
 // A Markdown response must vary on Accept so caches keep it apart from the HTML. AI-05 counts as checked only when
-// the site serves Markdown; otherwise the code-level check decides it.
+// the site serves Markdown; otherwise the code-level check decides it. mdHome saves the Markdown comparison a second
+// fetch.
+/** @type {string | null} */
+let mdHome = null;
 try {
   // The Markdown request isn't followed, so only the crawled URL's own answer counts.
   const md = await fetch(START.href, {
@@ -2986,7 +3021,8 @@ try {
     .map(v => v.trim()); // Accept-Encoding isn't Accept
   if (/^text\/markdown/i.test(md.headers.get("content-type") || "") && !vary.includes("accept") && !vary.includes("*"))
     add("markdown-no-vary", START.href, `Vary: ${md.headers.get("vary") || "(none)"}`);
-  await md.body?.cancel();
+  if (md.status === 200 && /^text\/markdown/i.test(md.headers.get("content-type") || "")) mdHome = await md.text();
+  else await md.body?.cancel();
 } catch {}
 const sectxt = await get(START_ORIGIN + "/.well-known/security.txt", { manual: false });
 if (sectxt.status !== 200 || /<html/i.test(sectxt.body || ""))
@@ -4726,6 +4762,41 @@ if (robots) {
     if (h.schema.events.length) add("event-online", u, h.schema.events.map(e => `“${e}”`).join(", "));
     if (h.schema.reviews.length) add("review-target-conflict", u, h.schema.reviews.join("; "));
   }
+  // Builds often bake a server setting into the scripts browsers get. Each on-site script is read once, most-loaded
+  // first, without following redirects, so no other host is asked; an HTML answer (an app shell served for every path)
+  // is skipped, and source maps aren't read. JS_CAPS are local limits. A script that redirects isn't read; follow
+  // on-site hops if that turns up.
+  const scripts = new Map(); // crawl URL -> the pages that load it
+  for (const p of read)
+    for (const s of p.hygieneSignals.js) (scripts.get(s) || scripts.set(s, []).get(s)).push(p.finalUrl);
+  let jsRead = 0,
+    jsBytes = 0,
+    jsUnread = 0;
+  for (const [src, from] of [...scripts].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))) {
+    if (jsRead >= JS_CAPS.files || jsBytes >= JS_CAPS.all) {
+      jsUnread++;
+      continue;
+    }
+    jsRead++;
+    const cap = Math.min(JS_CAPS.each, JS_CAPS.all - jsBytes),
+      r = await get(src, { accept: "*/*", text: /^(?!text\/html)/i, max: cap });
+    jsBytes += r.over ? cap : Buffer.byteLength(r.body);
+    if (r.over) {
+      jsUnread++;
+      continue;
+    }
+    const keys = [...new Set(secretsIn(r.body).map(k => `${k.label} (${k.shown})`))];
+    if (keys.length)
+      add(
+        "secret-key-exposed",
+        from.sort()[0],
+        `in the script ${pathKey(src)}${from.length > 1 ? ` (loaded by ${from.length} pages)` : ""}: ${keys.join("; ")}`,
+      );
+  }
+  if (jsUnread)
+    notes.push(
+      `${jsUnread} of the site's ${scripts.size} script files weren't read for secret keys, because of our own limits: ${JS_CAPS.files} files, ${JS_CAPS.each / 1048576} MB each and ${JS_CAPS.all / 1048576} MB in all. A key in one of them would be missed.`,
+    );
   const apps = [];
   for (const [k, platform] of [
     ["android", "Android"],
@@ -4769,37 +4840,35 @@ if (robots) {
     extra.pdfLinks = { count: listed.length, pdfs: listed.slice(0, 20).map(([url, e]) => ({ url, ...e })) };
 }
 
-// Compares the Markdown the start page serves for Accept: text/markdown with the page's own words. Cloudflare's
-// conversion drops header, footer and nav, adds front matter and appends the JSON-LD in a ```json block, so a
-// converted copy still matches.
+// Compares the Markdown served for Accept: text/markdown with the page's words, on the render sample, only when the
+// start page served Markdown (mdHome). Cloudflare's conversion drops header, footer and nav, adds front matter and
+// appends the JSON-LD in a ```json block, so a converted copy still matches.
 // https://developers.cloudflare.com/fundamentals/reference/markdown-for-agents/
 // Flagged when the Markdown lacks over half the main text's words or over half its words aren't on the page. The
-// half-the-words lines and the 50-word minimum are local; a few words would swing the share.
-// This asks for the start page a second time; fold it into the probe's request if that one keeps its body.
-if (home?.markdownWords && home.markdownWords.main.length >= 50)
-  try {
-    const res = await fetch(START.href, {
-      redirect: "manual",
-      headers: { "user-agent": UA, accept: "text/markdown" },
-      signal: AbortSignal.timeout(15000),
-    });
-    if (res.status !== 200 || !/^text\/markdown/i.test(res.headers.get("content-type") || "")) await res.body?.cancel();
-    else {
-      const md = (await res.text())
-        .replace(/```json[\s\S]*?```|!\[[^\]]*\]\([^)]*\)|<[^>]*>|https?:\/\/\S+/g, " ")
-        .replace(/\]\([^)]*\)/g, "]");
-      const words = new Set(pickMainWords(md.replace(NOSPACE_RUN, " "))),
-        { main, all } = home.markdownWords;
-      const kept = main.filter(w => words.has(w)).length / main.length,
-        extra = words.size ? [...words].filter(w => !all.has(w)).length / words.size : 0;
-      if (kept < 0.5 || extra > 0.5)
-        add(
-          "markdown-differs",
-          START.href,
-          `the Markdown has ${Math.round(100 * kept)}% of the page's main words, and ${Math.round(100 * extra)}% of its own words aren't on the page; our own limit is half`,
-        );
-    }
-  } catch {}
+// half-the-words lines and the 50-word minimum are local; a few words would swing the share. One finding, with one
+// evidence line per page that differs.
+if (mdHome != null)
+  for (const u of renderSample) {
+    const p = byPage.get(u);
+    if (!p?.markdownWords) continue;
+    const res = u === START.href ? null : await get(u, { accept: "text/markdown", text: /^text\/markdown/i });
+    const text = res ? (res.status === 200 && /^text\/markdown/i.test(res.ct) ? res.body : null) : mdHome;
+    if (text == null) continue;
+    const md = text
+      .replace(/```json[\s\S]*?```|!\[[^\]]*\]\([^)]*\)|<[^>]*>|https?:\/\/\S+/g, " ")
+      .replace(/\]\([^)]*\)/g, "]");
+    const words = new Set(pickMainWords(md.replace(NOSPACE_RUN, " "))),
+      main = p.markdownWords.main.split(" "),
+      all = new Set(p.markdownWords.all.split(" "));
+    const kept = main.filter(w => words.has(w)).length / main.length,
+      extra = words.size ? [...words].filter(w => !all.has(w)).length / words.size : 0;
+    if (kept < 0.5 || extra > 0.5)
+      add(
+        "markdown-differs",
+        u,
+        `the Markdown has ${Math.round(100 * kept)}% of the page's main words, and ${Math.round(100 * extra)}% of its own words aren't on the page; our own limit is half`,
+      );
+  }
 
 // Each indexable page's link strength, 0–100, over the link checks' graph; noindex pages pass links on too. Keyed by
 // path rather than a column on `pages`: leaner, and the report matches it to Search Console's paths. Skipped on a
