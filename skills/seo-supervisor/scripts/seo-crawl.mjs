@@ -1286,7 +1286,7 @@ Object.assign(CHECKS, PAGE_CHECKS);
 RULES["CONTENT-11"] ??= ["Nothing breaks Google's spam policies", "Headings & content"]; // never passed: see NOT_CRAWLABLE
 
 // keyword-ideas.mjs's own word rules, so the words file matches its searches exactly.
-const { mainWords: pickMainWords } = await import("./keyword-ideas.mjs");
+import { mainWords as pickMainWords } from "./keyword-ideas.mjs";
 
 const findings = new Map(); // key -> {evidence:[], count}
 function add(key, url, detail) {

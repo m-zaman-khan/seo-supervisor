@@ -87,7 +87,7 @@ The rules in SKILL.md apply throughout, most of all **Plain language (CONTENT-13
 **Goal:** a short list of target phrases the owner picked, each with real evidence behind it.
 
 **Inputs:**
-- `seo-audit/keyword-ideas.json`: each idea's phrase, source, evidence (impressions, position, page) and suggested use. Its groups: shown for, but no page is about it · almost there · questions people search · ideas from search results and competitors.
+- `seo-audit/keyword-ideas.json`: each idea's phrase, source, evidence (impressions, position, page) and suggested use. Its groups: shown for, but no page is about it · almost there · questions people search · ideas from search results and competitors · internal link ideas · searches a page doesn't mention (from the crawl's page words).
 - The profile's "Target phrases" table.
 - `google.json` `queries` and `pageQueries`, and `keys.json` `bing.queries`.
 
