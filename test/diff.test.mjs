@@ -48,7 +48,7 @@ test("two crawls are compared page by page, by path", () => {
   assert.deepEqual(at("og-removed"), ["og:title, og:image", "og:title"]);
   assert.deepEqual(at("og-added"), [null, "og:title, og:image"]);
   assert.deepEqual(at("content-shrunk"), [800, 120]);
-  assert.ok(![...d.regressions, ...d.changed].some(x => x.path === "/r/"), "300 → 180 words is less than half gone");
+  assert.ok(![...d.regressions, ...d.changed].some(x => x.path === "/r/"), "300 → 230 words is less than a third gone");
 });
 
 test("the CLI writes the diff with the old crawl's date", async () => {
@@ -149,8 +149,8 @@ test("descriptions, share tags and word counts are compared only when both crawl
     [],
     "a crawl from an older version has none of these fields",
   );
-  const d = diffCrawls({ pages: [P({ words: 150 })] }, { pages: [P({ words: 60 })] });
-  assert.deepEqual(d.regressions, [], "more than half gone, but fewer than 100 words");
+  const d = diffCrawls({ pages: [P({ words: 90 })] }, { pages: [P({ words: 50 })] });
+  assert.deepEqual(d.regressions, [], "more than a third gone, but fewer than 50 words");
   assert.deepEqual(none.compared, []);
   const full = P({ description: "D", ogTitle: "A", ogImage: null, words: 300 });
   assert.deepEqual(diffCrawls({ pages: [full] }, { pages: [full] }).compared, ["description", "og", "words"]);

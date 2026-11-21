@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Google ranking updates that overlap a period, from the Search Status Dashboard's history (Google Cloud's status
-// format). Dates only: it never says an update caused a traffic change.
+// Google ranking updates, and optionally Search Central blog posts, that overlap a period. The updates come from the
+// Search Status Dashboard's history (Google Cloud's status format), the posts from the blog's RSS feed. Dates only: it
+// never says an update caused a traffic change.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
@@ -33,6 +34,30 @@ export function rankingUpdates(incidents, { from, to, feed = FEED }) {
     .sort((a, b) => a.start.localeCompare(b.start));
 }
 
+export // RSS 2.0 holding only the latest 10 posts, hence the note on older periods.
+const BLOG = "https://developers.google.com/search/blog/feed.xml";
+const XML_ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+const unxml = s =>
+  s
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&(#x[\da-f]+|#\d+|\w+);/gi, (m, e) =>
+      e[0] === "#"
+        ? String.fromCodePoint(e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : +e.slice(1))
+        : (XML_ENT[e] ?? m),
+    )
+    .trim();
+const tag = (item, name) => unxml(item.match(new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)</${name}>`, "i"))?.[1] ?? "");
+// Event posts (Search Central Live and its Deep Dives) are left out by title; every other post counts.
+const EVENT = /\bSearch Central Live\b|\bDeep Dive\b/i;
+const feedPosts = xml =>
+  [...String(xml).matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)]
+    .map(m => ({ title: tag(m[1], "title"), date: ymd(tag(m[1], "pubDate")), url: tag(m[1], "link") }))
+    .filter(p => p.title && p.date)
+    .sort((a, b) => a.date.localeCompare(b.date));
+/** Blog posts dated from..to (inclusive), events left out, oldest first. */
+export const blogPosts = (xml, { from, to }) =>
+  feedPosts(xml).filter(p => p.date >= from && p.date <= to && !EVENT.test(p.title));
+
 class Fail extends Error {
   constructor(msg, code = 2) {
     super("google-updates: " + msg);
@@ -63,10 +88,11 @@ async function main() {
   // --endpoint, GOOGLE_STATUS_ENDPOINT and a URL after --blog point at the tests' feeds.
   const feed = typeof args.endpoint === "string" ? args.endpoint : process.env.GOOGLE_STATUS_ENDPOINT || FEED;
   const OUT = resolve(typeof args.out === "string" ? args.out : "seo-audit/google-updates.json");
+  const blog = args.blog ? (typeof args.blog === "string" ? args.blog : BLOG) : null;
 
   if (args.yes !== true) {
     console.log(
-      `google-updates: dry run, nothing fetched. With --yes it reads ${feed} (Google's public status feed: one plain GET, nothing about your site is sent) and lists Google's ranking updates from ${from} to ${to} in ${OUT}.`,
+      `google-updates: dry run, nothing fetched. With --yes it reads ${feed} (Google's public status feed: one plain GET, nothing about your site is sent)${blog ? ` and ${blog} (the Google Search Central blog's feed, the same way)` : ""} and lists Google's ranking updates${blog ? " and blog posts" : ""} from ${from} to ${to} in ${OUT}.`,
     );
     return 0;
   }
@@ -94,19 +120,62 @@ async function main() {
     );
 
   const updates = rankingUpdates(list, { from, to, feed });
-  const note =
+  const notes =
     from < back(FEED_DAYS)
-      ? `Google's feed covers the last 12 months, so updates before ${back(FEED_DAYS)} aren't listed.`
-      : null;
+      ? [`Google's feed covers the last 12 months, so updates before ${back(FEED_DAYS)} aren't listed.`]
+      : [];
+  // The blog is extra: when its feed fails, the ranking updates are still written, with a note instead of posts.
+  let posts = null;
+  if (blog) {
+    let xml = null,
+      why;
+    try {
+      const b = await fetch(blog, {
+        headers: { "user-agent": "seo-supervisor-google-updates" },
+        signal: AbortSignal.timeout(20000),
+      });
+      if (b.ok) xml = await b.text();
+      else why = `returned ${b.status}`;
+    } catch (e) {
+      why = `couldn't be reached (${e.cause?.code || e.message})`;
+    }
+    const all = xml == null ? [] : feedPosts(xml);
+    if (xml != null && !all.length) why = "had no posts in the format it used to have";
+    if (why) notes.push(`Google's Search Central blog's feed ${why}, so its posts aren't listed.`);
+    else {
+      posts = blogPosts(xml, { from, to });
+      const oldest = all[0].date,
+        day = new Date(oldest + "T00:00:00Z").toLocaleDateString("en-GB", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          timeZone: "UTC",
+        });
+      if (oldest > from)
+        notes.push(
+          `The Search Central blog's feed holds its latest posts only, back to ${day}, so earlier posts aren't listed.`,
+        );
+    }
+  }
+  const note = notes.join(" ") || null;
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(
     OUT,
-    JSON.stringify({ googleUpdates: { from, to, updates, ...(note ? { note } : {}) } }, null, 2) + "\n",
+    JSON.stringify(
+      { googleUpdates: { from, to, updates, ...(posts ? { posts } : {}), ...(note ? { note } : {}) } },
+      null,
+      2,
+    ) + "\n",
   );
   console.log(
     `google-updates: ${updates.length} Google ranking update${updates.length === 1 ? "" : "s"} from ${from} to ${to}${updates.length ? ":" : "."}`,
   );
   for (const u of updates) console.log(`  ${u.name}: ${u.start}${u.end ? ` to ${u.end}` : ", still rolling out"}`);
+  if (posts)
+    console.log(
+      `google-updates: ${posts.length} Search Central blog post${posts.length === 1 ? "" : "s"} in the period${posts.length ? ":" : "."}`,
+    );
+  for (const p of posts || []) console.log(`  ${p.date}: ${p.title}`);
   if (note) console.log("note: " + note);
   console.log("wrote " + OUT);
   return 0;

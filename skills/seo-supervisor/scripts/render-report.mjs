@@ -1451,8 +1451,83 @@ const connMd = () => {
   return l.length ? ["## From your connections", "", ...l.flatMap(t => [noteMd(t), ""])] : [];
 };
 
-const diffMoreHtml = () => "",
-  diffMoreMd = () => [];
+// Search Central posts from google-updates.mjs --blog, listed by date and never offered as a cause. html: titles link
+// to Google's post, http(s) only.
+function googlePostsText(html = false) {
+  const g = obj(raw.googleUpdates);
+  if (!Array.isArray(g?.posts)) return "";
+  const list = g.posts.filter(
+    p => obj(p) && typeof p.title === "string" && p.title.trim() && /^\d{4}-\d{2}-\d{2}$/.test(p.date),
+  );
+  const day = d =>
+    new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+  const name = p =>
+    !html
+      ? noteMd(p.title)
+      : /^https?:\/\//i.test(p.url)
+        ? `<a href="${esc(p.url)}" rel="noopener">${esc(p.title)}</a>`
+        : esc(p.title);
+  return list.length
+    ? `Google Search Central announcements in this period: ${list.map(p => `${name(p)} (${day(p.date)})`).join(" · ")}`
+    : "Google Search Central posted no announcements in this period.";
+}
+// One row per crawl from seo-diff.mjs --history, shown from three crawls on, as two are just Since last audit.
+const timelineRows = () =>
+  (Array.isArray(obj(raw.diff)?.timeline) ? raw.diff.timeline : [])
+    .filter(x => obj(x) && !isNaN(Date.parse(x.date)) && asInt(x.pages))
+    .slice(-100)
+    .reverse();
+const timelineCells = x => [
+  fmtDate(x.date),
+  ...["pages", "findings", "regressions", "improvements", "added", "removed"].map(k => (asInt(x[k]) ? num(x[k]) : "–")),
+];
+const TIMELINE_HEAD = [
+  "Crawl",
+  "Pages",
+  "Crawler findings",
+  "Regressions",
+  "Improvements",
+  "Pages added",
+  "Pages gone",
+];
+const TIMELINE_INTRO =
+  "Every crawl filed in seo-audit/history, newest first, each compared with the one before it. Crawler findings are the crawler's own count, before the audit's review. – means it couldn't be told: that crawl or the one before covered part of the site. Information only.";
+const diffMoreHtml = () => {
+  const rows = timelineRows(),
+    posts = googlePostsText(true);
+  return (
+    (posts ? `\n    <p class="quiet">${posts}</p>` : "") +
+    (rows.length >= 3
+      ? `\n    <details class="how timeline"><summary>Audit timeline</summary><p>${esc(TIMELINE_INTRO)}</p><div class="tablewrap"><table><thead><tr>${TIMELINE_HEAD.map(h => `<th scope="col">${h}</th>`).join("")}</tr></thead><tbody>${rows
+          .map(
+            x =>
+              `<tr>${timelineCells(x)
+                .map(c => `<td>${esc(c)}</td>`)
+                .join("")}</tr>`,
+          )
+          .join("")}</tbody></table></div></details>`
+      : "")
+  );
+};
+const diffMoreMd = () => {
+  const rows = timelineRows(),
+    posts = googlePostsText();
+  return [
+    ...(posts ? [posts, ""] : []),
+    ...(rows.length >= 3
+      ? [
+          "## Audit timeline",
+          "",
+          TIMELINE_INTRO,
+          "",
+          `| ${TIMELINE_HEAD.join(" | ")} |`,
+          `| --- |${" ---: |".repeat(6)}`,
+          ...rows.map(x => `| ${timelineCells(x).join(" | ")} |`),
+          "",
+        ]
+      : []),
+  ];
+};
 
 const reportHtml = () => "",
   reportMd = () => [];
@@ -1790,6 +1865,11 @@ const DIFF_KIND = {
   "redirect-changed": ["Redirect changed", "URL-07"],
   "redirect-added": ["Now redirects", "URL-07"],
   "redirect-removed": ["Redirect removed", "URL-07"],
+  "h1-changed": ["H1 changed", "CONTENT-01"],
+  "h2-changed": ["H2s changed", "CONTENT-02"],
+  "hreflang-changed": ["hreflang changed", "META-08"],
+  "schema-retired-removed": ["Retired schema removed", "SCHEMA-05"],
+  "section-shrunk": ["Section shrank", null],
 };
 const diffSections = d =>
   [
@@ -1823,6 +1903,8 @@ const sameFields = d => {
     c.has("description") && "description",
     c.has("og") && "share tags",
     "H1",
+    c.has("h2") && "H2s",
+    c.has("hreflang") && "hreflang",
     "schema",
     c.has("schemaProps") && "schema fields",
     c.has("words") && "length",
@@ -1832,13 +1914,27 @@ const sameFields = d => {
   const also = [
     c.has("redirects") && "no redirect changed",
     c.has("robots") && "robots.txt has the same rules",
+    c.has("sections") && "no section lost half its pages",
     c.has("speed") && "no page got much faster or slower",
   ].filter(Boolean);
   return `${f.slice(0, -1).join(", ")} and ${f.at(-1)} as last time${also.length ? `, ${[...also.slice(0, -1), `and ${also.at(-1)}`].join(", ")}` : ""}`;
 };
-const REMOVED_UNKNOWN = "This crawl stopped at its page limit (--max), so pages it didn't reach aren't listed as gone.";
+// Why no page is listed as gone or added: true means --max stopped the crawl, "section" means --include/--exclude.
+const unknownText = (why, which) =>
+  why === "section"
+    ? `${which === "gone" ? "This crawl" : "The last crawl"} covered one part of the site (--include or --exclude), so pages outside it aren't listed as ${which}.`
+    : why === true
+      ? `${which === "gone" ? "This crawl" : "The last crawl"} stopped at its page limit (--max), so pages it didn't reach aren't listed as ${which}.`
+      : "";
+const unknownLines = d => [unknownText(d.removedUnknown, "gone"), unknownText(d.addedUnknown, "added")].filter(Boolean);
 const diffHtml = () => `<div class="limits">
-  <p class="quiet">Compared with the crawl of ${esc(fmtDate(diff.since))}. Pages are matched by path.${diff.removedUnknown === true ? ` ${REMOVED_UNKNOWN}` : ""}</p>${googleUpdatesText() ? `\n  <p class="quiet">${googleUpdatesText(true)}</p>` : ""}${linksDiffHtml()}
+  <p class="quiet">Compared with the crawl of ${esc(fmtDate(diff.since))}. Pages are matched by path.${unknownLines(
+    diff,
+  )
+    .map(t => ` ${t}`)
+    .join(
+      "",
+    )}</p>${googleUpdatesText() ? `\n  <p class="quiet">${googleUpdatesText(true)}</p>` : ""}${googlePostsText() ? `\n  <p class="quiet">${googlePostsText(true)}</p>` : ""}${linksDiffHtml()}
   ${diffSections(diff)
     .map(
       ([h, list]) =>
@@ -2267,9 +2363,10 @@ function markdown() {
   if (diff) {
     L.push("## Since last audit", "", `Compared with the crawl of ${fmtDate(diff.since)}.`, "");
     if (googleUpdatesText()) L.push(googleUpdatesText(), "");
+    if (googlePostsText()) L.push(googlePostsText(), "");
     for (const [h, list] of diffSections(diff))
       L.push(`### ${h}`, "", ...list.map(c => `- ${mdCode(c.path)} ${mdText(diffText(c))}`), ""); // crawled titles and robots.txt rules, escaped
-    if (diff.removedUnknown === true) L.push(REMOVED_UNKNOWN, "");
+    for (const t of unknownLines(diff)) L.push(t, "");
     for (const [h, l] of [
       ["Pages added", diff.added],
       ["Pages gone", diff.removed],

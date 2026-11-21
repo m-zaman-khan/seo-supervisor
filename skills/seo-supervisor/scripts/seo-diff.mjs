@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Reports what changed between two crawls. Pages are matched by path, so a local crawl compares with the public site.
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, copyFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 import { LIMITS, fmtCwv } from "./checks/speed.mjs";
 
@@ -14,6 +14,24 @@ const pathOf = u => {
   }
 };
 const ok = s => s === 200;
+// Retired rich-result types not marked keep: taking one off a page is no loss. FAQPage is kept, since Bing and AI
+// engines still read it.
+const RETIRED = new Set(
+  JSON.parse(readFileSync(new URL("./data/google-rich-results.json", import.meta.url), "utf8"))
+    .retired.filter(r => !r.keep)
+    .map(r => r.type),
+);
+const OG = [
+  ["ogTitle", "og:title"],
+  ["ogImage", "og:image"],
+  ["ogDescription", "og:description"],
+  ["ogUrl", "og:url"],
+];
+// "− old · + new" for what went and came, 8 at most.
+const changes = (gone, came) => {
+  const l = [...gone.map(x => `− ${x}`), ...came.map(x => `+ ${x}`)];
+  return l.slice(0, 8).join(" · ") + (l.length > 8 ? ` · and ${l.length - 8} more` : "");
+};
 
 // Speed compares like with like, by path. Field data is slower when any Core Web Vital crosses its limit, or moves 20%
 // and at least 300 ms (LCP), 50 ms (INP) or 0.05 (CLS). Lab runs swing more, so lab LCP must move 40% and 1 s, and a
@@ -84,14 +102,12 @@ function robotsChange(o, n) {
   if (o.status === n.status && o.hash === n.hash) return null;
   const was = robotsLines(o.text),
     now = robotsLines(n.text);
-  const lines = [
-    ...was.filter(l => !now.includes(l)).map(l => `− ${l}`),
-    ...now.filter(l => !was.includes(l)).map(l => `+ ${l}`),
-  ];
-  if (o.status === n.status && !lines.length) return null; // comments, spacing or order only
+  const gone = was.filter(l => !now.includes(l)),
+    came = now.filter(l => !was.includes(l));
+  if (o.status === n.status && !gone.length && !came.length) return null; // comments, spacing or order only
   const detail = [
     o.status !== n.status && `status ${o.status} → ${n.status}`,
-    lines.length && lines.slice(0, 8).join(" · ") + (lines.length > 8 ? ` · and ${lines.length - 8} more` : ""),
+    (gone.length || came.length) && changes(gone, came),
   ]
     .filter(Boolean)
     .join("; ");
@@ -127,12 +143,16 @@ const RECRAWL = new Set([
   "description-changed",
   "h1-added",
   "h1-removed",
+  "h1-changed",
+  "h2-changed",
+  "hreflang-changed",
   "og-added",
   "og-removed",
   "content-shrunk",
   "content-grew",
   "schema-added",
   "schema-removed",
+  "schema-retired-removed",
   "schema-fields-added",
   "schema-fields-removed",
   "redirect-added",
@@ -167,7 +187,39 @@ export function diffCrawls(oldReport, newReport) {
   // other didn't, missed pages the other has: they aren't gone (or new). Internal links and section sizes only when
   // both crawls were whole: linksIn counts links on the pages crawled.
   const capped = r => r.stats?.capped ?? r.stats?.fetched >= r.options?.max;
-  const links = !capped(oldReport) && !capped(newReport);
+  const partial = (r, other) =>
+    capped(r)
+      ? true
+      : r.section && JSON.stringify(r.section) !== JSON.stringify(other.section ?? null)
+        ? "section"
+        : false;
+  const goneUnknown = partial(newReport, oldReport),
+    addedUnknown = partial(oldReport, newReport);
+  const links = !capped(oldReport) && !capped(newReport) && !oldReport.section && !newReport.section;
+  // hreflang targets on the site's own hosts compare by path, so a local crawl matches the live one.
+  const hosts = r =>
+    new Set(
+      [r.startUrl, r.siteOrigin]
+        .map(u => {
+          try {
+            return new URL(u).host;
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean),
+    );
+  const ownOld = hosts(oldReport),
+    ownNew = hosts(newReport);
+  const alternates = (p, own) =>
+    (p.hreflang || []).map(h => {
+      let t = String(h.href);
+      try {
+        const u = new URL(t, p.url);
+        t = own.has(u.host) || u.host === new URL(p.url).host ? u.pathname + u.search : u.href;
+      } catch {}
+      return `${String(h.lang).toLowerCase()} → ${t}`;
+    });
   const hasRedirects = Array.isArray(oldReport.redirects) && Array.isArray(newReport.redirects);
   const redirectsOf = r => new Map((r.redirects || []).map(x => [pathOf(x.from), x]));
   const wasRedirect = redirectsOf(oldReport),
@@ -202,8 +254,11 @@ export function diffCrawls(oldReport, newReport) {
     const os = new Set(o.schema || []),
       ns = new Set(n.schema || []);
     const gone = [...os].filter(t => !ns.has(t)),
-      added = [...ns].filter(t => !os.has(t));
-    if (gone.length) change(regressions, "schema-removed", gone.join(", "), [...ns].join(", ") || "none");
+      added = [...ns].filter(t => !os.has(t)),
+      lost = gone.filter(t => !RETIRED.has(t)),
+      retired = gone.filter(t => RETIRED.has(t));
+    if (lost.length) change(regressions, "schema-removed", lost.join(", "), [...ns].join(", ") || "none");
+    if (retired.length) change(changed, "schema-retired-removed", retired.join(", "), [...ns].join(", ") || "none");
     if (added.length) change(improvements, "schema-added", [...os].join(", ") || "none", added.join(", "));
     if ((o.title || "") !== (n.title || "")) change(n.title ? changed : regressions, "title-changed", o.title, n.title);
     // Fields older crawls didn't record are compared only when both crawls have them.
@@ -213,14 +268,52 @@ export function diffCrawls(oldReport, newReport) {
     if (both("words")) compared.add("words");
     if (both("description") && (o.description || "") !== (n.description || ""))
       change(n.description ? changed : regressions, "description-changed", o.description, n.description);
-    if (both("ogTitle") && both("ogImage")) {
-      const tags = r => [r.ogTitle && "og:title", r.ogImage && "og:image"].filter(Boolean).join(", ") || null;
-      if ((o.ogTitle && !n.ogTitle) || (o.ogImage && !n.ogImage)) change(regressions, "og-removed", tags(o), tags(n));
-      if ((!o.ogTitle && n.ogTitle) || (!o.ogImage && n.ogImage)) change(improvements, "og-added", tags(o), tags(n));
+    if (both("h1Text") && o.h1Text && n.h1Text && o.h1Text !== n.h1Text)
+      change(changed, "h1-changed", o.h1Text, n.h1Text);
+    // H2s that came or went, or a changed count (a repeated heading); a new order alone isn't a change.
+    if (both("h2s")) {
+      compared.add("h2");
+      const went = o.h2s.filter(h => !n.h2s.includes(h)),
+        came = n.h2s.filter(h => !o.h2s.includes(h));
+      if (went.length || came.length || o.h2s.length !== n.h2s.length)
+        changed.push({
+          path,
+          kind: "h2-changed",
+          before: o.h2s.length,
+          after: n.h2s.length,
+          detail: `${o.h2s.length} → ${n.h2s.length}${went.length || came.length ? `; ${changes(went, came)}` : ""}`,
+        });
     }
-    if (both("words") && o.words - n.words >= 100 && n.words < o.words / 2)
+    // Lost alternates: a regression; only new ones: an improvement; both: a change.
+    if (both("hreflang")) {
+      compared.add("hreflang");
+      const was = alternates(o, ownOld),
+        now = alternates(n, ownNew),
+        went = was.filter(h => !now.includes(h)),
+        came = now.filter(h => !was.includes(h));
+      if (went.length || came.length)
+        (came.length ? (went.length ? changed : improvements) : regressions).push({
+          path,
+          kind: "hreflang-changed",
+          before: was.join(", ") || "none",
+          after: now.join(", ") || "none",
+          detail: changes(went, came),
+        });
+    }
+    if (both("ogTitle") && both("ogImage")) {
+      const keys = OG.filter(([k]) => both(k)),
+        tags = r =>
+          keys
+            .filter(([k]) => r[k])
+            .map(([, t]) => t)
+            .join(", ") || null;
+      if (keys.some(([k]) => o[k] && !n[k])) change(regressions, "og-removed", tags(o), tags(n));
+      if (keys.some(([k]) => !o[k] && n[k])) change(improvements, "og-added", tags(o), tags(n));
+    }
+    // Thresholds: at least 50 words, and a third fewer or half as many again.
+    if (both("words") && o.words - n.words >= 50 && n.words * 1.5 <= o.words)
       change(regressions, "content-shrunk", o.words, n.words);
-    if (both("words") && n.words - o.words >= 100 && n.words > o.words * 2)
+    if (both("words") && n.words - o.words >= 50 && n.words >= o.words * 1.5)
       change(changed, "content-grew", o.words, n.words);
     // Noindex pages and pages canonical elsewhere belong out of the sitemap; their own change kind says why.
     if (sitemaps && both("inSitemap") && !n.noindex && (!nc || nc === path)) {
@@ -235,7 +328,7 @@ export function diffCrawls(oldReport, newReport) {
       compared.add("schemaProps");
       for (const [type, was] of Object.entries(o.schemaProps)) {
         const now = n.schemaProps[type];
-        if (!now) continue;
+        if (!now || RETIRED.has(type)) continue;
         const lost = was.filter(k => !now.includes(k)),
           got = now.filter(k => !was.includes(k));
         if (lost.length)
@@ -310,42 +403,124 @@ export function diffCrawls(oldReport, newReport) {
         });
     }
   }
+  // A section that lost half its pages and at least 10 (a deploy dropped the blog) is one regression on top of the
+  // pages gone. The list holds 50 sections, so one missing from a full list may just be past the cut.
+  if (links && Array.isArray(oldReport.sections) && Array.isArray(newReport.sections)) {
+    compared.add("sections");
+    const now = new Map(newReport.sections.map(s => [s.path, s.pages]));
+    for (const s of oldReport.sections) {
+      const n = now.get(s.path) ?? (newReport.sections.length < 50 ? 0 : null);
+      if (n != null && s.pages - n >= 10 && n * 2 <= s.pages)
+        regressions.push({ path: s.path, kind: "section-shrunk", before: s.pages, after: n });
+    }
+  }
   return {
     regressions,
     improvements,
     changed,
     compared: [...compared], // the optional fields both crawls recorded, so the report claims only those
-    // Only new pages that load: a new URL in the error list is a broken link target, not an added page.
-    added: [...after]
-      .filter(([p, n]) => !before.has(p) && ok(n.status))
-      .map(([p]) => p)
-      .sort(),
+    // Only new pages that load: a new URL in the error list is a broken link target, not an added page. A page the last
+    // crawl didn't reach (it stopped at --max, or covered another section) isn't known to be new.
+    added: addedUnknown
+      ? []
+      : [...after]
+          .filter(([p, n]) => !before.has(p) && ok(n.status))
+          .map(([p]) => p)
+          .sort(),
     // A page that now redirects is redirect-added; a URL that failed last time and isn't met now was never a page.
-    // A crawl that stopped at --max didn't reach every page, so a page missing from it isn't known to be gone.
-    removed: capped(newReport)
+    // A page this crawl didn't reach isn't known to be gone. The reason is true (--max) or "section".
+    removed: goneUnknown
       ? []
       : [...before]
           .filter(([p, o]) => ok(o.status) && !after.has(p) && !nowRedirect.has(p))
           .map(([p]) => p)
           .sort(),
-    ...(capped(newReport) ? { removedUnknown: true } : {}),
+    ...(goneUnknown ? { removedUnknown: goneUnknown } : {}),
+    ...(addedUnknown ? { addedUnknown } : {}),
   };
 }
 
+// One row per crawl, oldest first; each after the first counts its changes from the one before. Unknown counts are
+// null.
+export const timeline = crawls =>
+  crawls.map((r, i) => {
+    const d = i && diffCrawls(crawls[i - 1], r);
+    return {
+      date: r.crawledAt,
+      pages: (r.pages || []).length,
+      findings: Array.isArray(r.findings) ? r.findings.length : null,
+      ...(d && {
+        regressions: d.regressions.length,
+        improvements: d.improvements.length,
+        added: d.addedUnknown ? null : d.added.length,
+        removed: d.removedUnknown ? null : d.removed.length,
+      }),
+    };
+  });
+
+// One crawl per crawledAt, oldest first; an unreadable file is named and skipped. Holds every crawl in memory at
+// once; for hundreds of history files, keep only the newest ones.
+function filed(dir) {
+  const byTime = new Map();
+  for (const f of existsSync(dir)
+    ? readdirSync(dir)
+        .filter(f => f.endsWith("-seo-crawl.json"))
+        .sort()
+    : []) {
+    let r = null;
+    try {
+      r = JSON.parse(readFileSync(join(dir, f), "utf8"));
+    } catch {}
+    if (typeof r?.crawledAt === "string") byTime.set(r.crawledAt, r);
+    else console.error(`seo-diff: skipped ${f} in ${dir}: it isn't a readable crawl.`);
+  }
+  return [...byTime.values()].sort((a, b) => (a.crawledAt < b.crawledAt ? -1 : 1));
+}
+
 if (isMain(import.meta.url)) {
-  const args = process.argv.slice(2);
-  const files = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--out");
-  const outAt = args.indexOf("--out");
-  if (files.length !== 2) {
-    console.error("usage: node seo-diff.mjs old-crawl.json new-crawl.json [--out seo-audit/seo-diff.json]");
+  const args = process.argv.slice(2),
+    val = k => (args.includes(k) ? args[args.indexOf(k) + 1] : null);
+  const files = args.filter((a, i) => !a.startsWith("--") && !["--out", "--history"].includes(args[i - 1]));
+  const hist = val("--history"),
+    out = resolve(val("--out") || "seo-audit/seo-diff.json");
+  if (files.length !== (hist ? 1 : 2)) {
+    console.error(
+      "usage: node seo-diff.mjs old-crawl.json new-crawl.json [--out seo-audit/seo-diff.json]\n       node seo-diff.mjs --history seo-audit/history new-crawl.json [--out seo-audit/seo-diff.json] [--fail-on-regressions]",
+    );
     process.exit(1);
   }
-  const [oldR, newR] = files.map(f => JSON.parse(readFileSync(f, "utf8")));
-  const out = resolve(outAt >= 0 ? args[outAt + 1] : "seo-audit/seo-diff.json");
-  const diff = { since: oldR.crawledAt || null, ...diffCrawls(oldR, newR) };
-  mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(out, JSON.stringify(diff, null, 2));
-  console.log(
-    `seo-diff: ${diff.regressions.length} regressions, ${diff.improvements.length} improvements, ${diff.added.length} pages added, ${diff.removed.length} gone · wrote ${out}`,
-  );
+  const crawls = files.map(f => JSON.parse(readFileSync(f, "utf8"))),
+    newR = crawls.at(-1);
+  let oldR = crawls[0],
+    rows = null;
+  if (hist) {
+    if (typeof newR.crawledAt !== "string") {
+      console.error(`seo-diff: ${files[0]} has no crawledAt, so it isn't a crawl from seo-crawl.mjs.`);
+      process.exit(1);
+    }
+    const past = filed(hist),
+      earlier = past.filter(r => r.crawledAt < newR.crawledAt);
+    // File this crawl under its date, or its date and time when another crawl has that day; never over another crawl.
+    if (!past.some(r => r.crawledAt === newR.crawledAt)) {
+      const day = join(hist, `${newR.crawledAt.slice(0, 10)}-seo-crawl.json`),
+        at = join(hist, `${newR.crawledAt.slice(0, 19).replace(/:/g, "-")}-seo-crawl.json`);
+      mkdirSync(hist, { recursive: true });
+      copyFileSync(files[0], existsSync(day) ? at : day);
+    }
+    oldR = earlier.at(-1);
+    rows = oldR && timeline([...earlier, newR]);
+  }
+  if (!oldR)
+    console.log(
+      `seo-diff: no earlier crawl in ${hist}, so nothing to compare. This crawl is filed there for the next run.`,
+    );
+  else {
+    const diff = { since: oldR.crawledAt || null, ...diffCrawls(oldR, newR), ...(rows ? { timeline: rows } : {}) };
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, JSON.stringify(diff, null, 2));
+    console.log(
+      `seo-diff: ${diff.regressions.length} regressions, ${diff.improvements.length} improvements, ${diff.added.length} pages added, ${diff.removed.length} gone · wrote ${out}`,
+    );
+    if (args.includes("--fail-on-regressions") && diff.regressions.length) process.exitCode = 1;
+  }
 }
