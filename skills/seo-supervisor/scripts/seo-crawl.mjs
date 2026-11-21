@@ -4634,6 +4634,17 @@ const report = {
     schemaProps: p.schemaProps,
     linksOut: p.links.length,
     linksIn: inbound.get(p.finalUrl) || 0,
+    h2s: p.headings
+      .filter(h => h.level === 2)
+      .map(h => h.text)
+      .slice(0, 50),
+    h3s: p.headings
+      .filter(h => h.level === 3)
+      .map(h => h.text)
+      .slice(0, 50),
+    ogDescription: p.ogDescription,
+    ogUrl: p.ogUrl,
+    hreflang: (p.hreflang || []).map(h => ({ lang: h.lang, href: h.href })),
   })),
 };
 mkdirSync(dirname(OUT), { recursive: true });
