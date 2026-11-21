@@ -253,6 +253,7 @@ const A = { "spider-5-255-253-1.spider.yandex.com": [["5.255.253.1", 4]], "fake.
 const err = code => Object.assign(new Error(code), { code });
 dns.promises.reverse = async ip => { appendFileSync(${JSON.stringify(calls)}, "PTR " + ip + "\\n"); if (ip.startsWith("6.6.6.")) throw err("ETIMEOUT"); if (PTR[ip]) return PTR[ip]; throw err("ENOTFOUND"); };
 dns.promises.lookup = async host => { appendFileSync(${JSON.stringify(calls)}, "A " + host + "\\n"); if (A[host]) return A[host].map(([address, family]) => ({ address, family })); throw err("ENOTFOUND"); };
+globalThis.fetch = async () => { throw new Error("no network in tests"); }; // --verify-ips without a folder would download the vendors' lists
 `,
   );
   return { preload: pathToFileURL(file).href, calls };
@@ -282,7 +283,7 @@ const LOG = [
 ];
 
 test("log-scan --verify-ips checks YandexBot by reverse DNS on Yandex's domains and a forward lookup back to the same address", async () => {
-  const { r, asked } = await scanLog(LOG, ["--verify-ips", tmp()]);
+  const { r, asked } = await scanLog(LOG, ["--verify-ips"]);
   // 5.255.253.1 and the IPv6 one are Yandex's; 9.9.9.9's name isn't on Yandex's domains; 7.7.7.7's name doesn't
   // lead back to it.
   assert.deepEqual(r.bots.YandexBot.ipCheck, { verified: 4, other: 3, unknown: 1 });
@@ -306,12 +307,22 @@ test("log-scan --verify-ips checks YandexBot by reverse DNS on Yandex's domains 
 test("log-scan stops asking a DNS server that answers none of a batch of 10 addresses, and counts the rest as unknown", async () => {
   const { r, asked } = await scanLog(
     Array.from({ length: 15 }, (_, i) => line(`6.6.6.${i + 1}`, YANDEX, i)),
-    ["--verify-ips", tmp()],
+    ["--verify-ips"],
   );
   assert.deepEqual(r.bots.YandexBot.ipCheck, { verified: 0, other: 0, unknown: 15 });
   assert.equal(asked.length, 10);
   assert.ok(
     r.notes.some(n => /^15 YandexBot request\(s\) couldn't be checked in DNS/.test(n)),
+    r.notes.join("\n"),
+  );
+});
+
+test("log-scan --verify-ips <folder> contacts nothing: YandexBot, which has no list to save, gets a note instead of DNS lookups", async () => {
+  const { r, asked } = await scanLog(LOG, ["--verify-ips", tmp()]);
+  assert.deepEqual(asked, [], "no DNS lookups when reading saved lists");
+  assert.equal(r.bots.YandexBot.ipCheck, undefined);
+  assert.ok(
+    r.notes.some(n => /YandexBot/.test(n) && /--verify-ips without a folder/.test(n)),
     r.notes.join("\n"),
   );
 });

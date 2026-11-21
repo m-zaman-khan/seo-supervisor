@@ -240,7 +240,8 @@ const fromVendor = (name, ip) => {
 // Lookups use this computer's DNS server, once per distinct address, at most 200 a bot, busiest first. With a folder
 // (OFFLINE) nothing is contacted, so those bots get a note instead.
 const DNS_CHECK = { YandexBot: /(^|\.)yandex\.(ru|net|com)\.?$/i },
-  DNS_MAX = 200;
+  DNS_MAX = 200,
+  OFFLINE = typeof args["verify-ips"] === "string";
 // true: the names lead back to the address; false: no name on those domains, or it doesn't lead back; null: no
 // answer.
 const byDns = async (re, a) => {
@@ -423,7 +424,7 @@ const handle = raw => {
         c = (b.ip ||= { verified: 0, other: 0, unknown: 0, refused: 0 });
       c[ok === null ? "unknown" : ok ? "verified" : "other"]++;
       if (ok && (r.status === 401 || r.status === 403)) c.refused++;
-    } else if (ipLists && DNS_CHECK[bot.name]) {
+    } else if (ipLists && DNS_CHECK[bot.name] && !OFFLINE) {
       const a = addrOf(r.ip) ?? "",
         m = (b.dns ||= new Map());
       m.set(a, (m.get(a) || 0) + 1);
@@ -668,6 +669,11 @@ if (ipLists) {
     .map(b => b.bot.name);
   if (noIp.length)
     notes.push(`The log lines for ${noIp.join(", ")} carry no client address, so --verify-ips couldn't check them.`);
+  const byDnsOnly = OFFLINE ? Object.keys(bots).filter(n => DNS_CHECK[n]) : [];
+  if (byDnsOnly.length)
+    notes.push(
+      `${byDnsOnly.join(", ")} weren't checked: their vendor publishes no list of addresses to save, and --verify-ips with a folder contacts nothing. Run --verify-ips without a folder to check them in DNS.`,
+    );
   for (const b of Object.values(bots).filter(b => b.noAnswer))
     notes.push(
       `${b.noAnswer} ${b.bot.name} request(s) couldn't be checked in DNS, so they're counted as unknown: the DNS server gave no answer${b.dns.size > DNS_MAX ? `, or they came from beyond the ${DNS_MAX} busiest addresses, the most looked up` : ""}. Yandex Webmaster's IP address check tool (Tools → IP address check) checks one address at a time by hand.`,
