@@ -179,17 +179,28 @@ export async function oldUrls(site, { urlList: URL_LIST, nextManifest: NEXT_MANI
   return redirectSources;
 }
 
-// Other sites are visited only with --outbound-links (OUTBOUND), since that contacts them.
-export async function outboundLinks(site, OUTBOUND) {
-  const { htmlPages, add, notes, notChecked, extra, selfHosts, bareHost } = site;
-  const outbound = new Map(); // another site's URL -> the first page linking to it
-  for (const p of htmlPages)
+// Each page's distinct http(s) links to other sites, hash dropped, cached for outboundLinks and otherSites.
+const awayOf = new WeakMap();
+function linksAway(p, { selfHosts, bareHost }) {
+  let away = awayOf.get(p);
+  if (!away) {
+    awayOf.set(p, (away = new Set()));
     for (const a of p.anchors) {
       const x = a.href && urlOr(a.href.trim(), p.base);
       if (!x || !/^https?:$/.test(x.protocol) || selfHosts.has(bareHost(x.host))) continue;
       x.hash = "";
-      if (!outbound.has(x.href)) outbound.set(x.href, p.finalUrl);
+      away.add(x.href);
     }
+  }
+  return away;
+}
+
+// Other sites are visited only with --outbound-links (OUTBOUND), since that contacts them.
+export async function outboundLinks(site, OUTBOUND) {
+  const { htmlPages, add, notes, notChecked, extra } = site;
+  const outbound = new Map(); // another site's URL -> the first page linking to it
+  for (const p of htmlPages)
+    for (const href of linksAway(p, site)) if (!outbound.has(href)) outbound.set(href, p.finalUrl);
   if (OUTBOUND) {
     const r = await checkOutbound([...outbound.keys()], { limit: 100 });
     for (const b of r.broken) add("outbound-broken", outbound.get(b.url), `links to ${b.url}: status ${b.status}`);
@@ -302,19 +313,10 @@ export function pageWords(site, { out: OUT, stamp: t0 }) {
 // domains: distinct addresses per host (www left off), the 1,000 most linked, which links-import.mjs crosses with
 // Search Console's Top linking sites.
 export function otherSites(site, outbound) {
-  const { htmlPages, extra, selfHosts, bareHost } = site;
+  const { htmlPages, extra, bareHost } = site;
   const perPage = {},
     domains = {};
-  for (const p of htmlPages) {
-    const here = new Set();
-    for (const a of p.anchors) {
-      const x = a.href && urlOr(a.href.trim(), p.base);
-      if (!x || !/^https?:$/.test(x.protocol) || selfHosts.has(bareHost(x.host))) continue;
-      x.hash = "";
-      here.add(x.href);
-    }
-    perPage[p.finalUrl] = here.size;
-  }
+  for (const p of htmlPages) perPage[p.finalUrl] = linksAway(p, site).size;
   for (const u of outbound.keys()) {
     const h = bareHost(new URL(u).hostname);
     domains[h] = (domains[h] || 0) + 1;
