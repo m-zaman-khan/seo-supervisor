@@ -364,6 +364,35 @@ test("a missing, unreadable or wrong input file is one plain line and exit 2, ne
   }
 });
 
+test("the input file is found whatever the order of the options", async () => {
+  const dir = tmp(),
+    input = join(dir, "audit.json");
+  writeFileSync(input, JSON.stringify(SAMPLE));
+  for (const [args, html, md] of [
+    [["--out", join(dir, "a.html"), input], "a.html", "a.md"],
+    [["--no-md", `--out=${join(dir, "b.html")}`, input], "b.html", null],
+    [["--md", join(dir, "c2.md"), input, "--out", join(dir, "c.html")], "c.html", "c2.md"],
+    [[input, "--out", join(dir, "d.html")], "d.html", "d.md"],
+  ]) {
+    const r = await cli(args);
+    assert.equal(r.code, 0, `${args.join(" ")}: ${r.stderr}`);
+    assert.match(
+      r.stdout,
+      new RegExp(`Wrote: .*${html.replace(".", "\\.")}${md ? `, .*${md.replace(".", "\\.")}` : "$"}`, "m"),
+    );
+    assert.match(readFileSync(join(dir, html), "utf8"), /^<!doctype html>/);
+  }
+  for (const [args, re] of [
+    [["--outt", "x.html", input], /unknown option --outt/],
+    [[input, join(dir, "other.json")], /unexpected ".*other\.json"/],
+    [[input, "--out"], /^Usage:/],
+  ]) {
+    const r = await cli(args);
+    assert.equal(r.code, 2, args.join(" "));
+    assert.match(r.stderr.trim(), re);
+  }
+});
+
 test("the page's styles have no dead .as.b3-t,.as.b4-t rule", () => {
   const { html } = rend(KITCHEN);
   assert.doesNotMatch(html, /\.as\.b[34]-t/);

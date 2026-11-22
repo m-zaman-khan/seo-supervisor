@@ -8,6 +8,7 @@ import { dirname, resolve, basename } from "node:path";
 import { SEV, bandOf } from "./lib/score.mjs";
 import { isMain } from "./lib/is-main.mjs";
 import { Fail, runMain } from "./lib/cli.mjs";
+import { parseArgs } from "./lib/args.mjs";
 import { SEV_LABEL } from "./report/format.mjs";
 import { buildModel } from "./report/model.mjs";
 import { overviewLines } from "./report/overview-lines.mjs";
@@ -276,14 +277,12 @@ async function printPdf(htmlPath, pdf) {
 const USAGE =
   "Usage: node render-report.mjs <audit.json|seo-crawl.json|content-scan.json> [--out report.html] [--md report.md] [--no-md] [--pdf]";
 async function main(argv) {
-  const inPath = argv.find(a => !a.startsWith("--"));
-  if (!inPath) throw new Fail(USAGE);
-  const opt = k => {
-    const i = argv.indexOf(k);
-    return i >= 0 ? argv[i + 1] : null;
-  };
-  const outPath = resolve(opt("--out") || inPath.replace(/\.json$/i, "") + ".html");
-  const mdPath = argv.includes("--no-md") ? null : resolve(opt("--md") || outPath.replace(/\.html?$/i, "") + ".md");
+  // The input file is the one word that isn't an option, wherever it sits (--out x.html audit.json works too).
+  const args = parseArgs(argv, { flags: ["out", "md"], booleans: ["no-md", "pdf"], positionals: 1 }),
+    inPath = args._[0];
+  if (!inPath || args.out === true || args.md === true) throw new Fail(USAGE);
+  const outPath = resolve(args.out || inPath.replace(/\.json$/i, "") + ".html");
+  const mdPath = args["no-md"] ? null : resolve(args.md || outPath.replace(/\.html?$/i, "") + ".md");
   const text = readFileSync(inPath, "utf8");
   let raw;
   try {
@@ -300,7 +299,7 @@ async function main(argv) {
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, html);
   if (mdPath) writeFileSync(mdPath, md);
-  const pdfPath = argv.includes("--pdf") ? outPath.replace(/\.html?$/i, "") + ".pdf" : null;
+  const pdfPath = args.pdf ? outPath.replace(/\.html?$/i, "") + ".pdf" : null;
   const pdfError = pdfPath
     ? await printPdf(outPath, pdfPath).then(
         () => null,
