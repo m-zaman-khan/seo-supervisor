@@ -81,7 +81,7 @@ function blockHtml(b) {
   if ("sub" in b)
     return `<details><summary>${H(b.sub)}</summary>${b.blocks.filter(Boolean).map(blockHtml).join("")}</details>`;
   if ("panel" in b) return panelHtml(b.panel);
-  return "";
+  return b.html ?? "";
 }
 /** @param {Block} b @returns {string[]} */
 function blockMd(b) {

@@ -62,29 +62,22 @@ export function localPanels({ raw }) {
     return { L, osm: !!nb || !!g };
   };
   const LOCAL_INTRO = "Information only: none of this changes the score. 250 m is our own line for the address check.";
-  const localHtml = () => {
+  const local = () => {
     const { L, osm } = localLines();
-    return L.length
-      ? `\n    <details class="how local"><summary>Local business</summary><p>${esc(LOCAL_INTRO)}</p>${L.map(([t, list]) => `<p>${esc(t)}</p>${list.length ? `<ul class="lim">${list.map(([k, v]) => `<li><b>${esc(k)}</b>${v ? `<span>${esc(v)}</span>` : ""}</li>`).join("")}</ul>` : ""}`).join("")}${osm ? `<p class="quiet">Map data <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>, under the Open Database License.</p>` : ""}</details>`
-      : "";
-  };
-  const localMd = () => {
-    const { L, osm } = localLines();
-    return L.length
-      ? [
-          "## Local business",
-          "",
-          LOCAL_INTRO,
-          "",
-          ...L.flatMap(([t, list]) => [
-            noteMd(t),
-            "",
-            ...list.map(([k, v]) => `- ${noteMd(k)}${v ? ` ${noteMd(v)}` : ""}`),
-            ...(list.length ? [""] : []),
-          ]),
-          ...(osm ? [noteMd(OSM_CREDIT), ""] : []),
-        ]
-      : [];
+    return (
+      L.length && {
+        cls: "local",
+        title: "Local business",
+        blocks: [
+          { p: LOCAL_INTRO },
+          ...L.flatMap(([t, list]) => [{ p: t }, { rows: list.map(([k, v]) => [k, v || undefined]) }]),
+          osm && {
+            html: `<p class="quiet">Map data <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>, under the Open Database License.</p>`,
+            md: [noteMd(OSM_CREDIT), ""],
+          },
+        ],
+      }
+    );
   };
 
   // geoGrid comes from geo-grid.json. Google's terms forbid Places results on a non-Google map, so it's a plain grid
@@ -211,5 +204,5 @@ export function localPanels({ raw }) {
           ...grid.notes.flatMap(t => [noteMd(t), ""]),
         ]
       : [];
-  return { localHtml, localMd, geoGridHtml, geoGridMd };
+  return { local, geoGridHtml, geoGridMd };
 }
