@@ -1834,17 +1834,19 @@ test("submit-sitemap explains a 403 (needs Owner or Full permission) and a 404 i
   const home = tmp();
   store(home, { scope: `${SC} ${GA} ${WM}` });
   try {
+    // Google saying no is a refusal: exit 1 and on stdout, as connect-keys.mjs does.
     await assert.rejects(runCli(g, home, ["submit-sitemap", ...submitArgs("--yes")]), e => {
-      assert.equal(e.code, 2);
-      assert.match(e.stderr, /isn't an owner or full user of sc-domain:example\.com/);
-      assert.match(e.stderr, /Owner or Full permission/);
-      assert.match(e.stderr, /Users and permissions/);
+      assert.equal(e.code, 1);
+      assert.match(e.stdout, /isn't an owner or full user of sc-domain:example\.com/);
+      assert.match(e.stdout, /Owner or Full permission/);
+      assert.match(e.stdout, /Users and permissions/);
       return true;
     });
     reply = [404, { error: { code: 404, message: "Requested entity was not found." } }];
     await assert.rejects(
       runCli(g, home, ["submit-sitemap", ...submitArgs("--yes")]),
-      e => /couldn't find sc-domain:example\.com/.test(e.stderr) && /nothing was submitted/.test(e.stderr),
+      e =>
+        e.code === 1 && /couldn't find sc-domain:example\.com/.test(e.stdout) && /nothing was submitted/.test(e.stdout),
     );
   } finally {
     await g.close();

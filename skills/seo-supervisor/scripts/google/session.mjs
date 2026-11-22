@@ -28,7 +28,9 @@ export const endpointsFrom = (over = {}) =>
       over[k] || process.env[`SEO_GOOGLE_${k.replace(/[A-Z]/g, c => "_" + c).toUpperCase()}_URL`] || v,
     ]),
   );
-export { Fail, Refused }; // lib/cli.mjs's classes, so instanceof checks agree
+// Fail (exit 2): bad input or no usable sign-in; its message starts "google: ". Refused (exit 1): Google said no or
+// couldn't be reached; runMain prefixes the script's name.
+export { Fail, Refused };
 export const fail = msg => {
   throw new Fail(msg);
 };
@@ -63,8 +65,8 @@ export async function tokenRequest(E, params) {
   try {
     r = await fetch(E.token, { method: "POST", headers: FORM, body, signal: AbortSignal.timeout(30000) });
   } catch (e) {
-    fail(
-      `google: couldn't reach Google's sign-in server (${e.cause?.code || e.message}). Check the internet connection and try again.`,
+    throw new Refused(
+      `couldn't reach Google's sign-in server (${e.cause?.code || e.message}). Check the internet connection and try again.`,
     );
   }
   const j = /** @type {any} */ (await r.json().catch(() => ({})));
@@ -76,11 +78,11 @@ export async function tokenRequest(E, params) {
       ...(j.scope ? { scope: j.scope } : {}),
     };
   if (j.error === "invalid_grant")
-    fail(
-      `google: Google didn't accept the sign-in (${j.error_description || "invalid_grant"}). It may have been removed or expired: run node google.mjs connect again.`,
+    throw new Refused(
+      `Google didn't accept the sign-in (${j.error_description || "invalid_grant"}). It may have been removed or expired: run node google.mjs connect again.`,
     );
-  fail(
-    `google: Google's sign-in server answered ${r.status}${j.error ? ` ${j.error}` : ""}${j.error_description ? `: ${j.error_description}` : ""}.`,
+  throw new Refused(
+    `Google's sign-in server answered ${r.status}${j.error ? ` ${j.error}` : ""}${j.error_description ? `: ${j.error_description}` : ""}.`,
   );
 }
 
@@ -130,11 +132,11 @@ export function session({ home, endpoints } = {}) {
         headers: { authorization: `Bearer ${s.access_token}`, ...(body ? { "content-type": "application/json" } : {}) },
         body: body && JSON.stringify(body),
         signal: AbortSignal.timeout(60000),
-      }).catch(e =>
-        fail(
-          `google: couldn't reach Google (${e.cause?.code || e.message}). Check the internet connection and try again.`,
-        ),
-      );
+      }).catch(e => {
+        throw new Refused(
+          `couldn't reach Google (${e.cause?.code || e.message}). Check the internet connection and try again.`,
+        );
+      });
       if (r.status === 401 && !renewed) {
         renewed = true;
         await r.text();
@@ -160,7 +162,7 @@ export const API_OFF = /has not been used|is disabled|SERVICE_DISABLED|accessNot
 export const whoOf = s => (s.method === "service-account" ? `The service account ${s.client_email}` : undefined);
 // A plain sentence for a failed call: what went wrong and how to fix it.
 export function explain(e, what, api, who = "The connected Google account") {
-  if (e instanceof Fail) return e.message.replace(/^google: /, "");
+  if (e instanceof Fail || e instanceof Refused) return e.message.replace(/^google: /, "");
   if (e.status === 403 && API_OFF.test(e.message))
     return `The ${api.name} is turned off in the Google Cloud project your sign-in uses, so ${what} couldn't be read. Turn it on at https://console.cloud.google.com/apis/library (search "${api.name}", click Enable), wait a minute, then try again.`;
   if (e.status === 403)

@@ -241,6 +241,7 @@ async function main(argv) {
           : `${s.name}: not set. It adds ${s.adds}. To get a key: node connect-keys.mjs guide ${id}`,
       );
     }
+    if (!Object.values(keys).some(Boolean)) return 1; // as google.mjs status does
   } else if (cmd === "fetch") {
     if (!str("site")) throw new Fail(USAGE);
     const site = siteOf(args.site);

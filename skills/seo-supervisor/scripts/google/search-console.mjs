@@ -1,9 +1,9 @@
 // @ts-check
 // Read-only Search Console access with the saved sign-in. It loads only session.mjs, none of the sign-in flow
 // (browser, local server, prompts).
-import { SC, SCOPES, Fail, fail, session, whoOf, explain } from "./session.mjs";
+import { SC, SCOPES, Fail, Refused, fail, session, whoOf, explain } from "./session.mjs";
 
-export { Fail };
+export { Fail, Refused };
 export const SC_API = { name: "Google Search Console API", where: "Search Console → Settings → Users and permissions" };
 // Logging problems Google lists, so a change they caused isn't read as real. type limits one to that search type.
 // Add new ones from the same page.
@@ -30,6 +30,9 @@ export const httpUrl = (u, what, eg) => {
   return x;
 };
 
+// Wraps a refused call as Refused with plain words; a Fail (no usable sign-in) passes through.
+export const refused = (e, words) => (e instanceof Fail ? e : new Refused(words));
+
 // The property: a domain property covering the host, else the longest URL-prefix property the site sits under.
 export async function pickProperty(g, origin, who) {
   let sites;
@@ -38,7 +41,7 @@ export async function pickProperty(g, origin, who) {
       x => x.permissionLevel !== "siteUnverifiedUser",
     );
   } catch (e) {
-    fail("google: " + explain(e, "the list of Search Console properties", SC_API, who));
+    throw refused(e, explain(e, "the list of Search Console properties", SC_API, who));
   }
   const h = origin.hostname,
     href = origin.origin + origin.pathname;
@@ -48,8 +51,8 @@ export async function pickProperty(g, origin, who) {
     ) || sites.filter(x => href.startsWith(x.siteUrl)).sort((a, b) => b.siteUrl.length - a.siteUrl.length)[0]
   )?.siteUrl;
   if (!prop)
-    fail(
-      `google: ${origin.origin} isn't in the Search Console properties this account can see (${sites.map(x => x.siteUrl).join(", ") || "it can't see any"}). Add and verify the site in Search Console, or connect with the Google account that has it.`,
+    throw new Refused(
+      `${origin.origin} isn't in the Search Console properties this account can see (${sites.map(x => x.siteUrl).join(", ") || "it can't see any"}). Add and verify the site in Search Console, or connect with the Google account that has it.`,
     );
   return prop;
 }

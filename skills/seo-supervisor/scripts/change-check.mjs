@@ -6,7 +6,7 @@ import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 import { parseArgs } from "./lib/args.mjs";
 import { runMain, warnProxy } from "./lib/cli.mjs";
-import { Fail, anomaliesIn, pagePath, searchConsole } from "./google/search-console.mjs";
+import { Fail, refused, anomaliesIn, pagePath, searchConsole } from "./google/search-console.mjs";
 import { changedPages } from "./seo-diff.mjs";
 
 // Local thresholds, not Google's. MIN_DAYS keeps every weekday in each window; MIN_TRAFFIC is the changed pages' clicks
@@ -90,7 +90,7 @@ export async function changeCheck({ site, date, pages = [], days = DAYS, home, e
           (await sc.query({ startDate: from, endDate: to, type: "web", dimensions: ["page"], rowLimit, startRow: n }))
             .rows || [];
       } catch (e) {
-        fail(sc.explain(e));
+        throw refused(e, sc.explain(e));
       }
       for (const r of rows) {
         const p = pagePath(r.keys?.[0], host);

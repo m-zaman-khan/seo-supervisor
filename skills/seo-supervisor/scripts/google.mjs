@@ -20,6 +20,7 @@ import {
   SCOPES,
   endpointsFrom,
   Fail,
+  Refused,
   fail,
   FORM,
   tokenFile,
@@ -36,6 +37,7 @@ import {
   SC_API,
   anomaliesIn,
   httpUrl,
+  refused,
   pickProperty,
   bare,
   pagePath,
@@ -118,7 +120,7 @@ export async function fetchGoogle({
       return await fn();
     } catch (e) {
       const msg = explain(e, what, api, who);
-      if (fatal && e.status !== 429) fail("google: " + msg);
+      if (fatal && e.status !== 429) throw refused(e, msg);
       notes.push(msg);
     }
   };
@@ -435,7 +437,7 @@ async function inspectPages({ g, E, who, notes, origin, prop }, crawl, inspect, 
         (await g.call(`${E.inspection}/urlInspection/index:inspect`, { inspectionUrl: url, siteUrl: prop }))
           .inspectionResult || {};
     } catch (e) {
-      if (e.status === 429 || e instanceof Fail) {
+      if (e.status === 429 || e instanceof Fail || e instanceof Refused) {
         notes.push(
           `${explain(e, "URL Inspection in Search Console", SC_API, who)} URL Inspection stopped after ${inspection.length + failed.length} of ${toInspect.length} pages; the ones it read are kept.`,
         );
@@ -1167,7 +1169,7 @@ async function submitSitemap(args) {
   try {
     await g.call(feed, null, "PUT");
   } catch (e) {
-    fail("google: " + submitError(e, prop, who));
+    throw refused(e, submitError(e, prop, who));
   }
   const lines = [`google: submitted ${map.href} to ${prop}.`];
   try {
