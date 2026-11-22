@@ -103,3 +103,22 @@ test("a site whose / redirects to /en/ still gets the home page's checks there (
   for (const id of ["org-missing", "website-missing", "favicon-missing"])
     assert.ok(!deep.findings.some(f => f.check === id), id);
 });
+
+test("--help and -h print the script's usage and exit 0, before anything runs", async () => {
+  const out = join(tmp(), "crawl.json");
+  for (const [script, args, usage] of [
+    ["seo-crawl.mjs", ["--help", "--out", out], /^Usage: node seo-crawl\.mjs --url/],
+    ["google-updates.mjs", ["-h"], /^usage: node google-updates\.mjs/],
+    ["connect-keys.mjs", ["--help"], /^usage: node connect-keys\.mjs set/],
+    ["connect-keys.mjs", ["set", "-h"], /^usage: node connect-keys\.mjs set/],
+  ]) {
+    const r = await node([join(SCRIPTS, script), ...args]);
+    assert.match(r.stdout, usage, `${script} ${args.join(" ")}`);
+    assert.doesNotMatch(r.stdout, /dry run/, "google-updates doesn't run");
+  }
+  assert.throws(() => readFileSync(out), /ENOENT/, "the crawl didn't run");
+  await assert.rejects(
+    node([join(SCRIPTS, "google-updates.mjs"), "--hepl"]),
+    e => e.code === 2 && /unknown option --hepl/.test(e.stderr),
+  );
+});

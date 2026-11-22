@@ -247,7 +247,7 @@ const USAGE =
   "Usage: node render-report.mjs <audit.json|seo-crawl.json|content-scan.json> [--out report.html] [--md report.md] [--no-md] [--pdf]";
 async function main(argv) {
   // The input file is the one word that isn't an option, wherever it sits (--out x.html audit.json works too).
-  const args = parseArgs(argv, { flags: ["out", "md"], booleans: ["no-md", "pdf"], positionals: 1 }),
+  const args = parseArgs(argv, { flags: ["out", "md"], booleans: ["no-md", "pdf"], positionals: 1, usage: USAGE }),
     inPath = args._[0];
   if (!inPath || args.out === true || args.md === true) throw new Fail(USAGE);
   const outPath = resolve(args.out || inPath.replace(/\.json$/i, "") + ".html");

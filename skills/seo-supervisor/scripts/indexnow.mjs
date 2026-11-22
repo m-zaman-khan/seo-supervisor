@@ -292,6 +292,7 @@ if (isMain(import.meta.url))
         flags: ["public-dir", "site", "key", "urls", "from-diff", "from-sitemap", "endpoint", "out"],
         booleans: ["yes"],
         positionals: 1,
+        usage: USAGE,
       }),
       cmd = args._[0];
     if (cmd !== "key") warnProxy(); // once, before any request: key only writes a local file

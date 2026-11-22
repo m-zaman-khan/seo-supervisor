@@ -6,7 +6,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
-import { parseArgs } from "./lib/args.mjs";
+import { isHelp, parseArgs } from "./lib/args.mjs";
 import { runMain, warnProxy } from "./lib/cli.mjs";
 import { privacyOf } from "./lib/settings-dir.mjs";
 import { changedPages } from "./seo-diff.mjs";
@@ -191,6 +191,7 @@ async function main(argv) {
     flags: FLAGS,
     booleans: ["yes"],
     positionals: Object.hasOwn(WORDS, cmd) ? WORDS[cmd] : 0,
+    usage: USAGE,
   });
   const str = k => (typeof args[k] === "string" ? args[k] : null);
 
@@ -411,7 +412,7 @@ async function main(argv) {
         `connect-keys: ${notSent.length} URL(s) ${error ? "weren't sent" : "didn't fit in the quota and weren't sent"}, starting with ${notSent[0]}. Submit them on another day.`,
       );
     return error ? 1 : 0;
-  } else throw new Fail(USAGE);
+  } else throw new Fail(USAGE, isHelp(cmd) ? 0 : 2);
   return 0;
 }
 

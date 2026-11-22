@@ -66,11 +66,14 @@ const fail = (msg, code = 2) => {
   throw new Fail("google-updates: " + msg, code);
 };
 
+const USAGE =
+  "usage: node google-updates.mjs [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--since YYYY-MM-DD] [--out seo-audit/google-updates.json] [--endpoint url] [--blog [url]] [--yes]";
 async function main(argv) {
   const args = parseArgs(argv, {
     flags: ["from", "to", "since", "out", "endpoint", "blog"],
     booleans: ["yes"],
     positionals: 0,
+    usage: USAGE,
   });
   // A date, or the date part of a timestamp; "2026-02-30" isn't one.
   const day = k => {

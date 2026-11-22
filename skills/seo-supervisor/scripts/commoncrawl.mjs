@@ -362,6 +362,7 @@ async function main(argv) {
     flags: ["site", "keys", "csv", "urls", "rank-max-mb", "out"],
     booleans: ["rank", "yes"],
     positionals: 0,
+    usage: USAGE,
   });
   const str = k => (typeof args[k] === "string" ? args[k] : null);
   if (!str("site")) throw new Fail(USAGE);

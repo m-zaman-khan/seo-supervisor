@@ -46,17 +46,18 @@ const real = p => {
 };
 const within = (p, base) => p === base || p.startsWith(base + sep);
 
+const USAGE =
+  "usage: node images.mjs --crawl seo-audit/seo-crawl.json --root <public folder> [--avif] [--max-width 1600] [--out-dir <dir>] [--follow-links] [--yes]";
+const LABEL_USAGE = "usage: node images.mjs --label-ai <file>[,<file>…] [--source trainedAlgorithmicMedia] [--yes]";
 async function main(argv) {
   const args = parseArgs(argv, {
     flags: ["crawl", "root", "max-width", "out-dir", "label-ai", "source"],
     booleans: ["avif", "follow-links", "yes"],
     positionals: 0,
+    usage: `${USAGE}\n${LABEL_USAGE}`,
   });
   if (args["label-ai"] !== undefined) return labelMain(args);
-  if (typeof args.crawl !== "string" || typeof args.root !== "string")
-    fail(
-      "usage: node images.mjs --crawl seo-audit/seo-crawl.json --root <public folder> [--avif] [--max-width 1600] [--out-dir <dir>] [--follow-links] [--yes]",
-    );
+  if (typeof args.crawl !== "string" || typeof args.root !== "string") fail(USAGE);
   const mw = args["max-width"] ?? "1600",
     maxWidth = Number(mw);
   if (!/^\d+$/.test(mw) || maxWidth < 320)
@@ -344,8 +345,7 @@ function labelMain(args) {
           .filter(Boolean)
       : [];
   const source = typeof args.source === "string" ? args.source : "trainedAlgorithmicMedia";
-  if (!list.length)
-    fail("usage: node images.mjs --label-ai <file>[,<file>…] [--source trainedAlgorithmicMedia] [--yes]");
+  if (!list.length) fail(LABEL_USAGE);
   if (!AI_SOURCES.includes(source)) fail(`--source must be one of ${AI_SOURCES.join(", ")} (got ${source}).`);
   const show = p => relative(process.cwd(), p).replace(/\\/g, "/") || ".";
   const todo = [],

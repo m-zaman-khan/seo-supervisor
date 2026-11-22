@@ -116,12 +116,15 @@ export async function lookupDomains({ domains, bootstrap = BOOTSTRAP }) {
 }
 
 // --rivals is ai-answers.mjs's name for the same list.
+const USAGE =
+  "usage: node rdap.mjs --site https://www.example.com [--competitors a.com,b.com] [--out seo-audit/rdap.json] [--yes]";
 async function main(argv) {
   const args = parseArgs(argv, {
     flags: ["site", "competitors", "out"],
     booleans: ["yes"],
     aliases: { rivals: "competitors" },
     positionals: 0,
+    usage: USAGE,
   });
   const str = k => (typeof args[k] === "string" ? args[k] : null);
   let site = null;
@@ -130,7 +133,7 @@ async function main(argv) {
   } catch {}
   if (!site)
     throw new Fail(
-      `rdap: --site must be the site's address, like https://www.example.com (got ${args.site ?? "nothing"}).\nusage: node rdap.mjs --site https://www.example.com [--competitors a.com,b.com] [--out seo-audit/rdap.json] [--yes]`,
+      `rdap: --site must be the site's address, like https://www.example.com (got ${args.site ?? "nothing"}).\n${USAGE}`,
     );
   const listed = (str("competitors") || "")
     .split(",")

@@ -237,7 +237,11 @@ const str = v => (typeof v === "string" ? v : null);
 const USAGE =
   "usage: node change-check.mjs --site https://www.example.com --date YYYY-MM-DD (--pages changed.txt | --from-diff seo-audit/seo-diff.json) [--days 28] [--out seo-audit/change-check.json]";
 async function main(argv) {
-  const args = parseArgs(argv, { flags: ["site", "date", "pages", "from-diff", "days", "out"], positionals: 0 });
+  const args = parseArgs(argv, {
+    flags: ["site", "date", "pages", "from-diff", "days", "out"],
+    positionals: 0,
+    usage: USAGE,
+  });
   if (!str(args.site) || !str(args.date) || !(str(args.pages) || str(args["from-diff"]))) throw new Fail(USAGE);
   const read = f => {
     try {

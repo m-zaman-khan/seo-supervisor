@@ -43,12 +43,12 @@ const FLAGS = [
   "out",
 ];
 
+const USAGE =
+  "Usage: node content-scan.mjs --in content.json | --csv file.csv | --md dir  [--id] [--url] [--title] [--desc] [--text] [--faq] [--publish] [--group] [--strip] [--required] [--banned] [--verify] [--threshold 0.5] [--date field] [--max-age 12] [--fail-on checks] [--out file]";
+
 function main(argv) {
-  const args = parseArgs(argv, { flags: FLAGS, positionals: 0 });
-  if (!["in", "csv", "md"].some(k => typeof args[k] === "string"))
-    throw new Fail(
-      "Usage: node content-scan.mjs --in content.json | --csv file.csv | --md dir  [--id] [--url] [--title] [--desc] [--text] [--faq] [--publish] [--group] [--strip] [--required] [--banned] [--verify] [--threshold 0.5] [--date field] [--max-age 12] [--fail-on checks] [--out file]",
-    );
+  const args = parseArgs(argv, { flags: FLAGS, positionals: 0, usage: USAGE });
+  if (!["in", "csv", "md"].some(k => typeof args[k] === "string")) throw new Fail(USAGE);
   const list = v =>
     typeof v === "string"
       ? v

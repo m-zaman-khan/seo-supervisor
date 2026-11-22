@@ -45,9 +45,10 @@ export async function runMain(main) {
       console.log(`${NAME()}: ${e.message}`);
       process.exitCode = 1;
     } else if (kind === "Fail" || e?.code === "SEO_SETTINGS") {
-      console.error(e.message);
+      (e.exitCode === 0 ? console.log : console.error)(e.message);
       process.exitCode = typeof e.exitCode === "number" ? e.exitCode : 2;
-    } else if (Object.hasOwn(FILE, e?.code) && e.path) {
+    } // exit 0: --help's usage
+    else if (Object.hasOwn(FILE, e?.code) && e.path) {
       console.error(`${NAME()}: can't open ${e.path} (${FILE[e.code]}).`);
       process.exitCode = 2;
     } else throw e;

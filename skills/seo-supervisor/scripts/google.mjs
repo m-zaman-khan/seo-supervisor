@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { isMain } from "./lib/is-main.mjs";
-import { parseArgs } from "./lib/args.mjs";
+import { isHelp, parseArgs } from "./lib/args.mjs";
 import { runMain, warnProxy } from "./lib/cli.mjs";
 import { loginDir, privacyOf } from "./lib/settings-dir.mjs";
 import { SHARED_CLIENT } from "./lib/google-client.mjs";
@@ -1327,11 +1327,15 @@ if (isMain(import.meta.url)) {
   warnProxy(); // stderr: connect --print-url keeps the link as stdout's first line
   const [cmd, ...rest] = process.argv.slice(2);
   // A word that isn't an option stops it, so a stray "yes" never counts as --yes.
-  await runMain(() =>
-    Object.hasOwn(COMMANDS, cmd)
-      ? COMMANDS[cmd](
-          parseArgs(rest, { flags: FLAGS, booleans: ["no-browser", "print-url", "paste", "yes"], positionals: 0 }),
-        )
-      : fail(USAGE),
-  );
+  await runMain(() => {
+    if (!Object.hasOwn(COMMANDS, cmd)) throw new Fail(USAGE, isHelp(cmd) ? 0 : 2);
+    return COMMANDS[cmd](
+      parseArgs(rest, {
+        flags: FLAGS,
+        booleans: ["no-browser", "print-url", "paste", "yes"],
+        positionals: 0,
+        usage: USAGE,
+      }),
+    );
+  });
 }

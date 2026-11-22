@@ -448,7 +448,11 @@ export function ideasMarkdown(r) {
 }
 
 function main(argv) {
-  const args = parseArgs(argv, { flags: ["google", "gsc", "crawl", "brand", "extra", "out"], positionals: 0 });
+  const args = parseArgs(argv, {
+    flags: ["google", "gsc", "crawl", "brand", "extra", "out"],
+    positionals: 0,
+    usage: USAGE,
+  });
   const str = k => (typeof args[k] === "string" ? args[k] : null);
   const file = str("google") || str("gsc");
   if (!file || (str("google") && str("gsc"))) throw new Fail(USAGE);

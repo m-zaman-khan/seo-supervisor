@@ -259,6 +259,7 @@ async function main(argv) {
     flags: ["place-id", "keywords", "center", "size", "spacing", "out", "find"],
     booleans: ["yes"],
     positionals: 0,
+    usage: USAGE,
   });
   const str = k => (typeof args[k] === "string" ? args[k].trim() : null),
     yes = args.yes === true;

@@ -151,6 +151,7 @@ function main(argv) {
     booleans: ["yes"],
     aliases: { competitors: "rivals" },
     positionals: 0,
+    usage: USAGE,
   });
   const str = k => (typeof args[k] === "string" ? args[k] : null);
   if (!str("site") || !str("questions")) throw new Fail(USAGE);

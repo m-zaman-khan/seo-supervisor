@@ -262,6 +262,7 @@ async function main(argv) {
     flags: ["crawl", "type", "near", "address", "radius", "out"],
     booleans: ["yes"],
     positionals: 0,
+    usage: USAGE,
   });
   const str = k => (typeof args[k] === "string" ? args[k].trim() : null);
   let crawl = null;

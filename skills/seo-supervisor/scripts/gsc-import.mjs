@@ -155,20 +155,20 @@ function aiReport(rows, metric, host) {
 }
 
 // --site is the other scripts' name for --site-origin.
+const USAGE =
+  "usage: node gsc-import.mjs --pages Pages.csv [--queries Queries.csv] [--page-queries dir/] [--site-origin https://x] [--out seo-audit/gsc.json]\n       node gsc-import.mjs --ai-google Pages.csv [--ai-bing ai-pages.csv] [--site-origin https://x] [--out seo-audit/ai-reports.json]";
 function main(argv) {
   const args = parseArgs(argv, {
     flags: ["pages", "queries", "page-queries", "site-origin", "out", "ai-google", "ai-bing"],
     aliases: { site: "site-origin" },
     positionals: 0,
+    usage: USAGE,
   });
   const AI = [
     ["ai-google", "google", "impressions", "Search Console Generative AI performance", "then Impressions"],
     ["ai-bing", "bing", "citations", "Bing Webmaster Tools AI Performance", "and a Citations column"],
   ].filter(([flag]) => typeof args[flag] === "string");
-  if (typeof args.pages !== "string" && !AI.length)
-    throw new Fail(
-      "usage: node gsc-import.mjs --pages Pages.csv [--queries Queries.csv] [--page-queries dir/] [--site-origin https://x] [--out seo-audit/gsc.json]\n       node gsc-import.mjs --ai-google Pages.csv [--ai-bing ai-pages.csv] [--site-origin https://x] [--out seo-audit/ai-reports.json]",
-    );
+  if (typeof args.pages !== "string" && !AI.length) throw new Fail(USAGE);
   const OUT = resolve(
     typeof args.out === "string"
       ? args.out

@@ -4,16 +4,30 @@
 // A repeated flag keeps its last value unless it's in lists. --help or -h anywhere prints usage and exits 0 (runMain).
 import { Fail } from "./cli.mjs";
 
+export const isHelp = a => a === "--help" || a === "-h";
+
 /**
  * @param {string[]} argv the words after the script's name
- * @param {{ flags?: string[], booleans?: string[], aliases?: Record<string, string>, lists?: string[], positionals?: number }} [o]
+ * @param {{ flags?: string[], booleans?: string[], aliases?: Record<string, string>, lists?: string[], positionals?: number, usage?: string }} [o]
  *   flags: the flags that take a value; when given, any flag not listed here, in booleans, lists or aliases stops the
  *   script, so a misspelt one isn't silently ignored. booleans: flags that never take a value (the next word stays a
  *   positional). aliases: another spelling → the flag's own name. lists: flags that may repeat, collected in an array.
  *   positionals: how many positional words the script takes (any number unless given); one more stops the script.
+ *   usage: what --help prints.
  * @returns {{ _: string[], [flag: string]: any }}
  */
-export function parseArgs(argv, { flags, booleans = [], aliases = {}, lists = [], positionals = Infinity } = {}) {
+export function parseArgs(
+  argv,
+  {
+    flags,
+    booleans = [],
+    aliases = {},
+    lists = [],
+    positionals = Infinity,
+    usage = "See the comment at the top of the script for its options.",
+  } = {},
+) {
+  if (argv.some(isHelp)) throw new Fail(usage, 0);
   const out = /** @type {{ _: string[], [flag: string]: any }} */ ({ _: [] });
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];

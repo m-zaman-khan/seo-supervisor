@@ -55,7 +55,11 @@ const lines = f => {
 };
 
 function main(argv) {
-  const args = parseArgs(argv, { flags: ["site", "domains", "urls", "existing", "reason", "out"], positionals: 0 });
+  const args = parseArgs(argv, {
+    flags: ["site", "domains", "urls", "existing", "reason", "out"],
+    positionals: 0,
+    usage: USAGE,
+  });
   const str = k => (typeof args[k] === "string" ? args[k] : null);
   if (!str("site") || !("domains" in args || "urls" in args)) throw new Fail(USAGE);
   let site;

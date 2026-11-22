@@ -461,7 +461,11 @@ function brokenLinked(linked, crawl, site) {
 }
 
 function main(argv) {
-  const args = parseArgs(argv, { flags: ["dir", "site", "brand", "keys", "previous", "crawl", "out"], positionals: 0 });
+  const args = parseArgs(argv, {
+    flags: ["dir", "site", "brand", "keys", "previous", "crawl", "out"],
+    positionals: 0,
+    usage: USAGE,
+  });
   const str = k => (typeof args[k] === "string" ? args[k] : null);
   if (!str("dir") || !str("site")) throw new Fail(USAGE);
   let site;

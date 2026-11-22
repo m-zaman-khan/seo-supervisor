@@ -170,8 +170,9 @@ export async function fileIssues(list, { yes = false, repo = null, run = gh, log
   return r;
 }
 
+const USAGE = "usage: node issues.mjs --audit seo-audit/seo-audit.json [--ids F-001,F-002] [--repo owner/name] [--yes]";
 async function main(argv) {
-  const args = parseArgs(argv, { flags: ["audit", "ids", "repo"], booleans: ["yes"], positionals: 0 }),
+  const args = parseArgs(argv, { flags: ["audit", "ids", "repo"], booleans: ["yes"], positionals: 0, usage: USAGE }),
     str = k => (typeof args[k] === "string" ? args[k] : null);
   const file = str("audit") || "seo-audit/seo-audit.json",
     ids =

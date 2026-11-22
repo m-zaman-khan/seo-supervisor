@@ -354,7 +354,12 @@ export const linkingPages = ({ keys, csv, urls }) => [
 ];
 
 async function main(argv) {
-  const args = parseArgs(argv, { flags: ["site", "keys", "csv", "urls", "out"], booleans: ["yes"], positionals: 0 });
+  const args = parseArgs(argv, {
+    flags: ["site", "keys", "csv", "urls", "out"],
+    booleans: ["yes"],
+    positionals: 0,
+    usage: USAGE,
+  });
   const str = k => (typeof args[k] === "string" ? args[k] : null);
   if (!str("site") || !(str("keys") || str("csv") || str("urls"))) throw new Fail(USAGE);
   let site;

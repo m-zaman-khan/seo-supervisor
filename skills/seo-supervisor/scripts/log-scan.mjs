@@ -15,22 +15,22 @@ import { findingOf, numbered } from "./lib/findings.mjs";
 import { BOTS as BOT_ROWS } from "./checks/agents.mjs";
 
 // --site is the other scripts' name for --site-origin.
+const USAGE =
+  "usage: node log-scan.mjs --log access.log [--log logs/] [--since YYYY-MM-DD] [--site-origin https://x] [--crawl seo-audit/seo-crawl.json] [--verify-ips [folder]] [--out seo-audit/log-scan.json]";
 async function main(argv) {
   const args = parseArgs(argv, {
     flags: ["since", "site-origin", "crawl", "verify-ips", "out"],
     lists: ["log"],
     aliases: { site: "site-origin" },
     positionals: 0,
+    usage: USAGE,
   });
   args.log ||= [];
   /** @type {(msg: string) => never} */
   const fail = msg => {
     throw new Fail(`log-scan: ${msg}`);
   };
-  if (!args.log.length || args.log.some(v => typeof v !== "string"))
-    throw new Fail(
-      "usage: node log-scan.mjs --log access.log [--log logs/] [--since YYYY-MM-DD] [--site-origin https://x] [--crawl seo-audit/seo-crawl.json] [--verify-ips [folder]] [--out seo-audit/log-scan.json]",
-    );
+  if (!args.log.length || args.log.some(v => typeof v !== "string")) throw new Fail(USAGE);
   const OUT = resolve(typeof args.out === "string" ? args.out : "seo-audit/log-scan.json");
   const SINCE = args.since === undefined ? null : Date.parse(`${args.since}T00:00:00Z`);
   if (args.since !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(args.since) || isNaN(SINCE)))

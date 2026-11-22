@@ -665,7 +665,7 @@ async function hook(mode) {
 async function main(argv) {
   const USAGE =
     "usage: node schema-check.mjs <file|folder|url ...> [--json out.json] [--quiet] [--allow-remote]\n       node schema-check.mjs --hook [copilot]   (reads an agent hook payload on stdin)";
-  const args = parseArgs(argv, { flags: ["json"], booleans: ["hook", "quiet", "allow-remote"] }),
+  const args = parseArgs(argv, { flags: ["json"], booleans: ["hook", "quiet", "allow-remote"], usage: USAGE }),
     inputs = args._;
   if (args.hook) return hook(inputs[0] === "copilot" ? "copilot" : true);
   if (!inputs.length || args.json === true) throw new Fail(USAGE);

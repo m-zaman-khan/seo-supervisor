@@ -442,6 +442,7 @@ if (isMain(import.meta.url)) {
       flags: ["site", "since"],
       booleans: ["json", "search-console"],
       positionals: 0,
+      usage: USAGE,
     });
     const site = typeof a.site === "string" ? a.site : null,
       since = a.since === undefined ? null : typeof a.since === "string" ? a.since : "",

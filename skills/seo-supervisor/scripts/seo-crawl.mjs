@@ -106,7 +106,7 @@ const BOOLEANS = [
 /** @type {{ args: ReturnType<typeof parseArgs>, browser: string | null } | undefined} */
 let options;
 await runMain(() => {
-  const a = parseArgs(process.argv.slice(2), { flags: FLAGS, booleans: BOOLEANS, positionals: 0 });
+  const a = parseArgs(process.argv.slice(2), { flags: FLAGS, booleans: BOOLEANS, positionals: 0, usage: USAGE });
   if (typeof a.url !== "string") throw new Fail(USAGE);
   const no = (k, why) => {
     throw new Fail(`seo-crawl: --${k} ${why}`);
