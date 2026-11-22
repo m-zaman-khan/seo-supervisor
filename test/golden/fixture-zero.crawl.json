@@ -165,26 +165,6 @@
       "id": "C-004"
     },
     {
-      "check": "sitemap-missing",
-      "rule": "MAP-01",
-      "severity": "high",
-      "category": "Sitemaps & robots",
-      "title": "No XML sitemap found",
-      "what": "Found on `http://127.0.0.1:<port>/sitemap.xml` (`http://127.0.0.1:<port>/sitemap.xml` → 404).",
-      "why": "Without a sitemap, new and deep pages are found slowly.",
-      "fix": "Generate `/sitemap.xml` from the live content data and reference it in robots.txt.",
-      "count": 1,
-      "evidence": [
-        {
-          "url": "http://127.0.0.1:<port>/sitemap.xml",
-          "detail": "http://127.0.0.1:<port>/sitemap.xml → 404"
-        }
-      ],
-      "source": "crawler",
-      "status": "open",
-      "id": "C-005"
-    },
-    {
       "check": "desc-dup",
       "rule": "META-02",
       "severity": "medium",
@@ -214,7 +194,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-006"
+      "id": "C-005"
     },
     {
       "check": "breadcrumb-missing",
@@ -239,7 +219,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-007"
+      "id": "C-006"
     },
     {
       "check": "org-missing",
@@ -258,7 +238,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-008"
+      "id": "C-007"
     },
     {
       "check": "favicon-missing",
@@ -278,7 +258,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-009"
+      "id": "C-008"
     },
     {
       "check": "sec-headers",
@@ -314,7 +294,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-010"
+      "id": "C-009"
     },
     {
       "check": "desc-length",
@@ -346,7 +326,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-011"
+      "id": "C-010"
     },
     {
       "check": "og-missing",
@@ -378,7 +358,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-012"
+      "id": "C-011"
     },
     {
       "check": "thin-page",
@@ -410,7 +390,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-013"
+      "id": "C-012"
     },
     {
       "check": "no-large-preview",
@@ -438,7 +418,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-014"
+      "id": "C-013"
     },
     {
       "check": "jsonld-none",
@@ -466,7 +446,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-015"
+      "id": "C-014"
     },
     {
       "check": "sitemap-not-in-robots",
@@ -485,7 +465,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-016"
+      "id": "C-015"
     },
     {
       "check": "llms-txt-missing",
@@ -505,7 +485,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-017"
+      "id": "C-016"
     },
     {
       "check": "security-txt",
@@ -525,7 +505,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-018"
+      "id": "C-017"
     },
     {
       "check": "website-missing",
@@ -544,7 +524,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-019"
+      "id": "C-018"
     },
     {
       "check": "no-speculation-rules",
@@ -560,6 +540,26 @@
         {
           "url": "http://127.0.0.1:<port>/",
           "detail": "none of 4 pages"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-019"
+    },
+    {
+      "check": "sitemap-missing-small",
+      "rule": "MAP-01",
+      "severity": "low",
+      "category": "Sitemaps & robots",
+      "title": "No XML sitemap found (a small, well-linked site, so it matters less)",
+      "what": "Found on `http://127.0.0.1:<port>/sitemap.xml` (`http://127.0.0.1:<port>/sitemap.xml` → 404).",
+      "why": "Google says a site of about 500 pages or fewer, linked well enough that every important page can be found from the home page, and without many videos or news pages, might not need a sitemap. This crawl found every page through links from the home page, none more than three clicks deep. A sitemap still tells search engines when pages change, and lists a new page before any link to it exists.",
+      "fix": "Generate `/sitemap.xml` from the live content data and reference it in robots.txt, or leave it until the site grows.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/sitemap.xml",
+          "detail": "http://127.0.0.1:<port>/sitemap.xml → 404"
         }
       ],
       "source": "crawler",

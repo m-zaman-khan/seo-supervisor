@@ -165,6 +165,26 @@
       "id": "C-004"
     },
     {
+      "check": "sitemap-noncanonical",
+      "rule": "MAP-02",
+      "severity": "high",
+      "category": "Sitemaps & robots",
+      "title": "1 sitemap URL(s) canonicalize elsewhere",
+      "what": "Found on `https://example-security.com/tools/dmarc-checker/` (canonical → `https://example-security.com/tools/dmarc-checker/?utm_source=x`).",
+      "why": "Only canonical URLs belong in the sitemap.",
+      "fix": "List the canonical URL, or fix the page's canonical.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "https://example-security.com/tools/dmarc-checker/",
+          "detail": "canonical → https://example-security.com/tools/dmarc-checker/?utm_source=x"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-005"
+    },
+    {
       "check": "noindex-in-sitemap",
       "rule": "CRAWL-02",
       "severity": "high",
@@ -181,7 +201,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-005"
+      "id": "C-006"
     },
     {
       "check": "sitemap-bad-status",
@@ -201,7 +221,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-006"
+      "id": "C-007"
     },
     {
       "check": "sitemap-url-disallowed",
@@ -220,7 +240,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-007"
+      "id": "C-008"
     },
     {
       "check": "breadcrumb-dead-level",
@@ -240,7 +260,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-008"
+      "id": "C-009"
     },
     {
       "check": "canonical-missing",
@@ -259,7 +279,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-009"
+      "id": "C-010"
     },
     {
       "check": "jsonld-invalid",
@@ -279,7 +299,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-010"
+      "id": "C-011"
     },
     {
       "check": "nosnippet",
@@ -298,7 +318,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-011"
+      "id": "C-012"
     },
     {
       "check": "placeholder-text",
@@ -318,7 +338,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-012"
+      "id": "C-013"
     },
     {
       "check": "faq-not-visible",
@@ -338,7 +358,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-013"
+      "id": "C-014"
     },
     {
       "check": "canonical-query",
@@ -358,7 +378,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-014"
+      "id": "C-015"
     },
     {
       "check": "product-price-mismatch",
@@ -378,7 +398,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-015"
+      "id": "C-016"
     },
     {
       "check": "broken-internal-link",
@@ -398,7 +418,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-016"
+      "id": "C-017"
     },
     {
       "check": "ai-bots-blocked",
@@ -418,7 +438,7 @@
       ],
       "source": "crawler",
       "status": "needs-decision",
-      "id": "C-017"
+      "id": "C-018"
     },
     {
       "check": "rating-review",
@@ -437,7 +457,7 @@
       ],
       "source": "crawler",
       "status": "needs-decision",
-      "id": "C-018"
+      "id": "C-019"
     },
     {
       "check": "doc-basics",
@@ -485,7 +505,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-019"
+      "id": "C-020"
     },
     {
       "check": "breadcrumb-missing",
@@ -525,7 +545,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-020"
+      "id": "C-021"
     },
     {
       "check": "missing-from-sitemap",
@@ -562,7 +582,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-021"
+      "id": "C-022"
     },
     {
       "check": "desc-dup",
@@ -606,7 +626,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-022"
+      "id": "C-023"
     },
     {
       "check": "og-image-broken",
@@ -634,7 +654,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-023"
+      "id": "C-024"
     },
     {
       "check": "orphan",
@@ -658,7 +678,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-024"
+      "id": "C-025"
     },
     {
       "check": "desc-missing",
@@ -677,7 +697,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-025"
+      "id": "C-026"
     },
     {
       "check": "meta-refresh",
@@ -697,7 +717,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-026"
+      "id": "C-027"
     },
     {
       "check": "product-aggregate-offer",
@@ -717,7 +737,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-027"
+      "id": "C-028"
     },
     {
       "check": "hreflang-invalid-code",
@@ -737,7 +757,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-028"
+      "id": "C-029"
     },
     {
       "check": "favicon-missing",
@@ -757,7 +777,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-029"
+      "id": "C-030"
     },
     {
       "check": "untranslated-copy",
@@ -777,7 +797,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-030"
+      "id": "C-031"
     },
     {
       "check": "schema-image-broken",
@@ -797,7 +817,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-031"
+      "id": "C-032"
     },
     {
       "check": "no-large-preview",
@@ -852,7 +872,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-032"
+      "id": "C-033"
     },
     {
       "check": "twitter-card-missing",
@@ -895,7 +915,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-033"
+      "id": "C-034"
     },
     {
       "check": "desc-mismatch",
@@ -947,7 +967,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-034"
+      "id": "C-035"
     },
     {
       "check": "og-image-no-size",
@@ -987,7 +1007,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-035"
+      "id": "C-036"
     },
     {
       "check": "desc-length",
@@ -1031,7 +1051,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-036"
+      "id": "C-037"
     },
     {
       "check": "jsonld-none",
@@ -1068,7 +1088,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-037"
+      "id": "C-038"
     },
     {
       "check": "thin-page",
@@ -1108,7 +1128,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-038"
+      "id": "C-039"
     },
     {
       "check": "sec-headers",
@@ -1144,7 +1164,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-039"
+      "id": "C-040"
     },
     {
       "check": "og-missing",
@@ -1176,7 +1196,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-040"
+      "id": "C-041"
     },
     {
       "check": "title-long",
@@ -1200,7 +1220,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-041"
+      "id": "C-042"
     },
     {
       "check": "content-signal-invalid",
@@ -1220,7 +1240,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-042"
+      "id": "C-043"
     },
     {
       "check": "sitemap-lastmod-future",
@@ -1240,7 +1260,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-043"
+      "id": "C-044"
     },
     {
       "check": "sitemap-lastmod-invalid",
@@ -1260,7 +1280,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-044"
+      "id": "C-045"
     },
     {
       "check": "llms-structure",
@@ -1280,7 +1300,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-045"
+      "id": "C-046"
     },
     {
       "check": "security-txt",
@@ -1300,7 +1320,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-046"
+      "id": "C-047"
     },
     {
       "check": "href-hash",
@@ -1320,7 +1340,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-047"
+      "id": "C-048"
     },
     {
       "check": "generic-anchor",
@@ -1340,7 +1360,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-048"
+      "id": "C-049"
     },
     {
       "check": "title-short",
@@ -1360,7 +1380,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-049"
+      "id": "C-050"
     },
     {
       "check": "h1-multiple",
@@ -1380,7 +1400,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-050"
+      "id": "C-051"
     },
     {
       "check": "heading-skip",
@@ -1400,7 +1420,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-051"
+      "id": "C-052"
     },
     {
       "check": "img-alt",
@@ -1420,7 +1440,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-052"
+      "id": "C-053"
     },
     {
       "check": "img-dimensions",
@@ -1440,7 +1460,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-053"
+      "id": "C-054"
     },
     {
       "check": "lazy-lcp",
@@ -1460,7 +1480,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-054"
+      "id": "C-055"
     },
     {
       "check": "og-url-mismatch",
@@ -1480,7 +1500,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-055"
+      "id": "C-056"
     },
     {
       "check": "deprecated-schema",
@@ -1500,7 +1520,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-056"
+      "id": "C-057"
     },
     {
       "check": "product-no-shipping",
@@ -1520,7 +1540,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-057"
+      "id": "C-058"
     },
     {
       "check": "product-no-returns",
@@ -1540,7 +1560,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-058"
+      "id": "C-059"
     },
     {
       "check": "hreflang-no-xdefault",
@@ -1559,7 +1579,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-059"
+      "id": "C-060"
     },
     {
       "check": "no-speculation-rules",
@@ -1579,7 +1599,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-060"
+      "id": "C-061"
     },
     {
       "check": "link-to-redirect",
@@ -1599,7 +1619,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-061"
+      "id": "C-062"
     },
     {
       "check": "img-no-srcset",
@@ -1619,7 +1639,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-062"
+      "id": "C-063"
     },
     {
       "check": "hreflang-missing-version",
@@ -1639,7 +1659,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-063"
+      "id": "C-064"
     },
     {
       "check": "head-tags-late",
@@ -1659,7 +1679,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-064"
+      "id": "C-065"
     }
   ],
   "passed": [
@@ -1686,11 +1706,6 @@
     {
       "rule": "MAP-01",
       "title": "An XML sitemap exists and robots.txt references it",
-      "category": "Sitemaps & robots"
-    },
-    {
-      "rule": "MAP-02",
-      "title": "The sitemap lists only canonical, indexable URLs on the production host",
       "category": "Sitemaps & robots"
     },
     {
