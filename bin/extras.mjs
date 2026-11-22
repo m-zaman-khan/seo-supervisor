@@ -146,7 +146,7 @@ function entries(format, guard, project) {
       timeoutSec: 10,
     });
     return {
-      preToolUse: [{ ...cp("preToolUse"), matcher: "bash|powershell|edit|create" }],
+      preToolUse: [{ ...cp("preToolUse"), matcher: "bash|powershell|edit|create|str_replace_editor|apply_patch" }],
       userPromptTransformed: [cp("userPromptTransformed")],
     };
   }

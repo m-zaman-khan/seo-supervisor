@@ -1,7 +1,7 @@
 // @ts-check
 // GitHub Copilot CLI and cloud agent hooks.
 // https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference
-import { bashActions, editActions, json, obj, say, SILENT } from "./edits.mjs";
+import { bashActions, editActions, json, obj, patchActions, say, SILENT } from "./edits.mjs";
 
 export function toActions(input, event, cwd) {
   const here = typeof input?.cwd === "string" ? input.cwd : cwd;
@@ -10,7 +10,13 @@ export function toActions(input, event, cwd) {
   // toolArgs may be a JSON string and is typed unknown, so a patch is whichever value holds "*** Begin Patch".
   const args = obj(input?.toolArgs);
   if (input?.toolName === "bash" || input?.toolName === "powershell") return bashActions(args);
-  if (input?.toolName === "edit" || input?.toolName === "create") return editActions(args, here);
+  if (input?.toolName === "apply_patch") {
+    const p = [...Object.values(args), input.toolArgs].find(
+      v => typeof v === "string" && v.includes("*** Begin Patch"),
+    );
+    return p ? patchActions(p, here) : [];
+  }
+  if (["edit", "create", "str_replace_editor"].includes(input?.toolName)) return editActions(args, here);
   return [];
 }
 

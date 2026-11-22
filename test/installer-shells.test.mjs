@@ -8,6 +8,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ROOT, node, tmp } from "./helpers.mjs";
 import * as devin from "../skills/seo-supervisor/scripts/guard/adapters/devin.mjs";
+import * as copilot from "../skills/seo-supervisor/scripts/guard/adapters/copilot.mjs";
+import { run } from "../skills/seo-supervisor/scripts/guard.mjs";
 
 const BIN = join(ROOT, "bin", "seo-supervisor.mjs");
 const env = home => {
@@ -101,6 +103,64 @@ function runsEverywhere(list, cwd, { root = cwd, extraEnv = {} } = {}) {
     }
   return runs;
 }
+
+test("Copilot: edits through apply_patch and str_replace_editor are checked, and the installed matcher names both", async () => {
+  // Copilot's edit tools are edit, str_replace_editor and apply_patch, and toolArgs is typed unknown: a patch may come
+  // as the whole toolArgs or in a field of it.
+  // https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference
+  const dir = tmp();
+  writeFileSync(join(dir, "robots.txt"), "User-agent: *\nAllow: /\n");
+  const patch =
+    "*** Begin Patch\n*** Update File: robots.txt\n@@\n User-agent: *\n-Allow: /\n+Disallow: /\n*** End Patch\n";
+  const want = [
+    {
+      kind: "edit",
+      file: join(dir, "robots.txt"),
+      before: "User-agent: *\nAllow: /\n",
+      after: "User-agent: *\nDisallow: /\n",
+    },
+  ];
+  assert.deepEqual(
+    copilot.toActions({ cwd: dir, toolName: "apply_patch", toolArgs: patch }, "preToolUse", dir),
+    want,
+    "the patch as toolArgs",
+  );
+  assert.deepEqual(
+    copilot.toActions(
+      { cwd: dir, toolName: "apply_patch", toolArgs: JSON.stringify({ input: patch }) },
+      "preToolUse",
+      dir,
+    ),
+    want,
+    "the patch in a field",
+  );
+  assert.deepEqual(
+    copilot.toActions(
+      {
+        cwd: dir,
+        toolName: "str_replace_editor",
+        toolArgs: { command: "str_replace", path: "robots.txt", old_str: "Allow: /", new_str: "Disallow: /" },
+      },
+      "preToolUse",
+      dir,
+    ),
+    want,
+  );
+  const r = await run(
+    "copilot",
+    { cwd: dir, toolName: "apply_patch", toolArgs: patch },
+    { env: {}, event: "preToolUse", cwd: dir },
+  );
+  assert.equal(JSON.parse(r.stdout).permissionDecision, "ask", "the real rules ask before Disallow: /");
+
+  const home = tmp(),
+    cwd = tmp();
+  await node([BIN, "--agent", "github-copilot", "--project"], { env: env(home), cwd });
+  const m = json(join(cwd, ".github", "hooks", "seo-supervisor-guard.json")).hooks.preToolUse[0].matcher;
+  for (const t of ["bash", "powershell", "edit", "create", "apply_patch", "str_replace_editor"])
+    assert.match(t, new RegExp(`^(?:${m})$`), t);
+  assert.doesNotMatch("view", new RegExp(`^(?:${m})$`));
+});
 
 test("a home folder with letters outside ASCII gets the whole skill (Node 24's cpSync writes to a garbled folder on Windows)", async () => {
   const home = join(tmp(), "José D’Souza"),
