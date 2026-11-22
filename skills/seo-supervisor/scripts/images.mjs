@@ -15,6 +15,8 @@ import {
 } from "node:fs";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain } from "./lib/cli.mjs";
 import { toolsDir } from "./lib/settings-dir.mjs";
 import { AI_SOURCES, imageMeta } from "./lib/image-size.mjs";
 
@@ -27,12 +29,10 @@ export function estSaving({ bytes, width, format }, maxWidth = 1600) {
   return Math.round(bytes * (1 - scale * (1 - (CUT[format] || 0))));
 }
 
-class Fail extends Error {
-  constructor(msg, code = 2) {
-    super("images: " + msg);
-    this.code = code;
-  }
-}
+/** @type {(msg: string, code?: number) => never} */
+const fail = (msg, code = 2) => {
+  throw new Fail("images: " + msg, code);
+};
 const kb = n => `${Math.round(n / 1024).toLocaleString("en-US")} KB`;
 const swapExt = (p, ext) => p.slice(0, p.length - extname(p).length) + "." + ext;
 const ADD_ON = "npx seo-supervisor --with-image-tools";
@@ -46,32 +46,32 @@ const real = p => {
 };
 const within = (p, base) => p === base || p.startsWith(base + sep);
 
-async function main() {
-  const args = {};
-  for (let i = 2; i < process.argv.length; i++) {
-    const k = process.argv[i].replace(/^--/, "");
-    args[k] = process.argv[i + 1] && !process.argv[i + 1].startsWith("--") ? process.argv[++i] : true;
-  }
+async function main(argv) {
+  const args = parseArgs(argv, {
+    flags: ["crawl", "root", "max-width", "out-dir", "label-ai", "source"],
+    booleans: ["avif", "follow-links", "yes"],
+    positionals: 0,
+  });
   if (args["label-ai"] !== undefined) return labelMain(args);
   if (typeof args.crawl !== "string" || typeof args.root !== "string")
-    throw new Fail(
+    fail(
       "usage: node images.mjs --crawl seo-audit/seo-crawl.json --root <public folder> [--avif] [--max-width 1600] [--out-dir <dir>] [--follow-links] [--yes]",
     );
   const mw = args["max-width"] ?? "1600",
     maxWidth = Number(mw);
   if (!/^\d+$/.test(mw) || maxWidth < 320)
-    throw new Fail(`--max-width needs a width in pixels, 320 or more (got ${mw === true ? "no value" : mw}).`);
+    fail(`--max-width needs a width in pixels, 320 or more (got ${mw === true ? "no value" : mw}).`);
   const root = resolve(args.root),
     outDir = typeof args["out-dir"] === "string" ? resolve(args["out-dir"]) : null;
   let crawl;
   try {
     crawl = JSON.parse(readFileSync(args.crawl, "utf8"));
   } catch (e) {
-    throw new Fail(`couldn't read ${args.crawl} (${e.code || e.message}).`);
+    fail(`couldn't read ${args.crawl} (${e.code || e.message}).`);
   }
   if (!Array.isArray(crawl?.images))
-    throw new Fail(`${args.crawl} has no image list: it was made by an older crawler. Re-run the audit, then this.`, 1);
-  if (!existsSync(root)) throw new Fail(`--root ${args.root} doesn't exist.`);
+    fail(`${args.crawl} has no image list: it was made by an older crawler. Re-run the audit, then this.`, 1);
+  if (!existsSync(root)) fail(`--root ${args.root} doesn't exist.`);
 
   const show = p => relative(process.cwd(), p).replace(/\\/g, "/") || ".";
   const formats = ["webp", ...(args.avif === true ? ["avif"] : [])];
@@ -191,7 +191,7 @@ async function main() {
     try {
       sharp = createRequire(import.meta.url)(SHARP);
     } catch (e) {
-      throw new Fail(`sharp is in ${SHARP} but didn't load (${e.message}). Reinstall it with ${ADD_ON}.`, 1);
+      fail(`sharp is in ${SHARP} but didn't load (${e.message}). Reinstall it with ${ADD_ON}.`, 1);
     }
     console.log("");
     for (const t of todo)
@@ -345,8 +345,8 @@ function labelMain(args) {
       : [];
   const source = typeof args.source === "string" ? args.source : "trainedAlgorithmicMedia";
   if (!list.length)
-    throw new Fail("usage: node images.mjs --label-ai <file>[,<file>…] [--source trainedAlgorithmicMedia] [--yes]");
-  if (!AI_SOURCES.includes(source)) throw new Fail(`--source must be one of ${AI_SOURCES.join(", ")} (got ${source}).`);
+    fail("usage: node images.mjs --label-ai <file>[,<file>…] [--source trainedAlgorithmicMedia] [--yes]");
+  if (!AI_SOURCES.includes(source)) fail(`--source must be one of ${AI_SOURCES.join(", ")} (got ${source}).`);
   const show = p => relative(process.cwd(), p).replace(/\\/g, "/") || ".";
   const todo = [],
     skipped = [],
@@ -405,10 +405,4 @@ function labelMain(args) {
   return failed || skipped.length ? 1 : 0;
 }
 
-// Sets the exit code instead of calling process.exit(), like the other scripts.
-if (isMain(import.meta.url))
-  process.exitCode = await main().catch(e => {
-    if (!(e instanceof Fail) && e.code !== "SEO_SETTINGS") throw e;
-    console.error(e.message);
-    return e instanceof Fail ? e.code : 2;
-  });
+if (isMain(import.meta.url)) await runMain(() => main(process.argv.slice(2)));
