@@ -5,7 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 import { proxyNote } from "./lib/proxy.mjs";
-import { Fail, anomaliesIn, pagePath, searchConsole } from "./google.mjs";
+import { Fail, anomaliesIn, pagePath, searchConsole } from "./google/search-console.mjs";
 import { changedPages } from "./seo-diff.mjs";
 
 // Local thresholds, not Google's. MIN_DAYS keeps every weekday in each window; MIN_TRAFFIC is the changed pages' clicks

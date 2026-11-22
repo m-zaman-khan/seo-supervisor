@@ -8,7 +8,7 @@ import { proxyNote } from "./lib/proxy.mjs";
 import { guarded, isPublic } from "./checks/outbound.mjs";
 import { tlsCert } from "./checks/tls.mjs";
 import { VERSION } from "./update-check.mjs";
-import { anomaliesIn, searchConsole } from "./google.mjs";
+import { anomaliesIn, searchConsole } from "./google/search-console.mjs";
 
 const UA = "seo-supervisor-deploy-check/" + VERSION,
   TIMEOUT = 10000,
