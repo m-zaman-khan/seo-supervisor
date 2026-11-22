@@ -19,10 +19,10 @@ const recheckHtml = f => {
 };
 // Plain text with the command in backticks: inl renders it on the page, mdSafe in the Markdown. Fix mode asks first
 // on anything isOwnersCall() marks.
-export const nextStep = f =>
+export const nextStep = (f, decisions = []) =>
   !isOpen(f) || f.status === "wont-fix" || !f.id
     ? ""
-    : `\`/seo-fix ${f.id}\` ${isOwnersCall(f) ? "asks you first: the agent won't change this without your go-ahead." : "fixes it and checks the fix."}`;
+    : `\`/seo-fix ${f.id}\` ${isOwnersCall(f, decisions) ? "asks you first: the agent won't change this without your go-ahead." : "fixes it and checks the fix."}`;
 
 export function findingTabs(m, { trafficHtml, clarityHtml }) {
   const { findings, decisions, fixed, passed, notChecked, notes, mdFile, notShown = [] } = m;
@@ -64,7 +64,7 @@ export function findingTabs(m, { trafficHtml, clarityHtml }) {
           ${isFixed && f.fixed ? `<div class="donebox"><h4>What was done</h4><p>${inl(f.fixed.summary || "")}</p>${(f.fixed.files || []).length ? `<p class="files">${f.fixed.files.map(x => `<code>${esc(x)}</code>`).join(" ")}</p>` : ""}${f.fixed.verified ? `<p class="quiet">${ICON.check} ${inl(f.fixed.verified)}</p>` : ""}</div>` : ""}
         </div>
       </div>
-      ${trafficHtml(f)}${clarityHtml(f)}${evidenceHtml(f)}${nextStep(f) ? `<div class="ev next"><h4>Next step</h4><p>${inl(nextStep(f))}</p></div>` : ""}${recheckHtml(f)}
+      ${trafficHtml(f)}${clarityHtml(f)}${evidenceHtml(f)}${nextStep(f, decisions) ? `<div class="ev next"><h4>Next step</h4><p>${inl(nextStep(f, decisions))}</p></div>` : ""}${recheckHtml(f)}
     </div>
   </article>`;
   }

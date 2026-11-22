@@ -7,9 +7,13 @@ import { needsYou } from "./model.mjs";
 import { byPath } from "./traffic.mjs";
 
 // Fix first and Needs you, for the page and the Markdown. Needs you takes what /seo-fix won't change unasked: fixBy:
-// "owner" findings, open decisions and the audit's listed decisions. Fix first takes the rest except won't-fixes, so
-// nothing is in both. Both sort by severity, then by Search Console clicks on the finding's pages.
-export const isOwnersCall = f => needsYou(f) || f.status === "needs-decision" || f.severity === "needs-decision";
+// "owner" findings, open decisions and findings with a decision. Fix first takes the rest, so nothing is in both. Both
+// sort by severity, then by Search Console clicks on the finding's pages.
+export const isOwnersCall = (f, decisions = []) =>
+  needsYou(f) ||
+  f.status === "needs-decision" ||
+  f.severity === "needs-decision" ||
+  decisions.some(d => d.id && d.id === f.id);
 export function actions({ raw, open, decisions }) {
   const clicks = f =>
     Math.max(
@@ -18,9 +22,10 @@ export function actions({ raw, open, decisions }) {
     );
   const order = list => list.sort((a, b) => SEV.indexOf(a.sev) - SEV.indexOf(b.sev) || b.clicks - a.clicks);
   const item = f => ({ id: f.id, title: f.title, sev: f.severity, f, clicks: clicks(f) });
-  const code = order(open.filter(f => !isOwnersCall(f) && f.status !== "wont-fix").map(item)),
+  const mine = f => isOwnersCall(f, decisions);
+  const code = order(open.filter(f => !mine(f) && f.status !== "wont-fix").map(item)),
     serious = code.filter(x => x.sev === "blocker" || x.sev === "high");
-  const own = open.filter(isOwnersCall),
+  const own = open.filter(mine),
     asked = decisions.filter(d => !own.some(f => f.id && f.id === d.id));
   const yours = order([
     ...own.map(item),

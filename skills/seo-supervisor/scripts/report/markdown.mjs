@@ -172,7 +172,7 @@ export function markdown(
       if (f.count > f.evidence.length) L.push("", `${f.count - f.evidence.length} more cases not listed.`);
       L.push("");
     }
-    if (nextStep(f)) L.push(`**Next step.** ${mdSafe(nextStep(f))}`, "");
+    if (nextStep(f, decisions)) L.push(`**Next step.** ${mdSafe(nextStep(f, decisions))}`, "");
     const rc = recheckOf(f);
     if (rc) L.push(`**Check the fix yourself.** ${noteCode(rc.command)} ${rc.hint}`, "");
   }
