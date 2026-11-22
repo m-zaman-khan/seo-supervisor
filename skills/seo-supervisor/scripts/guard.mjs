@@ -58,6 +58,17 @@ if (isMain(import.meta.url)) {
         .split("\n")[0]
         .slice(0, 200)})\n`,
     );
+    // Answer in the host's own format: some hooks (Cursor's) block on empty or invalid output.
+    try {
+      const agent = opt("--agent") || "claude-code";
+      if (/^[a-z][a-z0-9-]*$/.test(agent)) {
+        const out = (await import(`./guard/adapters/${agent}.mjs`)).respond(
+          { decision: "allow" },
+          opt("--event") || "",
+        ).stdout;
+        if (out) process.stdout.write(out);
+      }
+    } catch {}
     process.exitCode = 0;
   }
 }
