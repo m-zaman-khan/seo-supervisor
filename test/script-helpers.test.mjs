@@ -5,6 +5,7 @@ import { parseArgs } from "../skills/seo-supervisor/scripts/lib/args.mjs";
 import { bodyUpTo, retryAfter } from "../skills/seo-supervisor/scripts/lib/http.mjs";
 import * as net from "../skills/seo-supervisor/scripts/lib/net.mjs";
 import { privacyOf, writePrivate } from "../skills/seo-supervisor/scripts/lib/settings-dir.mjs";
+import { hideSecrets, redact } from "../skills/seo-supervisor/scripts/lib/redact.mjs";
 
 // runMain sets process.exitCode; each test puts it back, so the test run's own exit code stays the runner's.
 async function exitOf(t, main) {
@@ -241,6 +242,51 @@ test("writePrivate: an atomic write only this user can read, in a folder whose p
   } else assert.equal(r.locked, (statSync(file).mode & 0o077) === 0);
   assert.match(privacyOf({ locked: true }), /only your user account can read it/);
   assert.doesNotMatch(privacyOf({ locked: false }), /only your user account/);
+});
+
+test("redact hides URL logins, token fragments, more key formats and Slack webhooks; and home folders whose name has a space", () => {
+  const cases = [
+    ["https://ann:s3cret@example.com/x", "https://[hidden]@example.com/x"],
+    ["ftp://deploy@files.example.com/", "ftp://[hidden]@files.example.com/"],
+    [
+      "https://app.example.com/cb#access_token=ya.b-c&state=1",
+      "https://app.example.com/cb#access_token=[hidden]&state=1",
+    ],
+    ["key sk-proj-abcdefghijklmnopqrstuvwxyz0123 used", "key [hidden] used"],
+    ["key sk-abcdefghijklmnopqrstuvwxyz01 used", "key [hidden] used"],
+    ["pplx-1234567890abcdef", "[hidden]"],
+    ["phx_abcdefghijklmnopqrstuvwxyz", "[hidden]"],
+    ["sk_live_51Habcdefghij and rk_live_51Habcdefghij", "[hidden] and [hidden]"],
+    ["ghp_abcdefghijklmnopqrstuvwxyz0123456789 github_pat_11ABC_def", "[hidden] [hidden]"],
+    ["xoxb-111-222-abcDEF and xoxe.xoxp-1-abc and xapp-1-A0-123-abc", "[hidden] and xoxe.[hidden] and [hidden]"],
+    ["AKIAIOSFODNN7EXAMPLE / ASIAIOSFODNN7EXAMPLE", "[hidden] / [hidden]"],
+    [
+      "posted to https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX",
+      "posted to https://hooks.slack.com/[hidden]",
+    ],
+    ["Authorization: Basic dXNlcjpwYXNz", "Authorization: Basic [hidden]"],
+  ];
+  for (const [s, want] of cases) assert.equal(redact(s, { home: "/nobody" }), want, s);
+  // Words that only look like the start of a key stay.
+  for (const s of [
+    "sk-sk and pplx-embed-v2",
+    "sk-learn-style-classification-model",
+    "xoxo-gossip",
+    "the Basic plan",
+    "a skill-based task",
+    "user@example.com",
+  ])
+    assert.equal(hideSecrets(s), s);
+  // Another user's home folder, with a space in its name (the current user's own is matched whole).
+  const other = { home: "C:\\Users\\Someone" };
+  assert.equal(redact("open 'C:\\Users\\Sam Lee\\site\\a.json' failed", other), "open '~\\site\\a.json' failed");
+  assert.equal(redact("/Users/Jane Q Doe/site/x and /home/bob/y", other), "~/site/x and ~/y");
+  assert.equal(redact("C:\\Users\\Sam Lee\\x", { home: "C:\\Users\\Sam Lee" }), "~\\x");
+  assert.equal(
+    redact("see https://site.example/Users/Sam Lee/x", other),
+    "see https://site.example/Users/Sam Lee/x",
+    "a site's own /Users/ page isn't a home folder",
+  );
 });
 
 test("bodyUpTo: the body up to the cap, or null past it", async () => {
