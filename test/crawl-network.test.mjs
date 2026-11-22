@@ -511,6 +511,29 @@ test("on an https crawl without --check-live, a home page with no HSTS header is
   );
 });
 
+test("a one-URL check of a deep page (--max 1) doesn't judge it as the home page (schema and favicon)", async () => {
+  const dir = tmp(),
+    out = join(tmp(), "crawl.json");
+  for (const [p, html] of Object.entries({ "/": page("Home"), "/guides/deep/": page("A deep guide") })) {
+    mkdirSync(join(dir, p), { recursive: true });
+    writeFileSync(join(dir, p, "index.html"), html);
+  }
+  writeFileSync(join(dir, "robots.txt"), "User-agent: *\nAllow: /\n");
+  const site = await serve(dir);
+  try {
+    await node([join(SCRIPTS, "seo-crawl.mjs"), "--url", site.url + "/guides/deep/", "--max", "1", "--out", out]);
+  } finally {
+    await site.close();
+  }
+  const r = JSON.parse(readFileSync(out, "utf8"));
+  assert.deepEqual(
+    r.pages.map(p => pathOf(p.url)),
+    ["/guides/deep/"],
+  );
+  for (const id of ["org-missing", "website-missing", "favicon-missing", "favicon-unsuitable"])
+    assert.ok(!r.findings.some(f => f.check === id), id);
+});
+
 test("Cloudflare's own /cdn-cgi/ addresses aren't crawled as pages", async () => {
   const asked = [];
   const before = req => {
