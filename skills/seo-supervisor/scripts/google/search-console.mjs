@@ -88,6 +88,28 @@ export async function searchConsole({ site, home, endpoints } = {}) {
     explain: e => explain(e, `${prop} in Search Console`, SC_API, who),
   };
 }
+// ---------- periods and rows ----------
+// Search Console keeps the last 2-3 days provisional, so a period ends 3 days ago. The period before has the same
+// length. Dates are UTC days.
+export const daysAgo = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+export const periodOf = days => ({ endDate: daysAgo(3), startDate: daysAgo(days + 2) });
+export const periodBefore = days => ({ startDate: daysAgo(2 * days + 2), endDate: daysAgo(days + 3) });
+// The top 25,000 Search Analytics rows at most, pageSize per request. sa(body) queries the current period; dates
+// replace it for the period before. A list cut at 25,000 is noted under label.
+export async function readRows(sa, dimensions, dates = {}, pageSize = 25000, notes = []) {
+  const rows = [];
+  while (rows.length < 25000) {
+    const rowLimit = Math.min(pageSize, 25000 - rows.length),
+      got = (await sa({ ...dates, dimensions, rowLimit, startRow: rows.length })).rows || [];
+    rows.push(...got);
+    if (got.length < rowLimit) break;
+  }
+  if (rows.length >= 25000)
+    notes.push(
+      `Search Console has 25,000 or more ${{ page: "pages", query: "queries" }[dimensions.join()] || "page and query pairs"} for ${dates.startDate ? "the period before" : "this period"}; only the top 25,000 were read, so the least-searched ones are left out.`,
+    );
+  return rows;
+}
 
 // A domain property covers its subdomains; a URL-prefix property only addresses that start with it.
 export const inProperty = (prop, u) => {

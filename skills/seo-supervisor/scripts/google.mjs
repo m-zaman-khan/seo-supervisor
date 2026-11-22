@@ -40,6 +40,9 @@ import {
   scSession,
   searchConsole,
   inProperty,
+  periodOf,
+  periodBefore,
+  readRows,
 } from "./google/search-console.mjs";
 
 // Re-exported for the tests.
@@ -118,10 +121,8 @@ export async function fetchGoogle({
     }
   };
 
-  // Search Console's last 2-3 days are provisional, so the period ends 3 days ago.
-  const day = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
-  const endDate = day(3),
-    startDate = day(days + 2),
+  // Search Console's last 2-3 days are provisional, so periodOf ends the period 3 days ago.
+  const { startDate, endDate } = periodOf(days),
     period = `Last ${days} days, ${startDate} to ${endDate}`;
 
   const prop = await pickProperty(g, origin, who),
@@ -139,20 +140,7 @@ export async function fetchGoogle({
   const ci = r => ({ clicks: r.clicks, impressions: r.impressions });
   const sa = body =>
     g.call(`${scBase}/searchAnalytics/query`, { startDate, endDate, type: "web", dimensions: [], ...body });
-  const rowsFor = async (dimensions, dates = {}) => {
-    const rows = [];
-    while (rows.length < 25000) {
-      const rowLimit = Math.min(pageSize, 25000 - rows.length),
-        got = (await sa({ ...dates, dimensions, rowLimit, startRow: rows.length })).rows || [];
-      rows.push(...got);
-      if (got.length < rowLimit) break;
-    }
-    if (rows.length >= 25000)
-      notes.push(
-        `Search Console has 25,000 or more ${{ page: "pages", query: "queries" }[dimensions.join()] || "page and query pairs"} for ${dates.startDate ? "the period before" : "this period"}; only the top 25,000 were read, so the least-searched ones are left out.`,
-      );
-    return rows;
-  };
+  const rowsFor = (dimensions, dates) => readRows(sa, dimensions, dates, pageSize, notes);
   const traffic = {},
     urls = {},
     pageQueries = {},
@@ -202,8 +190,7 @@ export async function fetchGoogle({
   // weekly swing looks like a drop, and a big page loses 20 to noise.
   let trafficChange = null;
   const total = (m, k) => Object.values(m).reduce((s, x) => s + x[k], 0),
-    prevStart = day(2 * days + 2),
-    prevEnd = day(days + 3);
+    { startDate: prevStart, endDate: prevEnd } = periodBefore(days);
   if (2 * days + 2 > 482)
     notes.push(
       "Search Console keeps 16 months of data, so a period longer than 240 days has no full period before it to compare with; the change in search clicks and the new searches were left out.",
