@@ -119,8 +119,7 @@ export function sitePanels({ raw, mdFile, site, areas, overall, open, buildRules
       ? `HSTS preload: the header meets the list's rules. ${also}`
       : `HSTS preload: not ready yet. The header still needs ${missing.join(" and ")}. ${also}`;
   };
-  const hstsPreloadHtml = () => (hstsPreloadText() ? `\n    <p class="quiet">${esc(hstsPreloadText())}</p>` : ""),
-    hstsPreloadMd = () => (hstsPreloadText() ? ["## HSTS preload", "", noteMd(hstsPreloadText()), ""] : []);
+  const hstsPreload = () => hstsPreloadText() && { title: "HSTS preload", blocks: [{ quiet: hstsPreloadText() }] };
 
   // Sections show only with two or more; siteSize is set when the crawl stopped at --max. Paths are escaped.
   const siteSections = (Array.isArray(raw.sections) ? raw.sections : [])
@@ -372,8 +371,7 @@ export function sitePanels({ raw, mdFile, site, areas, overall, open, buildRules
   return {
     viewsHtml,
     viewsMd,
-    hstsPreloadHtml,
-    hstsPreloadMd,
+    hstsPreload,
     crawlCoverageHtml,
     crawlCoverageMd,
     browserHtml,

@@ -9,6 +9,7 @@ import { render } from "../skills/seo-supervisor/scripts/render-report.mjs";
 import { summaryOf } from "../skills/seo-supervisor/scripts/dashboard.mjs";
 import { SCORE_HOW } from "../skills/seo-supervisor/scripts/report/overview.mjs";
 import { mdSafe } from "../skills/seo-supervisor/scripts/report/format.mjs";
+import { panelHtml, panelMd } from "../skills/seo-supervisor/scripts/report/panel.mjs";
 import { issueOf } from "../skills/seo-supervisor/scripts/issues.mjs";
 
 const KITCHEN = JSON.parse(readFileSync(join(ROOT, "test", "golden", "kitchen-sink.json"), "utf8"));
@@ -391,6 +392,65 @@ test("the input file is found whatever the order of the options", async () => {
     assert.equal(r.code, 2, args.join(" "));
     assert.match(r.stderr.trim(), re);
   }
+});
+
+test("one view model draws a panel on the page and in the Markdown, escaped the same way in both", () => {
+  const vm = {
+    cls: "x",
+    title: "Things",
+    summary: "Things · 2",
+    blocks: [
+      { p: "Intro <i>" },
+      {
+        rows: [
+          [{ code: "/a_b" }, "one *two*"],
+          ["Warning", "w", ": "],
+          [{ code: "/c" }, ""],
+        ],
+        cap: 2,
+      },
+      { head: ["Page", "N"], align: ["---", "---:"], rows: [[{ code: "/p|q" }, { html: "5", md: "5/100" }]] },
+      { page: ["Only here ", { code: "f.md" }] },
+      { md: ["Only in Markdown", ""] },
+      {
+        sub: [{ code: "/s" }, " · 1 item"],
+        heading: { code: "/s" },
+        blocks: [{ rows: [[{ id: "F-001" }, { inl: "a `b`" }]] }],
+      },
+      null,
+      { quiet: "q" },
+    ],
+  };
+  assert.equal(
+    panelHtml(vm),
+    `\n    <details class="how x"><summary>Things · 2</summary><p>Intro &lt;i&gt;</p><ul class="lim"><li><b><code>/a_b</code></b><span>one *two*</span></li><li><b>Warning</b><span>w</span></li></ul>` +
+      `<div class="tablewrap"><table><thead><tr><th scope="col">Page</th><th scope="col">N</th></tr></thead><tbody><tr><td><code>/p|q</code></td><td>5</td></tr></tbody></table></div><p>Only here <code>f.md</code></p>` +
+      `<details><summary><code>/s</code> · 1 item</summary><ul class="lim"><li><b><a href="#F-001">F-001</a></b><span>a <code>b</code></span></li></ul></details>\n    <p class="quiet">q</p></details>`,
+  );
+  assert.deepEqual(panelMd(vm), [
+    "## Things",
+    "",
+    "Intro \\<i\\>",
+    "",
+    "- `/a_b` one \\*two\\*",
+    "- Warning: w",
+    "- `/c`",
+    "",
+    "| Page | N |",
+    "| --- | ---: |",
+    "| `/p\\|q` | 5/100 |",
+    "",
+    "Only in Markdown",
+    "",
+    "### `/s`",
+    "",
+    "- F-001 a `b`",
+    "",
+    "q",
+    "",
+  ]);
+  assert.equal(panelHtml(null), "");
+  assert.deepEqual(panelMd(null), []);
 });
 
 test("the page's styles have no dead .as.b3-t,.as.b4-t rule", () => {

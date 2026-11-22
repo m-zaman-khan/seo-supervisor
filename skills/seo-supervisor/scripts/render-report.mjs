@@ -25,6 +25,7 @@ import { connectionPanels } from "./report/panels/connections.mjs";
 import { overviewHtml } from "./report/overview.mjs";
 import { pageHtml } from "./report/page.mjs";
 import { markdown } from "./report/markdown.mjs";
+import { drawn } from "./report/panel.mjs";
 
 /**
  * Builds the report as text and writes nothing.
@@ -87,8 +88,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   const {
     viewsHtml,
     viewsMd,
-    hstsPreloadHtml,
-    hstsPreloadMd,
+    hstsPreload,
     crawlCoverageHtml,
     crawlCoverageMd,
     browserHtml,
@@ -127,7 +127,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   const { connectionsHtml, connectionsMd, changeCheckHtml, changeCheckMd, newSearchesHtml, newSearchesMd } =
     connectionPanels(m);
   // The Overview's panels, in order: on the page after the score views and search lines, in the Markdown after the area
-  // scores.
+  // scores. Each is a [page, Markdown] pair: drawn() makes one from a panel's view model (report/panel.mjs).
   const panels = [
     [linksHtml, linksMd],
     [agentsHtml, agentsMd],
@@ -135,7 +135,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     [audienceHtml, audienceMd],
     [imagesHtml, imagesMd],
     [lighthouseDetailHtml, lighthouseDetailMd],
-    [hstsPreloadHtml, hstsPreloadMd],
+    drawn(hstsPreload),
     [crawlCoverageHtml, crawlCoverageMd],
     [aiCrawlersHtml, aiCrawlersMd],
     [productDataHtml, productDataMd],
