@@ -923,9 +923,16 @@ export const CHECKS = {
   "lazy-lcp": [
     "PERF-03",
     "low",
-    n => `${n} page(s) lazy-load the first image`,
-    "If the first image is the largest element, lazy-loading it delays LCP. A lazy-loading script (an image whose real file is in `data-src` behind a placeholder) delays it even more, as the script has to run first.",
+    n => `${n} page(s) lazy-load their main image`,
+    "If the first image is the largest element, lazy-loading it delays LCP. A lazy-loading script (an image whose real file is in `data-src` behind a placeholder) delays it even more, as the script has to run first. On pages a PageSpeed or Lighthouse lab run loaded, Chrome's own LCP check decides instead: the image it found as the largest element, not the first one.",
     'Load the hero image eagerly with high priority (`priority` / `fetchpriority="high"`). In a lazy-loading plugin (Perfmatters, EWWW, WP Rocket, LiteSpeed), exclude the first images or the hero.',
+  ],
+  "lcp-not-discoverable": [
+    "PERF-03",
+    "low",
+    n => `${n} page(s) start loading their largest image only from CSS or a script`,
+    "In a PageSpeed or Lighthouse lab load, Chrome found that the page's largest element (the LCP) is an image that neither an `<img>` in the HTML nor a preload asks for: a stylesheet's background or a script does, so the browser finds it late. web.dev says the LCP image should be discoverable from the HTML source.",
+    'Put the hero in the HTML as an `<img>` with its real `src` (not a CSS background or a lazy-loading script\'s `data-src`). If it has to stay in CSS or a script, preload it: `<link rel="preload" as="image" href="…" fetchpriority="high">`.',
   ],
   "render-blocking": [
     "PERF-03",

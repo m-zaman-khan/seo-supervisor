@@ -367,6 +367,8 @@ test("PageSpeed's visit shares, FCP, TTFB, the LCP element and the Lighthouse ve
     element: "Engineer at work",
     src: "/hero.jpg?w=1200&q=80",
     fetchpriorityHigh: false,
+    eager: true,
+    discoverable: true,
   });
   assert.equal(s.lab.version, "13.0.1");
   assert.equal(labLcpElement({}), null);

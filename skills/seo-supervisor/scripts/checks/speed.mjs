@@ -115,11 +115,17 @@ export function labLcpElement(audits) {
   const tag = typeof n.snippet === "string" ? n.snippet : "",
     attr = k => new RegExp(`\\s${k}\\s*=\\s*"([^"]*)"`, "i").exec(tag)?.[1]?.replace(/&amp;/g, "&");
   const src = /^<img\b/i.test(tag) ? attr("src") || attr("srcset")?.trim().split(/\s+/)[0] : null;
-  const hinted = items("lcp-discovery-insight").find(i => i?.type === "checklist")?.items?.priorityHinted?.value;
+  const check = items("lcp-discovery-insight").find(i => i?.type === "checklist")?.items,
+    bool = k => (typeof check?.[k]?.value === "boolean" ? check[k].value : undefined);
+  const hinted = bool("priorityHinted"),
+    eager = bool("eagerlyLoaded"),
+    discoverable = bool("requestDiscoverable");
   return {
     element: String(n.nodeLabel || n.selector || tag).slice(0, 200),
     ...(src ? { src: src.slice(0, 300) } : {}),
-    ...(typeof hinted === "boolean" ? { fetchpriorityHigh: hinted } : {}),
+    ...(hinted !== undefined ? { fetchpriorityHigh: hinted } : {}),
+    ...(eager !== undefined ? { eager } : {}),
+    ...(discoverable !== undefined ? { discoverable } : {}),
   };
 }
 // Lab runs ({ url, lcpParts }): the home page's breakdown, else the first one.

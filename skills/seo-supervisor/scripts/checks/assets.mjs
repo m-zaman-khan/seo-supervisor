@@ -279,9 +279,26 @@ export function mediaData(site, { speed, lighthouse, imageInfo }) {
           ...(el.src ? { src: el.src } : {}),
           source,
           hinted: el.fetchpriorityHigh,
+          eager: el.eager,
+          discoverable: el.discoverable,
         });
   for (const h of heroes.values()) if (h.hinted === false && h.src) add("hero-no-fetchpriority", h.url, h.src);
-  if (heroes.size) media.heroImages = [...heroes.values()].map(({ hinted, ...h }) => h);
+  // A lab run's LCP element overrules the per-page checks' first-image guess (often a logo) for lazy-lcp, both ways.
+  const guess = site.findings.get("lazy-lcp"),
+    page = u => path(u).replace(/\/+$/, "");
+  for (const h of heroes.values()) {
+    const at = guess ? guess.evidence.findIndex(e => page(e.url) === page(h.url)) : -1;
+    if (h.eager === true && at >= 0) {
+      guess.evidence.splice(at, 1);
+      guess.count--;
+    } else if (h.eager === false && at < 0)
+      add("lazy-lcp", h.url, `${h.src || h.element} (${h.source}: the LCP image has loading="lazy")`);
+    // An LCP image only CSS or a script requests isn't discoverable from the HTML.
+    // https://web.dev/articles/optimize-lcp
+    if (h.discoverable === false) add("lcp-not-discoverable", h.url, h.src || h.element);
+  }
+  if (guess && !guess.count) site.findings.delete("lazy-lcp");
+  if (heroes.size) media.heroImages = [...heroes.values()].map(({ hinted, eager, discoverable, ...h }) => h);
   const times = htmlPages
     .filter(p => Number.isFinite(p.ms))
     .map(p => ({ url: p.finalUrl, ms: p.ms }))
