@@ -14,26 +14,24 @@ export function speedPanels({ raw, mdFile, lighthouse }) {
   const imageWhat = i => [i.format, i.width && i.height && `${i.width} × ${i.height} px`].filter(Boolean).join(" · ");
   const IMAGES_INTRO =
     "A rough estimate of what WebP and resizing to 1,600 px wide would save: Google measured lossy WebP 25–34% smaller than JPEG and lossless WebP 26% smaller than PNG, and the low end is used. Information only: it never changes the score. With your yes, scripts/images.mjs converts the JPEG and PNG ones and keeps the originals (it needs the optional image add-on: npx seo-supervisor --with-image-tools).";
-  const imagesHtml = () =>
-    imageRows.length
-      ? `\n    <details class="how images"><summary>Images by possible saving</summary><p>${esc(IMAGES_INTRO)}</p><div class="tablewrap"><table><thead><tr><th scope="col">Image</th><th scope="col">Size</th><th scope="col">Format</th><th scope="col">Possible saving</th></tr></thead><tbody>${imageRows.map(i => `<tr><td><code>${esc(notePath(i.url))}</code></td><td>${kbOf(i.bytes)}</td><td>${esc(imageWhat(i))}</td><td>about ${kbOf(i.estSaving)}</td></tr>`).join("")}</tbody></table></div></details>`
-      : "";
-  const imagesMd = () =>
-    imageRows.length
-      ? [
-          "## Images by possible saving",
-          "",
-          IMAGES_INTRO,
-          "",
-          "| Image | Size | Format | Possible saving |",
-          "| --- | ---: | --- | ---: |",
-          ...imageRows.map(
-            i =>
-              `| ${cellMd(noteCode(notePath(i.url)))} | ${kbOf(i.bytes)} | ${cellMd(noteMd(imageWhat(i)))} | about ${kbOf(i.estSaving)} |`,
-          ),
-          "",
-        ]
-      : [];
+  const images = () =>
+    imageRows.length && {
+      cls: "images",
+      title: "Images by possible saving",
+      blocks: [
+        { p: IMAGES_INTRO },
+        {
+          head: ["Image", "Size", "Format", "Possible saving"],
+          align: ["---", "---:", "---", "---:"],
+          rows: imageRows.map(i => [
+            { code: notePath(i.url) },
+            kbOf(i.bytes),
+            imageWhat(i),
+            `about ${kbOf(i.estSaving)}`,
+          ]),
+        },
+      ],
+    };
 
   // Every failed audit except accessibility ones, which the accessibility panel lists, so none shows twice. Titles come
   // from Lighthouse (Markdown backticks included) and files from the site, so both are escaped.
@@ -266,14 +264,5 @@ export function speedPanels({ raw, mdFile, lighthouse }) {
           ]),
         ]
       : [];
-  return {
-    imagesHtml,
-    imagesMd,
-    lighthouseDetailHtml,
-    lighthouseDetailMd,
-    speedDetailsHtml,
-    speedDetailsMd,
-    a11yHtml,
-    a11yMd,
-  };
+  return { images, lighthouseDetailHtml, lighthouseDetailMd, speedDetailsHtml, speedDetailsMd, a11yHtml, a11yMd };
 }
