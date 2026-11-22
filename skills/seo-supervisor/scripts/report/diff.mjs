@@ -31,8 +31,7 @@ export function diffParts({ raw, findings }, { googleUpdatesText }) {
     const list = g.posts.filter(
       p => obj(p) && typeof p.title === "string" && p.title.trim() && /^\d{4}-\d{2}-\d{2}$/.test(p.date),
     );
-    const day = d =>
-      new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+    const day = d => fmtDate(d, false);
     const name = p =>
       !html
         ? noteMd(p.title)

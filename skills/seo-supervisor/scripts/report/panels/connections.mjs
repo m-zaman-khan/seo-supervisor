@@ -1,6 +1,6 @@
 // @ts-check
 // Panels from connected services: their reports, the change check and the new searches.
-import { esc, noteMd, num, obj, plural, isCount, isText } from "../format.mjs";
+import { esc, fmtDate, noteMd, num, obj, plural, isCount, isText } from "../format.mjs";
 import { isoDates } from "../traffic.mjs";
 
 export function connectionPanels({ raw }) {
@@ -116,12 +116,7 @@ export function connectionPanels({ raw }) {
     const signed = p => `${p > 0 ? "+" : p < 0 ? "−" : ""}${num(Math.abs(p))}%`,
       changed = obj(g?.changed)?.pages,
       control = obj(g?.control)?.pages;
-    const when = new Date(c.changeDate + "T00:00:00Z").toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      timeZone: "UTC",
-    });
+    const when = fmtDate(c.changeDate);
     const what = ranged
       ? `${m.verdict}, about ${signed(m.percent)} compared with ${isCount(control) ? plural(control, "similar unchanged page") : "similar unchanged pages"} (likely range ${signed(m.low)} to ${signed(m.high)}${m.verdict === "inconclusive" ? ", which includes no change" : ""})`
       : `inconclusive${isText(m.reason) ? `, ${m.reason}` : ""}`;

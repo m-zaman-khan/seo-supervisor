@@ -5,13 +5,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { buildRules, bandOf, isOpen, findingsOf, score, OWN_SCORE } from "./lib/score.mjs";
 import { isMain } from "./lib/is-main.mjs";
+import { fmtDate } from "./report/format.mjs";
 
-const fmtDate = d => {
-  const x = new Date(d);
-  return d && !isNaN(x.getTime())
-    ? x.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
-    : "";
-};
+// fmtDate keeps a YYYY-MM-DD date on that day in every time zone; a missing or bad date shows nothing.
+const dayOf = d => (d && !isNaN(new Date(d).getTime()) ? fmtDate(d) : "");
 const plural = (n, w) => `${n} ${n === 1 ? w : w + "s"}`;
 
 export function summaryOf(dir) {
@@ -33,7 +30,7 @@ export function summaryOf(dir) {
     report: file.replace(/\.json$/i, ".html"),
     name: String(raw.site?.name || basename(dirname(resolve(file)))),
     url: typeof raw.site?.url === "string" ? raw.site.url : "",
-    date: fmtDate(raw.run?.date),
+    date: dayOf(raw.run?.date),
     score: s,
     open: open.length,
     blockers: count("blocker"),

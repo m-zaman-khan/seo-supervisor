@@ -26,11 +26,18 @@ export const inl = s =>
   esc(s)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-export const fmtDate = d => {
-  const x = new Date(d || Date.now());
+// A YYYY-MM-DD prefix is that calendar day on every machine, whatever its time zone; other times are shown in UTC.
+export const fmtDate = (d, year = true) => {
+  const day = /^\d{4}-\d{2}-\d{2}/.exec(String(d ?? ""))?.[0],
+    x = new Date(day ? day + "T00:00:00Z" : d || Date.now());
   return isNaN(x.getTime())
     ? String(d)
-    : x.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+    : x.toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        ...(year && { year: "numeric" }),
+        timeZone: "UTC",
+      });
 };
 export const num = n => Number(n).toLocaleString("en-US");
 export const obj = x => (x && typeof x === "object" ? x : null);

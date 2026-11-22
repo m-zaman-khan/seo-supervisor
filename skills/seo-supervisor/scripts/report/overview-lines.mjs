@@ -1,7 +1,7 @@
 // @ts-check
 // One-line summaries of the outside checks for the topic tabs' "at a glance" panels; each is "" without its data.
 import { fmtCwv, passes, band } from "../checks/speed.mjs";
-import { esc, obj } from "./format.mjs";
+import { esc, fmtDate, obj } from "./format.mjs";
 
 // LCP's four parts (speed.lcpBreakdown, in ms), each with its fix.
 export const LCP_PART = {
@@ -110,13 +110,7 @@ export function overviewLines({ raw }) {
     const g = obj(raw.googleUpdates),
       isDay = s => /^\d{4}-\d{2}-\d{2}$/.test(s);
     if (!g || !Array.isArray(g.updates)) return "";
-    const day = (d, year) =>
-      new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", {
-        day: "numeric",
-        month: "short",
-        ...(year && { year: "numeric" }),
-        timeZone: "UTC",
-      });
+    const day = (d, year = false) => fmtDate(d, year);
     const span = (a, b) =>
       !isDay(b)
         ? `${day(a)}, still rolling out`

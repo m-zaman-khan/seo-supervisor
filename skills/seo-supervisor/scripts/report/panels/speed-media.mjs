@@ -1,7 +1,7 @@
 // @ts-check
 // The speed and image panels, with Lighthouse's details and accessibility checks.
 import { band } from "../../checks/speed.mjs";
-import { cellMd, esc, inl, noteCode, noteMd, notePath, num, obj, plural } from "../format.mjs";
+import { cellMd, esc, fmtDate, inl, noteCode, noteMd, notePath, num, obj, plural } from "../format.mjs";
 import { LCP_PART } from "../overview-lines.mjs";
 
 export function speedPanels({ raw, mdFile }) {
@@ -96,15 +96,7 @@ export function speedPanels({ raw, mdFile }) {
       .filter(k => mediaNums(o?.[k], 2))
       .map(k => mediaPair(k, o[k]))
       .join(" · ");
-  const mediaDay = (s, year) =>
-    /^\d{4}-\d{2}-\d{2}$/.test(s)
-      ? new Date(s + "T00:00:00Z").toLocaleDateString("en-GB", {
-          day: "numeric",
-          month: "short",
-          ...(year && { year: "numeric" }),
-          timeZone: "UTC",
-        })
-      : null;
+  const mediaDay = (s, year = false) => (/^\d{4}-\d{2}-\d{2}$/.test(s) ? fmtDate(s, year) : null);
   const mediaList = (xs, f, max = 5) =>
     xs.slice(0, max).map(f).join(" · ") + (xs.length > max ? ` and ${num(xs.length - max)} more` : "");
   const mediaLines = () => {
