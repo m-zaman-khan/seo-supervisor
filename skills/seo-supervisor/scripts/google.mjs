@@ -42,6 +42,7 @@ import {
   pickProperty,
   bare,
   pagePath,
+  slashKey,
   scSession,
   searchConsole,
   inProperty,
@@ -134,8 +135,25 @@ export async function fetchGoogle({
     h = origin.hostname;
   const scBase = `${E.searchConsole}/sites/${encodeURIComponent(prop)}`;
 
-  // www and apex count as one host; other subdomains of a domain property are left out.
-  const pathOf = u => pagePath(u, h);
+  // www and apex count as one host; other subdomains of a domain property are left out. A row whose path differs from a
+  // crawled page's only by the trailing slash is filed under the crawled path, so the report finds its numbers.
+  const crawled = new Set(
+    (crawl?.pages || [])
+      .map(p => {
+        try {
+          const x = new URL(p.url);
+          return x.pathname + x.search;
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean),
+  );
+  const bySlash = new Map([...crawled].map(p => [slashKey(p), p]));
+  const pathOf = u => {
+    const p = pagePath(u, h);
+    return p && !crawled.has(p) ? (bySlash.get(slashKey(p)) ?? p) : p;
+  };
   const sa = body =>
     g.call(`${scBase}/searchAnalytics/query`, { startDate, endDate, type: "web", dimensions: [], ...body });
   const rowsFor = (dimensions, dates) => readRows(sa, dimensions, dates, pageSize, notes);

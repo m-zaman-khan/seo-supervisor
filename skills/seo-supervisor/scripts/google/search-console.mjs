@@ -59,17 +59,26 @@ export async function pickProperty(g, origin, who) {
     );
   return prop;
 }
+// Tracking parameters say where a click came from, not which page it was: the crawler's list (checks/coverage.mjs)
+// plus srsltid, which Merchant Center auto-tagging adds to free product listing links.
+export const TRACKING =
+  /^(utm_\w+|gclid|gbraid|wbraid|dclid|fbclid|msclkid|yclid|igshid|mc_cid|mc_eid|_gl|_ga|srsltid)$/i;
 // A Search Console address as a path on the site's host, else null. www and apex count as one host, as in gsc-import.
 // Tracking parameters are dropped so the row counts for the page itself; other parameters stay as written.
 export const bare = x => x.replace(/^www\./, "");
 export const pagePath = (u, host) => {
   try {
     const x = new URL(u);
-    return bare(x.hostname) === bare(host) ? x.pathname + x.search : null;
+    if (bare(x.hostname) !== bare(host)) return null;
+    const parts = x.search.slice(1).split("&"),
+      kept = parts.filter(p => !TRACKING.test(p.split("=")[0]));
+    return x.pathname + (kept.length === parts.length ? x.search : kept.length ? "?" + kept.join("&") : "");
   } catch {
     return null;
   }
 };
+// One key for /a and /a/, query kept: a crawled page and its Search Console row can differ there.
+export const slashKey = p => p.replace(/^([^?]*[^/?])\/+(?=\?|$)/, "$1");
 // Fails early when Search Console access wasn't granted at sign-in.
 export function scSession(opts) {
   const g = session(opts),

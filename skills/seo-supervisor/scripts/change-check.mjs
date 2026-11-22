@@ -12,6 +12,7 @@ import {
   anomaliesIn,
   anomalyNote,
   pagePath,
+  slashKey,
   searchConsole,
   daysAgo,
   lastFinal,
@@ -71,7 +72,7 @@ export async function changeCheck({ site, date, pages = [], days = DAYS, home, e
     host = sc.origin.hostname,
     notes = [];
   // Keyed by pagePath, like the Search Console rows: www and the bare domain are one page.
-  const changed = new Set(),
+  const asked = new Set(),
     off = [];
   for (const u of listed) {
     let p = null;
@@ -79,10 +80,10 @@ export async function changeCheck({ site, date, pages = [], days = DAYS, home, e
       const x = new URL(u, sc.origin);
       if (/^https?:$/.test(x.protocol)) p = pagePath(x.href, host);
     } catch {}
-    if (p) changed.add(p);
+    if (p) asked.add(p);
     else off.push(u);
   }
-  if (!changed.size)
+  if (!asked.size)
     fail(
       `none of the pages listed are on ${host} (www and the bare domain count as one), so there's nothing to compare. Check --site and the list.`,
     );
@@ -120,6 +121,10 @@ export async function changeCheck({ site, date, pages = [], days = DAYS, home, e
   const b = await read(before),
     a = await read(after),
     none = { clicks: 0, impressions: 0 };
+  // A listed page and Search Console's row for it may differ by the trailing slash (/a and /a/): the row's path is
+  // used.
+  const rowPath = new Map([...Object.keys(a), ...Object.keys(b)].map(p => [slashKey(p), p]));
+  const changed = new Set([...asked].map(p => (b[p] || a[p] ? p : (rowPath.get(slashKey(p)) ?? p))));
   const rec = p => ({ path: p, before: b[p], after: a[p] || none });
   // A page Search Console didn't show before the change (new, or not in Google's results) has no past to compare with.
   const noPast = [...changed].filter(p => !b[p]).sort(),
