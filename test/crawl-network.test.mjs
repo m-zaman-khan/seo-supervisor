@@ -242,7 +242,7 @@ test("a redirect to another host connects to the address the guard checked, so a
 test("the crawler's private-address test is lib/net.mjs's", () => {
   assert.equal(fetchIsPublic, netIsPublic);
   assert.equal(fetchIsPublic("http://100.64.0.1/"), false, "a private range the old copy missed");
-  assert.equal(isLocal("http://127.0.0.2:3000"), true);
+  assert.equal(isLocal("http://localhost:3000"), true);
   assert.equal(isLocal("https://www.example.com"), false);
 });
 

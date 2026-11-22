@@ -1,11 +1,12 @@
 // @ts-check
 // The crawler's HTTP layer: the private-address guard, the 429/503 brake and URL helpers.
 import { lookup } from "node:dns";
-import { get as httpGet } from "node:http";
-import { get as httpsGet } from "node:https";
+import { get as httpGet, request as httpRequest } from "node:http";
+import { get as httpsGet, request as httpsRequest } from "node:https";
+import { Readable } from "node:stream";
 import { promisify } from "node:util";
-import { createGunzip } from "node:zlib";
-import { isPublic as publicAddress, guarded } from "../checks/outbound.mjs";
+import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
+import { guarded, isPublic, loopback } from "../lib/net.mjs";
 import { brake, sleep } from "../checks/crawl.mjs";
 
 export const TEMPORARY = new Set([302, 303, 307]); // redirects that tell search engines the old URL may come back
@@ -16,13 +17,7 @@ export const slashOnly = (a, b) => {
   return (
     x.origin === y.origin && x.search === y.search && x.pathname.replace(/\/$/, "") === y.pathname.replace(/\/$/, "")
   );
-}; // URL -> why it wasn't fetched
-const publicLookup = /** @type {(host: string, opts: { all: boolean }) => Promise<unknown>} */ (
-  promisify(guarded(lookup))
-);
-// A crawl of this machine may reach its other ports (a dev server redirecting to its API or asset server). Other
-// private addresses and cloud metadata stay blocked even then.
-const loopback = h => /^(localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|0\.0\.0\.0|\[::1\])$/i.test(h);
+};
 const SITEMAP_MAX = 50 * 1024 * 1024;
 // Reads one chunk past max when there's more, so callers can tell the body was cut.
 export async function upTo(stream, max) {
@@ -38,20 +33,8 @@ export async function upTo(stream, max) {
 // A local dev server, for notes. Narrower than the private-address test on purpose: tests run a "staging" server on
 // 127.0.0.2.
 export const isLocal = o => /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d+)?$/i.test(o);
-// Only a public host may be sent to an outside service: no private IP, intranet or reserved name.
-export const isPublic = o => {
-  try {
-    const h = new URL(o).hostname;
-    return (
-      !isLocal(o) &&
-      h.includes(".") &&
-      !/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|127\.)/.test(h) &&
-      !/\.(local|internal|lan|localhost|test|home\.arpa)$/i.test(h)
-    );
-  } catch {
-    return false;
-  }
-};
+// Only a public host may be sent to an outside service.
+export { isPublic };
 export const urlOr = (u, base) => {
   try {
     return new URL(u, base);
@@ -84,10 +67,49 @@ export const pathKey = u => {
   return x.pathname + x.search;
 };
 
+// fetch() for off-site URLs, connecting through guarded() so the address connected to is the one checked. The body is
+// unpacked through pipeline(), not pipe(), so a timeout or dropped connection errors instead of hanging the unpacker.
+// Exported for tests.
+const UNPACK = { gzip: createGunzip, "x-gzip": createGunzip, deflate: createInflate, br: createBrotliDecompress };
+const pinnedFetch = (url, { headers, signal }, dns) =>
+  new Promise((ok, ko) => {
+    (url.startsWith("https:") ? httpsRequest : httpRequest)(
+      url,
+      { headers: { ...headers, "accept-encoding": "gzip, deflate, br" }, signal, lookup: guarded(dns) },
+      res => {
+        try {
+          const h = new Headers();
+          for (let i = 0; i < res.rawHeaders.length; i += 2) h.append(res.rawHeaders[i], res.rawHeaders[i + 1]);
+          const unpack = UNPACK[(h.get("content-encoding") || "").trim().toLowerCase()];
+          ok(
+            new Response(
+              [204, 205, 304].includes(res.statusCode)
+                ? null
+                : /** @type {ReadableStream} */ (Readable.toWeb(unpack ? res.pipe(unpack()) : res)),
+              { status: res.statusCode, headers: h },
+            ),
+          );
+        } catch (e) {
+          res.destroy();
+          ko(e);
+        }
+      },
+    )
+      .on("error", ko)
+      .end();
+  });
+
 // One crawl's request state. toCrawl is a function because seo-crawl.mjs may learn the public origin mid-crawl (from
 // robots.txt, the sitemap or the home page's canonical). Tests pass their own dns.
-export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl }) {
+export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl, dns = lookup }) {
   const blocked = new Map(); // URL -> why it wasn't fetched
+  const publicLookup = /** @type {(host: string, opts: { all: boolean }) => Promise<unknown>} */ (
+    promisify(guarded(dns))
+  );
+  // The crawled origin is never guarded, so a localhost or LAN site can be crawled, and a localhost crawl may reach
+  // other local ports (a dev server redirecting to its API). Anything else on a private, reserved or cloud-metadata
+  // address is blocked.
+  const onSite = x => x.origin === START_ORIGIN || (loopback(new URL(START_ORIGIN).hostname) && loopback(x.hostname));
   async function offLimits(u) {
     let x;
     try {
@@ -95,9 +117,8 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl }) {
     } catch {
       return null;
     }
-    if (x.origin === START_ORIGIN) return null;
-    if (loopback(new URL(START_ORIGIN).hostname) && loopback(x.hostname)) return null;
-    const why = !publicAddress(u)
+    if (onSite(x)) return null;
+    const why = !isPublic(u)
       ? `${x.host} isn't a public address`
       : await publicLookup(x.hostname, { all: true }).then(
           () => null,
@@ -106,6 +127,9 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl }) {
     if (why) blocked.set(u, why);
     return why;
   }
+  // Off-site requests connect to the address the guard checked, so a name can't resolve differently the second time
+  // (DNS rebinding).
+  const request = (url, init) => (onSite(new URL(url)) ? fetch(url, init) : pinnedFetch(url, init, dns));
   // A 429 pauses every request to the site for its Retry-After (local cap 30 s, 2 s when absent), then retries once.
   // Own-site requests also pause on a 503, Google's other temporary brake, and for 2 s on no answer. Bot comparisons
   // retry busy answers themselves, and a 503 to a bot may be a firewall, so only a 429 pauses them. brake() caps the
@@ -136,7 +160,7 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl }) {
       try {
         if (slow.until > Date.now()) await sleep(slow.until - Date.now());
         const t = performance.now(); // time to the response headers, in ms
-        const res = await fetch(url, {
+        const res = await request(url, {
           redirect: "manual",
           headers: { "user-agent": ua, accept },
           signal: AbortSignal.timeout(20000),
@@ -163,6 +187,9 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl }) {
         } else await res.arrayBuffer().catch(() => {});
         return { status: res.status, headers: res.headers, ct, body, location: res.headers.get("location"), ms, over };
       } catch (e) {
+        // The guard refused the resolved address at connect time, so a retry would fail the same way.
+        if (e.code === "ENOTPUBLIC")
+          return { status: 0, error: e.message, refused: true, headers: new Headers(), ct: "", body: "" };
         if (attempt === 1)
           return { status: 0, error: String(e.message || e), headers: new Headers(), ct: "", body: "" };
         if (own) {
@@ -179,14 +206,20 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl }) {
   async function follow(url, ua) {
     const chain = [];
     let cur = url,
-      why = await offLimits(cur);
+      why = await offLimits(cur),
+      last = null;
     if (why) return { status: 0, error: why, chain, finalUrl: cur, headers: new Headers(), ct: "", body: "" };
     for (let i = 0; i < 6; i++) {
       const r = await get(cur, { ua });
+      if (r.refused) {
+        blocked.set(cur, r.error);
+        return last ? { ...last, chain, finalUrl: chain.at(-1).url } : { ...r, chain, finalUrl: cur };
+      }
       chain.push({ url: cur, status: r.status });
       if (r.status >= 300 && r.status < 400 && r.location) {
         const next = new URL(r.location, cur).href;
         if ((why = await offLimits(next))) return { ...r, chain, finalUrl: cur };
+        last = r;
         cur = next;
         continue;
       }
@@ -246,7 +279,7 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl }) {
       for (let hop = 0; ; hop++) {
         const why = await offLimits(url);
         if (why) return { status: 0, error: why };
-        res = await fetch(url, {
+        res = await request(url, {
           redirect: "manual",
           headers: { "user-agent": UA, accept: "application/xml,text/xml;q=0.9,*/*;q=0.8" },
           signal: AbortSignal.timeout(60000),
@@ -270,6 +303,10 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl }) {
       const bom = buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf ? 3 : 0;
       return { status: 200, body: buf.toString("utf8", bom, SITEMAP_MAX), tooBig: buf.length > SITEMAP_MAX };
     } catch (e) {
+      if (e.code === "ENOTPUBLIC") {
+        blocked.set(url, e.message);
+        return { status: 0, error: e.message };
+      }
       if (retry) {
         await sleep(500);
         return fetchSitemap(url, false);
@@ -283,7 +320,11 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl }) {
     new Promise(ok => {
       const req = (url.startsWith("https:") ? httpsGet : httpGet)(
         url,
-        { headers: { "user-agent": UA, accept: "text/html" }, timeout: 15000 },
+        {
+          headers: { "user-agent": UA, accept: "text/html" },
+          timeout: 15000,
+          ...(onSite(new URL(url)) ? {} : { lookup: guarded(dns) }),
+        },
         res => {
           const lines = [];
           for (let i = 0; i < res.rawHeaders.length; i += 2)
