@@ -34,7 +34,7 @@ export const decode = s =>
 // is copied first: V8 keeps a substring as a view of its parent, so a cut value would pin the whole page in memory.
 export function attrs(tag) {
   const out = {};
-  const inner = tag.replace(/^<[\w-]+/, "").replace(/>$/, "");
+  const inner = (" " + tag.replace(/^<[\w-]+/, "").replace(/>$/, "")).slice(1);
   const re = /([^\s=\/>"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
   let m;
   while ((m = re.exec(inner))) {
