@@ -2,6 +2,7 @@
 // Agent readiness: what AI agents can use on a page, Bing's AI rules, AI crawler rules, and the AI bot list.
 import { readFileSync } from "node:fs";
 import { attrs } from "../lib/html.mjs";
+import { parseRobots } from "../lib/robots.mjs";
 
 export const CHECKS = {
   "click-only-elements": [
@@ -314,32 +315,10 @@ export function signalPlacement(txt, blocksAll) {
 
 // The crawler name parseRobots matches on: the leading letters, "_" and "-", lowercased.
 const agentKey = a => (a.startsWith("*") ? "*" : (/^[A-Za-z_-]+/.exec(a)?.[0] || a).toLowerCase());
-// robots.txt groups as parseRobots forms them, with the lines it skips: Content-Signal and aipref Content-Usage lines
-// (rules inside a group, draft-ietf-aipref-attach-05) go on their group's signals and usage, or on loose before the
-// first User-agent line; line is 1-based.
-/** @param {string} txt */
-function robotsGroups(txt) {
-  /** @type {{ agents: string[], rules: { allow: boolean, path: string }[], signals: { line: number, k: string, v: string }[], usage: { line: number, k: string, v: string }[] }[]} */
-  const groups = [];
-  const loose = [];
-  let cur = null;
-  String(txt || "")
-    .split(/\r?\n/)
-    .forEach((raw, i) => {
-      const line = raw.replace(/#.*/, "").trim(),
-        c = line.indexOf(":");
-      if (c < 0) return;
-      const k = line.slice(0, c).trim().toLowerCase(),
-        v = line.slice(c + 1).trim();
-      if (k === "user-agent") {
-        if (!cur || cur.rules.length) groups.push((cur = { agents: [], rules: [], signals: [], usage: [] }));
-        cur.agents.push(v);
-      } else if (k === "content-signal" || k === "content-usage")
-        (cur ? cur[k === "content-signal" ? "signals" : "usage"] : loose).push({ line: i + 1, k, v });
-      else if ((k === "allow" || k === "disallow") && cur) cur.rules.push({ allow: k === "allow", path: v });
-    });
-  return { groups, loose };
-}
+const robotsGroups = txt => {
+  const { groups, loose } = parseRobots(txt);
+  return { groups: groups.map(g => ({ ...g, agents: g.names })), loose };
+};
 
 // AI crawler rules in one robots.txt that contradict each other, as sentences, and aipref Content-Usage lines as
 // written: the aipref drafts aren't final, so those are shown, not judged. Groups naming the same crawler read as one.
