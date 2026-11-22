@@ -42,7 +42,8 @@ export const CHROME_FLAGS = [
   "--disable-default-apps",
   "--no-pings",
   "--disable-domain-reliability",
-  "--disable-features=OptimizationHints,Translate,MediaRouter",
+  "--disable-features=OptimizationHints,Translate,MediaRouter,NetworkTimeServiceQuerying,AutofillServerCommunication,SafeBrowsingHashPrefixRealTimeLookups,AimEnabled,PreconnectToSearch",
+  "--enable-features=SkipListAccountsWithoutGaiaCookies",
 ];
 
 // args: extra Chrome flags, added after the standard ones (none by default).

@@ -45,10 +45,22 @@ test("one list of Chrome flags turns Chrome's own background traffic off", () =>
     "--disable-domain-reliability",
   ])
     assert.ok(CHROME_FLAGS.includes(f), f);
-  const features = CHROME_FLAGS.filter(f => f.startsWith("--disable-features="));
-  assert.equal(features.length, 1, "Chrome reads only the last --disable-features, so there's one");
-  for (const name of ["OptimizationHints", "Translate", "MediaRouter"])
-    assert.ok(features[0].slice(19).split(",").includes(name), name);
+  const off = CHROME_FLAGS.filter(f => f.startsWith("--disable-features=")),
+    on = CHROME_FLAGS.filter(f => f.startsWith("--enable-features="));
+  assert.equal(off.length, 1, "Chrome reads only the last --disable-features, so there's one");
+  assert.equal(on.length, 1);
+  for (const name of [
+    "OptimizationHints",
+    "Translate",
+    "MediaRouter",
+    "NetworkTimeServiceQuerying",
+    "AutofillServerCommunication",
+    "SafeBrowsingHashPrefixRealTimeLookups",
+    "AimEnabled",
+    "PreconnectToSearch",
+  ])
+    assert.ok(off[0].slice(19).split(",").includes(name), name);
+  assert.deepEqual(on[0].slice(18).split(","), ["SkipListAccountsWithoutGaiaCookies"]);
 });
 
 test("H-01: all four launch sites pass the flags: launchChrome, the render, og-card and Lighthouse", async () => {
