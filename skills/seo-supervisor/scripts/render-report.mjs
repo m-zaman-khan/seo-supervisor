@@ -56,8 +56,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     moreLinksMd,
     linkIdeasHtml,
     linkIdeasMd,
-    linkedOnceHtml,
-    linkedOnceMd,
+    linkedOnce,
     linkStrengthHtml,
     linkStrengthMd,
   } = linkPanels(m);
@@ -127,7 +126,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     drawn(pageScores),
     [linkIdeasHtml, linkIdeasMd],
     drawn(changeCheck),
-    [linkedOnceHtml, linkedOnceMd],
+    drawn(linkedOnce),
     [appsPdfsHtml, appsPdfsMd],
     drawn(newSearches),
     drawn(checkSettingsPanel),

@@ -365,21 +365,20 @@ export function linkPanels({ raw }) {
       : null)(obj(raw.linkedOnce));
   const linkedOnceIntro = () =>
     `${plural(linkedOnce.count, "page")} that can be indexed ${linkedOnce.count === 1 ? "has" : "have"} only one other page linking to ${linkedOnce.count === 1 ? "it" : "them"}${linkedOnce.count > linkedOnce.pages.length ? `; the first ${num(linkedOnce.pages.length)} are below` : ""}. A page linked from one place is easy to miss: visitors find it only if they open that one page, and crawlers, which find pages by following links, have a single way in, so the page is cut off if that link goes. A link from a hub or a related page helps both.${linkedOnce.capped === true ? " The crawl stopped at --max, so links on pages it didn't read aren't counted." : ""} Information only: it doesn't change the score.`;
-  const linkedOnceHtml = () =>
-    linkedOnce?.pages.length
-      ? `\n    <details class="how linkedonce"><summary>Pages with one incoming link</summary><p>${esc(linkedOnceIntro())}</p><ul class="lim">${linkedOnce.pages.map(p => `<li><b><code>${esc(notePath(p.url))}</code></b><span>linked only from <code>${esc(notePath(p.from))}</code></span></li>`).join("")}</ul></details>`
-      : "";
-  const linkedOnceMd = () =>
-    linkedOnce?.pages.length
-      ? [
-          "## Pages with one incoming link",
-          "",
-          noteMd(linkedOnceIntro()),
-          "",
-          ...linkedOnce.pages.map(p => `- ${noteCode(notePath(p.url))} linked only from ${noteCode(notePath(p.from))}`),
-          "",
-        ]
-      : [];
+  const linkedOncePanel = () =>
+    linkedOnce?.pages.length && {
+      cls: "linkedonce",
+      title: "Pages with one incoming link",
+      blocks: [
+        { p: linkedOnceIntro() },
+        {
+          rows: linkedOnce.pages.map(p => [
+            { code: notePath(p.url) },
+            ["linked only from ", { code: notePath(p.from) }],
+          ]),
+        },
+      ],
+    };
   // linkStrength is a local measure, 0–100: PageRank over the site's own links (sources in checks/link-strength.mjs).
   // With Search Console traffic it also lists, of the 20 crawled pages with the most clicks, those in the bottom third
   // of strength, a local rule. Paths are escaped.
@@ -446,8 +445,7 @@ export function linkPanels({ raw }) {
     moreLinksMd,
     linkIdeasHtml,
     linkIdeasMd,
-    linkedOnceHtml,
-    linkedOnceMd,
+    linkedOnce: linkedOncePanel,
     linkStrengthHtml,
     linkStrengthMd,
   };
