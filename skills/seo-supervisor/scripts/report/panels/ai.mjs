@@ -181,48 +181,31 @@ export function aiPanels({ raw, lighthouse }) {
   const answersLists = e =>
     [
       ["Rivals", e.rivals.map(([d, n]) => [d, `cited in ${n} of ${plural(e.answers, "answer")}`])],
-      ["Your pages cited", e.pages.map(([p, n]) => [p, citedIn(n)])],
-      ["Questions whose answers never cited your site", e.never.map(q => [q, ""])],
+      ["Your pages cited", e.pages.map(([p, n]) => [{ code: p }, citedIn(n)])],
+      ["Questions whose answers never cited your site", e.never.map(q => [q])],
     ].filter(([, rows]) => rows.length);
-  const aiAnswersHtml = () =>
-    answers
-      ? `\n    <details class="how aianswers"><summary>AI answer check</summary><p>${esc(ANSWERS_INTRO)}</p>${answers.engines
-          .map(
-            e =>
-              `<p><b>${esc(engineName(e))}</b>: ${esc(answersHead(e))}${answersStop(e) ? ` ${esc(answersStop(e))}` : ""}</p>${answersLists(
-                e,
-              )
-                .map(
-                  ([t, rows]) =>
-                    `<p>${esc(t)}:</p><ul class="lim">${rows.map(([k, v]) => `<li><b>${t === "Your pages cited" ? `<code>${esc(k)}</code>` : esc(k)}</b>${v ? `<span>${esc(v)}</span>` : ""}</li>`).join("")}</ul>`,
-                )
-                .join("")}`,
-          )
-          .join("")}</details>`
-      : "";
-  const aiAnswersMd = () =>
-    answers
-      ? [
-          "## AI answer check",
-          "",
-          noteMd(ANSWERS_INTRO),
-          "",
-          ...answers.engines.flatMap(e => [
-            `### ${noteMd(e.name)}`,
-            "",
-            noteMd(`${engineName(e)}: ${answersHead(e)}`),
-            "",
-            ...(answersStop(e) ? [noteMd(answersStop(e)), ""] : []),
-            ...answersLists(e).flatMap(([t, rows]) => [
-              `${t}:`,
-              "",
-              ...rows.map(
-                ([k, v]) => `- ${t === "Your pages cited" ? noteCode(k) : noteMd(k)}${v ? ` ${noteMd(v)}` : ""}`,
-              ),
-              "",
-            ]),
-          ]),
-        ]
-      : [];
-  return { agents, aiCrawlers, aiAnswersHtml, aiAnswersMd };
+  // Per engine: one line on the page; in the Markdown, a ### heading with the line and why it stopped.
+  const engineHead = e => ({
+    html: `<p><b>${esc(engineName(e))}</b>: ${esc(answersHead(e))}${answersStop(e) ? ` ${esc(answersStop(e))}` : ""}</p>`,
+    md: [
+      `### ${noteMd(e.name)}`,
+      "",
+      noteMd(`${engineName(e)}: ${answersHead(e)}`),
+      "",
+      ...(answersStop(e) ? [noteMd(answersStop(e)), ""] : []),
+    ],
+  });
+  const aiAnswers = () =>
+    answers && {
+      cls: "aianswers",
+      title: "AI answer check",
+      blocks: [
+        { p: ANSWERS_INTRO },
+        ...answers.engines.flatMap(e => [
+          engineHead(e),
+          ...answersLists(e).flatMap(([t, rows]) => [{ p: `${t}:` }, { rows }]),
+        ]),
+      ],
+    };
+  return { agents, aiCrawlers, aiAnswers };
 }
