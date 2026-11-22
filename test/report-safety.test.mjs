@@ -8,6 +8,8 @@ import { ROOT, SKILL, tmp } from "./helpers.mjs";
 import { render } from "../skills/seo-supervisor/scripts/render-report.mjs";
 import { summaryOf } from "../skills/seo-supervisor/scripts/dashboard.mjs";
 import { SCORE_HOW } from "../skills/seo-supervisor/scripts/report/overview.mjs";
+import { mdSafe } from "../skills/seo-supervisor/scripts/report/format.mjs";
+import { issueOf } from "../skills/seo-supervisor/scripts/issues.mjs";
 
 const KITCHEN = JSON.parse(readFileSync(join(ROOT, "test", "golden", "kitchen-sink.json"), "utf8"));
 const SAMPLE = JSON.parse(readFileSync(join(SKILL, "examples", "sample-audit.json"), "utf8"));
@@ -299,6 +301,23 @@ test("the agent's own `code` and **bold** stay, as the page shows them", () => {
     "- Drop \\*it\\*",
   ])
     assert.ok(md?.includes(s), s);
+});
+
+test("issues.mjs escapes a finding's text with the report's own Markdown escaper, not a copy", () => {
+  const src = readFileSync(join(SKILL, "scripts", "issues.mjs"), "utf8");
+  assert.match(src, /import \{ mdSafe, noteCode as code, noteMd \} from "\.\/report\/format\.mjs";/);
+  assert.doesNotMatch(src, /\[\\\\`\*_\[\\\]<>\]/, "no escaper of its own");
+  const what = "See **this** `code`, https://a.example/x_y and [z](javascript:a) <img src=x onerror=alert(1)>";
+  assert.ok(
+    issueOf({ id: "F-001", severity: "low", title: "T", what }, "https://s.example").body.includes(
+      `**What's wrong.** ${mdSafe(what)}`,
+    ),
+  );
+  assert.match(
+    issueOf({ id: "F-001", severity: "low", title: "T", what: "ask @alice" }, "https://s.example").body,
+    /ask @​alice/,
+    "and no one is pinged",
+  );
 });
 
 test("the page's styles have no dead .as.b3-t,.as.b4-t rule", () => {

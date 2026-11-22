@@ -9,6 +9,7 @@ import { parseArgs } from "./lib/args.mjs";
 import { Fail, runMain } from "./lib/cli.mjs";
 import { findingsOf } from "./lib/score.mjs";
 import { redact } from "./lib/redact.mjs";
+import { mdSafe, noteCode as code, noteMd } from "./report/format.mjs";
 
 const SEV_LABEL = {
   blocker: "Blocker",
@@ -21,23 +22,9 @@ const REPO = /^[\w.][\w.-]*(\/[\w.][\w.-]*){1,2}$/;
 // @name in a finding's text (often quoted from a crawled page) would notify that GitHub user: a zero-width space after
 // the @ stops it. An email address (a letter right before the @) is left as it is.
 const noPing = s => String(s ?? "").replace(/(^|[^\w])@(?=\w)/g, "$1@​");
-const code = s => "`" + String(s).replace(/[`\r\n]/g, " ") + "`";
-// Findings quote crawled pages and other sites, so they're escaped as the Markdown report escapes them: `code` spans
-// stay, bare URLs become code spans, and the rest is backslash-escaped. Nothing can show as a link, image or tag.
-const plain = s => noPing(s.replace(/[\\`*_[\]<>]/g, "\\$&"));
-const md = s =>
-  String(s ?? "")
-    .replace(/\s+/g, " ")
-    .split(/(`[^`]+`)/)
-    .map((p, i) =>
-      i % 2
-        ? p
-        : p
-            .split(/(https?:\/\/[^\s<>"]*[^\s<>".,;:!?)'])/)
-            .map((q, j) => (j % 2 ? code(q) : plain(q)))
-            .join(""),
-    )
-    .join("");
+// Findings quote crawled pages and other sites, so mdSafe escapes them: `code` spans and **bold** stay, bare URLs
+// become code spans, and the rest is backslash-escaped. Nothing can show as a link, image or tag, or notify anyone.
+const md = s => mdSafe(s, t => noPing(noteMd(t)));
 // gh's own error text, with any secret masked (lib/redact.mjs knows GitHub's token prefixes too).
 const tidy = s =>
   redact(
