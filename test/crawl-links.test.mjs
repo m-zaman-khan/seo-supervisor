@@ -164,7 +164,7 @@ test("#name helpers: the #names worth checking, and names matched as written or 
   assert.deepEqual(CHECKS["link-fragment-missing"].slice(0, 2), ["CRAWL-07", "low"]);
 });
 
-test("item 21: JavaScript changing the meta description, or an H1 the raw HTML had, is a low text change; title, canonical and robots stay high; an H1 only JavaScript adds stays REND-01", () => {
+test("JavaScript changing the meta description, the title or an H1 the raw HTML had is a low text change; canonical and robots stay high; an H1 only JavaScript adds stays REND-01", () => {
   const doc = ({ desc, h1 } = {}) =>
     `<!doctype html><html><head><title>T</title>${desc == null ? "" : `<meta name="description" content="${desc}">`}</head><body>${h1 == null ? "" : `<h1>${h1}</h1>`}</body></html>`;
   const raw = doc({ desc: "Boiler repairs in Leeds", h1: "Boiler repairs" });
@@ -195,18 +195,21 @@ test("item 21: JavaScript changing the meta description, or an H1 the raw HTML h
     ],
     "removed by JavaScript",
   );
-  assert.ok(["title", "canonical", "robots"].every(field => changesHead({ field }) && !changesText({ field })));
+  assert.ok(["canonical", "robots"].every(field => changesHead({ field }) && !changesText({ field })));
+  assert.ok(changesText({ field: "title" }) && !changesHead({ field: "title" }));
   assert.ok(
-    !["jsonld-count", "link-count"].some(field => changesHead({ field, raw: 1 }) || changesText({ field, raw: 1 })),
+    !["jsonld-count", "jsonld-types", "words", "link-count"].some(
+      field => changesHead({ field, raw: 1 }) || changesText({ field, raw: 1 }),
+    ),
   );
   const [rule, severity, title] = RENDER_CHECKS["render-changes-head"];
   assert.deepEqual([rule, severity], ["REND-06", "high"]);
-  assert.match(title(2), /title, canonical or robots tag on 2 page/);
+  assert.match(title(2), /canonical or robots tag on 2 page/);
   // Google allows JavaScript to set or change the meta description, so this one is low.
   // https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics
   const [rule2, severity2, title2, why2, fix2] = RENDER_CHECKS["render-changes-text"];
   assert.deepEqual([rule2, severity2], ["REND-06", "low"]);
-  assert.match(title2(2), /meta description or H1 on 2 page/);
+  assert.match(title2(2), /title, meta description or H1 on 2 page/);
   assert.match(why2, /Google/);
   assert.match(why2, /don't run JavaScript/);
   assert.match(fix2, /server HTML/);

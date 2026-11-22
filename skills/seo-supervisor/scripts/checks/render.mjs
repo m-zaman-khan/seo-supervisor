@@ -12,6 +12,7 @@ import { CHROME_FLAGS, containerArgs, launchChrome, ownProxyArgs, quietProfile }
 import { chromeProxyArgs } from "../lib/proxy.mjs";
 import { redact } from "../lib/redact.mjs";
 import { installedBrowser } from "../lib/settings-dir.mjs";
+import { jsonLdNodes, norm, stripNonContent, typesOf } from "../lib/html.mjs";
 import { privateIp } from "./outbound.mjs";
 
 export const CHECKS = {
@@ -20,17 +21,17 @@ export const CHECKS = {
   "render-changes-head": [
     "REND-06",
     "high",
-    n => `JavaScript changes the title, canonical or robots tag on ${n} page(s)`,
-    "Search engines read the raw HTML first and the rendered page later. When the two disagree, which value wins isn't predictable, and a robots or canonical change can drop a page.",
-    "Output the final title, canonical and robots tag in the server HTML and don't change them in client code.",
+    n => `JavaScript changes the canonical or robots tag on ${n} page(s)`,
+    "Search engines read the raw HTML first and the rendered page later. When the two disagree, which value wins isn't predictable, and a robots or canonical change can drop a page. Google asks sites not to change the canonical with JavaScript.",
+    "Output the final canonical and robots tag in the server HTML and don't change them in client code.",
   ],
   // Low: Google accepts a title or description set by JavaScript, so this matters only to crawlers that don't run it.
   "render-changes-text": [
     "REND-06",
     "low",
-    n => `JavaScript changes the meta description or H1 on ${n} page(s)`,
-    "Google runs the page's JavaScript and uses what it sets, and says changing the meta description this way is fine. Crawlers that don't run JavaScript, most AI crawlers among them, only ever see the server's description and H1, so they get a different summary of the page.",
-    "If the server HTML's description or H1 is a placeholder or out of date, output the final one in the server HTML. If both versions are fine, nothing needs to change.",
+    n => `JavaScript changes the title, meta description or H1 on ${n} page(s)`,
+    "Google runs the page's JavaScript and uses what it sets, and says setting or changing the title or meta description this way is fine. Crawlers that don't run JavaScript, most AI crawlers among them, only ever see the server's title, description and H1, so they get a different summary of the page.",
+    "If the server HTML's title, description or H1 is a placeholder or out of date, output the final one in the server HTML. If both versions are fine, nothing needs to change.",
   ],
   "render-adds-content": [
     "REND-01",
@@ -476,10 +477,18 @@ function read(html) {
     ),
     h1: h1 ? decode(h1[1].replace(/<[^>]+>/g, " ")) : null,
     jsonld: (html.match(/<script\b[^>]*application\/ld\+json/gi) || []).length,
+    types: [...new Set(jsonLdNodes(html).nodes.flatMap(typesOf).map(String))],
+    words: new Set(
+      norm(decode(stripNonContent(html.match(/<body\b[\s\S]*/i)?.[0] || "").replace(/<[^>]+>/g, " ")))
+        .split(" ")
+        .filter(Boolean),
+    ),
     links: (html.match(/<a\b[^>]*\bhref\s*=/gi) || []).length,
   };
 }
 
+// New @types and words are compared, not just counts, so swapped text or schema is caught. The local lines of 100 new
+// words and a third of the page keep a consent banner in a fresh profile (a few dozen words) from counting.
 export function compareRendered(rawHtml, renderedHtml) {
   const a = read(rawHtml),
     b = read(renderedHtml),
@@ -491,15 +500,24 @@ export function compareRendered(rawHtml, renderedHtml) {
         : (a[field] ?? "") === (b[field] ?? "");
     if (!same) out.push({ field, raw: a[field], rendered: b[field] });
   }
-  if (b.jsonld > a.jsonld) out.push({ field: "jsonld-count", raw: a.jsonld, rendered: b.jsonld });
+  const types = b.types.filter(t => !a.types.includes(t)),
+    added = [...b.words].filter(w => !a.words.has(w));
+  if (types.length) out.push({ field: "jsonld-types", raw: a.types.join(", ") || null, rendered: types.join(", ") });
+  else if (b.jsonld > a.jsonld) out.push({ field: "jsonld-count", raw: a.jsonld, rendered: b.jsonld });
+  if (added.length >= 100 && added.length * 3 >= b.words.size)
+    out.push({
+      field: "words",
+      raw: `${a.words.size} words`,
+      rendered: `${added.length} words only after JavaScript, e.g. ${added.slice(0, 8).join(", ")}`,
+    });
   // At least 10 more, since a consent banner in a fresh profile adds a few.
   if (b.links > a.links * 1.5 && b.links - a.links >= 10)
     out.push({ field: "link-count", raw: a.links, rendered: b.links });
   return out;
 }
 // An H1 only JavaScript adds is render-adds-content's, with the JSON-LD, words and link count.
-export const changesHead = x => ["title", "canonical", "robots"].includes(x.field);
-export const changesText = x => x.field === "description" || (x.field === "h1" && !!x.raw);
+export const changesHead = x => ["canonical", "robots"].includes(x.field);
+export const changesText = x => x.field === "title" || x.field === "description" || (x.field === "h1" && !!x.raw);
 // A page the crawler already reported as client-rendered gets no render-adds-content, so it has one REND-01 finding.
 // render-adds-text skips those pages too, as checkMore gets no raw word count for them.
 export function renderFindings(url, rawHtml, renderedHtml, { add, clientRendered = false }) {

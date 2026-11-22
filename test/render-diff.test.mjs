@@ -25,7 +25,7 @@ test("identical raw and rendered HTML differ in nothing", () => {
   assert.deepEqual(compareRendered(page(), page()), []);
 });
 
-test("JavaScript changing the title, canonical or robots tag is reported with both values", () => {
+test("JavaScript changing the title, canonical or robots tag is reported with both values (the title as a low text change)", () => {
   const d = compareRendered(page(), page({ title: "Loading…", canonical: "https://example.com/", robots: "noindex" }));
   assert.deepEqual(d.map(x => x.field).sort(), ["canonical", "robots", "title"]);
   assert.deepEqual(
@@ -36,7 +36,16 @@ test("JavaScript changing the title, canonical or robots tag is reported with bo
 
 test("an H1, JSON-LD or many links that appear only after rendering are reported", () => {
   assert.deepEqual(fields(page({ h1: "" }), page()), ["h1"]);
-  assert.deepEqual(fields(page({ jsonld: 0 }), page({ jsonld: 2 })), ["jsonld-count"]);
+  assert.deepEqual(
+    fields(page({ jsonld: 0 }), page({ jsonld: 2 })),
+    ["jsonld-types"],
+    "a type only JavaScript adds is named",
+  );
+  assert.deepEqual(
+    fields(page({ jsonld: 1 }), page({ jsonld: 2 })),
+    ["jsonld-count"],
+    "another block of a type the raw HTML has is counted",
+  );
   assert.deepEqual(fields(page({ links: 4 }), page({ links: 6 })), [], "1.5× more links is still fine");
   assert.deepEqual(fields(page({ links: 4 }), page({ links: 20 })), ["link-count"], "1.5× more and at least 10 more");
 });
