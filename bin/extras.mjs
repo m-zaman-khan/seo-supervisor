@@ -242,12 +242,69 @@ const NEW = { bom: "", indent: /** @type {string | number} */ (2), eol: "\n", en
 const writeJson = (o, look = NEW) =>
   look.bom + JSON.stringify(o, null, look.indent).replaceAll("\n", look.eol) + (look.end ? look.eol : "");
 
+// Codex warns when one folder declares hooks in both hooks.json and config.toml, so when config.toml holds the hooks
+// the guard's go there too, as inline TOML tables between marker lines. JSON strings are valid TOML basic strings.
+// https://learn.chatgpt.com/docs/hooks
+const BLOCK = /\n# >>> seo-supervisor guard[^\n]*\n[\s\S]*?# <<< seo-supervisor guard\n/;
+const tomlBlock = events =>
+  `\n# >>> seo-supervisor guard (npx ${NAME} --uninstall removes this block)\n${Object.entries(events)
+    .flatMap(([ev, groups]) =>
+      groups.flatMap(g => [
+        `[[hooks.${ev}]]`,
+        ...(g.matcher !== undefined ? [`matcher = ${JSON.stringify(g.matcher)}`] : []),
+        ...g.hooks.flatMap(h => [
+          `[[hooks.${ev}.hooks]]`,
+          ...Object.entries(h).map(([k, v]) => `${k} = ${JSON.stringify(v)}`),
+        ]),
+      ]),
+    )
+    .join("\n")}\n# <<< seo-supervisor guard\n`;
+const readText = f => {
+  try {
+    return readFileSync(f, "utf8");
+  } catch {
+    return null;
+  }
+};
+/** Codex's config.toml beside hooks.json when the guard belongs there, else null: it declares hooks, hooks.json has
+ * none, and they aren't plain arrays (PreToolUse = [...]) that a table can't be added to. */
+function codexToml(file) {
+  const toml = join(dirname(file), "config.toml"),
+    text = readText(toml)?.replace(BLOCK, "");
+  if (!text || !/^[ \t]*\[\[?hooks[.\]]/m.test(text) || /^[ \t]*(PreToolUse|UserPromptSubmit)[ \t]*=/m.test(text))
+    return null;
+  let r;
+  try {
+    r = readJson(file);
+  } catch {
+    return null;
+  } // the JSON path reports an invalid hooks.json
+  if (r) strip(eventsOf("codex", file, r.o));
+  return !r || !Object.keys(r.o.hooks).length ? toml : null;
+}
+/** Takes the guard's block out of the config.toml beside a Codex hooks.json: [["kept", path]], or [] if it had none. */
+function untoml(file) {
+  const toml = join(dirname(file), "config.toml"),
+    text = readText(toml);
+  if (text === null || !BLOCK.test(text)) return [];
+  writeFileSync(toml, text.replace(BLOCK, ""));
+  return [["kept", toml]];
+}
+
 /** Adds the guard for one agent (replacing an older copy). project: guard is relative to the project root.
  * Returns a problem message, or null. */
 export function addHooks(format, file, guard, created, root, project = false) {
   if (format === "copilot")
     return (put(file, writeJson({ version: 1, hooks: entries(format, guard, project) }), created, root), null);
   if (format === "cline") return (put(file, clinePlugin(guard), created, root), null);
+  const toml = format === "codex" ? codexToml(file) : null;
+  if (toml) {
+    removeHooks(format, file, created, root); // an older copy, in either file
+    const text = readFileSync(toml, "utf8");
+    writeFileSync(toml, text + (text.endsWith("\n") ? "" : "\n") + tomlBlock(entries(format, guard, project)));
+    return null;
+  }
+  if (format === "codex") untoml(file); // hooks moved to hooks.json, so the guard's follow
   let r;
   try {
     r = readJson(file) ?? { o: fresh(format), look: NEW };
@@ -267,31 +324,31 @@ export function addHooks(format, file, guard, created, root, project = false) {
 /** Takes the guard out of one agent's hook file (and Codex's config.toml), deleting a file the install created once
  * nothing else is left. Returns [what, file] pairs: "removed", or "kept" when other hooks remain. */
 export function removeHooks(format, file, created, root) {
-  if (!existsSync(file)) return null;
+  const out = format === "codex" ? untoml(file) : [];
+  if (!existsSync(file)) return out;
   if (format === "copilot" || format === "cline") {
-    if (!OURS.test(readFileSync(file, "utf8"))) return null;
-    rmSync(file);
-    return "removed";
+    if (OURS.test(readFileSync(file, "utf8"))) {
+      rmSync(file);
+      out.push(["removed", file]);
+    }
+    return out;
   }
   let r;
   try {
     r = readJson(file);
   } catch {
-    return null;
+    return out;
   }
-  if (!r || !OURS.test(JSON.stringify(r.o))) return null;
+  if (!r || !OURS.test(JSON.stringify(r.o))) return out;
   const o = r.o;
   strip(eventsOf(format, file, o));
   // Devin's user config.json holds other settings too: an emptied "hooks" key goes.
   if (format === "devin" && o.hooks && !Object.keys(o.hooks).length) delete o.hooks;
   const ours = created.includes(rel(root, file)),
     empty = JSON.stringify(o) === JSON.stringify(fresh(format));
-  if (ours && empty) {
-    rmSync(file);
-    return "removed";
-  }
-  writeFileSync(file, writeJson(o, r.look));
-  return "kept";
+  if (ours && empty) rmSync(file);
+  else writeFileSync(file, writeJson(o, r.look));
+  return [...out, [ours && empty ? "removed" : "kept", file]];
 }
 
 /** Installs one target's extras. src: { commands: [[file, md]], subagents: [md] }. guard: false skips the hook (and
@@ -305,13 +362,13 @@ export function installExtras(t, { src, guard, force, scope, root, created, show
   for (const x of t.extras) {
     if (x.kind === "hooks") {
       if (!guard) {
-        if (removeHooks(x.format, x.path, created, root))
-          lines.push(`removed  the guard from ${show(x.path)} (--no-guard)`);
+        for (const [, f] of removeHooks(x.format, x.path, created, root))
+          lines.push(`removed  the guard from ${show(f)} (--no-guard)`);
         continue;
       }
       const err = addHooks(x.format, x.path, guardRef, created, root, scope === "project" && !isAbsolute(guardRef));
       if (err) problems.push(err);
-      else lines.push(`guard    ${show(x.path)}`);
+      else lines.push(`guard    ${show((x.format === "codex" && codexToml(x.path)) || x.path)}`);
       continue;
     }
     const files =
@@ -342,8 +399,7 @@ export function removeExtras(t, { src, created, root }) {
   const gone = [];
   for (const x of t.extras) {
     if (x.kind === "hooks") {
-      const what = removeHooks(x.format, x.path, created, root);
-      if (what) gone.push([what, x.path]);
+      gone.push(...removeHooks(x.format, x.path, created, root));
       continue;
     }
     const names =

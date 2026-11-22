@@ -251,6 +251,39 @@ test("uninstall says kept for an owner's hook file it took the guard out of, and
   assert.match(line(".github/hooks/seo-supervisor-guard.json"), /^removed +/);
 });
 
+test("Codex: where the owner keeps hooks in config.toml, the guard goes there too (no startup warning) and comes out exactly", async () => {
+  // Codex loads hooks from both hooks.json and config.toml and warns at startup, so each layer should use one.
+  // https://learn.chatgpt.com/docs/hooks
+  const home = tmp(),
+    cwd = tmp(),
+    dir = join(home, ".codex"),
+    toml = join(dir, "config.toml");
+  const owner = `model = "gpt-5.5"\n\n[[hooks.PreToolUse]]\nmatcher = "^Bash$"\n[[hooks.PreToolUse.hooks]]\ntype = "command"\ncommand = "python3 policy.py"\n`;
+  mkdirSync(dir);
+  writeFileSync(toml, owner);
+  await node([BIN, "--agent", "codex", "--yes"], { env: env(home), cwd });
+  await node([BIN, "--agent", "codex", "--yes"], { env: env(home), cwd }); // again: still one copy
+  assert.ok(!existsSync(join(dir, "hooks.json")), "one format in that folder");
+  const t = readFileSync(toml, "utf8");
+  assert.ok(t.startsWith(owner), "the owner's lines stay as they were");
+  assert.equal((t.match(/^\[\[hooks\.PreToolUse\]\]$/gm) || []).length, 2, "theirs and ours");
+  // The docs' inline TOML shape: [[hooks.<Event>]] with matcher, then [[hooks.<Event>.hooks]] with the handler.
+  assert.match(
+    t,
+    /\n\[\[hooks\.PreToolUse\]\]\nmatcher = "\^\(Bash\|apply_patch\)\$"\n\[\[hooks\.PreToolUse\.hooks\]\]\ntype = "command"\ncommand = "node '[^"]+guard\.mjs' --agent codex --event PreToolUse"\ncommandWindows = "node \\"[^"]+guard\.mjs\\" --agent codex --event PreToolUse"\n/,
+  );
+  assert.match(t, /\n\[\[hooks\.UserPromptSubmit\]\]\n\[\[hooks\.UserPromptSubmit\.hooks\]\]\n/);
+  const { stdout } = await node([BIN, "--uninstall"], { env: env(home), cwd });
+  assert.equal(readFileSync(toml, "utf8"), owner, "byte for byte");
+  assert.match(stdout, /kept +~\/\.codex\/config\.toml/);
+
+  // A config.toml with no hooks: hooks.json as usual, and config.toml untouched.
+  writeFileSync(toml, 'model = "gpt-5.5"\n');
+  await node([BIN, "--agent", "codex", "--yes"], { env: env(home), cwd });
+  assert.ok(existsSync(join(dir, "hooks.json")));
+  assert.equal(readFileSync(toml, "utf8"), 'model = "gpt-5.5"\n');
+});
+
 test("a home folder with letters outside ASCII gets the whole skill (Node 24's cpSync writes to a garbled folder on Windows)", async () => {
   const home = join(tmp(), "José D’Souza"),
     cwd = tmp();
