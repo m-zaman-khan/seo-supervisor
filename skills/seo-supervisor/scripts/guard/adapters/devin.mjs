@@ -19,6 +19,7 @@ export function toActions(input, event, cwd) {
 
 export function respond(result) {
   if (!result || result.decision === "allow") return SILENT;
-  const reason = say(result);
-  return json({ decision: "block", reason }, 2, reason);
+  // Exit 2 would also block, but PowerShell's -Command turns a native exit 2 into 1, which Devin only logs, so the
+  // block is JSON with exit 0. There's no ask, so an ask blocks and the agent asks in chat.
+  return json({ decision: "block", reason: say(result) });
 }

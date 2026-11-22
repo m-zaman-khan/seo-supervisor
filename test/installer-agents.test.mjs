@@ -210,7 +210,7 @@ test("Copilot: toolArgs as a JSON string, ask and deny, and a key held back from
   assert.doesNotMatch(held, /AIzaSy/);
 });
 
-test("Devin: exec and edits become actions; a stop is exit 2 with decision block", () => {
+test("Devin: exec and edits become actions; a stop is decision block (exit 0: installer-shells.test.mjs says why)", () => {
   // The command hook input sample. https://docs.devin.ai/cli/extensibility/hooks/overview
   const exec = {
     hook_event_name: "PreToolUse",
@@ -221,9 +221,9 @@ test("Devin: exec and edits become actions; a stop is exit 2 with decision block
   };
   assert.deepEqual(devin.toActions(exec, "PreToolUse", "/p"), [{ kind: "bash", command: "rm -rf /" }]);
   const r = devin.respond(ASK, "PreToolUse");
-  assert.equal(r.exitCode, 2);
+  assert.equal(r.exitCode, 0);
   assert.equal(out(r).decision, "block");
-  assert.match(r.stderr, /Ask the owner in chat/);
+  assert.match(out(r).reason, /Ask the owner in chat/);
   assert.deepEqual(devin.respond(ALLOW, "PreToolUse"), { stdout: "", stderr: "", exitCode: 0 });
   const dir = site();
   assert.equal(
@@ -278,7 +278,7 @@ test(
       { hook_event_name: "PreToolUse", tool_name: "exec", tool_input: { command: "x" } },
       { check: () => ASK, event: "PreToolUse" },
     );
-    assert.equal(r.exitCode, 2);
+    assert.equal(out(r).decision, "block");
 
     const dir = site(),
       opts = event => ({ env: {}, event, cwd: dir }); // no mode set: ask
@@ -317,7 +317,7 @@ test(
         "devin",
         "PreToolUse",
         { tool_name: "write", tool_input: { file_path: join(dir, "robots.txt"), content: block } },
-        x => x.stderr,
+        x => out(x).reason,
       ],
       [
         "cline",
