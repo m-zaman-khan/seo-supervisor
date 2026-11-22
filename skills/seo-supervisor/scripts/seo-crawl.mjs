@@ -291,6 +291,7 @@ const mdHome = await probeSite({
   notes,
   follow,
   get,
+  pages,
 });
 
 // ---------- per-page checks ----------
