@@ -3,7 +3,7 @@
 // says E-E-A-T isn't a ranking factor, so the view is a local check, not a Google score.
 // https://developers.google.com/search/docs/fundamentals/creating-helpful-content
 // HTML is read with regexes; page names and paths are matched in English and a few European languages.
-import { attrs, textOf } from "../lib/html.mjs";
+import { attrs, jsonLdNodes, textOf } from "../lib/html.mjs";
 
 // a is the attribute text after the tag name.
 const attr = (a, name) => attrs("<a " + a + ">")[name] ?? null;
@@ -30,30 +30,6 @@ const pathOf = u => {
   }
 };
 const uniq = (list, n = 3) => [...new Set(list.filter(Boolean))].slice(0, n);
-
-// JSON-LD nodes with a @type, top level and in @graph, as the crawler reads them.
-function nodesOf(html) {
-  const nodes = [];
-  for (const m of html.matchAll(
-    /<script\b[^>]*type\s*=\s*["']?application\/ld\+json["']?[^>]*>([\s\S]*?)<\/script>/gi,
-  )) {
-    let d;
-    try {
-      d = JSON.parse(m[1].trim());
-    } catch {
-      continue;
-    }
-    const walk = x => {
-      if (Array.isArray(x)) x.forEach(walk);
-      else if (x && typeof x === "object") {
-        if (Array.isArray(x["@graph"])) x["@graph"].forEach(walk);
-        if (x["@type"]) nodes.push(x);
-      }
-    };
-    walk(d);
-  }
-  return nodes;
-}
 const typesOf = n => [].concat(n["@type"] || []).filter(t => typeof t === "string");
 const deepHas = (o, pred, depth = 0) =>
   !!o && typeof o === "object" && depth < 12 && (pred(o) || Object.values(o).some(v => deepHas(v, pred, depth + 1)));
@@ -117,7 +93,7 @@ const CITED = /https?:\/\/|\[\d+\]|\bsource:|\baccording to\b/i;
 // One page's evidence for each signal. The crawler passes what it already parsed: the JSON-LD nodes, the HTML from
 // <body> on, and resolve(href), which returns a URL against base, or null.
 export function trustFeatures(html, url, base = url) {
-  const nodes = nodesOf(html),
+  const nodes = jsonLdNodes(html).nodes,
     types = nodes.flatMap(typesOf);
   const body = (i => (i >= 0 ? html.slice(i) : html))(html.search(/<body\b/i)).replace(
     /<(script|style|template)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi,
@@ -126,19 +102,32 @@ export function trustFeatures(html, url, base = url) {
   const main =
     body.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
     body.replace(/<(header|nav|footer|aside)\b[\s\S]*?<\/\1>/gi, " ");
-  const abs = h => {
-    try {
-      const u = new URL(h, base);
-      return /^https?:$/.test(u.protocol) ? u : null;
-    } catch {
-      return null;
-    }
-  };
-  const segsOf = h =>
-    (abs(h)?.pathname.toLowerCase() || "")
-      .split("/")
-      .filter(Boolean)
-      .map(s => s.replace(/\.(html?|php|aspx?)$/, ""));
+  // Each href is resolved once, however many kinds of page ask about it.
+  const read = new Map(),
+    at = h => {
+      let r = read.get(h);
+      if (!r) {
+        let u = null;
+        try {
+          u = new URL(h, base);
+        } catch {}
+        if (u && !/^https?:$/.test(u.protocol)) u = null;
+        read.set(
+          h,
+          (r = {
+            u,
+            segs: (u?.pathname.toLowerCase() || "")
+              .split("/")
+              .filter(Boolean)
+              .map(s => s.replace(/\.(html?|php|aspx?)$/, "")),
+          }),
+        );
+      }
+      return r;
+    };
+  const abs = h => at(h).u,
+    segsOf = h => at(h).segs,
+    own = hostOf(url);
   const linksIn = h =>
     [...h.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)].map(m => ({
       a: m[1],
@@ -188,7 +177,7 @@ export function trustFeatures(html, url, base = url) {
     linksIn(main)
       .filter(l => !/\bsponsored\b/i.test(attr(l.a, "rel") || ""))
       .map(l => abs(l.href))
-      .filter(u => u && bare(u.hostname) !== hostOf(url) && !SOCIAL.test(bare(u.hostname)))
+      .filter(u => u && bare(u.hostname) !== own && !SOCIAL.test(bare(u.hostname)))
       .map(u => bare(u.hostname)),
     10,
   );
