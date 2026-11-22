@@ -31,6 +31,9 @@ import {
   isDay,
   num,
 } from "./keys/http.mjs";
+import { perplexity } from "./keys/perplexity.mjs";
+import { openai } from "./keys/openai.mjs";
+import { googleplaces } from "./keys/googleplaces.mjs";
 
 export { Fail, Refused, domainOf };
 export const SERVICES = {
@@ -222,73 +225,9 @@ export const SERVICES = {
       "Clarity allows 10 requests a day per project, and each fetch uses one. A token reads one project, so for several sites use a client folder each (SEO_SUPERVISOR_CLIENT=<name>). If someone with access leaves the project, Microsoft asks you to replace the token.",
     ],
   },
-  // answers: ai-answers.mjs uses Perplexity and OpenAI; fetch doesn't. Each answer searches the web first, so it gets
-  // 2 minutes, not the usual 30 seconds. The requests' sources are in ai-answers.mjs.
-  // https://docs.perplexity.ai/docs/getting-started/quickstart
-  // https://developers.openai.com/api/docs/quickstart
-  perplexity: {
-    name: "Perplexity",
-    env: "PERPLEXITY_API_KEY",
-    endpointEnv: "PERPLEXITY_ENDPOINT",
-    endpoint: "https://api.perplexity.ai/v1/agent",
-    optional: true,
-    answers: true,
-    timeout: 120000,
-    adds: "whether Perplexity's answers to your customers' questions cite your site (node ai-answers.mjs)",
-    where: "console.perplexity.ai → API Keys",
-    guide: [
-      "Perplexity's API lets ai-answers.mjs ask Perplexity the questions your customers ask, and count how often its answers cite your site. It uses your own key, and Perplexity bills each answer to your account.",
-      "1. Sign in at https://console.perplexity.ai and create or pick a project.",
-      "2. Open API Keys (https://console.perplexity.ai/project/keys) and click + Generate API Key. Copy the key straight away: the console shows it only once.",
-      "3. The API needs credits: sign-up credit alone isn't enough. Buy credits on the Billing page (https://console.perplexity.ai/project/billing).",
-      `4. In your own terminal run: ${setLine("perplexity")}`,
-      PASTE,
-      "Then node ai-answers.mjs --site <your address> --questions <file> shows what it would send and how many requests that is. Nothing is sent until you add --yes.",
-    ],
-  },
-  openai: {
-    name: "OpenAI",
-    env: "OPENAI_API_KEY",
-    endpointEnv: "OPENAI_ENDPOINT",
-    endpoint: "https://api.openai.com/v1/responses",
-    optional: true,
-    answers: true,
-    timeout: 120000,
-    adds: "whether the model ChatGPT uses, searching the web, cites your site when it answers your customers' questions (node ai-answers.mjs)",
-    where: "platform.openai.com/api-keys",
-    guide: [
-      "OpenAI's API lets ai-answers.mjs ask the model ChatGPT uses, with web search, the questions your customers ask, and count how often its answers cite your site. It uses your own key, and OpenAI bills each answer to your account.",
-      "1. Sign in at https://platform.openai.com.",
-      "2. Open https://platform.openai.com/api-keys and create a new secret key. Copy it and keep it private.",
-      "3. The API needs credits: add them on the billing page (https://platform.openai.com/account/billing/overview).",
-      `4. In your own terminal run: ${setLine("openai")}`,
-      PASTE,
-      "Then node ai-answers.mjs --site <your address> --questions <file> shows what it would send and how many requests that is. Nothing is sent until you add --yes.",
-    ],
-  },
-  // script: geo-grid.mjs uses it; fetch doesn't. The project needs billing enabled. The key goes in the X-Goog-Api-Key
-  // header, never in an address. Prices are in geo-grid.mjs.
-  // https://developers.google.com/maps/documentation/places/web-service/get-api-key
-  googleplaces: {
-    name: "Google Places API",
-    env: "GOOGLE_PLACES_API_KEY",
-    endpointEnv: "GOOGLE_PLACES_ENDPOINT",
-    endpoint: "https://places.googleapis.com/v1",
-    optional: true,
-    script: "geo-grid.mjs",
-    adds: "where your business appears in the list Google's Places API returns near each point of a grid around it (node geo-grid.mjs)",
-    where: "console.cloud.google.com → Google Maps Platform → Keys & Credentials",
-    guide: [
-      "Google's Places API (New) lets geo-grid.mjs check where your business appears in the list Google returns for a keyword near each point of a grid around it. It uses your own Google Maps Platform key. Asking for place IDs only, as geo-grid does, is listed as free without limit on Google's price list (read 22 Nov 2026).",
-      "1. Open https://console.cloud.google.com and pick or create a project.",
-      "2. Turn on billing for the project: https://console.cloud.google.com/projectselector/billing. Google requires billing for the Places API even when your use stays within the free amounts.",
-      "3. Open https://console.cloud.google.com/apis/library/places.googleapis.com and click Enable. Check that it says Places API (New). It can take a few minutes to start working.",
-      "4. Open Google Maps Platform → Keys & Credentials (https://console.cloud.google.com/projectselector/google/maps-apis/credentials) and click Create credentials → API key. Under API restrictions, keep only Places API (New) selected, so the key can't be used for anything else.",
-      `5. Copy the key, then in your own terminal run: ${setLine("googleplaces")}`,
-      PASTE,
-      'Then node geo-grid.mjs --place-id <your place ID> --keywords "plumber" shows what it would send and how many requests that is. Nothing is sent until you add --yes. Your place ID is on Google\'s Place ID Finder: https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder',
-    ],
-  },
+  perplexity,
+  openai,
+  googleplaces,
 };
 const USAGE = `usage: node connect-keys.mjs set bing|openpagerank|ahrefs|matomo|posthog|moz|youtube|clarity|perplexity|openai|googleplaces [<key>]   (no key: it asks, hidden)
        node connect-keys.mjs set matomo [--url <address>] [--site-id <id>] | set posthog [--host us|eu|<address>] [--project-id <id>]
