@@ -242,8 +242,8 @@ One HTML file that works offline. It opens in dark mode and has a light-mode swi
 | Check | What leaves your machine |
 | --- | --- |
 | Real-user speed (Core Web Vitals) | Up to 10 public page URLs, sent to Google PageSpeed Insights (needs `PSI_API_KEY`) |
-| Lighthouse scores (only if you added Lighthouse) | Nothing is sent by the skill, but the sample pages load in your Chrome and run their own scripts. 5 pages by default; `--lighthouse 20` covers that many, and `--lighthouse all` every page (up to 200, about 20 seconds each) |
-| What your JavaScript changes, how pages look on a phone, and whether Back and Forward are instant | Nothing is sent by the skill, but up to 10 pages run in a headless Chrome or Edge, so their own scripts (analytics included) run. Screenshots are saved locally |
+| Lighthouse scores (only if you added Lighthouse) | Nothing is sent by the skill, but the sample pages load in your Chrome and run their own scripts. Chrome's own background services are switched off. 5 pages by default; `--lighthouse 20` covers that many, and `--lighthouse all` every page (up to 200, about 20 seconds each) |
+| What your JavaScript changes, how pages look on a phone, and whether Back and Forward are instant | Nothing is sent by the skill, but up to 10 pages run in a headless Chrome or Edge, so their own scripts (analytics included) run. Chrome's own background services (updates, sync, usage reports) are switched off, so Chrome itself contacts nothing. Screenshots are saved locally |
 | Search intent | Your pages' target phrases, sent to the agent's web search provider |
 | Off-site brand presence | Your brand name, sent to the agent's web search provider |
 | Google ranking updates in the period, so you can tell a drop that came with a Google update from one your site caused | Nothing about your site: a plain read of Google's public Search Status Dashboard, and with `--blog` the Search Central blog's feed |

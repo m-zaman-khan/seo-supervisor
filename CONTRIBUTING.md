@@ -31,6 +31,8 @@ The tests crawl a small fixture site (`test/fixture-site/`) that has one planted
 
 ## Changing the report
 
+The renderer is in `scripts/report/`: one module per tab or topic, and the Overview's panels in `panels/`. Their order is the `panels` list in `render-report.mjs`. `styles.css` and `client.js` are read at run time and inlined, so every byte ships and neither can hold a comment. `render()` from `render-report.mjs` gives the HTML and Markdown in-process, which panel tests can use instead of spawning the script.
+
 Run `npm run demo` afterwards. It refreshes `docs/index.html` (the live demo) and the bundled sample, and a test checks that they're current. Keep the report one offline file: no external scripts, styles or fonts.
 
 ## Pull requests
