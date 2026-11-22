@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Fail, Refused, runMain } from "../skills/seo-supervisor/scripts/lib/cli.mjs";
+import { parseArgs } from "../skills/seo-supervisor/scripts/lib/args.mjs";
 
 // runMain sets process.exitCode; each test puts it back, so the test run's own exit code stays the runner's.
 async function exitOf(t, main) {
@@ -80,4 +81,55 @@ test("runMain: a missing file and a bad settings folder are one plain line and e
     }),
     /a bug/,
   );
+});
+
+test("parseArgs: --k v, --k=v and booleans; a bare word is never a flag, and a value never starts with --", () => {
+  assert.deepEqual(parseArgs(["--site", "https://x.com", "--out=a b.json", "--yes"]), {
+    _: [],
+    site: "https://x.com",
+    out: "a b.json",
+    yes: true,
+  });
+  // A stray "yes" is a positional word, never --yes.
+  const stray = parseArgs(["--site", "https://x.com", "--sitemap", "s.xml", "yes"]);
+  assert.equal(stray.yes, undefined);
+  assert.deepEqual(stray._, ["yes"]);
+  assert.deepEqual(parseArgs(["--out", "--yes"]), { _: [], out: true, yes: true });
+  assert.deepEqual(parseArgs(["submit", "--key", "k1", "extra"]), { _: ["submit", "extra"], key: "k1" });
+  // A boolean never takes the next word, and takes no =value.
+  assert.deepEqual(parseArgs(["--yes", "a.html"], { booleans: ["yes"] }), { _: ["a.html"], yes: true });
+  assert.throws(
+    () => parseArgs(["--yes=no"], { booleans: ["yes"] }),
+    e => e instanceof Fail && /--yes takes no value/.test(e.message),
+  );
+  assert.deepEqual(parseArgs(["--out="]), { _: [], out: "" });
+});
+
+test("parseArgs: aliases, repeated flags, unknown options and unexpected words", () => {
+  assert.deepEqual(parseArgs(["--rivals", "a.com"], { aliases: { rivals: "competitors" } }), {
+    _: [],
+    competitors: "a.com",
+  });
+  assert.deepEqual(parseArgs(["--log", "a.log", "--log=b", "--log"], { lists: ["log"] }), {
+    _: [],
+    log: ["a.log", "b", true],
+  });
+  // With flags listed, a misspelt one stops the script instead of being ignored.
+  assert.throws(
+    () => parseArgs(["--competitor", "a.com"], { flags: ["competitors"] }),
+    e => e instanceof Fail && e.exitCode === 2 && /--competitor/.test(e.message),
+  );
+  assert.deepEqual(
+    parseArgs(["--rivals", "a.com", "--yes"], {
+      flags: ["competitors"],
+      booleans: ["yes"],
+      aliases: { rivals: "competitors" },
+    }),
+    { _: [], competitors: "a.com", yes: true },
+  );
+  assert.throws(
+    () => parseArgs(["--site", "x", "yes"], { positionals: 0 }),
+    e => e instanceof Fail && /"yes"/.test(e.message) && /--yes/.test(e.message),
+  );
+  assert.deepEqual(parseArgs(["off"], { positionals: 1 })._, ["off"]);
 });
