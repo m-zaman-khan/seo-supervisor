@@ -66,6 +66,8 @@ async function fake(routes = {}) {
     SEO_GOOGLE_SEARCH_CONSOLE_URL: endpoints.searchConsole,
     SEO_GOOGLE_INSPECTION_URL: endpoints.inspection,
   };
+  // The short wait lets this process's own sockets finish closing: --test-force-exit exiting mid-close crashes Node
+  // on Windows.
   return {
     url,
     hits,
@@ -74,7 +76,7 @@ async function fake(routes = {}) {
     close: () =>
       new Promise(c => {
         server.closeAllConnections();
-        server.close(c);
+        server.close(() => setTimeout(c, 50));
       }),
   };
 }

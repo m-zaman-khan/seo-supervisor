@@ -16,6 +16,7 @@ import { keyFile, savedKeys, ask, setKey, removeKey, activeKeys, mask } from "./
 import { fetchBing, BATCH, submitBing } from "./keys/bing.mjs";
 import { MOZ_MAX, fetchAuthority } from "./keys/authority.mjs";
 import { periodFor } from "./keys/visits.mjs";
+import { daysOf } from "./google/search-console.mjs";
 import { MATOMO_SPLITS, MATOMO_DAILY, matomoUrl, fetchMatomo, testMatomo } from "./keys/matomo.mjs";
 import {
   posthogQuery,
@@ -250,10 +251,8 @@ async function main(argv) {
   } else if (cmd === "fetch") {
     if (!str("site")) throw new Fail(USAGE);
     const site = siteOf(args.site);
-    const days = args.days === undefined ? 90 : Number(str("days"));
-    if (!(Number.isInteger(days) && days >= 1 && days <= 480))
-      fail(`--days must be a whole number from 1 to 480, as with google.mjs (got ${args.days}).`);
-    const period = periodFor(days);
+    const days = daysOf(args.days ?? 90, "connect-keys"),
+      period = periodFor(days);
     const listed = (str("competitors") || "")
       .split(",")
       .map(s => s.trim())

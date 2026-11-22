@@ -20,6 +20,9 @@ const ANOMALIES = [
   { from: "2026-08-13", to: "2026-08-13", type: "discover", what: DISCOVER_LOSS },
 ].map(a => ({ ...a, url: "https://support.google.com/webmasters/answer/6211453" }));
 export const anomaliesIn = (from, to, type) => ANOMALIES.filter(a => a.type === type && a.from <= to && a.to >= from);
+// Shared by fetch, change-check and deploy-check. span names the dates read, e.g. "the dates compared".
+export const anomalyNote = (a, span) =>
+  `Google's "Data anomalies in Search Console" page says that ${a.from === a.to ? `on ${a.from}` : `from ${a.from} to ${a.to}`} ${a.what}. This overlaps ${span}, so a change in those numbers may not be real: ${a.url}`;
 
 export const httpUrl = (u, what, eg) => {
   let x;
@@ -95,11 +98,29 @@ export async function searchConsole({ site, home, endpoints } = {}) {
 // Search Console keeps the last 2-3 days provisional, so a period ends 3 days ago. The period before has the same
 // length. Dates are UTC days.
 export const daysAgo = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
-export const periodOf = days => ({ endDate: daysAgo(3), startDate: daysAgo(days + 2) });
+export const lastFinal = () => daysAgo(3);
+export const periodOf = days => ({ endDate: lastFinal(), startDate: daysAgo(days + 2) });
 export const periodBefore = days => ({ startDate: daysAgo(2 * days + 2), endDate: daysAgo(days + 3) });
+// Validates --days the same way in every script. who is the script's name.
+/** @param {unknown} v @param {string} who */
+export const daysOf = (v, who, min = 1, max = 480, why = "Search Console keeps 16 months") => {
+  const n = typeof v === "number" || typeof v === "string" ? Number(v) : NaN;
+  return Number.isInteger(n) && n >= min && n <= max
+    ? n
+    : fail(
+        `${who}: --days must be a whole number from ${min} to ${max} (got ${v === true ? "no number" : v}). ${why}.`,
+      );
+};
 // The top 25,000 Search Analytics rows at most, pageSize per request. sa(body) queries the current period; dates
 // replace it for the period before. A list cut at 25,000 is noted under label.
-export async function readRows(sa, dimensions, dates = {}, pageSize = 25000, notes = []) {
+export async function readRows(
+  sa,
+  dimensions,
+  dates = {},
+  pageSize = 25000,
+  notes = [],
+  label = dates.startDate ? "the period before" : "this period",
+) {
   const rows = [];
   while (rows.length < 25000) {
     const rowLimit = Math.min(pageSize, 25000 - rows.length),
@@ -109,7 +130,7 @@ export async function readRows(sa, dimensions, dates = {}, pageSize = 25000, not
   }
   if (rows.length >= 25000)
     notes.push(
-      `Search Console has 25,000 or more ${{ page: "pages", query: "queries" }[dimensions.join()] || "page and query pairs"} for ${dates.startDate ? "the period before" : "this period"}; only the top 25,000 were read, so the least-searched ones are left out.`,
+      `Search Console has 25,000 or more ${{ page: "pages", query: "queries" }[dimensions.join()] || "page and query pairs"} for ${label}; only the top 25,000 were read, so the least-searched ones are left out.`,
     );
   return rows;
 }

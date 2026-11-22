@@ -36,6 +36,7 @@ import {
 import {
   SC_API,
   anomaliesIn,
+  anomalyNote,
   httpUrl,
   refused,
   pickProperty,
@@ -46,6 +47,7 @@ import {
   inProperty,
   periodOf,
   periodBefore,
+  daysOf,
   readRows,
 } from "./google/search-console.mjs";
 
@@ -109,8 +111,7 @@ export async function fetchGoogle({
   endpoints,
 } = {}) {
   const origin = httpUrl(site, "--site must be the site's address", "https://www.example.com");
-  days = Math.round(Number(days));
-  if (!(days >= 1 && days <= 480)) fail("google: --days must be between 1 and 480 (Search Console keeps 16 months).");
+  days = daysOf(days, "google");
   const { g, scope, who } = scSession({ home, endpoints }),
     { E } = g,
     notes = [];
@@ -753,9 +754,7 @@ function anomalyNotes(notes, trafficChange, searchTypes, startDate, endDate, pre
     ...(searchTypes.discover ? anomaliesIn(startDate, endDate, "discover") : []),
   ];
   for (const a of anomalies)
-    notes.push(
-      `Google's "Data anomalies in Search Console" page says that ${a.from === a.to ? `on ${a.from}` : `from ${a.from} to ${a.to}`} ${a.what}. This overlaps the period read${trafficChange && !a.type ? " or the one it's compared with" : ""}, so a change in those numbers may not be real: ${a.url}`,
-    );
+    notes.push(anomalyNote(a, `the period read${trafficChange && !a.type ? " or the one it's compared with" : ""}`));
   return anomalies;
 }
 
@@ -1236,7 +1235,7 @@ async function fetchCli(args) {
   const out = resolve(str(args.out) || "seo-audit/google.json");
   const r = await fetchGoogle({
     site: args.site,
-    days: str(args.days) || 90,
+    days: args.days ?? 90,
     ga4Property: str(args["ga4-property"]),
     crawl,
     inspect: inspect.map(s => s.trim()).filter(s => s && !s.startsWith("#")),

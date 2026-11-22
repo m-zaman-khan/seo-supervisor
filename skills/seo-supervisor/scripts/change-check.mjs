@@ -6,7 +6,18 @@ import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 import { parseArgs } from "./lib/args.mjs";
 import { runMain, warnProxy } from "./lib/cli.mjs";
-import { Fail, refused, anomaliesIn, pagePath, searchConsole } from "./google/search-console.mjs";
+import {
+  Fail,
+  refused,
+  anomaliesIn,
+  anomalyNote,
+  pagePath,
+  searchConsole,
+  daysAgo,
+  lastFinal,
+  daysOf,
+  readRows,
+} from "./google/search-console.mjs";
 import { changedPages } from "./seo-diff.mjs";
 
 // Local thresholds, not Google's. MIN_DAYS keeps every weekday in each window; MIN_TRAFFIC is the changed pages' clicks
@@ -23,7 +34,6 @@ const fail = msg => {
   throw new Fail(`change-check: ${msg}`);
 };
 const shift = (d, n) => new Date(Date.parse(d) + n * 864e5).toISOString().slice(0, 10);
-const ago = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
 const s = n => (n === 1 ? "" : "s");
 
 // pages are URLs or paths; pageSize is smaller only in tests.
@@ -31,21 +41,23 @@ const s = n => (n === 1 ? "" : "s");
 export async function changeCheck({ site, date, pages = [], days = DAYS, home, endpoints, pageSize = MAX_ROWS } = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "") || isNaN(Date.parse(date)) || shift(date, 0) !== date)
     fail(`--date must be the day the pages changed, like 2026-10-01 (got ${date}).`);
-  days = Number(days);
-  if (!Number.isInteger(days) || days < MIN_DAYS)
-    fail(
-      `--days must be a whole number, ${MIN_DAYS} or more (got ${days}). ${MIN_DAYS} is our own minimum, so each window holds every day of the week.`,
-    );
+  days = daysOf(
+    days,
+    "change-check",
+    MIN_DAYS,
+    480,
+    `${MIN_DAYS} is our own minimum, so each window holds every day of the week`,
+  );
   // The change day itself is in neither window.
   const before = { from: shift(date, -days), to: shift(date, -1) },
     after = { from: shift(date, 1), to: shift(date, days) };
   // Search Console's last 2-3 days are provisional, so the after window must end at least 3 days ago.
-  const wait = Math.round((Date.parse(after.to) - Date.parse(ago(3))) / 864e5);
+  const wait = Math.round((Date.parse(after.to) - Date.parse(lastFinal())) / 864e5);
   if (wait > 0)
     fail(
-      `the ${days} days after the change end on ${after.to}, and Search Console's numbers for the last 3 days aren't final yet. Wait ${wait} more day${s(wait)} and run it again (on ${ago(-wait)} or later), or pass a smaller --days. Nothing was read from Google.`,
+      `the ${days} days after the change end on ${after.to}, and Search Console's numbers for the last 3 days aren't final yet. Wait ${wait} more day${s(wait)} and run it again (on ${daysAgo(-wait)} or later), or pass a smaller --days. Nothing was read from Google.`,
     );
-  if (before.from < ago(482))
+  if (before.from < daysAgo(482))
     fail(
       `Search Console keeps 16 months of data, so the ${days} days before ${date} aren't all there any more. Pass a smaller --days. Nothing was read from Google.`,
     );
@@ -82,31 +94,25 @@ export async function changeCheck({ site, date, pages = [], days = DAYS, home, e
   // Web search totals by path for one window, the top 25,000 pages at most.
   const read = async ({ from, to }) => {
     const out = {};
-    for (let n = 0; ;) {
-      const rowLimit = Math.min(pageSize, MAX_ROWS - n);
-      let rows;
-      try {
-        rows =
-          (await sc.query({ startDate: from, endDate: to, type: "web", dimensions: ["page"], rowLimit, startRow: n }))
-            .rows || [];
-      } catch (e) {
-        throw refused(e, sc.explain(e));
-      }
-      for (const r of rows) {
-        const p = pagePath(r.keys?.[0], host);
-        if (p) {
-          const t = (out[p] ||= { clicks: 0, impressions: 0 });
-          t.clicks += Number(r.clicks) || 0;
-          t.impressions += Number(r.impressions) || 0;
-        }
-      }
-      n += rows.length;
-      if (rows.length < rowLimit) break;
-      if (n >= MAX_ROWS) {
-        notes.push(
-          `Search Console has 25,000 or more pages for ${from} to ${to}; only the top 25,000 were read, so pages with the fewest clicks may count as having none.`,
-        );
-        break;
+    let rows;
+    try {
+      rows = await readRows(
+        body => sc.query({ type: "web", ...body }),
+        ["page"],
+        { startDate: from, endDate: to },
+        pageSize,
+        notes,
+        `${from} to ${to}`,
+      );
+    } catch (e) {
+      throw refused(e, sc.explain(e));
+    }
+    for (const r of rows) {
+      const p = pagePath(r.keys?.[0], host);
+      if (p) {
+        const t = (out[p] ||= { clicks: 0, impressions: 0 });
+        t.clicks += Number(r.clicks) || 0;
+        t.impressions += Number(r.impressions) || 0;
       }
     }
     return out;
@@ -189,10 +195,7 @@ export async function changeCheck({ site, date, pages = [], days = DAYS, home, e
     impressions = estimate("impressions");
 
   // Google's documented logging problems in the dates compared (web search only).
-  for (const x of anomaliesIn(before.from, after.to))
-    notes.push(
-      `Google's "Data anomalies in Search Console" page says that ${x.from === x.to ? `on ${x.from}` : `from ${x.from} to ${x.to}`} ${x.what}. This overlaps the dates compared, so those numbers may not be comparable: ${x.url}`,
-    );
+  for (const x of anomaliesIn(before.from, after.to)) notes.push(anomalyNote(x, "the dates compared"));
   return {
     source: "change-check",
     site: sc.origin.origin,
@@ -246,7 +249,7 @@ async function main(argv) {
       if (e instanceof Fail) throw e;
       fail(`${args["from-diff"]} isn't a seo-diff.json (run seo-diff.mjs first).`);
     }
-  const r = await changeCheck({ site: args.site, date: args.date, days: str(args.days) || DAYS, pages });
+  const r = await changeCheck({ site: args.site, date: args.date, days: args.days ?? DAYS, pages });
   const out = resolve(str(args.out) || "seo-audit/change-check.json");
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(r, null, 2));

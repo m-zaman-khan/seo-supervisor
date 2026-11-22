@@ -1,10 +1,14 @@
 // @ts-check
 // Shared by the Matomo and PostHog reads: the period, the row cap, the top-10 splits and visits by path.
-import { Refused, day } from "./http.mjs";
+import { Refused } from "./http.mjs";
+import { periodOf } from "../google/search-console.mjs";
 
 export const ROWS = 25000; // the most pages read from Matomo or PostHog, as google.mjs reads from Google Analytics
 // The same days google.mjs reads Google Analytics for, ending 3 days ago, so the numbers line up.
-export const periodFor = days => ({ from: day(Date.now() - (days + 2) * 864e5), to: day(Date.now() - 3 * 864e5) });
+export const periodFor = days => {
+  const p = periodOf(days);
+  return { from: p.startDate, to: p.endDate };
+};
 // [name, visits] pairs to { name: { visits } } for the top 10; a pair without a name or visits is dropped.
 const top10 = pairs => {
   const m = new Map();

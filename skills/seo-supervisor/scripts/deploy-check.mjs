@@ -9,7 +9,7 @@ import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
 import { guarded, isPublic } from "./checks/outbound.mjs";
 import { tlsCert } from "./checks/tls.mjs";
 import { VERSION } from "./update-check.mjs";
-import { anomaliesIn, searchConsole } from "./google/search-console.mjs";
+import { anomaliesIn, anomalyNote, searchConsole } from "./google/search-console.mjs";
 
 const UA = "seo-supervisor-deploy-check/" + VERSION,
   TIMEOUT = 10000,
@@ -389,10 +389,7 @@ export async function searchHourly({ site, since, now = Date.now(), home, endpoi
     notes.push(
       `Google is still collecting the data for the hours from ${utc(Math.max(open, from))} on, so those numbers may still change.`,
     );
-  for (const a of anomaliesIn(ptDate(from - WEEK), ptDate(end)))
-    notes.push(
-      `Google's "Data anomalies in Search Console" page says that ${a.from === a.to ? `on ${a.from}` : `from ${a.from} to ${a.to}`} ${a.what}. This overlaps the hours compared, so they may not be comparable: ${a.url}`,
-    );
+  for (const a of anomaliesIn(ptDate(from - WEEK), ptDate(end))) notes.push(anomalyNote(a, "the hours compared"));
   const base = {
     property: sc.prop,
     after,
