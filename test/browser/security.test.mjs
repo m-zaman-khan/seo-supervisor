@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { findBrowser, openSession, renderPage } from "../../skills/seo-supervisor/scripts/checks/render.mjs";
-import { checkVisual } from "../../skills/seo-supervisor/scripts/checks/visual.mjs";
+import { checkPages, checkVisual } from "../../skills/seo-supervisor/scripts/checks/visual.mjs";
 
 const listen = (server, host = "127.0.0.1") =>
   new Promise((ok, fail) => server.once("error", fail).listen(0, host, () => ok(server.address().port)));
@@ -59,10 +59,12 @@ test(
       const session = await openSession(browser, url);
       try {
         assert.match(await renderPage(browser, url, { timeoutMs: 180000 }, session), /<h1>Guarded<\/h1>/);
+        const r = await checkPages(browser, [url], { pageBudgetMs: 240000, session });
+        assert.equal(r.visual.checked + r.more.checked, 2, [...r.visual.notes, ...r.more.notes].join(" "));
       } finally {
         await session.close();
       }
-      assert.equal(hits.other, 0, "a render in the session reached another address");
+      assert.equal(hits.other, 0, "a render or load in the session reached another address");
       assert.ok(hits.own >= 1);
       assert.equal(hits.sw, 0, "no service worker was registered in the session");
     } finally {

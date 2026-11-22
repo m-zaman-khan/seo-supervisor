@@ -3,9 +3,9 @@
 // checks, with screenshots. The pages' own scripts, analytics included, run.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { launchChrome, containerArgs } from "../lib/cdp.mjs";
+import { containerArgs } from "../lib/cdp.mjs";
 import { redact } from "../lib/redact.mjs";
-import { addressCheck, guardTab, startGuard } from "./render.mjs";
+import { addressCheck, compareRendered, gateOf, guardTab, openSession } from "./render.mjs";
 
 export const CHECKS = {
   "mobile-content-missing": [
@@ -300,171 +300,19 @@ const slugOf = (url, used) => {
 };
 
 /** @typedef {(id: string, url: string, evidence: string) => void} AddFinding */
-/** pageBudgetMs covers all three of a page's loads, so a page that hangs (a busy loop, a dialog) can't stall the run.
+/** The phone and desktop checks alone. pageBudgetMs covers all of a page's loads, so a page that hangs (a busy loop,
+ * a dialog) can't stall the run. bfTested counts the pages Chrome's back/forward test actually ran on.
  * @param {string} browser
  * @param {string[]} urls
- * @param {{ add?: AddFinding, screenshotDir?: string, pageBudgetMs?: number }} [options] */
-export async function checkVisual(browser, urls, { add, screenshotDir, pageBudgetMs = 50000 } = {}) {
-  const notes = [],
-    lab = [],
-    used = new Set(),
-    smallText = [];
-  const why = e => redact(String(e.message).split("\n")[0]).slice(0, 120);
-  const checkAddress = urls.length ? await addressCheck(urls[0]) : null; // the sample is the site's own pages
-  let checked = 0,
-    bfTested = 0;
-  if (screenshotDir) mkdirSync(screenshotDir, { recursive: true });
-  // The render guard's proxy also covers what the tab can't see: other-site frames and WebSockets.
-  const guard = urls.length ? await startGuard(urls[0]) : null;
-  const chrome = await launchChrome(browser, { args: guard?.args || [] }).catch(async e => {
-    await guard?.close();
-    throw e;
-  }); // a browser that won't start leaves no guard open
-  try {
-    const { userAgent: ua } = await chrome.send("Browser.getVersion");
-    const desktopUa = ua.replace("HeadlessChrome/", "Chrome/");
-    const phoneUa = `Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${ua.match(/Chrome\/(\d+)/)?.[1] || "130"}.0.0.0 Mobile Safari/537.36`;
-    const list = urls.slice(0, 10);
-    for (const [i, url] of list.entries()) {
-      const slug = slugOf(url, used),
-        deadline = Date.now() + pageBudgetMs;
-      const shoot = (page, name) =>
-        screenshotDir &&
-        page
-          .send("Page.captureScreenshot", { format: "png" })
-          .then(s => writeFileSync(join(screenshotDir, `${slug}-${name}.png`), Buffer.from(s.data, "base64")));
-      try {
-        // One load at a time, so the lab load has the CPU to itself. Popups get a second after load to appear.
-        const d = await visit(
-          chrome,
-          url,
-          { device: DESKTOP, userAgent: desktopUa, settleMs: 200, deadline, checkAddress },
-          async p => {
-            await shoot(p, "desktop");
-            return evaluate(p, MEASURE);
-          },
-        );
-        const m = await visit(
-          chrome,
-          url,
-          { device: PHONE, userAgent: phoneUa, settleMs: 1000, deadline, checkAddress },
-          async p => {
-            await shoot(p, "mobile");
-            return {
-              ...(await evaluate(p, MEASURE)),
-              taps: await evaluate(p, TAPS),
-              fields: await evaluate(p, FIELDS),
-            };
-          },
-        );
-        checked++;
-        // Word counts below 30 are too small to compare. A real diff of the text would also catch swapped content.
-        const fewer = d.words >= 30 && m.words < 0.7 * d.words,
-          lostH1 = d.h1[0] && !m.h1.some(h => sameHeading(d.h1[0], h));
-        if (fewer || lostH1)
-          add(
-            "mobile-content-missing",
-            url,
-            [
-              fewer && `${m.words} words on a phone vs ${d.words} on desktop`,
-              lostH1 && `the H1 “${d.h1[0]}” isn't shown on a phone`,
-            ]
-              .filter(Boolean)
-              .join("; "),
-          );
-        // Without a mobile viewport the page is laid out 980 px wide and zoomed out; the crawler's doc-basics reports that.
-        // Overflow that html or body clips can't be scrolled to.
-        if (m.viewport && !m.clipped && m.scrollWidth > PHONE.width + 2)
-          add("mobile-overflow", url, `${m.scrollWidth} px wide on a ${PHONE.width} px screen`);
-        if (m.viewport && m.fontSize < 12) add("mobile-small-text", url, `main text ${m.fontSize} px`);
-        else if (m.viewport && m.fontSize < 16)
-          smallText.push(`${new URL(url).pathname} (${Math.round(m.fontSize * 10) / 10} px)`);
-        if (m.viewport && m.taps.count)
-          add(
-            "tap-targets-small",
-            url,
-            `${m.taps.count} ${m.taps.count === 1 ? "link or button" : "links or buttons"} under 24×24 px with too little space around them, for example ${m.taps.examples.join(", ")}`,
-          );
-        if (m.viewport && m.fields.count)
-          add(
-            "input-zoom",
-            url,
-            `${m.fields.count} form field${m.fields.count === 1 ? "" : "s"} with text under 16 px, for example ${m.fields.examples.join(", ")}`,
-          );
-        if (m.popup.cover)
-          add(
-            "mobile-interstitial",
-            url,
-            `${m.popup.by} covers ${Math.round(m.popup.cover * 100)}% of the screen on arrival`,
-          );
-        // Consent and other legally required notices are exempt from Google's intrusive-interstitial guidance.
-        // https://developers.google.com/search/docs/appearance/avoid-intrusive-interstitials
-        if (m.consent.cover)
-          notes.push(
-            `On a phone, ${url} opens with a consent popup (${m.consent.by}) over ${Math.round(m.consent.cover * 100)}% of the screen. Legally required notices are exempt from Google's intrusive-interstitial guidance, so it isn't a finding; a bottom banner keeps the page readable.`,
-          );
-      } catch (e) {
-        notes.push(`Couldn't load ${url} for the phone checks (${why(e)}).`);
-        continue;
-      }
-      try {
-        const v = await visit(
-          chrome,
-          url,
-          { device: PHONE, userAgent: phoneUa, lab: true, settleMs: 500, deadline, checkAddress },
-          p => evaluate(p, `({ ...__seoLab, cls: (${clsOf})(__seoLab.shifts), shifts: null })`),
-        );
-        lab.push({
-          url,
-          lcp: v.lcp ? Math.round(v.lcp) : null,
-          cls: Math.round(v.cls * 1000) / 1000,
-          tbt: Math.round(v.tbt),
-        });
-      } catch (e) {
-        notes.push(`Couldn't measure lab speed for ${url} (${why(e)}).`);
-      }
-      if (list.length > 1 && i < BF_PAGES)
-        try {
-          // Back needs a page to come back from: the next one in the sample
-          const reasons = await visit(
-            chrome,
-            url,
-            { device: DESKTOP, userAgent: desktopUa, settleMs: 200, deadline, checkAddress },
-            p => goBack(p, list[(i + 1) % list.length]),
-          );
-          if (reasons) {
-            bfTested++;
-            const blockers = blockersOf(reasons);
-            if (blockers.length) add("bfcache-blocked", url, `Chrome names: ${blockers.join("; ")}`);
-          } else notes.push(`Chrome didn't report the back/forward cache test on ${url} within 10 s.`);
-        } catch (e) {
-          notes.push(`Couldn't run the back/forward cache test on ${url} (${why(e)}).`);
-        }
-    }
-  } finally {
-    await chrome.close();
-    await guard?.close();
-  }
-  if (checked)
-    notes.push(
-      `Loaded ${checked} sample page(s) at desktop (1366×768) and phone (390×844) size${screenshotDir ? ", with screenshots" : ""}${bfTested ? `, and ran Chrome's back/forward cache test on ${bfTested} of them` : ""}. Lab speed comes from one phone load with 4× CPU slowdown on slow 4G: indicative only, it won't match Lighthouse.`,
-    );
-  if (smallText.length)
-    notes.push(
-      `On a phone, the main text is under 16 px on ${smallText.length} page${smallText.length === 1 ? "" : "s"}: ${smallText.join(", ")}. Information only: 16 px is the browsers' default text size, and main text under 12 px is a finding (mobile-small-text).`,
-    );
-  if (checked && containerArgs().length)
-    notes.push(
-      "Chrome ran without its security sandbox (--no-sandbox), because this runs as root on Linux or inside a container, where the sandbox can't start. The sample pages' scripts ran with fewer protections than in a normal browser; to keep the sandbox, run the audit as an ordinary user outside a container.",
-    );
-  return { checked, lab, notes, bfTested }; // bfTested: the pages Chrome's back/forward test actually ran on
+ * @param {{ add?: AddFinding, screenshotDir?: string, pageBudgetMs?: number, session?: Session | null }} [options]
+ * @returns {Promise<{ checked: number, lab: any[], notes: string[], bfTested: number }>} */
+export async function checkVisual(browser, urls, { pageBudgetMs = 50000, ...options } = {}) {
+  return (await checkPages(browser, urls, { ...options, pageBudgetMs, more: false })).visual;
 }
 
 // ---------- more from the render sample ----------
-// checkMore loads each sample page again at desktop and phone size, in its own browser, for the render checks. Every
-// load goes through visit() and its guard. --render-page renders one chosen page after its steps, which only scroll,
-// click and wait: nothing is ever typed into a page.
-import { compareRendered, gateOf } from "./render.mjs";
+// The render checks share the phone checks' loads, and every load goes through visit() and its guard. --render-page
+// renders one chosen page after its steps, which only scroll, click and wait: nothing is ever typed into a page.
 
 export const MORE_CHECKS = {
   "render-adds-text": [
@@ -928,7 +776,6 @@ const watch = (chrome, errors) => ({
     return page;
   },
 });
-
 async function userAgents(chrome) {
   const { userAgent: ua } = await chrome.send("Browser.getVersion");
   return {
@@ -937,152 +784,277 @@ async function userAgents(chrome) {
   };
 }
 
-/** Loads the render sample again, up to 10 pages; pages gives each page's data for the report. rawWords is the
- * crawler's word count per URL; clean adds screenshots without cookie bars and chat widgets; chosen is rendered at
- * phone size after its steps.
+/** The render checks alone. rawWords is the crawler's word count per URL; clean adds screenshots without cookie bars
+ * and chat widgets; chosen is rendered at phone size after its steps.
  * @param {string} browser
  * @param {string[]} urls
- * @param {{ add?: AddFinding, screenshotDir?: string, rawWords?: Map<string, number>, clean?: boolean, chosen?: { url: string, steps?: string, raw?: string | null } | null, pageBudgetMs?: number }} [options] */
-export async function checkMore(
+ * @param {{ add?: AddFinding, screenshotDir?: string, rawWords?: Map<string, number>, clean?: boolean, chosen?: Chosen | null, pageBudgetMs?: number, session?: Session | null }} [options]
+ * @returns {Promise<{ checked: number, pages: any[], chosen: any, notes: string[] }>} */
+export async function checkMore(browser, urls, { pageBudgetMs = 60000, ...options } = {}) {
+  return (await checkPages(browser, urls, { ...options, pageBudgetMs, visual: false })).more;
+}
+
+/** @typedef {{ url: string, steps?: string, raw?: string | null }} Chosen */
+/** @typedef {Awaited<ReturnType<typeof openSession>>} Session */
+/** checkVisual and checkMore in one browser, sharing each page's desktop and phone loads, up to 10 pages one at a
+ * time. The default pageBudgetMs is their two budgets added. visual or more set to false skips that side.
+ * @param {string} browser
+ * @param {string[]} urls
+ * @param {{ add?: AddFinding, screenshotDir?: string, rawWords?: Map<string, number>, clean?: boolean, chosen?: Chosen | null, pageBudgetMs?: number, session?: Session | null, visual?: boolean, more?: boolean }} [options] */
+export async function checkPages(
   browser,
   urls,
-  { add, screenshotDir, rawWords = new Map(), clean = false, chosen = null, pageBudgetMs = 60000 } = {},
+  {
+    add = () => {},
+    screenshotDir,
+    rawWords = new Map(),
+    clean = false,
+    chosen = null,
+    pageBudgetMs = 110000,
+    session = null,
+    visual = true,
+    more = true,
+  } = {},
 ) {
-  const pages = [],
-    notes = [],
-    used = new Set(),
-    why = e => String(e.message).split("\n")[0].slice(0, 120);
+  const V = { checked: 0, lab: [], notes: [], bfTested: 0 },
+    M = { checked: 0, pages: [], chosen: null, notes: [] };
   const list = urls.slice(0, 10),
+    used = new Set(),
+    smallText = [],
     gates = [],
-    noButton = [];
-  let checked = 0,
-    picked = null,
-    steps = [];
+    noButton = [],
+    why = e => redact(String(e.message).split("\n")[0]).slice(0, 120);
+  let steps = [];
+  if (!more) chosen = null;
   if (chosen)
     try {
       steps = parseSteps(chosen.steps);
     } catch (e) {
-      notes.push(`--render-steps: ${e.message}. The page you chose wasn't rendered.`);
+      M.notes.push(`--render-steps: ${e.message}. The page you chose wasn't rendered.`);
       chosen = null;
     }
-  if (!list.length && !chosen) return { checked, pages, chosen: picked, notes };
+  if (!list.length && !chosen) return { visual: V, more: M };
   if (screenshotDir) mkdirSync(screenshotDir, { recursive: true });
-  // The same guard as checkVisual: every request is checked against the site's own addresses.
-  const checkAddress = await addressCheck(list[0] ?? chosen.url),
-    guard = await startGuard(list[0] ?? chosen.url);
-  const chrome = await launchChrome(browser, { args: guard?.args || [] }).catch(async e => {
-    await guard?.close();
-    throw e;
-  });
+  // The guard: every request is checked against the site's own addresses, and the browser's proxy covers
+  // other-site frames and WebSockets.
+  const chrome = session || (await openSession(browser, list[0] ?? chosen.url));
+  const checkAddress = chrome.checkAddress || (await addressCheck(list[0] ?? chosen.url));
   try {
     const ua = await userAgents(chrome);
-    for (const url of list) {
+    for (const [i, url] of list.entries()) {
       const slug = slugOf(url, used),
         deadline = Date.now() + pageBudgetMs,
         errors = new Set(),
-        tab = watch(chrome, errors);
+        tab = more ? watch(chrome, errors) : chrome,
+        at = { deadline, checkAddress };
+      const png = (p, name) => screenshotDir && shoot(p, join(screenshotDir, `${slug}-${name}.png`));
       const shots = async (page, kind) => {
         if (!screenshotDir) return;
-        const at = name => join(screenshotDir, `${slug}-${kind}-${name}`);
-        await fullPage(page, at("full.jpg"), kind === "desktop" ? DESKTOP : PHONE);
-        if (clean) await cleanShot(page, at("clean.png"));
+        const to = name => join(screenshotDir, `${slug}-${kind}-${name}`);
+        await fullPage(page, to("full.jpg"), kind === "desktop" ? DESKTOP : PHONE);
+        if (clean) await cleanShot(page, to("clean.png"));
         if (kind === "desktop")
           for (const [name, size] of SIZES) {
             await page.send("Emulation.setDeviceMetricsOverride", size);
             await evaluate(page, DRAWN);
-            await shoot(page, join(screenshotDir, `${slug}-${name}.png`));
+            await png(page, name);
           }
       };
+      // One load at a time, so the lab load has the CPU to itself. Popups get a second after load to appear. The plain
+      // screenshot and the phone checks' reads come first, before the render checks scroll, hide layers or tap.
       let d, m;
       try {
         d = await visit(
           tab,
           url,
-          { device: DESKTOP, userAgent: ua.desktop, settleMs: 500, deadline, checkAddress },
+          { device: DESKTOP, userAgent: ua.desktop, settleMs: more ? 500 : 200, ...at },
           async p => {
-            const x = await evaluate(p, `(${pageMore})(true)`);
-            x.gate = gateOf(x.html);
-            delete x.html;
-            if (!x.gate) await shots(p, "desktop");
-            return x;
-          },
-        );
-        if (d.gate) {
-          gates.push(`${new URL(url).pathname} (${d.gate})`);
-          pages.push({ url, gate: d.gate, errors: [...errors].slice(0, 10) });
-          continue;
-        }
-        m = await visit(
-          tab,
-          url,
-          { device: PHONE, userAgent: ua.phone, settleMs: 1000, deadline, checkAddress },
-          async p => {
-            const x = await evaluate(p, `(${pageMore})(false)`);
-            await shots(p, "mobile");
-            await evaluate(p, `(${hideJunk})(true)`); // a cookie bar or chat bubble mustn't take the tap
-            x.menu = await evaluate(p, `(${menuFind})(${JSON.stringify(d.nav)})`);
-            if (x.menu.toggle && !x.menu.covered) {
-              for (const type of ["mousePressed", "mouseReleased"])
-                await p.send("Input.dispatchMouseEvent", {
-                  type,
-                  x: x.menu.x,
-                  y: x.menu.y,
-                  button: "left",
-                  clickCount: 1,
-                });
-              x.menu.revealed = await evaluate(p, `(${menuReached})(${JSON.stringify(x.menu.hrefs)}, 700)`);
+            const x = {};
+            if (visual) {
+              await png(p, "desktop");
+              x.v = await evaluate(p, MEASURE);
+            }
+            if (more) {
+              x.m = await evaluate(p, `(${pageMore})(true)`);
+              x.m.gate = gateOf(x.m.html);
+              delete x.m.html;
+              if (!x.m.gate) await shots(p, "desktop");
             }
             return x;
           },
         );
       } catch (e) {
-        notes.push(`Couldn't load ${url} for the render checks (${why(e)}).`);
+        if (visual) V.notes.push(`Couldn't load ${url} for the phone checks (${why(e)}).`);
+        if (more) M.notes.push(`Couldn't load ${url} for the render checks (${why(e)}).`);
         continue;
       }
-      checked++;
-      const rec = {
-        url,
-        h1: { desktop: d.h1, phone: m.h1 },
-        cta: { desktop: d.cta, phone: m.cta },
-        words: { html: rawWords.get(url) ?? null, rendered: d.words },
-        menu: menuVerdict(m.menu),
-        ads: adShare(m.ads, m.region),
-      };
-      if (d.hidden.words) rec.hidden = d.hidden;
-      if (d.broken.length || d.target) rec.jumpLinks = { broken: d.broken, deepLink: null, target: d.target };
-      if (d.target)
-        try {
-          rec.jumpLinks.deepLink = await visit(
-            tab,
-            `${url.split("#")[0]}#${encodeURIComponent(d.target)}`,
-            { device: DESKTOP, userAgent: ua.desktop, settleMs: 1500, deadline, checkAddress },
-            p => evaluate(p, `(${landed})(${JSON.stringify(d.target)})`),
+      const gate = more && d.m.gate; // a login screen or paywall isn't measured for the render checks
+      if (gate) {
+        gates.push(`${new URL(url).pathname} (${gate})`);
+        M.pages.push({ url, gate, errors: [...errors].slice(0, 10) });
+        if (!visual) continue;
+      }
+      try {
+        m = await visit(tab, url, { device: PHONE, userAgent: ua.phone, settleMs: 1000, ...at }, async p => {
+          const x = {};
+          if (visual) {
+            await png(p, "mobile");
+            x.v = { ...(await evaluate(p, MEASURE)), taps: await evaluate(p, TAPS), fields: await evaluate(p, FIELDS) };
+          }
+          if (more && !gate) {
+            x.m = await evaluate(p, `(${pageMore})(false)`);
+            await shots(p, "mobile");
+            await evaluate(p, `(${hideJunk})(true)`); // a cookie bar or chat bubble mustn't take the tap
+            x.m.menu = await evaluate(p, `(${menuFind})(${JSON.stringify(d.m.nav)})`);
+            if (x.m.menu.toggle && !x.m.menu.covered) {
+              for (const type of ["mousePressed", "mouseReleased"])
+                await p.send("Input.dispatchMouseEvent", {
+                  type,
+                  x: x.m.menu.x,
+                  y: x.m.menu.y,
+                  button: "left",
+                  clickCount: 1,
+                });
+              x.m.menu.revealed = await evaluate(p, `(${menuReached})(${JSON.stringify(x.m.menu.hrefs)}, 700)`);
+            }
+          }
+          return x;
+        });
+      } catch (e) {
+        if (visual) V.notes.push(`Couldn't load ${url} for the phone checks (${why(e)}).`);
+        if (more && !gate) M.notes.push(`Couldn't load ${url} for the render checks (${why(e)}).`);
+        continue;
+      }
+      if (visual) {
+        const dv = d.v,
+          mv = m.v;
+        V.checked++;
+        // Word counts below 30 are too small to compare. A real diff of the text would also catch swapped content.
+        const fewer = dv.words >= 30 && mv.words < 0.7 * dv.words,
+          lostH1 = dv.h1[0] && !mv.h1.some(h => sameHeading(dv.h1[0], h));
+        if (fewer || lostH1)
+          add(
+            "mobile-content-missing",
+            url,
+            [
+              fewer && `${mv.words} words on a phone vs ${dv.words} on desktop`,
+              lostH1 && `the H1 “${dv.h1[0]}” isn't shown on a phone`,
+            ]
+              .filter(Boolean)
+              .join("; "),
           );
+        // Without a mobile viewport the page is laid out 980 px wide and zoomed out; the crawler's doc-basics reports that.
+        // Overflow that html or body clips can't be scrolled to.
+        if (mv.viewport && !mv.clipped && mv.scrollWidth > PHONE.width + 2)
+          add("mobile-overflow", url, `${mv.scrollWidth} px wide on a ${PHONE.width} px screen`);
+        if (mv.viewport && mv.fontSize < 12) add("mobile-small-text", url, `main text ${mv.fontSize} px`);
+        else if (mv.viewport && mv.fontSize < 16)
+          smallText.push(`${new URL(url).pathname} (${Math.round(mv.fontSize * 10) / 10} px)`);
+        if (mv.viewport && mv.taps.count)
+          add(
+            "tap-targets-small",
+            url,
+            `${mv.taps.count} ${mv.taps.count === 1 ? "link or button" : "links or buttons"} under 24×24 px with too little space around them, for example ${mv.taps.examples.join(", ")}`,
+          );
+        if (mv.viewport && mv.fields.count)
+          add(
+            "input-zoom",
+            url,
+            `${mv.fields.count} form field${mv.fields.count === 1 ? "" : "s"} with text under 16 px, for example ${mv.fields.examples.join(", ")}`,
+          );
+        if (mv.popup.cover)
+          add(
+            "mobile-interstitial",
+            url,
+            `${mv.popup.by} covers ${Math.round(mv.popup.cover * 100)}% of the screen on arrival`,
+          );
+        // Consent and other legally required notices are exempt from Google's intrusive-interstitial guidance.
+        // https://developers.google.com/search/docs/appearance/avoid-intrusive-interstitials
+        if (mv.consent.cover)
+          V.notes.push(
+            `On a phone, ${url} opens with a consent popup (${mv.consent.by}) over ${Math.round(mv.consent.cover * 100)}% of the screen. Legally required notices are exempt from Google's intrusive-interstitial guidance, so it isn't a finding; a bottom banner keeps the page readable.`,
+          );
+      }
+      if (more && !gate) {
+        const dm = d.m,
+          mm = m.m;
+        M.checked++;
+        const rec = {
+          url,
+          h1: { desktop: dm.h1, phone: mm.h1 },
+          cta: { desktop: dm.cta, phone: mm.cta },
+          words: { html: rawWords.get(url) ?? null, rendered: dm.words },
+          menu: menuVerdict(mm.menu),
+          ads: adShare(mm.ads, mm.region),
+        };
+        if (dm.hidden.words) rec.hidden = dm.hidden;
+        if (dm.broken.length || dm.target) rec.jumpLinks = { broken: dm.broken, deepLink: null, target: dm.target };
+        if (dm.target)
+          try {
+            rec.jumpLinks.deepLink = await visit(
+              tab,
+              `${url.split("#")[0]}#${encodeURIComponent(dm.target)}`,
+              { device: DESKTOP, userAgent: ua.desktop, settleMs: 1500, ...at },
+              p => evaluate(p, `(${landed})(${JSON.stringify(dm.target)})`),
+            );
+          } catch (e) {
+            M.notes.push(`Couldn't test a jump to #${dm.target} on ${url} (${why(e)}).`);
+          }
+        rec.errors = [...errors].slice(0, 10);
+        M.pages.push(rec);
+        if (addsText(rec.words.html, rec.words.rendered))
+          add(
+            "render-adds-text",
+            url,
+            `${rec.words.html} words in the HTML, ${rec.words.rendered} after JavaScript runs`,
+          );
+        if (rec.menu === "closed")
+          add(
+            "mobile-menu-closed",
+            url,
+            `the menu button “${mm.menu.toggle}” showed ${mm.menu.revealed} of the ${mm.menu.hidden} menu links desktop shows`,
+          );
+        if (rec.menu === "no-button") noButton.push(new URL(url).pathname);
+        if (rec.ads > 0.3)
+          add(
+            "mobile-ad-density",
+            url,
+            `ads take ${Math.round(rec.ads * 100)}% of the page's height on a phone, between the header and the footer`,
+          );
+      }
+      if (!visual) continue;
+      try {
+        const v = await visit(chrome, url, { device: PHONE, userAgent: ua.phone, lab: true, settleMs: 500, ...at }, p =>
+          evaluate(p, `({ ...__seoLab, cls: (${clsOf})(__seoLab.shifts), shifts: null })`),
+        );
+        V.lab.push({
+          url,
+          lcp: v.lcp ? Math.round(v.lcp) : null,
+          cls: Math.round(v.cls * 1000) / 1000,
+          tbt: Math.round(v.tbt),
+        });
+      } catch (e) {
+        V.notes.push(`Couldn't measure lab speed for ${url} (${why(e)}).`);
+      }
+      if (list.length > 1 && i < BF_PAGES)
+        try {
+          // Back needs a page to come back from: the next one in the sample
+          const reasons = await visit(
+            chrome,
+            url,
+            { device: DESKTOP, userAgent: ua.desktop, settleMs: 200, ...at },
+            p => goBack(p, list[(i + 1) % list.length]),
+          );
+          if (reasons) {
+            V.bfTested++;
+            const blockers = blockersOf(reasons);
+            if (blockers.length) add("bfcache-blocked", url, `Chrome names: ${blockers.join("; ")}`);
+          } else V.notes.push(`Chrome didn't report the back/forward cache test on ${url} within 10 s.`);
         } catch (e) {
-          notes.push(`Couldn't test a jump to #${d.target} on ${url} (${why(e)}).`);
+          V.notes.push(`Couldn't run the back/forward cache test on ${url} (${why(e)}).`);
         }
-      rec.errors = [...errors].slice(0, 10);
-      pages.push(rec);
-      if (addsText(rec.words.html, rec.words.rendered))
-        add(
-          "render-adds-text",
-          url,
-          `${rec.words.html} words in the HTML, ${rec.words.rendered} after JavaScript runs`,
-        );
-      if (rec.menu === "closed")
-        add(
-          "mobile-menu-closed",
-          url,
-          `the menu button “${m.menu.toggle}” showed ${m.menu.revealed} of the ${m.menu.hidden} menu links desktop shows`,
-        );
-      if (rec.menu === "no-button") noButton.push(new URL(url).pathname);
-      if (rec.ads > 0.3)
-        add(
-          "mobile-ad-density",
-          url,
-          `ads take ${Math.round(rec.ads * 100)}% of the page's height on a phone, between the header and the footer`,
-        );
     }
+    const { notes } = M;
     if (chosen) {
       const errors = new Set();
       try {
@@ -1108,7 +1080,7 @@ export async function checkMore(
             return r;
           },
         );
-        picked = {
+        M.chosen = {
           url: chosen.url,
           steps: steps.length ? chosen.steps.trim() : null,
           words: { html: x.rawWords ?? null, rendered: x.words },
@@ -1124,24 +1096,36 @@ export async function checkMore(
       }
     }
   } finally {
-    await chrome.close();
-    await guard?.close();
+    if (!session) await chrome.close();
   }
+  const { checked, bfTested } = V;
   if (checked)
-    notes.push(
-      `Loaded ${checked} sample page(s) again at desktop and phone size for browser errors, the first screen, the phone menu, ads, hidden text and jump links${screenshotDir ? `, with whole-page, 1920×1080 and 768×1024 (tablet) screenshots${clean ? " and copies without cookie bars and chat widgets" : ""}` : ""}.`,
+    V.notes.push(
+      `Loaded ${checked} sample page(s) at desktop (1366×768) and phone (390×844) size${screenshotDir ? ", with screenshots" : ""}${bfTested ? `, and ran Chrome's back/forward cache test on ${bfTested} of them` : ""}. Lab speed comes from one phone load with 4× CPU slowdown on slow 4G: indicative only, it won't match Lighthouse.`,
     );
-  if (checked && screenshotDir)
-    notes.push(
+  if (smallText.length)
+    V.notes.push(
+      `On a phone, the main text is under 16 px on ${smallText.length} page${smallText.length === 1 ? "" : "s"}: ${smallText.join(", ")}. Information only: 16 px is the browsers' default text size, and main text under 12 px is a finding (mobile-small-text).`,
+    );
+  if (checked && containerArgs().length)
+    V.notes.push(
+      "Chrome ran without its security sandbox (--no-sandbox), because this runs as root on Linux or inside a container, where the sandbox can't start. The sample pages' scripts ran with fewer protections than in a normal browser; to keep the sandbox, run the audit as an ordinary user outside a container.",
+    );
+  if (M.checked)
+    M.notes.push(
+      `${visual ? "Read the same" : "Loaded"} ${M.checked} sample page(s) ${visual ? "" : "again "}at desktop and phone size for browser errors, the first screen, the phone menu, ads, hidden text and jump links${screenshotDir ? `, with whole-page, 1920×1080 and 768×1024 (tablet) screenshots${clean ? " and copies without cookie bars and chat widgets" : ""}` : ""}.`,
+    );
+  if (M.checked && screenshotDir)
+    M.notes.push(
       `The screenshots are in ${screenshotDir}. Look through them for text that overlaps or is cut off, images that are stretched, squashed or blurry, and layouts that break at one of the sizes, and report what you find with the file name.`,
     );
   if (gates.length)
-    notes.push(
+    M.notes.push(
       `Chrome got a login screen or a paywall instead of the page on ${gates.join(", ")}. Reported only: nothing was typed in, and these weren't measured as the page.`,
     );
   if (noButton.length)
-    notes.push(
+    M.notes.push(
       `On a phone, ${noButton.join(", ")} ${noButton.length === 1 ? "hides" : "hide"} the menu links desktop shows, and no menu button was found to open them. Check the menu by hand on a phone.`,
     );
-  return { checked, pages, chosen: picked, notes };
+  return { visual: V, more: M };
 }
