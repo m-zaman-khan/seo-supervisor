@@ -1,6 +1,10 @@
 ---
-description: "Rewrite a page's text in plain words, with your yes before anything changes"
+description: "Rewrite a page's text in plain words, with your yes before anything changes. Answers: can you make this page easier to read?, fix what the writing notes flagged? For planning a new page, use /seo-brief."
 argument-hint: '[page, file, or "writing notes"]'
+disable-model-invocation: true
+allowed-tools:
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs *)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/seo-crawl.mjs *)
 ---
 Use the **seo-supervisor** skill in **rewrite** mode for: $ARGUMENTS
 
@@ -15,3 +19,5 @@ Follow `rewrite.md` exactly.
 - **Other languages:** only with the owner's yes, as the writing notes are English-only.
 
 Finish with a re-crawl: the writing notes should drop. List what changed, and what still waits for the owner.
+
+For planning a new page, use `/seo-brief`. For titles and descriptions that code builds, use `/seo-fix`.

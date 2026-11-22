@@ -1,7 +1,7 @@
 {
   "name": "seo-supervisor",
   "version": "2.0.0",
-  "description": "SEO audit, safe fixes, PR review and a launch gate for AI coding agents. Crawls any site, scores it 0-100 and writes a polished offline report.",
+  "description": "SEO for AI coding agents: audit, safe fixes, PR review, a launch gate, setup from scratch, content briefs, plain-words rewrites, growth plans, watching what changed, and connecting your data. Crawls any site, scores it 0-100 and writes a polished offline report.",
   "type": "module",
   "bin": {
     "seo-supervisor": "bin/seo-supervisor.mjs"

@@ -1,6 +1,17 @@
 ---
-description: "Set up SEO from scratch: propose a plan, build it after approval"
+description: "Set up SEO from scratch: propose a plan, build it after approval. Answers: my site has no SEO, where do I start?, can you plan and build the SEO basics? For fixing findings on a site that has SEO, use /seo-fix."
 argument-hint: "[url or notes]"
+disable-model-invocation: true
+allowed-tools:
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs *)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/doctor.mjs *)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/seo-crawl.mjs *)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/seo-diff.mjs *)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/content-scan.mjs *)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/gsc-import.mjs *)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/keyword-ideas.mjs *)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/schema-check.mjs *)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/render-report.mjs *)
 ---
 Use the **seo-supervisor** skill in **setup** mode for this project. Follow its SKILL.md and `planning.md` exactly.
 
@@ -11,9 +22,12 @@ Use the **seo-supervisor** skill in **setup** mode for this project. Follow its 
 
   Change nothing outside `seo-audit/` before that.
 - **A plan already exists:** continue from its status, as `planning.md` describes. A proposed plan goes to approval. An approved plan gets built, and then setup fixes the audit's other code findings listed in the plan. A built plan gets the pages whose drafts the owner approved.
+- **Setup and fix:** Setup builds what's missing; fix mode fixes findings. The code findings in `plan.alsoFixes` are handed to fix mode (SKILL.md step 5) with its rules; setup doesn't fix them its own way, and doesn't take on findings the plan doesn't list.
 - **Never:**
   - invent facts, prices, reviews or search volumes
   - switch indexing on
   - edit CMS content, or remove, hide or noindex pages, without the owner's go-ahead
+
+For fixing findings on a site that already has SEO, use `/seo-fix`. For one page's brief, use `/seo-brief`.
 
 Extra details from the user (may be empty): $ARGUMENTS

@@ -14,6 +14,8 @@ const COMMANDS = [
   "seo-brief",
   "seo-rewrite",
   "seo-grow",
+  "seo-watch",
+  "seo-connect",
 ];
 const withHome = home => {
   const env = { ...process.env, HOME: home, USERPROFILE: home };

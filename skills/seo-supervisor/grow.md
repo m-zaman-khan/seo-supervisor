@@ -102,7 +102,7 @@ The rules in SKILL.md apply throughout, most of all **Plain language (CONTENT-13
 
 **Steps:**
 1. Set aside ideas that are already targets in the profile.
-2. Set aside ideas for things the site doesn't offer, judged from the profile and the site's pages. List them under "Not in this plan" with the reason: the owner may know better.
+2. Set aside ideas for things the site doesn't offer, judged from the profile and the site's pages. List them under "Considered, not recommended" with what you found and the reason: the owner may know better.
 3. Show the owner up to 15 ideas, grouped, one line each. For example: `"boiler service cost" · Search Console, 18 Aug–15 Nov 2026 · 640 impressions, position 14 on /pricing/ · idea: a cost section on /pricing/`.
 4. The owner picks. Only picked ideas become targets.
 5. Match each pick to one page. If a page already shows for the phrase in `pageQueries`, that page is the target, not a new one. If two pages show for it, Stage 3's `query-competition` covers it.
@@ -188,7 +188,8 @@ The rules in SKILL.md apply throughout, most of all **Plain language (CONTENT-13
 3. Record the baseline: for each item's page, the clicks, impressions, click rate and position from `traffic`, with the period, plus `positions` for the whole site. Stage 6 compares against it. Give each item its **Watch** line from "How to tell it worked" below.
 4. Set "Check again after" to 30 days after today. Stage 5 moves it to 30 days after the last item goes live.
 5. On a later run, keep each item's number, status and baseline. Add new items under the old ones, and never renumber.
-6. Before saving, re-read the plan against CONTENT-13.
+6. Every idea you looked at and left out (from Stages 1–3, or one the owner turned down) gets a row in "Considered, not recommended": what you found and the real reason. Keep the rows on later runs, so the same idea isn't suggested again without new evidence.
+7. Before saving, re-read the plan against CONTENT-13.
 
 **The file:**
 
@@ -229,8 +230,10 @@ Whole site: {share of queries in the top 3 and top 10, from `positions`, with th
 ## Results
 {Filled in by Stage 6}
 
-## Not in this plan
-- {Idea}: {why it was left out}
+## Considered, not recommended
+| Idea | What we found | Why not |
+| --- | --- | --- |
+| {Idea} | {the evidence, with its source and period} | {the reason, e.g. "the site doesn't offer it", "the owner said no on 2026-11-20", "too few impressions to judge"} |
 ```
 
 **Never:**
@@ -281,14 +284,15 @@ Google says some changes show in a few hours and others take several months, and
 - `grow-plan.md`: the "Baseline", each item's live date, and "Check again after".
 - A fresh audit's `seo-audit.json`: `diff` (Since last audit), `positions`, `trafficChange`, `googleUpdates`, `anomalies`.
 - A fresh `google.json`: `traffic`, `pageQueries`, `positions`, `trafficChange`.
+- With Google connected, `seo-audit/change-check.json` from `scripts/change-check.mjs`: the changed pages against similar pages that weren't changed, over the same dates.
 
 **Without them:** before the check date, say "Too early to tell. Check again after {date}." With no Search Console data, the check can only say what changed on the pages (`diff`), not whether more people came: say so.
 
 **Steps:**
 1. On or after the check date, run a fresh audit (audit mode). Its "Since last audit" tab shows what changed on the pages.
-2. When the audit fetches the search data (SKILL.md step 2), pass `--days 28` to `google.mjs fetch`. When it runs 30 days after the go-live date, its `trafficChange` compares the 28 days after the change with the 28 days before. With a manual export instead, export the 28 days since the go-live date.
-3. For each done item's page, compare it with its baseline. When the two periods differ in length, compare clicks a day and impressions a day; click rate and position compare as they are.
-4. Give each item one verdict: up, down, no clear change, too early, or too few clicks to tell (under 20 clicks in both periods).
+2. **With Google connected,** run the change check (SKILL.md step 2, "Did a change help?") for each go-live date: `node <skill-dir>/scripts/change-check.mjs --site <live origin> --date <go-live date> --pages <the items' pages, one per line> --days 28`. It compares the changed pages with unchanged pages that had similar clicks before, so a move across the whole site (a Google update, a season) isn't read as the work's effect. Its "likely up", "likely down" or "inconclusive", with the range, is the item's verdict. If it says the days after the change aren't final yet, the verdict is "too early", with its date.
+3. **Without the sign-in** (a manual export only): export the 28 days since the go-live date. Then compare each done item's page with its baseline. When the two periods differ in length, compare clicks a day and impressions a day; click rate and position compare as they are.
+4. Give each item one verdict: up, down, no clear change, too early, or too few clicks to tell (under 20 clicks in both periods). From the change check: up for "likely up", down for "likely down", no clear change for "inconclusive".
 5. Name any Google ranking update or data anomaly that falls in either period, by its dates.
 6. If the owner says the business is seasonal, say that a before-and-after comparison can mislead. Comparing with the same weeks last year in Search Console is the better check.
 7. Write the "Results" section, then start the next round from Stage 0.

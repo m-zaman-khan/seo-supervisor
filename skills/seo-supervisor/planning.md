@@ -123,6 +123,8 @@ Set `plan.status: "approved"` and `approvedOn`. On approval, move the draft prof
 
 ## 5. Fix the audit's code findings
 
+Setup builds what's missing; fix mode fixes findings. So setup doesn't fix findings its own way: it hands the ones in `plan.alsoFixes` to fix mode, with all of fix mode's rules and asks. Findings the plan doesn't list stay for `/seo-fix` (or "fix these findings" in other agents).
+
 Run fix mode (SKILL.md step 5) on every finding in `plan.alsoFixes`, most serious first:
 - Fix each cause once, in the shared place.
 - Run the project's tests and linters after each batch.

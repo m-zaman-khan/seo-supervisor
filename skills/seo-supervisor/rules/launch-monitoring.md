@@ -2,7 +2,8 @@
 
 ### LAUNCH-01 · Crawl staging before launch · high
 - Run the crawler against staging (with auth, or a production build on localhost). Zero blockers and zero high findings in CRAWL, URL, REND and MAP before go-live.
-- Check the redirect map for the old site: every old URL that has traffic or backlinks 301s to its closest new page in one hop, and nothing that used to get traffic returns 404 (old blog posts, printed short links like `/go/review`).
+- Check the redirect map for the old site: every old URL that has traffic or backlinks 301s to its closest new page in one hop, and nothing that used to get traffic returns 404 (old blog posts, printed short links like `/go/review`). Test it with the crawler: `seo-crawl.mjs --urls old-urls.txt` (the old URLs, one per line) reports dead ends and chains. Many old URLs that all land on one page, often the home page, lose what they ranked for: send each to its closest match.
+- **After a redesign or move:** check that known backlinks still reach a live page (`scripts/backlinks.mjs`, a dry run until the owner's yes).
 - **Moving to a new domain:** after the 301s are live, submit Change of Address in Search Console for every variant of the old domain (www, non-www and each subdomain), even ones not in use, each verified there, and keep the redirects at least a year. It isn't needed for http to https, www to non-www on the same domain, or path changes (Google's site move guide, variants added 17 Jun 2026).
 
 ### LAUNCH-02 · Launch day · high
@@ -11,6 +12,7 @@
 3. Submit the sitemap in Search Console and Bing, and ping IndexNow (`scripts/indexnow.mjs`, after deploy and with the owner's yes).
 4. Run URL Inspection on the home page, the main hubs and the 10 most important pages, and request indexing. Not Google's Indexing API: it "can only be used to crawl pages with either JobPosting or BroadcastEvent embedded in a VideoObject" (job and livestream pages; Indexing API quickstart, updated 7 Nov 2026).
 5. Re-run the crawler against production with `--concurrency 2`.
+6. Add the deploy check to CI: `scripts/deploy-check.mjs --site <origin>` after each deploy, about ten seconds, failing on a blocker (home page down or noindex, robots.txt blocking Googlebot, the certificate expired or about to). It doesn't replace the audit.
 
 ### LAUNCH-03 · The build fails on SEO regressions · high
 - **Check:** CI config.
@@ -24,7 +26,7 @@
   - reused FAQ questions
   - placeholder and banned strings
   - a slug changed without a redirect
-- When a rule fires, rewrite the content; never weaken the rule. The crawler can also run in CI against a preview deployment: fail the job when `seo-crawl.json` has blocker or high findings.
+- When a rule fires, rewrite the content; never weaken the rule. The crawler can also run in CI against a preview deployment: fail the job when `seo-crawl.json` has blocker or high findings. After each production deploy, `scripts/deploy-check.mjs` is the quick tripwire (LAUNCH-02 step 6).
 
 ### LAUNCH-04 · Measure what visitors do · medium
 - Analytics events on the actions that matter (form submit, tool run, call click, add to cart, next-step link clicks). Never send what a visitor typed, secrets or scanned domains. Tool sites: use the event list in TOOL-12.

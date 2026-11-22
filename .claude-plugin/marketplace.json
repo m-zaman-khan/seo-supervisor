@@ -1,6 +1,6 @@
 {
   "name": "seo-supervisor",
-  "description": "SEO Supervisor: SEO audit, safe fixes, PR review and a launch gate for Claude Code.",
+  "description": "SEO Supervisor for Claude Code: audit, fix, review, launch, setup, brief, rewrite, grow, watch and connect.",
   "owner": {
     "name": "Zaman Khan",
     "url": "https://github.com/m-zaman-khan"
@@ -9,7 +9,7 @@
     {
       "name": "seo-supervisor",
       "source": "./",
-      "description": "SEO audit, safe fixes, PR review and a launch gate. Crawls any site, scores it 0-100 and writes a polished offline report.",
+      "description": "SEO audit, safe fixes, PR review, a launch gate, setup from scratch, content briefs, plain-words rewrites, growth plans, watching what changed, and connecting your data. Crawls any site, scores it 0-100 and writes a polished offline report.",
       "category": "development"
     }
   ]

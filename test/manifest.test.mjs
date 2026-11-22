@@ -27,12 +27,14 @@ test("the skill and every command are wired to the same skill name", () => {
   assert.deepEqual(commands.sort(), [
     "seo-audit.md",
     "seo-brief.md",
+    "seo-connect.md",
     "seo-fix.md",
     "seo-grow.md",
     "seo-launch.md",
     "seo-review.md",
     "seo-rewrite.md",
     "seo-setup.md",
+    "seo-watch.md",
   ]);
   for (const c of commands) {
     const body = readFileSync(join(ROOT, "commands", c), "utf8");
@@ -127,7 +129,7 @@ test("2.0 is documented: untrusted content, outside checks, history, intent, bri
   const brief = readFileSync(join(ROOT, "commands", "seo-brief.md"), "utf8");
   assert.match(
     brief,
-    /^---\ndescription: "Write an SEO content brief for a topic or page"\nargument-hint: "\[topic or URL\]"\n---/,
+    /^---\ndescription: "Write an SEO content brief for a topic or page\.[^"\n]*"\nargument-hint: "\[topic or URL\]"\n/,
   );
   assert.match(brief, /seo-audit\/briefs\//);
   assert.match(
@@ -140,7 +142,10 @@ test("2.0 is documented: untrusted content, outside checks, history, intent, bri
 test("rewrite mode: the agent rewrites, nothing changes without the owner's yes, and facts stay as they are", () => {
   const cmd = readFileSync(join(ROOT, "commands", "seo-rewrite.md"), "utf8"),
     rewrite = readFileSync(join(SKILL, "rewrite.md"), "utf8");
-  assert.match(cmd, /^---\ndescription: "[^"\n]+"\nargument-hint: '\[page, file, or "writing notes"\]'\n---\n/);
+  assert.match(
+    cmd,
+    /^---\ndescription: "[^"\n]+"\nargument-hint: '\[page, file, or "writing notes"\]'\n(?:[a-z-]+:.*\n|  - .*\n)*---\n/,
+  );
   assert.match(cmd, /\*\*rewrite\*\* mode/);
   assert.match(cmd, /`rewrite\.md`/);
   for (const re of [
@@ -233,7 +238,7 @@ test("the docs agree with the code and keep every outside or content step behind
     );
   const readme = read("README.md");
   assert.doesNotMatch(readme, /no API keys?\b/i);
-  assert.match(readme, /`\/seo-brief`, `\/seo-rewrite` and `\/seo-grow` commands/);
+  assert.match(readme, /`\/seo-brief`, `\/seo-rewrite`, `\/seo-grow`, `\/seo-watch` and `\/seo-connect` commands/);
   assert.match(
     read(S + "NOTICE"),
     /Schema\.org[\s\S]*CC BY-SA 3\.0/,

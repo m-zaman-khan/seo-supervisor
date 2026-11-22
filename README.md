@@ -169,7 +169,7 @@ It asks two things:
   …
 ```
 
-The skill goes into each agent's own skills folder, and agents that share a folder get one copy. Claude Code also gets the `/seo-audit`, `/seo-fix`, `/seo-review`, `/seo-launch`, `/seo-setup`, `/seo-brief`, `/seo-rewrite` and `/seo-grow` commands. In other agents, ask them to "audit the SEO of this site". The installer only ever replaces or removes its own files.
+The skill goes into each agent's own skills folder, and agents that share a folder get one copy. Claude Code also gets the `/seo-audit`, `/seo-fix`, `/seo-review`, `/seo-launch`, `/seo-setup`, `/seo-brief`, `/seo-rewrite`, `/seo-grow`, `/seo-watch` and `/seo-connect` commands. In other agents, ask in plain words: "audit the SEO of this site", "did my change help?", "is my setup OK?". The installer only ever replaces or removes its own files.
 
 For scripts and CI, use flags to skip the questions:
 
@@ -191,14 +191,18 @@ Every key or account is optional too: see [Optional: outside checks and Search C
 
 | Command | What it does | Edits anything? |
 | --- | --- | --- |
-| `/seo-audit [url]` | Crawls a production build of your site, inspects the code and the content data, and writes the report to `seo-audit/` | Never |
-| `/seo-fix [F-001 F-004]` | Fixes the named findings, or all open ones, at the root (the shared metadata helper, sitemap or layout), re-checks each fix and updates the report | Only what you approved |
-| `/seo-review [PR or branch]` | Finds the SEO problems a change introduces: a lost canonical, an accidental noindex, a dropped H1, made-up ratings… | Never |
-| `/seo-launch [url]` | A pass/fail gate before you switch indexing on, plus the launch-day checklist | Never |
+| `/seo-audit [url]` | Crawls a production build of your site, inspects the code and the content data, and writes the report to `seo-audit/`. Give a page's URL to check just that page. Ends by offering connections, GitHub issues, the AI answer check and, for local businesses, the geo-grid | Never |
+| `/seo-fix [F-001 F-004]` | Fixes the named findings, or all open ones, at the root (the shared metadata helper, sitemap or layout), re-checks each fix and updates the report. Asks first before CMS edits, removing or merging pages, live URLs, robots, and AI crawler rules | Only what you approved |
+| `/seo-review [PR or branch]` | Finds the SEO problems a change introduces: a lost canonical, an accidental noindex, a dropped H1, made-up ratings… with a before/after crawl comparison and a structured data check | Never |
+| `/seo-launch [url]` | A pass/fail gate before you switch indexing on, plus the launch-day checklist: IndexNow, a deploy check for CI, and the redirect checks for a site move | Never |
 | `/seo-setup [url]` | For a site with **no SEO yet**: proposes a full SEO plan, then builds it once you approve | Only after you approve the plan |
 | `/seo-brief [topic or URL]` | Writes a content brief: intent, phrases, outline, questions to answer, the facts it needs from you, and internal links | Never (writes only `seo-audit/briefs/`) |
 | `/seo-rewrite [page, file, or "writing notes"]` | Rewrites a page's text in plain words, paragraph by paragraph, keeping facts, links and target phrases | Only what you say yes to |
-| `/seo-grow [goal, page or audience]` | An ordered to-do list for more visitors, from your own data: who visits, what they search for, quick wins, and when to check the results | Never (writes only `seo-audit/grow-plan.md`) |
+| `/seo-grow [goal, page or audience]` | An ordered to-do list for more visitors, from your own data: who visits, what they search for, quick wins, and when to check the results, plus the ideas it left out and why | Never (writes only `seo-audit/grow-plan.md`) |
+| `/seo-watch [change date or pages]` | What changed since the last audit, whether a change helped (changed pages against similar unchanged ones in Search Console), Google updates in the period, and a dashboard for several sites. Offers a deploy check for CI and scheduled runs | Never (writes only `seo-audit/watch/`) |
+| `/seo-connect [service]` | Checks your setup first, then shows each data connection (Search Console, Bing, Clarity and the rest) and offers to connect the missing ones. Keys are typed at a hidden prompt, never in chat | Never |
+
+Fix, rewrite and setup run only when you type them, never on Claude's own initiative. As a Claude Code plugin, each command pre-approves the scripts it runs, for that turn only, named one by one, and the ones that send or write outside (GitHub issues, IndexNow, AI answers, the geo-grid, sitemap submits) still ask.
 
 ## Starting from zero
 
@@ -269,7 +273,7 @@ A few more things reach out, each only after its own yes:
 
 To switch them on for one run, say so: `/seo-audit with outside checks`. Real-user speed needs a free PageSpeed Insights API key from Google Cloud in `PSI_API_KEY`: Google refuses almost all requests without one. The render and intent checks need no key. Add `CRUX_API_KEY` too and the Overview shows whether real-user speed got better or worse over the last 25 weeks, and which part of the main image's load real visitors wait on. With outside checks off, these checks are listed under the report's Limits.
 
-**Connect your accounts (optional).** In `/seo-setup` and `/seo-fix` the agent offers each connection once, and you can say no:
+**Connect your accounts (optional).** Run `/seo-connect` any time. `/seo-audit`, `/seo-setup` and `/seo-fix` also offer each connection once, and you can say no:
 - **Google Search Console and Analytics:** "Sign in with Google" in your browser, or set up your own Google client in a few guided steps. Read-only. It adds your real queries and clicks, "is this page in Google" for key pages, sitemap errors and organic visits, next to Bing's numbers on each page. The one write action is optional: `google.mjs submit-sitemap` submits your sitemap only when you say yes, and asks Google for that permission only then. Remove access any time at myaccount.google.com/connections, or with `google.mjs disconnect`.
 - **Bing Webmaster Tools, Open PageRank and Ahrefs' free Domain Rating:** paste a free API key at a hidden prompt in your own terminal. They add Bing data, the pages other sites link to, and authority scores next to your competitors'.
 - **Matomo or PostHog:** offered only if your site uses one. It adds visits from search engines to each page, and by device and country, from your own analytics. `connect-keys.mjs guide matomo` (or `posthog`) shows where to find each value; `set matomo` asks for them, with the token at a hidden prompt.

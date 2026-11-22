@@ -1,6 +1,6 @@
 ---
 name: seo-supervisor
-description: Use when auditing, reviewing or fixing a website's SEO; before launching a site, page template or URL change; after touching routing, metadata, sitemaps, robots.txt, canonicals, structured data or internal links; or when pages aren't indexed or ranking. Works for any framework (Next.js, Rails, React/Vite SPAs and others) and any site type.
+description: Use when auditing, reviewing or fixing a website's SEO; before launching a site, page template, URL change or site move; after touching routing, metadata, sitemaps, robots.txt, canonicals, structured data or internal links; or when pages aren't indexed or ranking. Also answers what's wrong with my SEO, or with this one page? What changed since the last audit, and did my change help? Did a Google update hit my site? Is ChatGPT citing me? Where do I rank around town? How do I get more visitors? What should this page say? Is my setup OK, and how do I connect Search Console or a key? Works for any framework (Next.js, Rails, React/Vite SPAs and others) and any site type.
 ---
 
 # SEO Supervisor
@@ -23,8 +23,33 @@ Supervise a site's SEO the way a senior technical SEO would: measure, cite evide
 | **brief** | "write a brief", "content brief for…" | Never | `seo-audit/briefs/<slug>.md` |
 | **rewrite** | "rewrite this page", "rewrite what the writing notes flagged" | Only paragraphs the owner said yes to | Before → after for each paragraph, then the edited text |
 | **grow** | "get more visitors", "grow traffic", "what next" | Never | `seo-audit/grow-plan.md` |
+| **watch** | "what changed?", "did my change help?", "did a Google update hit us?", several sites at once | Never | An answer in chat; its files go to `seo-audit/watch/` |
+| **connect** | "is my setup OK?", "a script failed", "connect Search Console", "add my Bing key" | Never (logins and keys go to `~/.seo-supervisor/`) | Each connection's status, in chat |
 
-If the request doesn't name a mode, run **audit**. Finish an audit by offering to fix; never start fixing on your own.
+In Claude Code each mode is also a command: `/seo-audit`, `/seo-fix` and so on. In other agents the owner asks in plain words. When this skill says to offer a command, say both, for example "`/seo-fix` in Claude Code, or ask me to fix them".
+
+**Plain words, and where they go:**
+
+| The owner asks | Go to |
+| --- | --- |
+| a page URL with a path ("check https://www.example.com/pricing/") | a one-page audit: audit mode, step 2's **One page** |
+| "is ChatGPT citing me?", "do AI answers mention us?" | the AI answer check (step 2, Connections), offered at the end of an audit |
+| "where do I rank around town?", "how do I show up on the map?" | the geo-grid (step 2, Connections), for a local business |
+| "did my change help?", "what changed?", "did a Google update hit us?" | watch mode |
+| "is my setup OK?", "why did the script fail?", "connect Google" | connect mode, which runs the doctor first |
+| "we're moving domain", "we're changing our URLs" | launch mode, with its site move steps |
+| "check every deploy", "run this in CI" | watch mode: the deploy check and scheduled runs |
+| "file these as GitHub issues" | `issues.mjs`, step 4 |
+
+If the request matches none of these, run **audit**. Finish an audit by offering to fix; never start fixing on your own.
+
+**Which command, when it's close:**
+- Problems on the site: `/seo-audit`. Problems a change or PR brings: `/seo-review`.
+- Fixing findings: `/seo-fix`. Building SEO a site doesn't have yet: `/seo-setup`, which hands its listed code findings to fix mode.
+- Planning a page: `/seo-brief`. Changing the words of a page that exists: `/seo-rewrite`.
+- What to do next for more visitors: `/seo-grow`. Whether a past change worked, or what changed: `/seo-watch`.
+- Going live or moving a site: `/seo-launch`. Checking every deploy after that: `/seo-watch`.
+- Connecting accounts and keys: `/seo-connect`. Using their data in a report: `/seo-audit`.
 
 ## Workflow
 
@@ -63,7 +88,7 @@ node <skill-dir>/scripts/seo-crawl.mjs --url http://localhost:3000 \
 - **Old URLs:** pass `--urls old-urls.txt` (the old site's URLs, one per line) or `--next-manifest .next/routes-manifest.json`. Each one is tested with and without a trailing slash, for dead ends and chains.
 - **Git Bash on Windows** rewrites arguments that start with `/`. Prefix commands with `MSYS_NO_PATHCONV=1`.
 - **Bigger sites:** the default `--max` is 1000 pages. If the output notes say the crawl was capped, raise it.
-- **One page:** to check a single page quickly, run the crawler on it with `--max 1`: `node <skill-dir>/scripts/seo-crawl.mjs --url https://www.example.com/blog/post/ --max 1`. It reads only that page (plus robots.txt and the sitemap files) and runs its page checks. Site-wide findings still appear: report only the ones whose evidence is that URL.
+- **One page:** when the owner gives a URL with a path, or asks about one page, check that page only: `node <skill-dir>/scripts/seo-crawl.mjs --url https://www.example.com/blog/post/ --max 1 --out seo-audit/page/seo-crawl.json`. It reads only that page (plus robots.txt and the sitemap files) and runs its page checks. Skip the history step, so the full audit's files stay as they are. Site-wide findings still appear: report only the ones whose evidence is that URL, and say "one page only".
 - **Build with production values:** site URL and other env values are often baked in at build time. If you can't, say so in `notes`.
 - **Starting and stopping the server:** start it directly so it stops cleanly, e.g. `node node_modules/next/dist/bin/next start -p 3123` rather than `npx`. Always stop it when you're done.
 - Crawler findings are evidence, not verdicts. Check each against the profile (a noindex page may be intended), adjust severity, or drop it with a reason.
@@ -118,7 +143,7 @@ node <skill-dir>/scripts/gsc-import.mjs --pages seo-audit/Pages.csv --queries se
 ```
 Merge its `traffic` and `period` into `seo-audit.json` as `traffic` and `trafficPeriod`, and its findings into `findings`. Findings and plan rows then show their clicks.
 
-**Connections: offer each once per project, in setup and fix mode.** Record every answer in `seo-audit/settings.json` under `"connections"` and don't ask again. A skipped or failed connection goes under Limits with its reason and never changes the score. Logins and keys live in `~/.seo-supervisor/` (or the folder `SEO_SUPERVISOR_HOME` names), never in the project; never repeat an API key or login in chat, the report or a commit (the IndexNow key file is public by design and is committed like any other site file).
+**Connections: offer each once per project, in setup, fix and connect mode, and at the end of an audit.** Record every answer in `seo-audit/settings.json` under `"connections"` and don't ask again. A skipped or failed connection goes under Limits with its reason and never changes the score. Logins and keys live in `~/.seo-supervisor/` (or the folder `SEO_SUPERVISOR_HOME` names), never in the project; never repeat an API key or login in chat, the report or a commit (the IndexNow key file is public by design and is committed like any other site file).
 - **Client folders:** if the profile's "Connections" section names a Settings client, put `SEO_SUPERVISOR_CLIENT=<name>` in front of every script, so that client's logins and keys stay in their own folder. Pass the GA4 property it names to `google.mjs fetch` as `--ga4-property`.
 - **Google Search Console and Analytics:** ask "Connect Google Search Console and Analytics? Sign in with Google, set it up yourself, or skip." To sign in, run `node <skill-dir>/scripts/google.mjs connect --print-url` in the background (it waits up to 5 minutes), read the link from its first line of output or from `~/.seo-supervisor/pending-signin.txt`, and give it to the owner. The file disappears when sign-in ends; then confirm with `google.mjs status`. If it warns that a key or client file is inside the project, tell the owner to delete it and never commit it. On a server or in a remote shell, where the browser can't reach this machine, the owner runs `! node <skill-dir>/scripts/google.mjs connect --paste` in their own terminal and pastes back the address the browser ended on. If shared sign-in isn't available yet, or the owner prefers, show `google.mjs guide` and run `connect --client-file <file>` or `connect --service-account <key.json>`. Once connected, after the crawl run `node <skill-dir>/scripts/google.mjs fetch --site <live origin> --out seo-audit/google.json` and merge it like `gsc-import.mjs`'s output (`traffic`, `period` as `trafficPeriod`, and `analytics` for Google Analytics visits), plus its findings: key pages Google hasn't indexed (CRAWL-02), a different Google-chosen canonical (URL-04), sitemap errors (MAP-01) and rich-result errors Google reports (SCHEMA-08). When its URL Inspection ran, take SCHEMA-08 ("Rich result eligibility") out of the crawl's `notChecked`: Google's own verdict covers the inspected pages. Copy `trafficChange`, `searchTypes`, `byDevice`, `byCountry`, `anomalies` and `positions` as they are. To inspect pages the owner picks instead of the 20 key pages, add `--inspect <file>` or `--inspect-urls a,b` (up to 200 a run). Tell the owner its notes, including any Google data anomaly in the period. Access is read-only; `google.mjs status` shows it and `google.mjs disconnect` withdraws it at Google. **Submitting a sitemap** is the one write action, and only with the owner's yes: `node <skill-dir>/scripts/google.mjs submit-sitemap --site <origin> --sitemap <sitemap URL>` is a dry run naming the property and sitemap; with `--yes`, a second short Google screen asks the owner for that one permission the first time (pass on its link as with connect), then it submits and reports the status. It needs Owner or Full permission on the property. The report then shows each page's Search Console, Bing and Google Analytics numbers together on findings and plan rows, Bing and Analytics totals on the Overview, and Bing's most-linked pages.
 - **Did a change help? (`change-check.mjs`, needs Google connected):** when the owner asks whether pages they changed on a date did better or worse in Google, run `node <skill-dir>/scripts/change-check.mjs --site <live origin> --date <YYYY-MM-DD> --pages <file>` (one URL or path per line), or `--from-diff seo-audit/seo-diff.json`, or both. Like `google.mjs fetch`, it reads Search Console with the existing sign-in, so it needs no `--yes`. It compares the changed pages with unchanged pages that had similar clicks before the change, over the 28 days before and after (`--days` changes that), and says "likely up", "likely down" or "inconclusive" with a range. If the days after the change aren't final in Search Console yet, it says how many days to wait: tell the owner the date and stop. Copy `seo-audit/change-check.json` into `seo-audit.json` as `changeCheck`, and tell the owner its notes. Say what changed in the numbers, never why. Pages that changed but aren't listed count as unchanged, which hides part of the effect, so list every page that changed.
@@ -157,7 +182,7 @@ Work through `rules/` in order, then the site-type files. For every rule, find t
 Most big problems live in the **content layer**: publish flags nobody checks, city- or product-swapped copy, reused FAQs, missing local proof, unconfirmed claims. The crawler only sees rendered pages, so scan the data too:
 
 1. Get the content as JSON, CSV or a Markdown folder. For TypeScript modules or a CMS, dump it the way the project runs its own scripts (look in `package.json`), e.g. `npx tsx -e "import('./src/lib/content.ts').then(m => console.log(JSON.stringify(m.getAllPages())))" > seo-audit/content.json`.
-2. Run the scanner (`--help`-style usage is at the top of the file):
+2. Run the scanner (`--help` lists its options):
 ```bash
 node <skill-dir>/scripts/content-scan.mjs --in seo-audit/content.json --items pages --id slug --url "/{slug}/" \
   --title title --desc description --text intro --faq faqs --publish published --group service \
@@ -216,7 +241,7 @@ The score is computed by the renderer from findings and passed rules; the model 
 
 The report labels these **Needs you**. While blockers are open, the score panel shows the score the site reaches once they are fixed, so the owner sees what their part unlocks.
 
-In chat, give: the score and band, and while blockers are open, the score fixing them unlocks and who has to do it. Then the verdict (the first sentence of `summary`), counts by severity, the top three problems, both report paths, and an offer to fix. If the site has almost no SEO in place (no titles, sitemap or schema on most pages), offer `/seo-setup` as well: it plans everything first. Ask before committing `seo-audit/`.
+In chat, give: the score and band, and while blockers are open, the score fixing them unlocks and who has to do it. Then the verdict (the first sentence of `summary`), counts by severity, the top three problems, both report paths, and an offer to fix. Then offer, once each and where it fits: the connections not offered yet (connect mode), GitHub issues (below), the AI answer check for any site, and the geo-grid for a local business. If the site has almost no SEO in place (no titles, sitemap or schema on most pages), offer setup mode as well (`/seo-setup` in Claude Code, or "set up SEO from scratch"): it plans everything first. Ask before committing `seo-audit/`.
 
 **GitHub issues (optional).** If the owner asks for issues, run `node <skill-dir>/scripts/issues.mjs --audit seo-audit/seo-audit.json [--ids F-001,F-002] [--repo owner/name]` and show the dry run. Only after their yes, run it again with `--yes`; it uses their own `gh` login and skips findings already filed. It files the open findings except those marked won't fix, and says how many it left out.
 
@@ -262,13 +287,15 @@ In chat, give: the score and band, and while blockers are open, the score fixing
 
 ### 6. Review mode
 
-List the changed routes, templates and content. Apply only the rules they touch. Crawl the changed pages if the site runs, with `--out seo-audit/review-crawl.json` so the branch's crawl stays out of the history. When there's an earlier crawl (a committed one, or the latest in `seo-audit/history/`), run `seo-diff.mjs` from it to the branch's crawl and include its regressions. Report regressions and new problems, nothing else.
+List the changed routes, templates and content. Apply only the rules they touch. Crawl the changed pages if the site runs, with `--out seo-audit/review-crawl.json` so the branch's crawl stays out of the history. When there's an earlier crawl (a committed one, or the latest in `seo-audit/history/`), run `seo-diff.mjs` from it to the branch's crawl and include its regressions. When the change touches JSON-LD or a template that builds it, run `schema-check.mjs` on the built page or the running server's URL (fix step 8). Report regressions and new problems, nothing else.
 
 ### 7. Launch mode
 
 Run the audit, with `--check-live` once the production origin answers. Launch passes only with **zero open blockers** and **zero open high findings** in the CRAWL, URL, REND, MAP and TRUST-07 rules, plus the steps in `rules/launch-monitoring.md`. A certificate blocker fails the launch.
 
-Launch mode edits nothing. Among the launch-day steps, list IndexNow: once the site is live, `/seo-fix` writes the key file (with the owner's yes, fix step 10), the owner deploys, and `indexnow.mjs submit --site <origin> --key <key> --from-sitemap <origin>/sitemap.xml --yes` tells Bing and the others about every page. It refuses to send until `<origin>/<key>.txt` serves the key.
+**A site move or URL change** (new domain, new URL scheme, a redesign): ask for the old site's URLs and crawl with `--urls` (step 2, **Old URLs**). Each old URL must 301 in one hop to its closest new page. List the dead ends, the chains, and the old URLs that all land on one page, often the home page, which lose what they ranked for. For a new domain, add Change of Address to the launch-day steps (LAUNCH-01). After the move, offer the known-backlinks check (step 2).
+
+Launch mode edits nothing. Among the launch-day steps, list IndexNow: once the site is live, fix mode (`/seo-fix` in Claude Code) writes the key file (with the owner's yes, fix step 10), the owner deploys, and `indexnow.mjs submit --site <origin> --key <key> --from-sitemap <origin>/sitemap.xml --yes` tells Bing and the others about every page. It refuses to send until `<origin>/<key>.txt` serves the key.
 
 After launch, suggest `node <skill-dir>/scripts/deploy-check.mjs --site <origin>` (or `npx seo-supervisor deploy-check --site <origin>`) as a CI step after each deploy: about ten seconds, exit 1 on a blocker (home page down or noindex, robots.txt blocking Googlebot from the site or failing, the certificate expired or about to). It doesn't replace the audit. If the owner has connected Google (`google.mjs connect`), add `--search-console` (and `--since <deploy time, ISO with zone>`, within the last 2 days): it shows Google Search clicks for the hours since the deploy beside the same hours a week before, warns on a fall of 30% or more (our own line), and never changes the exit code. Hourly data is fresh and noisy: treat a warning as a reason to look at what the deploy changed, not as proof.
 
@@ -318,9 +345,33 @@ For "how do I get more visitors?". If the profile's Goals section is empty, ask 
 6. building it
 7. checking it
 
-It writes only `seo-audit/grow-plan.md`: an ordered to-do list. Each item has its evidence, who does it and its mode (brief, rewrite or fix), plus a "check again after" date.
+It writes only `seo-audit/grow-plan.md`: an ordered to-do list. Each item has its evidence, who does it and its mode (brief, rewrite or fix), plus a "check again after" date. Ideas looked at and left out go in its "Considered, not recommended" table, each with its reason.
 
-It builds nothing: each item runs in its own mode, with the owner's yes. When a stage's data is missing, say how to get it, and never guess. When brief, rewrite or fix finishes a grow-plan item, mark it done in the plan with the date it went live.
+It builds nothing: each item runs in its own mode, with the owner's yes. When a stage's data is missing, say how to get it, and never guess. When brief, rewrite or fix finishes a grow-plan item, mark it done in the plan with the date it went live. The check (Stage 6) uses `change-check.mjs` when Google is connected.
+
+### 12. Watch mode
+
+For "what changed?" and "did my change help?". It's read-only, and it never replaces the audit's files: everything it writes goes to `seo-audit/watch/`, and it answers in chat.
+1. **What changed:** crawl the site with the last audit's options (no `--outside`) and `--out seo-audit/watch/seo-crawl.json`, then `node <skill-dir>/scripts/seo-diff.mjs seo-audit/seo-crawl.json seo-audit/watch/seo-crawl.json --out seo-audit/watch/seo-diff.json`. Don't use `--history seo-audit/history` here: that files the crawl in the audit's history. With no earlier audit, offer an audit instead.
+2. **Did a change help:** with Google connected and the change date, run `change-check.mjs` as step 2 says, with `--out seo-audit/watch/change-check.json` (or `--from-diff seo-audit/watch/seo-diff.json` for the pages that changed).
+3. **Google updates:** with `updates` approved (outside checks), run `google-updates.mjs --since <the last audit's crawledAt> --out seo-audit/watch/google-updates.json --yes`.
+4. **Several sites:** `node <skill-dir>/scripts/dashboard.mjs <folder> <folder> --out seo-audit/watch/dashboard.html` reads the audits on this machine and sends nothing.
+5. **Every deploy:** offer the deploy check in CI (launch mode, after launch) and scheduled runs (`examples/scheduled-runs.md`). Set either up only on the owner's yes.
+
+Then offer a full audit to refresh the report. Its "Since last audit" tab keeps comparing audits.
+
+### 13. Connect mode
+
+For "is my setup OK?" and connecting data sources.
+1. Run `node <skill-dir>/scripts/doctor.mjs` first, and pass on anything marked `!!` with its fix.
+2. Show each connection's status: `google.mjs status`, `connect-keys.mjs status`, and `"connections"` in `seo-audit/settings.json`.
+3. Offer the ones not set up, one at a time, as step 2's Connections says, and record each answer. Keys are only ever typed at the hidden prompt in the owner's own terminal. Never ask for a key in chat.
+
+Connect mode changes nothing in the project. Then offer an audit to use the new data.
+
+## Guard
+
+The guard hook asks the owner before risky actions: sending something outside with `--yes`, adding noindex, changing robots.txt, redirects, canonicals or AI crawler rules, removing pages, and an API key typed in chat. When it pauses an action, wait for the owner's answer, and never work around it with another command that has the same effect.
 
 ## Plain language (CONTENT-13)
 
