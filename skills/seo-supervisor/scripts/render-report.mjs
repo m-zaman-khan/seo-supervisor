@@ -1433,9 +1433,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
         ]
       : [];
 
-  const schemaHtml = () => "",
-    schemaMd = () => [];
-
   // How many Products give each recommended merchant listing field. Numbers only, so nothing crawled is shown.
   const fields = obj(raw.productFields),
     FIELDS = [
@@ -2265,12 +2262,9 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
         ]
       : [];
 
-  const pageHtml = () => "",
-    pageMd = () => [];
-  // Shown inside the "AI crawlers and agents" panel above, so the pair below stays empty: Brave's Googlebot fallback,
-  // Cloudflare's Bot Preference Sync block (`botPreferenceSync`), aipref Content-Usage lines as written
-  // (`contentUsage`) and pages that answered the AI probe with a 402 (`aiBotPaid`), as Cloudflare's pay per crawl does.
-  // Crawled text is escaped.
+  // Shown inside the "AI crawlers and agents" panel above: Brave's Googlebot fallback, Cloudflare's Bot Preference Sync
+  // block (`botPreferenceSync`), aipref Content-Usage lines as written (`contentUsage`) and pages that answered the AI
+  // probe with a 402 (`aiBotPaid`), as Cloudflare's pay per crawl does. Crawled text is escaped.
   // https://search.brave.com/help/brave-search-crawler
   // https://blog.cloudflare.com/bot-preference-sync/
   const usage = (Array.isArray(raw.contentUsage) ? raw.contentUsage : [])
@@ -2317,8 +2311,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
       ? [PAID_INTRO, "", ...paid.map(p => `- ${noteCode(notePath(p.url))} ${noteMd(paidRow(p))}`), ""]
       : []),
   ];
-  const aiPrefsHtml = () => "",
-    aiPrefsMd = () => [];
   // linkIdeas and queryGaps (keyword-ideas.mjs), copied into the audit as they are. Searches and paths are escaped. Up
   // to 10 of each on the page, all of them (50 at most) in the Markdown.
   const aiRows = (key, list) =>
@@ -2871,7 +2863,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
       secHtml,
       crawlScopeHtml,
       aiCrawlersHtml,
-      schemaHtml,
       shopHtml,
       mediaHtml,
       renderHtml,
@@ -2881,8 +2872,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
       connHtml,
       diffMoreHtml,
       reportHtml,
-      pageHtml,
-      aiPrefsHtml,
       linkIdeasHtml,
       changeHtml,
       crawlLinksHtml,
@@ -2900,7 +2889,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
       secMd,
       crawlScopeMd,
       aiCrawlersMd,
-      schemaMd,
       shopMd,
       mediaMd,
       renderMd,
@@ -2910,8 +2898,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
       connMd,
       diffMoreMd,
       reportMd,
-      pageMd,
-      aiPrefsMd,
       linkIdeasMd,
       changeMd,
       crawlLinksMd,
