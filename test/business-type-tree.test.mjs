@@ -8,6 +8,7 @@ import { SCRIPTS, node, tmp } from "./helpers.mjs";
 import { isA, isBusinessType, isLocalBusinessType } from "../skills/seo-supervisor/scripts/lib/business.mjs";
 import { localFeatures } from "../skills/seo-supervisor/scripts/checks/local.mjs";
 import { checkJsonLd } from "../skills/seo-supervisor/scripts/schema-check.mjs";
+import { reviewEventProblems } from "../skills/seo-supervisor/scripts/checks/schema.mjs";
 
 const ORIGIN = "https://site.example";
 const COPY =
@@ -256,4 +257,56 @@ test("a Bakery home page has business schema, and its own rating is flagged; ano
   });
   assert.equal(r.stats.htmlPages, 3, "every page was read");
   assert.ok(!findingOf(r, "org-missing"), "a Bakery is a business, so the home page has business schema");
+  const f = findingOf(r, "rating-self-serving");
+  assert.deepEqual([f?.rule, f?.severity, f?.count], ["SCHEMA-04", "low", 2]);
+  assert.deepEqual(
+    Object.fromEntries(f.evidence.map(e => [new URL(e.url).pathname, e.detail])),
+    {
+      "/": "a rating on “Crumb Bakery” (Bakery)",
+      "/reviews/": "a review of “https://site.example/#org”",
+    },
+    "the florist's and the product's ratings aren't the site's own",
+  );
+  assert.match(f.why, /ineligible for star/);
+});
+
+// ---------- Ratings of the site's own business ----------
+test("the businesses a page rates, by a rating on the node or a review naming it, and the business nodes at its top", () => {
+  const RATING = { "@type": "AggregateRating", ratingValue: 4, ratingCount: 9 };
+  const r = reviewEventProblems([
+    {
+      "@type": ["Bakery", "CafeOrCoffeeShop"],
+      "@id": "https://site.example/#org",
+      name: " Crumb  Bakery ",
+      aggregateRating: RATING,
+    },
+    {
+      "@type": "WebPage",
+      about: {
+        "@type": "Florist",
+        name: "Petal",
+        review: [{ "@type": "Review", reviewRating: { "@type": "Rating", ratingValue: 5 } }],
+      },
+    },
+    {
+      "@type": "Review",
+      itemReviewed: [
+        { "@id": "https://site.example/#org" },
+        { "@type": "Product", name: "Loaf" },
+        { "@type": "Dentist", name: "Smile" },
+      ],
+    },
+    { "@type": "Product", name: "Loaf", aggregateRating: RATING },
+    { "@type": "Corporation", name: "Parent Co" },
+  ]);
+  assert.deepEqual(r.orgs, [
+    { id: "https://site.example/#org", name: "Crumb  Bakery", type: "Bakery" },
+    { id: "", name: "Parent Co", type: "Corporation" },
+  ]);
+  assert.deepEqual(r.rated, [
+    { id: "https://site.example/#org", name: "Crumb  Bakery", type: "Bakery", kind: "a rating on" },
+    { id: "", name: "Petal", type: "Florist", kind: "a review on" },
+    { id: "https://site.example/#org", name: "", type: "", kind: "a review of" },
+    { id: "", name: "Smile", type: "Dentist", kind: "a review of" },
+  ]);
 });

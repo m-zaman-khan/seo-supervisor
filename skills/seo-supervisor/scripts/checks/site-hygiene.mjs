@@ -8,8 +8,14 @@ import { mainWords as pickMainWords } from "../keyword-ideas.mjs";
 // Analytics and secret keys are checked on every page read, since both matter on pages search engines skip too; the
 // rest only on indexable pages. UA is the crawler's user agent, sent for the app link files.
 export async function hygieneChecks(site, UA) {
-  const { htmlPages, add, notes, extra, startOrigin: START_ORIGIN, get, indexable, selfHosts, bareHost } = site;
+  const { htmlPages, home, add, notes, extra, startOrigin: START_ORIGIN, get, indexable, selfHosts, bareHost } = site;
   const read = htmlPages.filter(p => p.hygieneSignals);
+  // The business nodes at the top of the home page's schema are the site's own; a rated business elsewhere is the same
+  // one when its @id or name matches.
+  const key = s => s.replace(/\s+/g, " ").toLowerCase(),
+    own = home?.hygieneSignals?.schema.orgs || [];
+  const ownId = new Set(own.map(o => o.id).filter(Boolean)),
+    ownName = new Set(own.map(o => key(o.name)).filter(Boolean));
   for (const p of read) {
     const h = p.hygieneSignals,
       u = p.finalUrl;
@@ -32,6 +38,17 @@ export async function hygieneChecks(site, UA) {
       add("hidden-links", u, `${away.length} hidden link(s) to other sites, e.g. ${away[0]}`);
     if (h.schema.events.length) add("event-online", u, h.schema.events.map(e => `“${e}”`).join(", "));
     if (h.schema.reviews.length) add("review-target-conflict", u, h.schema.reviews.join("; "));
+    const self = [
+      ...new Map(
+        h.schema.rated.filter(x => ownId.has(x.id) || ownName.has(key(x.name))).map(x => [x.id || key(x.name), x]),
+      ).values(),
+    ];
+    if (self.length)
+      add(
+        "rating-self-serving",
+        u,
+        self.map(x => `${x.kind} “${x.name || x.id}”${x.type ? ` (${x.type})` : ""}`).join("; "),
+      );
   }
   // Builds often bake a server setting into the scripts browsers get. Each on-site script is read once, most-loaded
   // first, without following redirects, so no other host is asked; an HTML answer (an app shell served for every path)

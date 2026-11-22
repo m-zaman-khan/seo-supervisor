@@ -1,6 +1,6 @@
 // @ts-check
 // Structured data checks shared by the crawler and schema-check.mjs, which re-exports them.
-import { isA, schemaTypes } from "../lib/business.mjs";
+import { isA, isBusinessType, schemaTypes } from "../lib/business.mjs";
 
 const term = s => s.replace(/^(?:https?:\/\/schema\.org\/|schema:)/, "");
 const list = x => [].concat(x ?? []);
@@ -146,22 +146,51 @@ export function onlineOnly(e) {
     virtual = l => typeIs(l, "VirtualLocation");
   return mode.includes("OnlineEventAttendanceMode") ? locs.every(virtual) : locs.length > 0 && locs.every(virtual);
 }
+// Self-serving ratings: a business that controls its own reviews gets no review stars on its business pages
+// (REVIEW_DOC). A business is rated by a rating or review on its node, or by a Review or AggregateRating naming it
+// (or a bare @id) in itemReviewed. Which business is the site's own is site-hygiene.mjs's call.
+const typesIn = o =>
+  list(o?.["@type"])
+    .filter(t => typeof t === "string")
+    .map(term)
+    .filter(t => schemaTypes()[t]);
+const who = (o, types, kind) => ({
+  id: typeof o["@id"] === "string" ? o["@id"].trim() : "",
+  name: nameKey(o.name) ? o.name.trim() : "",
+  type: types.find(isBusinessType) || "",
+  ...(kind && { kind }),
+});
 /** For the crawler: the names of online-only events and each nested review or rating naming another item, at any depth;
  *  the business nodes at the top (orgs) and the businesses rated here (rated), as { id, name, type, kind }. */
 export function reviewEventProblems(nodes) {
   const events = [],
     reviews = [],
+    orgs = [],
+    rated = [],
     seen = new Set();
   const walk = (o, d) => {
     if (!o || typeof o !== "object" || d > 12 || seen.has(o)) return;
     seen.add(o);
     if (Array.isArray(o)) return o.forEach(x => walk(x, d + 1));
-    const types = list(o["@type"])
-      .filter(t => typeof t === "string")
-      .map(term)
-      .filter(t => schemaTypes()[t]);
+    const types = typesIn(o);
     if (types.some(t => isA(t, "Event")) && onlineOnly(o))
       events.push(typeof o.name === "string" && o.name.trim() ? o.name.trim() : "an event");
+    if (types.some(isBusinessType)) {
+      if (d === 0) orgs.push(who(o, types));
+      if (list(o.aggregateRating).length || list(o.review).length)
+        rated.push(who(o, types, list(o.aggregateRating).length ? "a rating on" : "a review on"));
+    }
+    const of = types.some(t => isA(t, "Review"))
+      ? "a review of"
+      : types.some(t => isA(t, "AggregateRating"))
+        ? "a rating of"
+        : null;
+    if (of)
+      for (const it of list(o.itemReviewed)) {
+        const t = typesIn(it);
+        if (it && typeof it === "object" && (t.some(isBusinessType) || (!it["@type"] && typeof it["@id"] === "string")))
+          rated.push(who(it, t, of));
+      }
     for (const k of ["review", "aggregateRating"])
       for (const c of list(o[k])) {
         const other = otherReviewed(o, c);
@@ -173,5 +202,5 @@ export function reviewEventProblems(nodes) {
     Object.values(o).forEach(x => walk(x, d + 1));
   };
   nodes.forEach(n => walk(n, 0));
-  return { events, reviews };
+  return { events, reviews, orgs, rated };
 }

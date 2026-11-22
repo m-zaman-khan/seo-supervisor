@@ -50,6 +50,15 @@ export const CHECKS = {
     "A review or rating here sits inside an item, through its review or aggregateRating property, but also names a different item in itemReviewed. Google's review snippet guide says to leave itemReviewed out of a nested review, as the item it sits in is the one reviewed, and since 12 Nov 2025 it asks sites not to say what's reviewed in more than one way. With two answers Google can't tell which item the rating is for, so the stars may not show.",
     "Remove itemReviewed from the nested review or rating. If the review really is about another item, move it out into its own Review that names that item in itemReviewed.",
   ],
+  // low: the only cost is that the stars don't show. The rule is cited at schema.mjs's reviewEventProblems.
+  // https://developers.google.com/search/docs/appearance/structured-data/review-snippet
+  "rating-self-serving": [
+    "SCHEMA-04",
+    "low",
+    n => `${n} page(s) rate the site's own business in its schema`,
+    "These pages mark up a rating or review of the site's own business: an aggregateRating or review on its Organization or LocalBusiness node, or a Review that names it in itemReviewed. Google's review snippet guide says that when a business controls the reviews about itself, its pages that use LocalBusiness or any other Organization structured data are \"ineligible for star review feature\", whether the reviews sit in the markup or come from an embedded widget such as Google or Facebook reviews. So these stars never show in Google. The site's own business is the business at the top of the home page's schema, found on other pages by its @id or name.",
+    "Take the rating and the reviews out of the business's schema; the reviews themselves can stay on the page as text. Stars can still show for what the business sells, such as a Product rated by real reviews shown on its page (SCHEMA-04). If this site collects reviews of other businesses, check that the business rated here really is another one: then nothing needs to change.",
+  ],
   "event-online": [
     "SCHEMA-05",
     "low",
