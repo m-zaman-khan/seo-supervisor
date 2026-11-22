@@ -3,15 +3,14 @@
 // Services connected by an API key alone, and the key store the other scripts share. Keys are saved in
 // ~/.seo-supervisor/keys.json, never in the project; a service's environment variable wins over its saved key.
 // Exits 0 when done, 1 when a service refuses or can't be reached (or status finds no key), 2 on bad input.
-import { readFileSync, writeFileSync, mkdirSync, chmodSync, existsSync, renameSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { createInterface } from "node:readline/promises";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
-import { loginDir } from "./lib/settings-dir.mjs";
 import { proxyNote } from "./lib/proxy.mjs";
 import { changedPages } from "./seo-diff.mjs";
-import { Fail, Refused, fail, setLine, domainOf, domainsFor, num } from "./keys/http.mjs";
+import { Fail, Refused, fail, domainOf, domainsFor, num } from "./keys/http.mjs";
 import { SERVICES, serviceOf, call } from "./keys/services.mjs";
+import { keyFile, savedKeys, ask, setKey, removeKey, activeKeys, mask } from "./keys/store.mjs";
 import { fetchBing, BATCH, submitBing } from "./keys/bing.mjs";
 import { MOZ_MAX, fetchAuthority } from "./keys/authority.mjs";
 import { periodFor } from "./keys/visits.mjs";
@@ -29,7 +28,7 @@ import { CLARITY_DAYS, fetchClarity } from "./keys/clarity.mjs";
 import { YT_TOPICS, fetchYoutube } from "./keys/youtube.mjs";
 
 // Re-exported for the other scripts and the tests.
-export { Fail, Refused, domainOf, submitBing, SERVICES, call };
+export { Fail, Refused, domainOf, submitBing, SERVICES, call, keyFile, savedKeys, setKey, removeKey, activeKeys };
 const USAGE = `usage: node connect-keys.mjs set bing|openpagerank|ahrefs|matomo|posthog|moz|youtube|clarity|perplexity|openai|googleplaces [<key>]   (no key: it asks, hidden)
        node connect-keys.mjs set matomo [--url <address>] [--site-id <id>] | set posthog [--host us|eu|<address>] [--project-id <id>]
        node connect-keys.mjs status | remove <service> | guide <service> | test matomo|posthog [--yes]
@@ -45,147 +44,6 @@ function siteOf(s, flag = "--site") {
     ? u
     : fail(`${flag} must be the site's address, like https://www.example.com (got ${s})`);
 }
-
-// ---------- keys ----------
-export const keyFile = () => join(loginDir(), "keys.json"); // honours SEO_SUPERVISOR_HOME and SEO_SUPERVISOR_CLIENT
-export function savedKeys() {
-  const f = keyFile();
-  if (!existsSync(f)) return {};
-  try {
-    return JSON.parse(readFileSync(f, "utf8"));
-  } catch {
-    fail(`${f} isn't valid JSON. Fix it or delete it, then set the keys again.`);
-  }
-}
-function save(keys) {
-  const f = keyFile();
-  mkdirSync(dirname(f), { recursive: true, mode: 0o700 });
-  // On Windows chmod only sets the read-only flag, so there the file is as private as the user's profile folder.
-  chmodSync(dirname(f), 0o700);
-  // Written to a temporary file and renamed over the old one, so a crash never leaves half a keys file.
-  const t = `${f}.${process.pid}.tmp`;
-  writeFileSync(t, JSON.stringify(keys, null, 2) + "\n", { mode: 0o600 });
-  chmodSync(t, 0o600);
-  renameSync(t, f);
-}
-
-// What set still needs. Piped stdin gives a line each, in order; a terminal asks for the address and ID in plain view
-// (they aren't secret), then for the key without showing it.
-async function ask(id, missing, needKey) {
-  const { stdin, stderr } = process,
-    values = {};
-  if (!stdin.isTTY) {
-    let text = "";
-    const n = missing.length + (needKey ? 1 : 0);
-    for await (const c of stdin) {
-      text += c;
-      if (text.split("\n").length > n) break;
-    }
-    const lines = text.split(/\r?\n/).map(s => s.trim());
-    missing.forEach((f, i) => {
-      values[f.id] = lines[i];
-    });
-    return {
-      values,
-      key: needKey
-        ? lines[missing.length] ||
-          fail(`no key was given. In your own terminal, run ${setLine(id)} and paste the key when it asks.`)
-        : undefined,
-    };
-  }
-  if (missing.length) {
-    const rl = createInterface({ input: stdin, output: stderr });
-    rl.on("SIGINT", () => rl.close());
-    try {
-      for (const f of missing) values[f.id] = await rl.question(`${f.ask}: `);
-    } catch {
-      fail("cancelled, nothing was saved.");
-    } finally {
-      rl.close();
-    }
-  }
-  return { values, key: needKey ? await readKey(id) : undefined };
-}
-// The key from the terminal, without showing it.
-async function readKey(id) {
-  const { stdin, stderr } = process;
-  stderr.write(`Paste the ${SERVICES[id].name} key and press Enter (it isn't shown): `);
-  stdin.setRawMode(true);
-  stdin.setEncoding("utf8");
-  return new Promise((ok, no) => {
-    let key = "";
-    const done = () => {
-      stdin.setRawMode(false);
-      stdin.off("data", onData);
-      stdin.pause();
-      stderr.write("\n");
-    };
-    const onData = s => {
-      for (const ch of s) {
-        if (ch === "\r" || ch === "\n") {
-          done();
-          return ok(key);
-        }
-        if (ch === "\u0003") {
-          done();
-          return no(new Fail("connect-keys: cancelled, nothing was saved."));
-        }
-        if (ch === "\u007f" || ch === "\b") {
-          if (key) {
-            key = key.slice(0, -1);
-            stderr.write("\b \b");
-          }
-        } else {
-          key += ch;
-          stderr.write("*");
-        }
-      }
-    };
-    stdin.on("data", onData);
-    stdin.resume();
-  });
-}
-// values: Matomo's or PostHog's address and ID, checked and tidied before anything is saved.
-export function setKey(id, key, values = {}) {
-  const s = SERVICES[serviceOf(id)];
-  key = String(key ?? "").trim();
-  if (!key || /\s/.test(key))
-    fail(`that doesn't look like a key (it's empty or has spaces). Copy it again from ${s.where}.`);
-  if (id === "posthog" && key.startsWith("phc_"))
-    fail(
-      `that's the project key from your site's tracking code (it starts with phc_), which can only send data to PostHog. Reading needs a personal API key, which starts with phx_. To make one: node connect-keys.mjs guide posthog`,
-    );
-  // Microsoft: "Access to the API is secured via JWT tokens", three parts joined by dots.
-  if (id === "clarity" && !/^[\w-]+\.[\w-]+\.[\w-]+$/.test(key))
-    fail(
-      `that isn't a Clarity API token: those are long, with two dots in them. A short code like the one in Clarity's tracking code is the project ID, which can't read data. To make a token: node connect-keys.mjs guide clarity`,
-    );
-  const extra = Object.fromEntries((s.fields || []).map(f => [f.id, f.check(String(values[f.id] ?? "").trim())]));
-  save({ ...savedKeys(), [id]: s.fields ? { ...extra, key } : key });
-}
-export function removeKey(id) {
-  serviceOf(id);
-  const keys = savedKeys();
-  if (!(id in keys)) return false;
-  delete keys[id];
-  save(keys);
-  return true;
-}
-// { bing: { key, from } | null, matomo: { key, from, url, siteId } | null, ... }; an environment variable wins over the
-// saved value. Matomo and PostHog count as set only with their address and ID too.
-export function activeKeys(env = process.env) {
-  const saved = savedKeys();
-  return Object.fromEntries(
-    Object.entries(SERVICES).map(([id, s]) => {
-      const v = saved[id],
-        savedKey = s.fields ? v?.key : v;
-      const k = env[s.env] ? { key: env[s.env], from: s.env } : savedKey ? { key: savedKey, from: keyFile() } : null;
-      for (const f of (k && s.fields) || []) k[f.id] = env[f.env] ? f.check(env[f.env].trim()) : v?.[f.id];
-      return [id, k && (s.fields || []).every(f => k[f.id]) ? k : null];
-    }),
-  );
-}
-const mask = k => (k.length > 8 ? "…" + k.slice(-4) : "…");
 
 // Kept here rather than in keys/bing.mjs: knownChecks() in lib/score.mjs and the rule-ID test scan only scripts/ and
 // scripts/checks/ for check names.
