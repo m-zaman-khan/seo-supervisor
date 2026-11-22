@@ -43,6 +43,26 @@ export function attrs(tag) {
   }
   return out;
 }
+// Where Google stops reading the head: </head>, <body> or the first element other than title, meta, link, script,
+// style, base, noscript or template. What a script, style, template, noscript or title holds, and comments, don't
+// count. Returns the index and the tag that ended it ("</head>", "<body>", "<img>"), or { at: -1, by: null }.
+// https://developers.google.com/search/docs/crawling-indexing/valid-page-metadata
+const HEAD_OK = /^(html|head|title|meta|link|script|style|base|noscript|template)$/,
+  RAW = /^(script|style|template|noscript|title)$/;
+export function headEndOf(html) {
+  const tag = /<!--[\s\S]*?-->|<(\/?)([a-z][\w-]*)[^>]*>/gi;
+  for (let m; (m = tag.exec(html));) {
+    if (!m[2]) continue;
+    const t = m[2].toLowerCase();
+    if (m[1] ? t === "head" : !HEAD_OK.test(t)) return { at: m.index, by: `<${m[1]}${t}>` };
+    if (!m[1] && RAW.test(t)) {
+      const end = new RegExp(`</${t}\\s*>`, "gi");
+      end.lastIndex = tag.lastIndex;
+      tag.lastIndex = end.exec(html) ? end.lastIndex : html.length;
+    }
+  }
+  return { at: -1, by: null };
+}
 export const tagsOf = (html, name) => [...html.matchAll(new RegExp(`<${name}\\b[^>]*>`, "gi"))].map(m => attrs(m[0]));
 export const stripNonContent = h =>
   h

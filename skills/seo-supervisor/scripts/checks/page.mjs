@@ -1,6 +1,6 @@
 // @ts-check
 // Per-page checks for seo-crawl.mjs. Thresholds are local, and HTML is read with regexes, as in the crawler.
-import { attrs } from "../lib/html.mjs";
+import { attrs, headEndOf } from "../lib/html.mjs";
 
 const PAID_WORDS = 150; // local threshold for paid text sent in full
 export const CHECKS = {
@@ -41,9 +41,9 @@ export const CHECKS = {
   "head-tags-late": [
     "REND-08",
     "low",
-    n => `${n} page(s) send their title, description, canonical or robots tag after the <head>`,
-    "These tags came after the page's `<head>` had ended, in the `<body>`. Google asks for the title, meta tags and canonical early in the HTML, because it reads only the first 2 MB of a page, and it accepts a canonical only inside the `<head>`, so one sent in the body works only if the page's JavaScript moves it there. Google does read a robots tag anywhere in the page. Next.js 15.2 and later send metadata late on purpose when it loads slowly (\"streamed metadata\"): browsers and Googlebot, which runs JavaScript, get it in the body, while the bots on Next.js's own list, such as Bingbot, Applebot and the link previews of X, Slack and Facebook, get it in the head. This crawler (user agent seo-supervisor-crawler) isn't on that list, so it saw what a browser gets.",
-    "Put these tags in the `<head>`. In Next.js, make `generateMetadata` fast (cache the data it reads), or list the bots that should get the head version in `htmlLimitedBots` in next.config; `/.*/` turns streaming off. Elsewhere, check the template, component or plugin that writes the tags into the body.",
+    n => `${n} page(s) send their title, description, canonical, robots or hreflang tag after the <head> ends`,
+    "These tags came after the page's `<head>` had ended. For Google the head also ends early, at the first element a head can't hold, such as an `<img>`, an `<iframe>` or a tracking pixel: Google then stops reading the head, so the tags after it count as being in the body. Google asks for the title, meta tags and canonical early in the HTML, because it reads only the first 2 MB of a page, and it accepts a canonical only inside the `<head>`, so one sent in the body works only if the page's JavaScript moves it there. Google does read a robots tag anywhere in the page. Next.js 15.2 and later send metadata late on purpose when it loads slowly (\"streamed metadata\"): browsers and Googlebot, which runs JavaScript, get it in the body, while the bots on Next.js's own list, such as Bingbot, Applebot and the link previews of X, Slack and Facebook, get it in the head. This crawler (user agent seo-supervisor-crawler) isn't on that list, so it saw what a browser gets.",
+    "Put these tags in the `<head>`, before any element that doesn't belong there (move an `<img>`, `<iframe>` or tracking pixel into the body). In Next.js, make `generateMetadata` fast (cache the data it reads), or list the bots that should get the head version in `htmlLimitedBots` in next.config; `/.*/` turns streaming off. Elsewhere, check the template, component or plugin that writes the tags into the body.",
   ],
   // One Organization and one WebSite node, with stable @ids, on every page.
   "site-identity-differs": [
@@ -151,22 +151,22 @@ export function paywallLeak(body, nodes) {
 }
 
 // ---------- head tags after the head ends (REND-08) ----------
-// The head ends at </head>, else at <body>: both are optional. With neither, no tag can be called late.
-export function lateHead(html) {
-  let at = html.search(/<\/head\s*>/i);
-  if (at < 0) at = html.search(/<body\b/i);
+// The head ends where Google ends it (headEndOf): at </head>, <body> or the first element a head can't hold.
+// When nothing ends it (at < 0), no tag can be called late.
+export function lateHead(html, at = headEndOf(html).at) {
   if (at < 0) return [];
   const found = new Set();
   for (const [tag, name] of strip(html.slice(at)).matchAll(/<(title|meta|link)\b[^>]*>/gi)) {
     const t = name.toLowerCase(),
-      n = (attr(tag, "name") || "").toLowerCase();
+      n = (attr(tag, "name") || "").toLowerCase(),
+      rel = (attr(tag, "rel") || "").toLowerCase().split(/\s+/);
     if (t === "title") found.add("title");
     else if (t === "meta" && n === "description") found.add("description");
     else if (t === "meta" && (n === "robots" || n === "googlebot")) found.add("robots");
-    else if (t === "link" && (attr(tag, "rel") || "").toLowerCase().split(/\s+/).includes("canonical"))
-      found.add("canonical");
+    else if (t === "link" && rel.includes("canonical")) found.add("canonical");
+    else if (t === "link" && rel.includes("alternate") && attr(tag, "hreflang")) found.add("hreflang");
   }
-  return ["title", "description", "canonical", "robots"].filter(x => found.has(x));
+  return ["title", "description", "canonical", "robots", "hreflang"].filter(x => found.has(x));
 }
 
 // ---------- the site's identity (SCHEMA-02) ----------

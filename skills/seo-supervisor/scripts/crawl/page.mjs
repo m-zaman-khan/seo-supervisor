@@ -9,6 +9,7 @@ import {
   capsOf,
   ctx,
   deepHas,
+  headEndOf,
   jsonLdNodes,
   norm,
   stripNonContent,
@@ -91,6 +92,7 @@ export function analyze(url, html, headers, xRobotsLines, site) {
   const { start: START, startOrigin: START_ORIGIN, banned: BANNED, verify: VERIFY, toCrawl, sitemapHreflang } = site;
   const headEnd = html.search(/<\/head>/i);
   const head = headEnd > 0 ? html.slice(0, headEnd) : html;
+  const headStop = headEndOf(html); // where Google stops reading the head
   const bodyStart = html.search(/<body\b/i);
   const bodyRaw = bodyStart >= 0 ? html.slice(bodyStart) : html;
   const body = stripNonContent(bodyRaw);
@@ -532,6 +534,7 @@ export function analyze(url, html, headers, xRobotsLines, site) {
 
   // Inputs for checks/page.mjs. identity takes the business (not Service) and WebSite nodes' @id and name.
   const idNodes = pred => nodes.filter(n => typesOf(n).some(pred)).map(n => ({ id: n["@id"], name: n.name }));
+  const late = lateHead(html, headStop.at);
   rec.pageChecks = {
     ugc: ugcLinks(body)
       .map(h => urlOr(h, rec.base))
@@ -539,7 +542,9 @@ export function analyze(url, html, headers, xRobotsLines, site) {
       .map(x => x.href),
     backTrap: backTrap(html),
     paywall: paywallLeak(body, nodes),
-    late: lateHead(html),
+    late,
+    // The element that ended Google's head early (an <img>, an <iframe>), when tags came after it.
+    lateAt: late.length && !/^<(\/head|body)>$/.test(headStop.by) ? headStop.by : null,
     identity: { org: idNodes(t => ORG_RE.test(t) && t !== "Service"), site: idNodes(t => t === "WebSite") },
   };
 

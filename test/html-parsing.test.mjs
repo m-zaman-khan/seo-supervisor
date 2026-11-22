@@ -7,7 +7,7 @@ import { readPage } from "../skills/seo-supervisor/scripts/checks/bots.mjs";
 import { trustFeatures } from "../skills/seo-supervisor/scripts/checks/trust.mjs";
 import { agentFeatures } from "../skills/seo-supervisor/scripts/checks/agents.mjs";
 import { hintsOf } from "../skills/seo-supervisor/scripts/checks/media.mjs";
-import { ugcLinks } from "../skills/seo-supervisor/scripts/checks/page.mjs";
+import { lateHead, ugcLinks } from "../skills/seo-supervisor/scripts/checks/page.mjs";
 
 const ctx = {
   start: new URL("https://site.example/"),
@@ -124,4 +124,40 @@ test("readLight: the title, canonical, Google's robots rules, words and hreflang
     ),
     null,
   );
+});
+
+// Google ends the head at the first element other than title, meta, link, script, style, base, noscript or template.
+// https://developers.google.com/search/docs/crawling-indexing/valid-page-metadata
+test("lateHead: the head ends at the first element the head can't hold, and canonical, robots and hreflang tags after it are late", () => {
+  const tags =
+    '<link rel="canonical" href="/x/"><meta name="robots" content="noindex"><link rel="alternate" hreflang="de" href="/de/">';
+  assert.deepEqual(
+    lateHead(`<html><head><title>T</title><img src="/pixel.gif">${tags}</head><body><p>x</p></body></html>`),
+    ["canonical", "robots", "hreflang"],
+  );
+  assert.deepEqual(
+    lateHead(
+      `<html><head><title>T</title><iframe src="/tag"></iframe><meta name="description" content="d"></head><body></body></html>`,
+    ),
+    ["description"],
+  );
+  assert.deepEqual(
+    lateHead(
+      `<html><head><script>document.write("<img src=x>")</script><!-- <iframe> --><noscript><img src="/p.gif"></noscript><style>p{}</style><template><div></div></template><base href="/">${tags}</head><body></body></html>`,
+    ),
+    [],
+    "what scripts, comments, noscript and templates hold doesn't end the head",
+  );
+  assert.deepEqual(
+    lateHead(`<html><head><title>T</title></head><body>${tags}</body></html>`),
+    ["canonical", "robots", "hreflang"],
+    "after </head> too, hreflang included",
+  );
+  const rec = read(page(`<title>T</title><img src="/pixel.gif">${tags}`));
+  assert.deepEqual(
+    [rec.pageChecks.late, rec.pageChecks.lateAt],
+    [["canonical", "robots", "hreflang"], "<img>"],
+    "the crawl keeps the element that ended the head",
+  );
+  assert.equal(read(page("<title>T</title>", tags)).pageChecks.lateAt, null, "a tag in the body needs no such note");
 });
