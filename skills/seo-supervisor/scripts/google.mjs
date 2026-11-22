@@ -10,7 +10,7 @@ import { createInterface } from "node:readline/promises";
 import { isMain } from "./lib/is-main.mjs";
 import { parseArgs } from "./lib/args.mjs";
 import { runMain, warnProxy } from "./lib/cli.mjs";
-import { loginDir } from "./lib/settings-dir.mjs";
+import { loginDir, privacyOf } from "./lib/settings-dir.mjs";
 import { SHARED_CLIENT } from "./lib/google-client.mjs";
 import { addTraffic, gscFindings } from "./gsc-import.mjs";
 import { foundOn } from "./lib/findings.mjs";
@@ -950,7 +950,7 @@ async function connect(args) {
         `google: ${keyFile || clientFile} is missing client_email or private_key. Download a new JSON key for the service account.`,
       );
     const t = await serviceAccountToken(E, json);
-    save(file, {
+    const saved = save(file, {
       method: "service-account",
       client_email: json.client_email,
       private_key_id: json.private_key_id,
@@ -962,7 +962,7 @@ async function connect(args) {
     });
     await revokeReplaced(E, old);
     console.log(
-      `google: connected as the service account ${json.client_email}.\nIt sees the Search Console and GA4 properties where this email was added as a user.\nSaved to ${file} (only your user account can read it).${leftInProject(keyFile || clientFile)}`,
+      `google: connected as the service account ${json.client_email}.\nIt sees the Search Console and GA4 properties where this email was added as a user.\nSaved to ${file} (${privacyOf(saved)}).${leftInProject(keyFile || clientFile)}`,
     );
     return 0;
   }
@@ -999,10 +999,10 @@ async function connect(args) {
 
   const t = await signIn(E, client, args, { scope: SCOPES.join(" ") });
   const scope = t.scope || SCOPES.join(" ");
-  save(file, { method, client, ...t, scope, connected_at: now });
+  const saved = save(file, { method, client, ...t, scope, connected_at: now });
   await revokeReplaced(E, old, client.id);
   console.log(
-    `google: connected. Search Console: ${scope.includes(SC) ? "yes" : "no (not allowed)"} · Google Analytics: ${scope.includes(GA) ? "yes" : "no (not allowed)"}.\nSaved to ${file} (only your user account can read it).${t.refresh_token ? "" : "\nGoogle didn't send a long-lived sign-in, so you'll need to connect again in about an hour."}${clientFile ? leftInProject(clientFile) : ""}\nNext: node google.mjs fetch --site https://your-site`,
+    `google: connected. Search Console: ${scope.includes(SC) ? "yes" : "no (not allowed)"} · Google Analytics: ${scope.includes(GA) ? "yes" : "no (not allowed)"}.\nSaved to ${file} (${privacyOf(saved)}).${t.refresh_token ? "" : "\nGoogle didn't send a long-lived sign-in, so you'll need to connect again in about an hour."}${clientFile ? leftInProject(clientFile) : ""}\nNext: node google.mjs fetch --site https://your-site`,
   );
   return 0;
 }

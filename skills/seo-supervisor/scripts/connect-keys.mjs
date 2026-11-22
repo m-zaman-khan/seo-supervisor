@@ -8,6 +8,7 @@ import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 import { parseArgs } from "./lib/args.mjs";
 import { runMain, warnProxy } from "./lib/cli.mjs";
+import { privacyOf } from "./lib/settings-dir.mjs";
 import { changedPages } from "./seo-diff.mjs";
 import { Fail, Refused, fail, domainOf, domainsFor, num } from "./keys/http.mjs";
 import { SERVICES, serviceOf, call } from "./keys/services.mjs";
@@ -204,9 +205,9 @@ async function main(argv) {
       Object.assign(values, got.values);
       key ??= got.key;
     }
-    setKey(id, key, values);
+    const saved = setKey(id, key, values);
     console.log(
-      `connect-keys: saved the ${SERVICES[id].name} key in ${keyFile()} (only your user account can read it). ${process.env[SERVICES[id].env] ? `Note: ${SERVICES[id].env} is also set and wins over the saved key.` : ""}`.trim(),
+      `connect-keys: saved the ${SERVICES[id].name} key in ${keyFile()} (${privacyOf(saved)}). ${process.env[SERVICES[id].env] ? `Note: ${SERVICES[id].env} is also set and wins over the saved key.` : ""}`.trim(),
     );
   } else if (cmd === "remove") {
     if (!pos[0]) throw new Fail(USAGE);

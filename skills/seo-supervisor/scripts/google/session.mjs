@@ -2,12 +2,10 @@
 // The saved Google sign-in and authorized calls. Signing in stays in google.mjs, so scripts that only read data never
 // load a browser, local server or prompts.
 import { sign } from "node:crypto";
-import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
 import { Fail, Refused } from "../lib/cli.mjs";
 import { retryAfter } from "../lib/http.mjs";
-import { loginDir } from "../lib/settings-dir.mjs";
+import { googleFile, writePrivate } from "../lib/settings-dir.mjs";
 
 export const SC = "https://www.googleapis.com/auth/webmasters.readonly",
   GA = "https://www.googleapis.com/auth/analytics.readonly";
@@ -40,7 +38,7 @@ export const FORM = { "content-type": "application/x-www-form-urlencoded" };
 
 // ---------- the saved sign-in ----------
 // In the settings folder, per client with SEO_SUPERVISOR_CLIENT (lib/settings-dir.mjs).
-export const tokenFile = (home = homedir()) => join(loginDir(process.env, home), "google.json");
+export const tokenFile = home => googleFile(process.env, home);
 export const load = file => {
   try {
     return JSON.parse(readFileSync(file, "utf8"));
@@ -48,16 +46,9 @@ export const load = file => {
     return null;
   }
 };
-// Renamed over the old file, so a crash never leaves half a sign-in.
-// Readable by this user only where the system has file modes.
-export function save(file, data) {
-  mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
-  chmodSync(dirname(file), 0o700); // Windows ignores modes; the file is in the user's own profile there
-  const t = `${file}.${process.pid}.tmp`;
-  writeFileSync(t, typeof data === "string" ? data : JSON.stringify(data, null, 2), { mode: 0o600 });
-  chmodSync(t, 0o600);
-  renameSync(t, file);
-}
+// Renamed over the old file, so a crash never leaves half a sign-in, and readable by this user only where the system
+// allows; { locked } says whether that held.
+export const save = (file, data) => writePrivate(file, typeof data === "string" ? data : JSON.stringify(data, null, 2));
 
 export async function tokenRequest(E, params) {
   let r;

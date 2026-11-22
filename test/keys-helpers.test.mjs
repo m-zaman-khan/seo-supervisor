@@ -212,9 +212,8 @@ test("keys.json and google.json are written private, and the message says so onl
   if (process.platform === "win32") {
     // A user icacls doesn't know, so the file can't be limited to it: the message says so instead of claiming it.
     const h2 = tmp(),
-      r2 = await node([KEYS, "set", "bing", "bing-key-12345678"], {
-        env: envFor(h2, { SystemRoot: join(h2, "no-windows") }),
-      });
+      env = Object.fromEntries(Object.entries(envFor(h2)).filter(([k]) => !/^username$/i.test(k)));
+    const r2 = await node([KEYS, "set", "bing", "bing-key-12345678"], { env: { ...env, USERNAME: "no-such-user" } });
     assert.match(
       r2.stdout,
       /this system didn't let it be limited to your user account, so it's as private as the folder it's in/,

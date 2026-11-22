@@ -1,9 +1,9 @@
 // @ts-check
 // Saved service keys: where they live, reading and writing them, and asking for one without echoing it.
-import { readFileSync, writeFileSync, mkdirSync, chmodSync, existsSync, renameSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { loginDir } from "../lib/settings-dir.mjs";
+import { loginDir, writePrivate } from "../lib/settings-dir.mjs";
 import { Fail, fail, setLine } from "./http.mjs";
 import { SERVICES, serviceOf } from "./services.mjs";
 
@@ -17,17 +17,9 @@ export function savedKeys() {
     fail(`${f} isn't valid JSON. Fix it or delete it, then set the keys again.`);
   }
 }
-function save(keys) {
-  const f = keyFile();
-  mkdirSync(dirname(f), { recursive: true, mode: 0o700 });
-  // On Windows chmod only sets the read-only flag, so there the file is as private as the user's profile folder.
-  chmodSync(dirname(f), 0o700);
-  // Written to a temporary file and renamed over the old one, so a crash never leaves half a keys file.
-  const t = `${f}.${process.pid}.tmp`;
-  writeFileSync(t, JSON.stringify(keys, null, 2) + "\n", { mode: 0o600 });
-  chmodSync(t, 0o600);
-  renameSync(t, f);
-}
+// Renamed over the old file, so a crash never leaves half a keys file, and readable by this user only where the
+// system allows; { locked } says whether that held.
+const save = keys => writePrivate(keyFile(), JSON.stringify(keys, null, 2) + "\n");
 
 // What set still needs. Piped stdin gives a line each, in order; a terminal asks for the address and ID in plain view
 // (they aren't secret), then for the key without showing it.
@@ -121,7 +113,7 @@ export function setKey(id, key, values = {}) {
       `that isn't a Clarity API token: those are long, with two dots in them. A short code like the one in Clarity's tracking code is the project ID, which can't read data. To make a token: node connect-keys.mjs guide clarity`,
     );
   const extra = Object.fromEntries((s.fields || []).map(f => [f.id, f.check(String(values[f.id] ?? "").trim())]));
-  save({ ...savedKeys(), [id]: s.fields ? { ...extra, key } : key });
+  return save({ ...savedKeys(), [id]: s.fields ? { ...extra, key } : key });
 }
 export function removeKey(id) {
   serviceOf(id);
