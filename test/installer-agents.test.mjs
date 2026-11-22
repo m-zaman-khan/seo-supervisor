@@ -2,6 +2,7 @@
 // The guard's adapters for other agents, and the commands, subagents and hooks the installer writes for them.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -268,17 +269,102 @@ test("Cline: the plugin's payload becomes actions; ask needs the owner's approva
 // command line the installed hooks use.
 const GUARD = join(SCRIPTS, "guard.mjs");
 test(
-  "guard.mjs runs each adapter with an injected check",
+  "guard.mjs runs each adapter, with a stub check and with the real rules",
   { skip: !existsSync(GUARD) && "scripts/guard.mjs is missing" },
   async () => {
     const { run } = await import(pathToFileURL(GUARD).href);
-    const check = () => ASK;
     const r = await run(
       "devin",
       { hook_event_name: "PreToolUse", tool_name: "exec", tool_input: { command: "x" } },
-      { check, event: "PreToolUse" },
+      { check: () => ASK, event: "PreToolUse" },
     );
     assert.equal(r.exitCode, 2);
+
+    const dir = site(),
+      opts = event => ({ env: {}, event, cwd: dir }); // no mode set: ask
+    const block = "User-agent: *\nDisallow: /\n";
+    const cases = [
+      [
+        "codex",
+        "PreToolUse",
+        {
+          cwd: dir,
+          tool_name: "apply_patch",
+          tool_input: {
+            command:
+              "*** Begin Patch\n*** Update File: robots.txt\n@@\n User-agent: *\n-Allow: /\n+Disallow: /\n*** End Patch\n",
+          },
+        },
+        x => out(x).hookSpecificOutput.permissionDecisionReason,
+      ],
+      [
+        "cursor",
+        "preToolUse",
+        { cwd: dir, tool_name: "Write", tool_input: { file_path: join(dir, "robots.txt"), content: block } },
+        x => out(x).agent_message,
+      ],
+      [
+        "copilot",
+        "preToolUse",
+        {
+          cwd: dir,
+          toolName: "edit",
+          toolArgs: JSON.stringify({ path: "robots.txt", old_str: "Allow: /", new_str: "Disallow: /" }),
+        },
+        x => out(x).permissionDecisionReason,
+      ],
+      [
+        "devin",
+        "PreToolUse",
+        { tool_name: "write", tool_input: { file_path: join(dir, "robots.txt"), content: block } },
+        x => x.stderr,
+      ],
+      [
+        "cline",
+        "beforeTool",
+        { tool: "editor", input: { path: "robots.txt", old_text: "Allow: /", new_text: "Disallow: /" }, cwd: dir },
+        x => out(x).appendContext,
+      ],
+    ];
+    for (const [agent, event, input, said] of cases)
+      assert.match(
+        said(await run(agent, input, opts(event))),
+        /SEO Supervisor guard: .*(Disallow|drop out)/s,
+        `${agent} stops Disallow: /`,
+      );
+    assert.equal(
+      (
+        await run(
+          "codex",
+          { cwd: dir, tool_name: "Bash", tool_input: { command: "node seo-crawl.mjs --url http://localhost:3000" } },
+          opts("PreToolUse"),
+        )
+      ).stdout,
+      "",
+      "a plain crawl stays silent",
+    );
+    assert.deepEqual(out(await run("cursor", { command: "npm test", cwd: dir }, opts("beforeShellExecution"))), {
+      permission: "allow",
+    });
+    assert.equal(
+      out(await run("cursor", { command: "node scripts/indexnow.mjs --yes", cwd: dir }, opts("beforeShellExecution")))
+        .permission,
+      "ask",
+    );
+    const key = await run(
+      "copilot",
+      { cwd: dir, prompt: "my key is sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCD", transformedPrompt: "x" },
+      opts("userPromptTransformed"),
+    );
+    assert.doesNotMatch(out(key).modifiedTransformedPrompt, /abcdefghij/, "the key never reaches the model");
+
+    const cli = spawnSync(process.execPath, [GUARD, "--agent", "cursor", "--event", "beforeShellExecution"], {
+      input: JSON.stringify({ command: "git rm pages/about.html", cwd: dir }),
+      encoding: "utf8",
+      env: { ...process.env, SEO_SUPERVISOR_GUARD: "block" },
+    });
+    assert.equal(cli.status, 0);
+    assert.match(JSON.parse(cli.stdout).agent_message, /set to block/);
   },
 );
 
@@ -407,7 +493,7 @@ test("--no-guard installs the skill and commands without any hook, and takes out
 
   const fresh = tmp();
   const { stdout } = await node([BIN, "--agent", "cursor", "--project", "--no-guard"], { env: env(home), cwd: fresh });
-  assert.ok(!existsSync(join(fresh, ".cursor")) && !/guard /.test(stdout));
+  assert.ok(!existsSync(join(fresh, ".cursor", "hooks.json")) && !/guard /.test(stdout), "no hook at all");
 });
 
 test("the owner's own hooks are kept: ours are added beside them and taken out again, exactly", async () => {
@@ -506,6 +592,16 @@ test("subagents are converted for Cursor, OpenCode and Copilot", () => {
   for (const f of [cur, oc, cp])
     assert.doesNotMatch(f.text, /tools:|model: sonnet/, "Claude's tool names and models don't carry over");
   assert.equal(subagentFile("no frontmatter", "cursor"), null);
+  // The plugin's real subagents name ${CLAUDE_PLUGIN_ROOT}, which only Claude Code fills in.
+  for (const f of existsSync(join(ROOT, "agents")) ? readdirSync(join(ROOT, "agents")) : []) {
+    const t = subagentFile(
+      readFileSync(join(ROOT, "agents", f), "utf8"),
+      "cursor",
+      ".agents/skills/seo-supervisor",
+    ).text;
+    assert.doesNotMatch(t, /\$\{CLAUDE_PLUGIN_ROOT\}|\$\{user_config/, f);
+    assert.match(t, /`\.agents\/skills\/seo-supervisor\/SKILL\.md`/, f);
+  }
 });
 
 test("the agent table: Devin replaces Windsurf (the old key still works), Antigravity and Kiro, shared folders for Goose", async () => {

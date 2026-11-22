@@ -81,7 +81,7 @@ export function commandFile(file, md, format) {
 /** A Claude Code subagent (agents/*.md) in another agent's format: { name, text }, or null without a name. Only name,
  * description and instructions carry over, since tool and model names differ per agent. ${CLAUDE_PLUGIN_ROOT} becomes
  * skillDir, and the plugin-only site setting is replaced with a note. */
-export function subagentFile(md, format) {
+export function subagentFile(md, format, skillDir = "") {
   const { head, body } = frontmatter(md),
     name = field(head, "name"),
     desc = field(head, "description");
@@ -91,9 +91,13 @@ export function subagentFile(md, format) {
   const fm = { cursor: [name, desc, "model: inherit"], opencode: [desc, "mode: subagent"], copilot: [name, desc] }[
     format
   ].filter(Boolean);
+  const text = body
+    .trimEnd()
+    .replaceAll("${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor", skillDir)
+    .replaceAll("`${user_config.site_url}`", "(only in the Claude Code plugin)");
   return {
     name: format === "copilot" ? `${id}.agent.md` : `${id}.md`,
-    text: `---\n${fm.join("\n")}\n---\n${body.trimEnd()}${note}`,
+    text: `---\n${fm.join("\n")}\n---\n${text}${note}`,
   };
 }
 
@@ -240,8 +244,9 @@ export function removeHooks(format, file, created, root) {
 export function installExtras(t, { src, guard, force, scope, root, created, show }) {
   const lines = [],
     problems = [];
-  const guardPath = join(t.skills, NAME, "scripts", "guard.mjs"),
-    guardRef = scope === "project" ? rel(root, guardPath) : guardPath.split("\\").join("/");
+  const ref = p => (scope === "project" ? rel(root, p) : p.split("\\").join("/")); // a committed project install names its own files
+  const skillRef = ref(join(t.skills, NAME)),
+    guardRef = `${skillRef}/scripts/guard.mjs`;
   for (const x of t.extras) {
     if (x.kind === "hooks") {
       if (!guard) {
@@ -250,9 +255,13 @@ export function installExtras(t, { src, guard, force, scope, root, created, show
         continue;
       }
       // Codex runs hooks from the session's folder, so a project install names the guard from the repository's root.
-      const ref =
-        scope === "project" && x.format === "codex" ? `$(git rev-parse --show-toplevel)/${guardRef}` : guardRef;
-      const err = addHooks(x.format, x.path, ref, created, root);
+      const err = addHooks(
+        x.format,
+        x.path,
+        scope === "project" && x.format === "codex" ? `$(git rev-parse --show-toplevel)/${guardRef}` : guardRef,
+        created,
+        root,
+      );
       if (err) problems.push(err);
       else lines.push(`guard    ${show(x.path)}`);
       continue;
@@ -260,7 +269,7 @@ export function installExtras(t, { src, guard, force, scope, root, created, show
     const files =
       x.kind === "commands"
         ? src.commands.map(([f, md]) => commandFile(f, md, x.format))
-        : src.subagents.map(md => subagentFile(md, x.format)).filter(Boolean);
+        : src.subagents.map(md => subagentFile(md, x.format, skillRef)).filter(Boolean);
     const added = [];
     for (const { name, text } of files) {
       const file = join(x.path, name);
