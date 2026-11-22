@@ -1,7 +1,7 @@
 // @ts-check
 // The panels about the site itself: score views, HSTS preload, coverage, rendering, page scores and check settings.
 import { score, OWN_SCORE } from "../../lib/score.mjs";
-import { cellMd, dot, esc, inl, mdSafe, noteCode, noteMd, notePath, num, obj, plural, isCount } from "../format.mjs";
+import { cellMd, dot, esc, inl, mdSafe, noteMd, notePath, num, obj, plural, isCount } from "../format.mjs";
 
 export function sitePanels({ raw, mdFile, site, areas, overall, open, buildRules, checkSettings }) {
   // The trust view is found ÷ applicable signals × 100 (checks/trust.mjs); missing signals are suggestions, not

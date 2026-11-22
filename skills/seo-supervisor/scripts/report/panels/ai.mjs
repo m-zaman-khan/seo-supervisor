@@ -1,6 +1,6 @@
 // @ts-check
 // The AI panels on the Search & AI tab: agent support, AI crawler access and the AI answer check.
-import { cellMd, esc, inl, noteCode, noteMd, notePath, num, obj, plural, isCount } from "../format.mjs";
+import { esc, noteMd, notePath, num, obj, plural, isCount } from "../format.mjs";
 
 export function aiPanels({ raw, lighthouse }) {
   // AI agents (WebMCP tools, UCP, agent files), from the crawler.

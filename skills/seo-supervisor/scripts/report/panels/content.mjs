@@ -1,6 +1,6 @@
 // @ts-check
 // The content panels on the Site & content tab.
-import { esc, noteCode, noteMd, notePath, num, obj, plural, isCount, isText } from "../format.mjs";
+import { esc, noteMd, notePath, num, obj, plural, isCount, isText } from "../format.mjs";
 import { listedIn } from "../panel.mjs";
 
 export function contentPanels({ raw, mdFile }) {

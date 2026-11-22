@@ -1,7 +1,7 @@
 // @ts-check
 // The speed and image panels, with Lighthouse's details and accessibility checks.
 import { band } from "../../checks/speed.mjs";
-import { cellMd, esc, fmtDate, inl, noteCode, noteMd, notePath, num, obj, plural } from "../format.mjs";
+import { esc, fmtDate, inl, noteCode, noteMd, notePath, num, obj, plural } from "../format.mjs";
 import { LCP_PART } from "../overview-lines.mjs";
 import { listedIn } from "../panel.mjs";
 

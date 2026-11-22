@@ -1,6 +1,6 @@
 // @ts-check
 // The Links tab's panels: backlinks, outbound links, internal link ideas and link strength.
-import { esc, fmtDate, noteCode, noteMd, notePath, num, obj, plural, isCount, isText } from "../format.mjs";
+import { fmtDate, notePath, num, obj, plural, isCount, isText } from "../format.mjs";
 import { byPath } from "../traffic.mjs";
 
 const linkCount = p => plural(Number(p.count) || 0, "link");
