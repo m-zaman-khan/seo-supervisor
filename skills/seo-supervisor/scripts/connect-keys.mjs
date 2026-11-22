@@ -10,34 +10,13 @@ import { isMain } from "./lib/is-main.mjs";
 import { loginDir } from "./lib/settings-dir.mjs";
 import { proxyNote } from "./lib/proxy.mjs";
 import { changedPages } from "./seo-diff.mjs";
-import {
-  Fail,
-  Refused,
-  fail,
-  setLine,
-  PASTE,
-  address,
-  idOf,
-  refusal,
-  request,
-  POST,
-  bare,
-  domainOf,
-  domainsFor,
-  hostOf,
-  day,
-  isDay,
-  num,
-} from "./keys/http.mjs";
-import { perplexity } from "./keys/perplexity.mjs";
-import { openai } from "./keys/openai.mjs";
-import { googleplaces } from "./keys/googleplaces.mjs";
-import { bing, fetchBing, BATCH, submitBing } from "./keys/bing.mjs";
-import { openpagerank, ahrefs, moz, MOZ_MAX, fetchAuthority } from "./keys/authority.mjs";
+import { Fail, Refused, fail, setLine, domainOf, domainsFor, num } from "./keys/http.mjs";
+import { SERVICES, serviceOf, call } from "./keys/services.mjs";
+import { fetchBing, BATCH, submitBing } from "./keys/bing.mjs";
+import { MOZ_MAX, fetchAuthority } from "./keys/authority.mjs";
 import { periodFor } from "./keys/visits.mjs";
-import { matomo, MATOMO_SPLITS, MATOMO_DAILY, matomoUrl, fetchMatomo, testMatomo } from "./keys/matomo.mjs";
+import { MATOMO_SPLITS, MATOMO_DAILY, matomoUrl, fetchMatomo, testMatomo } from "./keys/matomo.mjs";
 import {
-  posthog,
   posthogQuery,
   POSTHOG_SPLITS,
   posthogDaily,
@@ -46,37 +25,17 @@ import {
   fetchPosthog,
   testPosthog,
 } from "./keys/posthog.mjs";
-import { clarity, CLARITY_DAYS, fetchClarity } from "./keys/clarity.mjs";
-import { youtube, YT_TOPICS, fetchYoutube } from "./keys/youtube.mjs";
+import { CLARITY_DAYS, fetchClarity } from "./keys/clarity.mjs";
+import { YT_TOPICS, fetchYoutube } from "./keys/youtube.mjs";
 
-export { Fail, Refused, domainOf, submitBing };
-export const SERVICES = {
-  bing,
-  openpagerank,
-  ahrefs,
-  matomo,
-  posthog,
-  moz,
-  youtube,
-  clarity,
-  perplexity,
-  openai,
-  googleplaces,
-};
+// Re-exported for the other scripts and the tests.
+export { Fail, Refused, domainOf, submitBing, SERVICES, call };
 const USAGE = `usage: node connect-keys.mjs set bing|openpagerank|ahrefs|matomo|posthog|moz|youtube|clarity|perplexity|openai|googleplaces [<key>]   (no key: it asks, hidden)
        node connect-keys.mjs set matomo [--url <address>] [--site-id <id>] | set posthog [--host us|eu|<address>] [--project-id <id>]
        node connect-keys.mjs status | remove <service> | guide <service> | test matomo|posthog [--yes]
        node connect-keys.mjs fetch --site https://www.example.com [--competitors a.com,b.com] [--days 90] [--out seo-audit/keys.json] [--yes]
             [--topics "topic one, topic two"] [--youtube-channel @handle] [--bing-pages /a,/b] [--bing-sister https://sister.example]
        node connect-keys.mjs submit-bing --site https://www.example.com (--urls changed.txt | --from-diff seo-audit/seo-diff.json) [--yes]`;
-const serviceOf = id =>
-  Object.hasOwn(SERVICES, id)
-    ? id
-    : fail(
-        `there's no "${id}" connection. Use ${Object.keys(SERVICES)
-          .join(", ")
-          .replace(/, (\w+)$/, " or $1")}.`,
-      );
 function siteOf(s, flag = "--site") {
   let u;
   try {
@@ -227,10 +186,6 @@ export function activeKeys(env = process.env) {
   );
 }
 const mask = k => (k.length > 8 ? "…" + k.slice(-4) : "…");
-
-// ---------- requests ----------
-// ai-answers.mjs and geo-grid.mjs call services through this too.
-export const call = (id, url, init) => request(id, SERVICES[id], url, init);
 
 // Kept here rather than in keys/bing.mjs: knownChecks() in lib/score.mjs and the rule-ID test scan only scripts/ and
 // scripts/checks/ for check names.
