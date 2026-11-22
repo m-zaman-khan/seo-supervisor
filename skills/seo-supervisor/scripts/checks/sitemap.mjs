@@ -99,8 +99,9 @@ async function readSitemaps(urls, listed = true, { fetchSitemap, toCrawl }) {
     seen.add(u);
     const r = await fetchSitemap(toCrawl(u)),
       body = r.body || "";
+    // urls: 0 marks a file that answered but lists nothing (sitemap-empty).
     if (r.status !== 200 || !(body.trim() || r.broken)) {
-      files.push({ url: u, status: r.status });
+      files.push(r.status === 200 ? { url: u, status: 200, urls: 0 } : { url: u, status: r.status });
       continue;
     }
     const file = { url: u, status: 200 };
@@ -130,8 +131,10 @@ async function readSitemaps(urls, listed = true, { fetchSitemap, toCrawl }) {
     // time (32 KB takes hours); the value is trimmed afterwards instead.
     if (/<sitemapindex\b/i.test(body)) {
       if (parent) file.nestedIn = parent;
+      const before = queue.length;
       for (const m of body.matchAll(/<sitemap\b[\s\S]*?<loc>([\s\S]*?)<\/loc>/gi))
         queue.push([decode(m[1].trim()), true, u]);
+      if (queue.length === before) file.urls = 0;
       continue;
     }
     // Google accepts an RSS 2.0 or Atom 1.0 feed as a sitemap of recent URLs. An Atom entry's own link has rel
@@ -252,8 +255,9 @@ export function checkSitemapFiles(sm, smUrls, { add, findings }) {
     if (f.tooBig || f.urls > 50000)
       add("sitemap-too-big", f.url, f.tooBig ? "over 50 MB uncompressed" : `${f.urls.toLocaleString("en-US")} URLs`);
     if (f.nestedIn) add("sitemap-index-nested", f.url, `listed in ${f.nestedIn}`);
+    if (f.urls === 0 && !f.invalid && !f.html) add("sitemap-empty", f.url);
   }
-  if (!sm.entries.length && !findings.has("sitemap-invalid"))
+  if (!sm.entries.length && !findings.has("sitemap-invalid") && !findings.has("sitemap-empty"))
     add(
       "sitemap-missing",
       smUrls.join(", "),
@@ -293,10 +297,14 @@ export function checkSitemapEntries(
       );
     const sid = SESSION_ID.exec(e.loc)?.[0];
     if (sid || e.loc.includes("#")) add("sitemap-session-ids", e.loc, sid ? `session ID ${sid}` : "a #fragment");
+    // Google wants absolute URLs and crawls them exactly as listed, so a relative path or another scheme is flagged,
+    // not skipped. https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap
     let o;
     try {
-      o = new URL(e.loc).origin;
-    } catch {
+      o = /^https?:\/\//i.test(e.loc) && new URL(e.loc).origin;
+    } catch {}
+    if (!o) {
+      add("sitemap-url-invalid", e.sitemap, e.loc.slice(0, 200));
       continue;
     }
     if (o !== EXPECT_ORIGIN) add("sitemap-origin", e.loc, `expected ${EXPECT_ORIGIN}`);
