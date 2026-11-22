@@ -80,6 +80,7 @@ import {
   pageWords,
   otherSites,
 } from "./checks/links.mjs";
+import { cookiesAndPolicies, securityHeaders } from "./checks/site-security.mjs";
 import { writingText, writingFeatures } from "./checks/writing.mjs";
 import { checkBusinessType, detectBusinessType } from "./checks/business-type.mjs";
 import { cookieProblems, cspProblems, hstsRead, insecureResources, serverHoles } from "./checks/technical.mjs";
@@ -827,60 +828,7 @@ for (const p of htmlPages) {
   if (p.dupHead.length) add("duplicate-head-tags", u, p.dupHead.join(", "));
   if (p.numberHeadings.length) add("heading-only-number", u, p.numberHeadings.slice(0, 3).join("; "));
 }
-// Security (TRUST-01): cookies in Set-Cookie headers on HTML pages, each name once (cookies scripts set aren't seen),
-// the home page's HSTS max-age (a year is the preload list's minimum), and Referrer-Policy: unsafe-url in the header
-// or the meta tag. In the header the last valid value wins.
-// https://hstspreload.org
-// https://www.w3.org/TR/referrer-policy/#parse-referrer-policy-from-header
-// Load balancer and CDN cookies are skipped, since the site can't change their flags: AWS ALB and ELB stickiness,
-// Azure App Service's ARRAffinity, F5 BIG-IP's BIGipServer<pool>, and Cloudflare's own.
-// https://developers.cloudflare.com/fundamentals/reference/policies-compliances/cloudflare-cookies/
-const INFRA_COOKIE =
-  /^(AWSALB(TG)?(CORS)?|AWSALBAPP-\d+|AWSELB|ARRAffinity(SameSite)?|BIGipServer.*|__cf\w+|_cfuvid|cf_clearance|cf_ob_info|cf_use_ob|cf_chl_\w+)$/;
-const cookieSeen = new Set();
-for (const p of htmlPages)
-  for (const c of p.headers.getSetCookie()) {
-    const name = c.split(";")[0].split("=")[0].trim();
-    if (cookieSeen.has(name) || INFRA_COOKIE.test(name)) continue;
-    cookieSeen.add(name);
-    const problems = cookieProblems(c, { https: p.finalUrl.startsWith("https:") });
-    if (problems.length) add("cookie-flags", p.finalUrl, `“${name}”: ${problems.join(", ")}`);
-  }
-// A header browsers ignore is hsts-invalid and nothing else. https://www.rfc-editor.org/rfc/rfc6797#section-8.1
-const stsHeader = home?.headers?.get("strict-transport-security") || "",
-  maxAge = hstsRead(stsHeader)?.invalid ? null : /max-age\s*=\s*"?(\d+)/i.exec(stsHeader)?.[1];
-if (maxAge != null && +maxAge < 31536000) {
-  const d = Math.round(+maxAge / 86400);
-  add(
-    "hsts-short",
-    home.finalUrl,
-    `max-age=${maxAge} (${+maxAge < 86400 ? "under a day" : `${d} day${d === 1 ? "" : "s"}`})`,
-  );
-}
-const POLICIES = new Set([
-  "no-referrer",
-  "no-referrer-when-downgrade",
-  "same-origin",
-  "origin",
-  "strict-origin",
-  "origin-when-cross-origin",
-  "strict-origin-when-cross-origin",
-  "unsafe-url",
-]);
-const policyOf = v =>
-  (v || "")
-    .split(",")
-    .map(t => t.trim().toLowerCase())
-    .filter(t => POLICIES.has(t))
-    .at(-1);
-for (const p of htmlPages) {
-  const header = p.headers.get("referrer-policy");
-  const unsafe = [
-    policyOf(header) === "unsafe-url" && `header: ${header}`,
-    policyOf(p.referrerMeta) === "unsafe-url" && `meta: ${p.referrerMeta}`,
-  ].filter(Boolean);
-  if (unsafe.length) add("referrer-unsafe", p.finalUrl, unsafe.join(" · "));
-}
+cookiesAndPolicies(site);
 // Other sites are visited only with --outbound-links, a separate opt-in.
 const OUTBOUND = !!args["outbound-links"];
 const outbound = await outboundLinks(site, OUTBOUND);
@@ -926,51 +874,7 @@ if (renderEvery?.note) notes.push(renderEvery.note);
     notes.push(`The crawl met ${met.length} redirects; the first 500 are kept for the next audit's comparison.`);
 }
 
-// ---------- security: site-wide ----------
-// TRUST-01 on the home page's headers: Permissions-Policy (the rule's pass list names it), what the CSP leaves open,
-// HSTS that browsers ignore or that leaves subdomains out, and the preload list's requirements. A Server version
-// with a known critical hole is needs-decision, as it may be patched.
-// https://www.rfc-editor.org/rfc/rfc6797#section-8.1
-// https://hstspreload.org
-if (home?.headers) {
-  const h = home.headers,
-    at = home.finalUrl,
-    sts = h.get("strict-transport-security");
-  if (!h.get("permissions-policy")) add("sec-headers", at, "Permissions-Policy");
-  const gaps = cspProblems(h.get("content-security-policy"));
-  if (gaps.length) add("csp-weak", at, gaps.join("; "));
-  const s = sts && hstsRead(sts);
-  if (s?.invalid) add("hsts-invalid", at, `${s.invalid}, so browsers ignore the whole header: ${sts}`);
-  else if (s) {
-    if (!s.includeSubDomains) add("hsts-no-subdomains", at, sts);
-    extra.hstsPreload = { ready: !s.missing.length, missing: s.missing };
-  }
-  const sv = serverHoles(h.get("server"));
-  if (sv)
-    add(
-      "server-known-holes",
-      at,
-      `Server: ${h.get("server")}: ${sv.cves.map(c => `${c.id} (${c.what}, fixed in ${c.fixed})`).join("; ")}`,
-    );
-}
-// A local copy's own files (the crawl origin or another local address) will be on https once deployed, so only other
-// sites' http:// files count.
-if (EXPECT_ORIGIN.startsWith("https:"))
-  for (const p of htmlPages) {
-    const bad = (p.insecure || []).filter(r => {
-      const o = urlOr(r.url)?.origin;
-      return o && o !== START_ORIGIN && !isLocal(o);
-    });
-    if (bad.length)
-      add(
-        "mixed-content",
-        p.finalUrl,
-        `${bad.length} resource${bad.length === 1 ? "" : "s"} over http://: ${bad
-          .slice(0, 3)
-          .map(r => `${r.kind} ${r.url}`)
-          .join(", ")}`,
-      );
-  }
+securityHeaders(site);
 // Reasons and redirects recorded so far get the same masking as the findings and notes.
 for (const n of notChecked) n.reason = redact(n.reason);
 for (const r of extra.redirects || []) {
