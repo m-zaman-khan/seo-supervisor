@@ -62,10 +62,10 @@ npx seo-supervisor        # then, in Claude Code: /seo-audit
   - Checks the favicon and your phone number and address on the page.
   - Business Profile, Bing Places and Apple Business guidance for local businesses.
 - **Trust and the right schema:**
-  - A Trust signals (E-E-A-T) view on the Overview, for example "73/100 · 8 of 11 found", listing what to add. It's SEO Supervisor's own check, not a Google score, and it never changes your health score.
+  - A Trust signals (E-E-A-T) view on the Site & content tab, for example "73/100 · 8 of 11 found", listing what to add. It's SEO Supervisor's own check, not a Google score, and it never changes your health score.
   - The Local SEO and Content quality views show the existing area scores under clearer names.
   - The crawler recognises 48 kinds of business (restaurants, clinics, trades, salons, hotels, shops, schools, publishers…), flags a schema that's too general, and asks you when two types fit.
-- **Free backlink view:** export Search Console's three Links tables into `seo-audit/links/`. The Overview then shows how many sites link to you, your most-linked pages and the mix of link text. If linking sites fall by 30% and at least 10, "Since last audit" says so. There are no toxic-link scores, because Google discounts spam links itself.
+- **Free backlink view:** export Search Console's three Links tables into `seo-audit/links/`. The Links tab then shows how many sites link to you, your most-linked pages and the mix of link text. If linking sites fall by 30% and at least 10, "Since last audit" says so. There are no toxic-link scores, because Google discounts spam links itself.
 - **Writing and AI agents:**
   - Writing notes on English pages point out long sentences, long paragraphs and stock phrases. They're information only.
   - Form fields and buttons with no name are flagged, since screen readers and browsing AI agents both need those names.
@@ -158,24 +158,30 @@ npx seo-supervisor
 It asks two things:
 
 1. **Install for:** you, in every project, or this project only (to commit for your team).
-2. **Which agents:** a checklist of 20 coding agents, including Claude Code, Codex, Cursor, Windsurf, Gemini CLI, GitHub Copilot, OpenCode, Grok, Cline and Kiro. The agents installed on your machine are found and ticked for you.
+2. **Which agents:** a checklist of 21 coding agents, including Claude Code, Codex, Cursor, Devin (formerly Windsurf), Gemini CLI, Antigravity, GitHub Copilot, OpenCode, Grok, Cline and Kiro. The agents installed on your machine are found and ticked for you.
 
 ```text
 ? Which agents? (space to select, a for all, enter to confirm)
 ❯ ◉ Claude Code          found · ~/.claude/skills
   ◉ Codex                found · ~/.agents/skills
   ◉ Cursor               found · ~/.cursor/skills
-  ◯ Windsurf             ~/.codeium/windsurf/skills
+  ◯ Devin (formerly Windsurf)  ~/.config/devin/skills
   …
 ```
 
-The skill goes into each agent's own skills folder, and agents that share a folder get one copy. Claude Code also gets the `/seo-audit`, `/seo-fix`, `/seo-review`, `/seo-launch`, `/seo-setup`, `/seo-brief`, `/seo-rewrite`, `/seo-grow`, `/seo-watch` and `/seo-connect` commands. In other agents, ask in plain words: "audit the SEO of this site", "did my change help?", "is my setup OK?". The installer only ever replaces or removes its own files.
+The skill goes into each agent's own skills folder, and agents that share a folder get one copy. Each agent also gets what it supports:
+- **The `/seo-audit`, `/seo-fix`, `/seo-review`, `/seo-launch`, `/seo-setup`, `/seo-brief`, `/seo-rewrite`, `/seo-grow`, `/seo-watch` and `/seo-connect` commands:** Claude Code, OpenCode, Roo Code, Augment and Gemini CLI. Most other agents show the skill itself as `/seo-supervisor`. In any agent you can also just ask in plain words: "audit the SEO of this site", "did my change help?", "is my setup OK?".
+- **Subagents** (`seo-auditor`, `seo-reviewer`): Cursor, OpenCode and GitHub Copilot (and the Claude Code plugin).
+- **The guard hook** ([below](#the-guard)): Codex, Cursor, GitHub Copilot, Devin and Cline (and the Claude Code plugin). It's added next to any hooks you already have. Codex runs it once you trust it in `/hooks`. `--no-guard` leaves it out.
+
+The installer only ever replaces or removes its own files, and `--uninstall` also removes the folders it made, once they're empty.
 
 For scripts and CI, use flags to skip the questions:
 
 ```bash
 npx seo-supervisor --agent claude-code,cursor --scope project   # those agents, in this project
 npx seo-supervisor --yes                                        # the agents it finds, for you
+npx seo-supervisor --agent cursor --no-guard                    # without the guard hook
 npx seo-supervisor --uninstall                                  # remove it again
 ```
 
@@ -204,6 +210,22 @@ Every key or account is optional too: see [Optional: outside checks and Search C
 
 Fix, rewrite and setup run only when you type them, never on Claude's own initiative. As a Claude Code plugin, each command pre-approves the scripts it runs, for that turn only, named one by one, and the ones that send or write outside (GitHub issues, IndexNow, AI answers, the geo-grid, sitemap submits) still ask.
 
+### The guard
+
+Before an AI agent does something risky for SEO, SEO Supervisor stops it and asks you: a script that contacts an outside service or writes to your accounts, a noindex, a robots.txt or AI crawler rule, a redirect change, a removed page or a changed canonical. Each question says what would happen, for example "Every page would drop out of Google." An API key pasted in chat is stopped before the AI sees it (except in Cline, which has no hook for that).
+
+It comes with the Claude Code plugin, and the npx installer adds it to Codex, Cursor, GitHub Copilot, Devin and Cline. Where the agent can show a yes/no box (Claude Code, Cursor's shell commands, Copilot CLI, Cline), you're asked there. Elsewhere the step is stopped with the reason, and the AI asks you in chat; if you say yes, do the step yourself, or set `"guard": "off"` in `seo-audit/settings.json` for that one step. Codex runs a new hook only after you trust it in `/hooks`.
+
+It's on by default (ask). Switch it to block (the AI must ask you in chat) or off: in Claude Code with `/plugin configure seo-supervisor@seo-supervisor`, elsewhere with `SEO_SUPERVISOR_GUARD=block` or `"guard": "block"` in `seo-audit/settings.json`.
+
+### What the Claude Code plugin adds
+
+- **The guard,** as above.
+- **A structured data check after each edit** of an HTML or JSON-LD file. Its errors go straight back to the AI.
+- **A review reminder:** at the end of a session that changed SEO files, a one-time note suggests `/seo-review`.
+- **Two subagents,** `seo-auditor` and `seo-reviewer`, that run an audit or a review in their own context and keep the crawl out of your chat (`@agent-seo-supervisor:seo-auditor`).
+- **Two settings,** asked once when you enable the plugin: your site address (the default for audits) and the guard mode.
+
 ## Starting from zero
 
 New site, or an old app that never had any SEO? Run `/seo-setup`. It plans first instead of handing you 60 problems:
@@ -227,9 +249,10 @@ One HTML file that works offline. It opens in dark mode and has a light-mode swi
 - **A 0–100 health score with area scores,** and the points each area loses, so you know where to start.
 - **"Fix the blockers and the score rises to 90."** A blocker caps the score, and the report shows what fixing it unlocks.
 - **"Needs you."** Anything only the owner can do (content, CMS edits, business decisions) is labelled, so it's clear what the agent will and won't change.
-- **Tabs for Findings, Decisions, Changes, Passed and Limits,** plus **Since last audit** from the second audit on. Every finding says what's wrong, why it matters, how to fix it, and gives the evidence: URLs, files and line numbers.
+- **Action first:** the Overview shows the verdict and score, then **Fix first** (up to 5 things the agent can fix, each with a `/seo-fix F-012` line to copy) and **Needs you** (up to 3 owner tasks or decisions). Every finding ends with its next step.
+- **The rest in tabs:** Since last audit (from the second audit on), Findings and Decisions, then Search & AI, Speed, Links and Site & content, each only when it has data, then Changes, Passed and Limits. Every finding says what's wrong, why it matters, how to fix it, and gives the evidence: URLs, files and line numbers.
 - **How long each fix takes:** findings can say roughly whether a fix is quick, an hour or two, or half a day.
-- **Traffic and speed when you have them:** Search Console clicks on the findings and plan rows they concern, and one line of real-user speed on the Overview.
+- **Traffic and speed when you have them:** Search Console clicks on the findings and plan rows they concern, with clicks and Core Web Vitals in the Overview's key numbers, and the detail on the Search & AI and Speed tabs.
 
 <p align="center">
   <img src="docs/images/report-diff-dark.png" alt="The Since last audit tab: two regressions, one improvement linked to its finding, and one page added" width="900">
@@ -271,7 +294,7 @@ A few more things reach out, each only after its own yes:
 - **The browser add-on** (`npx seo-supervisor --with-browser`) downloads Chrome for Testing when no Chrome or Edge is installed.
 - **The connections** below send your site's address and domain names to Google, Bing, Open PageRank, Ahrefs, Moz or YouTube. Matomo and PostHog get only your site or project ID and a request for search visits, sent to your own Matomo or PostHog server.
 
-To switch them on for one run, say so: `/seo-audit with outside checks`. Real-user speed needs a free PageSpeed Insights API key from Google Cloud in `PSI_API_KEY`: Google refuses almost all requests without one. The render and intent checks need no key. Add `CRUX_API_KEY` too and the Overview shows whether real-user speed got better or worse over the last 25 weeks, and which part of the main image's load real visitors wait on. With outside checks off, these checks are listed under the report's Limits.
+To switch them on for one run, say so: `/seo-audit with outside checks`. Real-user speed needs a free PageSpeed Insights API key from Google Cloud in `PSI_API_KEY`: Google refuses almost all requests without one. The render and intent checks need no key. Add `CRUX_API_KEY` too and the Speed tab shows whether real-user speed got better or worse over the last 25 weeks, and which part of the main image's load real visitors wait on. With outside checks off, these checks are listed under the report's Limits.
 
 **Connect your accounts (optional).** Run `/seo-connect` any time. `/seo-audit`, `/seo-setup` and `/seo-fix` also offer each connection once, and you can say no:
 - **Google Search Console and Analytics:** "Sign in with Google" in your browser, or set up your own Google client in a few guided steps. Read-only. It adds your real queries and clicks, "is this page in Google" for key pages, sitemap errors and organic visits, next to Bing's numbers on each page. The one write action is optional: `google.mjs submit-sitemap` submits your sitemap only when you say yes, and asks Google for that permission only then. Remove access any time at myaccount.google.com/connections, or with `google.mjs disconnect`.
@@ -322,6 +345,7 @@ There are also framework guides for **Next.js**, **Rails** and **React/Vite SPAs
   - change robots or indexing on your live site
 
   When you do say go, CMS changes are saved as drafts and you see the before and after first.
+- **A guard in your agent** asks you before risky steps, such as a noindex, a robots.txt or redirect change or a removed page. See [The guard](#the-guard).
 - **Every finding has evidence, and nothing is "fixed" until a re-check passes.**
 - **It never invents** reviews, ratings, prices, statistics or local proof, in copy or in schema.
 - **Nothing leaves your machine without your yes.** Outside checks, IndexNow and each connection are asked for separately, and everything works without them. The one automatic request is the weekly update check: it asks npm for the latest version number and sends nothing but the package name. Turn it off with `update-check.mjs off`. There's no SEO Supervisor account and no telemetry. The crawler only sends GET and HEAD requests to your own site, and crawls production gently, if at all.
