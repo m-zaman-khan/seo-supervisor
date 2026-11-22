@@ -210,15 +210,11 @@ export function speedPanels({ raw, mdFile, lighthouse }) {
     return L;
   };
   const MEDIA_INTRO = "Information only: none of this changes the score.";
-  const speedDetailsHtml = () => {
+  const speedDetails = () => {
     const L = mediaLines();
-    return L.length
-      ? `\n    <details class="how media"><summary>Speed and image details</summary><p>${esc(MEDIA_INTRO)}</p>${L.map(t => `<p>${esc(t)}</p>`).join("")}</details>`
-      : "";
-  };
-  const speedDetailsMd = () => {
-    const L = mediaLines();
-    return L.length ? ["## Speed and image details", "", MEDIA_INTRO, "", ...L.flatMap(t => [noteMd(t), ""])] : [];
+    return (
+      L.length && { cls: "media", title: "Speed and image details", blocks: [MEDIA_INTRO, ...L].map(p => ({ p })) }
+    );
   };
 
   // lighthouse.mjs keeps each failed audit with its category title, "Accessibility" in the English runs it starts.
@@ -264,5 +260,5 @@ export function speedPanels({ raw, mdFile, lighthouse }) {
           ]),
         ]
       : [];
-  return { images, lighthouseDetailHtml, lighthouseDetailMd, speedDetailsHtml, speedDetailsMd, a11yHtml, a11yMd };
+  return { images, lighthouseDetailHtml, lighthouseDetailMd, speedDetails, a11yHtml, a11yMd };
 }
