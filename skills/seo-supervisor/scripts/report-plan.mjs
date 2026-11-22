@@ -1,6 +1,6 @@
 // @ts-check
 // The report's /seo-setup plan section as stats, HTML and Markdown. The plan's shape is in report-format.md.
-import { safeUrl } from "./lib/recheck.mjs";
+import { safeHref } from "./report/format.mjs";
 
 const STATUSES = ["exists", "to-build", "built", "to-create"];
 const LABEL = { exists: "Already right", "to-build": "To build", built: "Built", "to-create": "To create" };
@@ -18,7 +18,7 @@ const yesOpen = y => y.approved !== true && y.declined !== true;
 // Only an http(s) URL or a plain relative path (drafts/privacy.md) is linked. Anything else (javascript:, data:,
 // //host, \\server) shows as text, so a click can't run a script in the report. Paths with spaces or non-ASCII letters
 // are text too; widen the pattern if real drafts need them.
-const draftHref = d => (typeof d === "string" ? safeUrl(d) || (/^[\w.~-][\w.~%+/-]*$/.test(d) ? d : null) : null);
+const draftHref = d => (typeof d === "string" ? safeHref(d) || (/^[\w.~-][\w.~%+/-]*$/.test(d) ? d : null) : null);
 
 export function planStats(plan) {
   const pages = Array.isArray(plan?.pages) ? plan.pages : [];

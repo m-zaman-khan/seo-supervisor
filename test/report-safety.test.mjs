@@ -1,6 +1,7 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, SKILL, tmp } from "./helpers.mjs";
@@ -143,6 +144,87 @@ test("one bad URL in the audit file can't stop the report, and the Markdown's ti
     findings: [],
   });
   assert.match(crawl.html, /<h1>no origin<\/h1>/, "a crawl file with a bad origin is named by it");
+});
+
+// Every href on the page: an anchor in the page or a full http(s) address, nothing else.
+const hrefsOf = html => [...html.matchAll(/\shref="([^"]*)"/g)].map(m => m[1]);
+const BAD_URLS = [
+  "javascript:alert(document.domain)//",
+  "JaVaScRiPt:alert(1)",
+  " javascript:alert(1)",
+  "data:text/html,<script>alert(1)</script>",
+  "//evil.example/x",
+  "/\\evil.example",
+  "https:evil.example",
+  "vbscript:x",
+  "file:///etc/passwd",
+];
+
+test("a javascript:, data: or protocol-relative URL never becomes a link, in the page or the Markdown", () => {
+  const audit = {
+    site: { name: "S", url: "javascript:alert(1)" },
+    run: { date: "2026-11-17" },
+    passed: [{ rule: "R-1", category: "Other" }],
+    findings: [
+      {
+        id: "F-001",
+        rule: "MAP-04",
+        severity: "medium",
+        title: "Sitemap URLs",
+        category: "Sitemaps & robots",
+        check: "sitemap-session-ids",
+        evidence: [...BAD_URLS, "https://ok.example/a?b=1"].map(url => ({ url, detail: "a <loc> in the sitemap" })),
+      },
+    ],
+    authority: [{ domain: "s.example", ahrefsDR: 40 }],
+    attribution: { text: "Domain Rating by Ahrefs", url: "javascript:alert(2)" },
+    googleUpdates: {
+      from: "2026-10-01",
+      to: "2026-11-01",
+      updates: [{ name: "Core update", start: "2026-10-05", end: "2026-10-20", url: "data:text/html,x" }],
+      posts: [{ title: "A post", date: "2026-10-09", url: "//evil.example/p" }],
+    },
+  };
+  const { html, md } = rend(audit);
+  assert.deepEqual(
+    hrefsOf(html).filter(h => !h.startsWith("#")),
+    ["https://ok.example/a?b=1"],
+    "the one web address is the only outside link",
+  );
+  assert.match(html, /<td>javascript:alert\(document\.domain\)\/\/<\/td>/, "the sitemap URL shows as text");
+  assert.match(html, /<td>data:text\/html,&lt;script&gt;alert\(1\)&lt;\/script&gt;<\/td>/);
+  assert.match(html, /<span>javascript:alert\(1\)<\/span>/, "the site's address shows as text in the header");
+  assert.match(html, / · Domain Rating by Ahrefs<\/p>/, "the credit shows, unlinked");
+  assert.match(html, /Core update \(5–20 Oct\)/);
+  assert.doesNotMatch(md ?? "", /\]\((?!https:\/\/ok)/, "no Markdown link but to a web address");
+  // A good address still links, with its Markdown link closed safely.
+  const good = rend({ ...audit, attribution: { text: "Domain Rating by Ahrefs", url: "https://ahrefs.com/a (b)" } });
+  assert.match(good.html, /<a href="https:\/\/ahrefs\.com\/a \(b\)" rel="noopener">Domain Rating by Ahrefs<\/a>/);
+  assert.match(good.md ?? "", /\[Domain Rating by Ahrefs\]\(https:\/\/ahrefs\.com\/a%20%28b%29\)/);
+});
+
+test("the page carries a strict Content-Security-Policy that allows exactly its own two scripts", () => {
+  for (const raw of [KITCHEN, SAMPLE, { ...SAMPLE, plan: { status: "proposed", pages: [] } }]) {
+    const { html } = rend(raw);
+    const policy = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/)?.[1] ?? "";
+    assert.ok(
+      html.indexOf("Content-Security-Policy") < html.indexOf("<script"),
+      "the policy comes before the first script",
+    );
+    assert.match(
+      policy,
+      /^default-src 'none'; script-src 'sha256-[A-Za-z0-9+/]+=' 'sha256-[A-Za-z0-9+/]+='; style-src 'unsafe-inline'; font-src data:; base-uri 'none'; form-action 'none'$/,
+    );
+    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+    assert.equal(scripts.length, 2);
+    assert.deepEqual(
+      policy.match(/'sha256-[^']+'/g),
+      scripts.map(s => `'sha256-${createHash("sha256").update(s).digest("base64")}'`),
+      "each hash is its script's",
+    );
+    assert.doesNotMatch(html, /<[a-z][^>]*\son[a-z]+\s*=/i, "no inline event handlers, which the policy would block");
+    assert.doesNotMatch(html, /<(img|iframe|object|embed|link|base|form)\b/i, "nothing that loads or submits");
+  }
 });
 
 test("the page's styles have no dead .as.b3-t,.as.b4-t rule", () => {

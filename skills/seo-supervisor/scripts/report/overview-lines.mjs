@@ -1,7 +1,7 @@
 // @ts-check
 // One-line summaries of the outside checks for the topic tabs' "at a glance" panels; each is "" without its data.
 import { fmtCwv, passes, band } from "../checks/speed.mjs";
-import { esc, fmtDate, notePath, obj } from "./format.mjs";
+import { esc, fmtDate, link, notePath, obj } from "./format.mjs";
 
 // LCP's four parts (speed.lcpBreakdown, in ms), each with its fix.
 export const LCP_PART = {
@@ -122,8 +122,7 @@ export function overviewLines({ raw, lighthouse }) {
             ? `${+a.slice(8)}–${day(b)}`
             : `${day(a)} – ${day(b)}`;
     const text = html ? esc : s => String(s).replace(/[\\`*_[\]<>]/g, "\\$&"); // feed text: escaped for HTML or Markdown
-    const name = u =>
-      html && /^https?:\/\//i.test(u.url) ? `<a href="${esc(u.url)}" rel="noopener">${esc(u.name)}</a>` : text(u.name);
+    const name = u => (html ? link(u.url, esc(u.name)) : text(u.name));
     const list = g.updates
       .filter(u => obj(u) && u.name && isDay(u.start))
       .map(u => `${name(u)} (${span(u.start, u.end)})`);

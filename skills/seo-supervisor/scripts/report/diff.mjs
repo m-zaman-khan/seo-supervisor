@@ -1,6 +1,6 @@
 // @ts-check
 // The Since last audit tab and the parts the Markdown reuses, plus the Search Central posts and the audit timeline.
-import { esc, fmtDate, noteCode, noteMd, num, obj, isCount } from "./format.mjs";
+import { esc, fmtDate, link, noteCode, noteMd, num, obj, isCount } from "./format.mjs";
 
 export function diffParts({ raw, findings }, { googleUpdatesText }) {
   // links-import.mjs computes links-dropped, as only it has both audits' links.json summaries.
@@ -32,12 +32,7 @@ export function diffParts({ raw, findings }, { googleUpdatesText }) {
       p => obj(p) && typeof p.title === "string" && p.title.trim() && /^\d{4}-\d{2}-\d{2}$/.test(p.date),
     );
     const day = d => fmtDate(d, false);
-    const name = p =>
-      !html
-        ? noteMd(p.title)
-        : /^https?:\/\//i.test(p.url)
-          ? `<a href="${esc(p.url)}" rel="noopener">${esc(p.title)}</a>`
-          : esc(p.title);
+    const name = p => (!html ? noteMd(p.title) : link(p.url, esc(p.title)));
     return list.length
       ? `Google Search Central announcements in this period: ${list.map(p => `${name(p)} (${day(p.date)})`).join(" · ")}`
       : "Google Search Central posted no announcements in this period.";

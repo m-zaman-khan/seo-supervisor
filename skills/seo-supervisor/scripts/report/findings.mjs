@@ -2,7 +2,7 @@
 // The Findings, Decisions, Changes, Passed and Limits tabs.
 import { SEV, isOpen } from "../lib/score.mjs";
 import { recheckOf, RECHECK_NOTE } from "../lib/recheck.mjs";
-import { SEV_LABEL, STATUS_LABEL, ICON, dot, esc, inl, num } from "./format.mjs";
+import { SEV_LABEL, STATUS_LABEL, ICON, dot, esc, inl, link, num } from "./format.mjs";
 import { needsYou } from "./model.mjs";
 
 // A finding's optional effort; an unknown value shows nothing.
@@ -36,7 +36,7 @@ export function findingTabs(
         `${num(listedRest)} more ${listedRest === 1 ? "example" : "examples"}${mdFile ? ` in <code>${esc(mdFile)}</code>` : ""}`,
       );
     if (total > ev.length) notes.push(`${num(total)} cases found in total; these are examples`);
-    return `<div class="ev"><h4>Evidence</h4><div class="tablewrap"><table><thead><tr><th scope="col">Where</th><th scope="col">Detail</th></tr></thead><tbody>${shown.map(e => `<tr><td>${e.url ? `<a href="${esc(e.url)}" rel="noopener">${esc(e.url)}</a>` : ""}${e.file ? `${e.url ? "<br>" : ""}<code>${esc(e.file)}${e.line ? ":" + esc(e.line) : ""}</code>` : ""}</td><td>${inl(e.detail || "")}</td></tr>`).join("")}</tbody></table></div>${notes.length ? `<p class="quiet">${notes.join(". ")}.</p>` : ""}</div>`;
+    return `<div class="ev"><h4>Evidence</h4><div class="tablewrap"><table><thead><tr><th scope="col">Where</th><th scope="col">Detail</th></tr></thead><tbody>${shown.map(e => `<tr><td>${e.url ? link(e.url, esc(e.url)) : ""}${e.file ? `${e.url ? "<br>" : ""}<code>${esc(e.file)}${e.line ? ":" + esc(e.line) : ""}</code>` : ""}</td><td>${inl(e.detail || "")}</td></tr>`).join("")}</tbody></table></div>${notes.length ? `<p class="quiet">${notes.join(". ")}.</p>` : ""}</div>`;
   }
   function findingHtml(f) {
     const isFixed = !isOpen(f);

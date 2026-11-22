@@ -4,7 +4,7 @@
 import { SEV, bandOf } from "../lib/score.mjs";
 import { recheckOf } from "../lib/recheck.mjs";
 import { planMarkdown } from "../report-plan.mjs";
-import { SEV_LABEL, STATUS_LABEL, fmtDate, noteMd, plural } from "./format.mjs";
+import { SEV_LABEL, STATUS_LABEL, fmtDate, mdLink, noteMd, plural } from "./format.mjs";
 import { needsYou } from "./model.mjs";
 import { effortOf } from "./findings.mjs";
 import { SCORE_HOW } from "./overview.mjs";
@@ -128,7 +128,10 @@ export function markdown(
     if (lcpText()) L.push(lcpText(), "");
     if (lighthouseText()) L.push(lighthouseText(), "");
     if (authorityText())
-      L.push(`${authorityText()}${ahrefsCredit() ? ` · [${ahrefsCredit().text}](${ahrefsCredit().url})` : ""}`, "");
+      L.push(
+        `${authorityText()}${ahrefsCredit() ? ` · ${mdLink(ahrefsCredit().url, noteMd(ahrefsCredit().text))}` : ""}`,
+        "",
+      );
     if (desktopSpeedText()) L.push(mdText(desktopSpeedText()), "");
     if (positionsText()) L.push(mdText(positionsText()), "");
     for (const t of analyticsSplitLines()) L.push(mdText(t), "");

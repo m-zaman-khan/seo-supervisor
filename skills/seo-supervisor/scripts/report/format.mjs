@@ -26,6 +26,15 @@ export const inl = s =>
   esc(s)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+// Every link built from the audit file goes through this: only a full http(s) URL becomes a link, so javascript:,
+// data: and the like stay plain text and a click can't run a script.
+export const safeHref = u => (typeof u === "string" && /^https?:\/\//i.test(u) && URL.canParse(u) ? u : null);
+// html: the link's text, already escaped. In Markdown, the few characters that would end the link are %-encoded.
+export const link = (u, html) => (safeHref(u) ? `<a href="${esc(u)}" rel="noopener">${html}</a>` : html);
+export const mdLink = (u, md) =>
+  safeHref(u)
+    ? `[${md}](${u.replace(/[\s()<>]/g, c => ({ "(": "%28", ")": "%29" })[c] || encodeURIComponent(c))})`
+    : md;
 // A YYYY-MM-DD prefix is that calendar day on every machine, whatever its time zone; other times are shown in UTC.
 export const fmtDate = (d, year = true) => {
   const day = /^\d{4}-\d{2}-\d{2}/.exec(String(d ?? ""))?.[0],
