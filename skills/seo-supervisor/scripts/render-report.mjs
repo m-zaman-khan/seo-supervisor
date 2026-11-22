@@ -5,43 +5,24 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve, basename } from "node:path";
-import { SEV, isOpen, score, bandOf, OWN_SCORE } from "./lib/score.mjs";
-import { recheckOf, RECHECK_NOTE } from "./lib/recheck.mjs";
+import { SEV, bandOf } from "./lib/score.mjs";
 import { isMain } from "./lib/is-main.mjs";
-import { buildModel, needsYou } from "./report/model.mjs";
+import { SEV_LABEL } from "./report/format.mjs";
+import { buildModel } from "./report/model.mjs";
 import { overviewLines } from "./report/overview-lines.mjs";
-import { markdown } from "./report/markdown.mjs";
-import { pageHtml } from "./report/page.mjs";
-import { overviewHtml, SCORE_IS_OURS } from "./report/overview.mjs";
-import { effortOf, findingTabs } from "./report/findings.mjs";
+import { searchTraffic } from "./report/traffic.mjs";
 import { diffParts } from "./report/diff.mjs";
-import { connectionPanels } from "./report/panels/connections.mjs";
-import { localPanels } from "./report/panels/local.mjs";
+import { findingTabs } from "./report/findings.mjs";
 import { sitePanels } from "./report/panels/site.mjs";
+import { linkPanels } from "./report/panels/links.mjs";
+import { aiPanels } from "./report/panels/ai.mjs";
 import { contentPanels } from "./report/panels/content.mjs";
 import { speedPanels } from "./report/panels/speed-media.mjs";
-import { aiPanels } from "./report/panels/ai.mjs";
-import { linkPanels } from "./report/panels/links.mjs";
-import { searchTraffic } from "./report/traffic.mjs";
-import {
-  SEV_LABEL,
-  STATUS_LABEL,
-  esc,
-  inl,
-  fmtDate,
-  num,
-  obj,
-  plural,
-  firstSentence,
-  ICON,
-  dot,
-  noteMd,
-  noteCode,
-  notePath,
-  cellMd,
-  isCount,
-  isText,
-} from "./report/format.mjs";
+import { localPanels } from "./report/panels/local.mjs";
+import { connectionPanels } from "./report/panels/connections.mjs";
+import { overviewHtml } from "./report/overview.mjs";
+import { pageHtml } from "./report/page.mjs";
+import { markdown } from "./report/markdown.mjs";
 
 /**
  * Builds the report as text and writes nothing.
@@ -52,70 +33,18 @@ import {
  */
 export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   const m = { raw, mdFile, ...buildModel(raw, dir) };
+  const plan = raw.plan && typeof raw.plan === "object" ? raw.plan : null;
+  // Each module builds its parts from the model; what one needs from another is passed in by name.
   const {
-    site,
-    run,
-    findings,
-    checkSettings,
-    passed,
-    notChecked,
-    notes,
-    decisions,
-    open,
-    fixed,
-    countSev,
-    buildRules,
-    overall,
-    areas,
-    openBlockers,
-    unlock,
-    deltaOf,
-    impact,
-    verdict,
-  } = m;
-
-  const { connectionsHtml, connectionsMd, changeCheckHtml, changeCheckMd, newSearchesHtml, newSearchesMd } =
-    connectionPanels(m);
-  const { localHtml, localMd, geoGridHtml, geoGridMd } = localPanels(m);
-  const {
-    viewsHtml,
-    viewsMd,
-    hstsPreloadHtml,
-    hstsPreloadMd,
-    crawlCoverageHtml,
-    crawlCoverageMd,
-    browserHtml,
-    browserMd,
-    pageScoresHtml,
-    pageScoresMd,
-    checkSettingsHtml,
-    checkSettingsMd,
-    settingRows,
-    settingsSummary,
-  } = sitePanels(m);
-  const {
-    writingHtml,
-    writingMd,
-    productDataHtml,
-    productDataMd,
-    descriptionsHtml,
-    descriptionsMd,
-    appsPdfsHtml,
-    appsPdfsMd,
-    audienceHtml,
-    audienceMd,
-  } = contentPanels(m);
-  const {
-    imagesHtml,
-    imagesMd,
-    lighthouseDetailHtml,
-    lighthouseDetailMd,
-    speedDetailsHtml,
-    speedDetailsMd,
-    a11yHtml,
-    a11yMd,
-  } = speedPanels(m);
-  const { agentsHtml, agentsMd, aiCrawlersHtml, aiCrawlersMd, aiAnswersHtml, aiAnswersMd } = aiPanels(m);
+    speedText,
+    authorityText,
+    ahrefsCredit,
+    labSpeedText,
+    lcpText,
+    lighthouseText,
+    googleUpdatesText,
+    desktopSpeedText,
+  } = overviewLines(m);
   const {
     linked,
     linksHtml,
@@ -139,19 +68,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     positionsText,
     analyticsSplitLines,
   } = searchTraffic(m, { linked });
-  const { findingsHtml, decisionsHtml, changesHtml, passedHtml, limitsHtml, recheckNoteHtml, recheckNoteMd } =
-    findingTabs(m, { trafficHtml, clarityHtml });
-
-  const {
-    speedText,
-    authorityText,
-    ahrefsCredit,
-    labSpeedText,
-    lcpText,
-    lighthouseText,
-    googleUpdatesText,
-    desktopSpeedText,
-  } = overviewLines(m);
   const {
     diff,
     diffHtml,
@@ -164,6 +80,50 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     unknownLines,
     linksDroppedMd,
   } = diffParts(m, { googleUpdatesText });
+  const { findingsHtml, decisionsHtml, changesHtml, passedHtml, limitsHtml, recheckNoteHtml, recheckNoteMd } =
+    findingTabs(m, { trafficHtml, clarityHtml });
+  const {
+    viewsHtml,
+    viewsMd,
+    hstsPreloadHtml,
+    hstsPreloadMd,
+    crawlCoverageHtml,
+    crawlCoverageMd,
+    browserHtml,
+    browserMd,
+    pageScoresHtml,
+    pageScoresMd,
+    checkSettingsHtml,
+    checkSettingsMd,
+    settingRows,
+    settingsSummary,
+  } = sitePanels(m);
+  const { agentsHtml, agentsMd, aiCrawlersHtml, aiCrawlersMd, aiAnswersHtml, aiAnswersMd } = aiPanels(m);
+  const {
+    writingHtml,
+    writingMd,
+    productDataHtml,
+    productDataMd,
+    descriptionsHtml,
+    descriptionsMd,
+    appsPdfsHtml,
+    appsPdfsMd,
+    audienceHtml,
+    audienceMd,
+  } = contentPanels(m);
+  const {
+    imagesHtml,
+    imagesMd,
+    lighthouseDetailHtml,
+    lighthouseDetailMd,
+    speedDetailsHtml,
+    speedDetailsMd,
+    a11yHtml,
+    a11yMd,
+  } = speedPanels(m);
+  const { localHtml, localMd, geoGridHtml, geoGridMd } = localPanels(m);
+  const { connectionsHtml, connectionsMd, changeCheckHtml, changeCheckMd, newSearchesHtml, newSearchesMd } =
+    connectionPanels(m);
   // The Overview's panels, in order: on the page after the score views and search lines, in the Markdown after the area
   // scores.
   const panels = [
@@ -200,10 +160,16 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   const panelsHtml = () => panels.map(([html]) => html()).join(""),
     panelsMd = () => panels.flatMap(([, md]) => md());
 
-  const plan = raw.plan && typeof raw.plan === "object" ? raw.plan : null;
   const html = pageHtml(m, {
     plan,
     diff,
+    diffHtml,
+    trafficFor,
+    findingsHtml,
+    decisionsHtml,
+    changesHtml,
+    passedHtml,
+    limitsHtml,
     overviewHtml: () =>
       overviewHtml(m, {
         speedText,
@@ -220,15 +186,35 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
         viewsHtml,
         panelsHtml,
       }),
-    diffHtml,
-    trafficFor,
-    findingsHtml,
-    decisionsHtml,
-    changesHtml,
-    passedHtml,
-    limitsHtml,
   });
-
+  const md = mdFile
+    ? markdown(m, {
+        plan,
+        diff,
+        speedText,
+        labSpeedText,
+        lcpText,
+        lighthouseText,
+        authorityText,
+        ahrefsCredit,
+        desktopSpeedText,
+        positionsText,
+        analyticsSplitLines,
+        googleUpdatesText,
+        searchLines,
+        viewsMd,
+        panelsMd,
+        burstMd,
+        googlePostsText,
+        diffSections,
+        diffText,
+        unknownLines,
+        linksDroppedMd,
+        trafficOf,
+        clarityOf,
+      })
+    : null;
+  const { overall, verdict, unlock, openBlockers, open, countSev, fixed, checkSettings } = m;
   const receipt = [
     overall ? `SEO health score: ${overall.value}/100 (${bandOf(overall.value)[1]}). ${verdict}.` : verdict,
     unlock &&
@@ -238,37 +224,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
       `Check settings (settings.json): ${settingsSummary()}. The score leaves turned-off checks out.`,
     ...checkSettings.warnings.map(w => `Settings warning: ${w}`),
   ].filter(Boolean);
-  return {
-    html,
-    md: mdFile
-      ? markdown(m, {
-          plan,
-          diff,
-          speedText,
-          labSpeedText,
-          lcpText,
-          lighthouseText,
-          authorityText,
-          ahrefsCredit,
-          desktopSpeedText,
-          positionsText,
-          analyticsSplitLines,
-          googleUpdatesText,
-          searchLines,
-          viewsMd,
-          panelsMd,
-          burstMd,
-          googlePostsText,
-          diffSections,
-          diffText,
-          unknownLines,
-          linksDroppedMd,
-          trafficOf,
-          clarityOf,
-        })
-      : null,
-    receipt,
-  };
+  return { html, md, receipt };
 }
 
 // Prints the page with its print styles: every tab in turn, findings open, light colours. The browser modules load
