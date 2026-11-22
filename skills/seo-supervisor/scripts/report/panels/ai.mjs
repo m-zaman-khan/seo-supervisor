@@ -149,8 +149,11 @@ export function aiPanels({ raw }) {
   const botSync = raw.botPreferenceSync === true;
   const BRAVE_LINE =
     "Brave Search's crawler has no user agent of its own, so robots.txt can't name it, and it won't crawl a page Googlebot can't. Brave says robots.txt doesn't keep a page out of its results: a `noindex` robots meta tag does.";
+  // Cloudflare marks its block either way.
+  // https://developers.cloudflare.com/bots/additional-configurations/managed-robots-txt/
+  // https://blog.cloudflare.com/bot-preference-sync/
   const SYNC_LINE =
-    "This robots.txt has a block that Cloudflare adds, marked `# BEGIN Cloudflare Bot Preference Sync`. Cloudflare's Bot Preference Sync (announced 21 Aug 2026) writes the AI crawler choices made in Cloudflare's dashboard into the live robots.txt, in front of the site's own lines. So the robots.txt the site serves can differ from the one in the code: change those crawlers in Cloudflare's dashboard, as editing the file in the code won't change that block.";
+    "This robots.txt has a block that Cloudflare adds, marked `# BEGIN Cloudflare Managed content` or `# BEGIN Cloudflare Bot Preference Sync`. Cloudflare's managed robots.txt and its Bot Preference Sync (announced 21 Aug 2026) write the AI crawler choices made in Cloudflare's dashboard into the live robots.txt, in front of the site's own lines. So the robots.txt the site serves can differ from the one in the code: change those crawlers in Cloudflare's dashboard, as editing the file in the code won't change that block.";
   const USAGE_INTRO =
     "Content-Usage lines in robots.txt, shown as written. They come from the IETF's AI preferences drafts (August and September 2026), which aren't final, so the crawl doesn't judge them.";
   const PAID_INTRO =

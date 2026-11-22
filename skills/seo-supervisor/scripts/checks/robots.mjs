@@ -129,6 +129,7 @@ export function aiRobotRules({ robots, robotsRes }, { add, extra, startOrigin: S
     const ai = aiRobots(robotsRes.body, allowedBy);
     for (const c of ai.conflicts) add("ai-robots-conflict", START_ORIGIN + "/robots.txt", c);
     if (ai.usage.length) extra.contentUsage = ai.usage;
-    if (/^\s*#\s*BEGIN Cloudflare Bot Preference Sync\b/im.test(robotsRes.body)) extra.botPreferenceSync = true;
+    if (/^\s*#\s*BEGIN Cloudflare (?:Bot Preference Sync|Managed content)\b/im.test(robotsRes.body))
+      extra.botPreferenceSync = true;
   }
 }
