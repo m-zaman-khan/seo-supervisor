@@ -73,6 +73,8 @@ const sleep = ms => new Promise(ok => setTimeout(ok, ms));
 const LOADED = `new Promise(ok => { if (document.readyState === "complete") ok(); addEventListener("load", () => ok()); setTimeout(ok, 15000); })`;
 // Two animation frames: the page has laid itself out and drawn at a new size; 250 ms at most (a page with no frames).
 const DRAWN = `new Promise(ok => { requestAnimationFrame(() => requestAnimationFrame(() => ok())); setTimeout(ok, 250); })`;
+// Local cap: each back/forward cache test costs a page load and up to 10 s, so only the first few pages get one.
+const BF_PAGES = 3;
 // Words come from the DOM, so a collapsed accordion or closed <details> still counts, as it does for Google. The popup
 // is the biggest fixed layer on top covering half the screen; consent tools are kept apart.
 const MEASURE = `(() => {
@@ -421,7 +423,7 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
       } catch (e) {
         notes.push(`Couldn't measure lab speed for ${url} (${why(e)}).`);
       }
-      if (list.length > 1)
+      if (list.length > 1 && i < BF_PAGES)
         try {
           // Back needs a page to come back from: the next one in the sample
           const reasons = await visit(
