@@ -86,8 +86,14 @@ export async function probeSite({
       missing.push("Strict-Transport-Security");
     if (!h.get("x-content-type-options")) missing.push("X-Content-Type-Options");
     if (!h.get("referrer-policy")) missing.push("Referrer-Policy");
-    if (!h.get("content-security-policy") && !h.get("content-security-policy-report-only"))
-      missing.push("Content-Security-Policy");
+    // A Report-Only policy monitors without enforcing, so it doesn't count as a CSP.
+    // https://www.w3.org/TR/CSP3/#cspro-header
+    if (!h.get("content-security-policy"))
+      missing.push(
+        h.get("content-security-policy-report-only")
+          ? "Content-Security-Policy (only a Report-Only policy, which blocks nothing)"
+          : "Content-Security-Policy",
+      );
     if (!h.get("x-frame-options") && !/frame-ancestors/i.test(h.get("content-security-policy") || ""))
       missing.push("X-Frame-Options or CSP frame-ancestors");
     for (const m of missing) add("sec-headers", home.finalUrl, m);
