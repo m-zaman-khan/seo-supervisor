@@ -1,0 +1,1360 @@
+{
+  "tool": "seo-supervisor-crawler",
+  "version": "<version>",
+  "crawledAt": "2026-11-20T12:00:00.000Z",
+  "durationMs": 0,
+  "startUrl": "http://127.0.0.1:<port>/",
+  "siteOrigin": "https://zero.example",
+  "options": {
+    "max": 1000,
+    "concurrency": 1,
+    "ignoreNoindex": false,
+    "banned": null,
+    "verify": null,
+    "redirectSources": 0,
+    "trailingSlash": "auto",
+    "detectedSlashStyle": "always",
+    "includeQuery": false,
+    "brand": null
+  },
+  "stats": {
+    "fetched": 4,
+    "capped": false,
+    "htmlPages": 4,
+    "sitemapUrls": 0,
+    "sitemapFiles": [
+      {
+        "url": "http://127.0.0.1:<port>/sitemap.xml",
+        "status": 404
+      }
+    ],
+    "sitemapComplete": false,
+    "robotsTxt": 200
+  },
+  "notes": [
+    "Public origin https://zero.example was mapped onto http://127.0.0.1:<port> for crawling.",
+    "Security headers were read from a local server; production headers set by a CDN or proxy may differ."
+  ],
+  "findings": [
+    {
+      "check": "canonical-missing-sitewide",
+      "rule": "URL-04",
+      "severity": "blocker",
+      "category": "URLs & canonicals",
+      "title": "4 indexable pages have no canonical tag",
+      "what": "4 cases, for example http://127.0.0.1:<port>/.",
+      "why": "With no canonicals anywhere, search engines choose among the slash, parameter and tracking variants of every page themselves.",
+      "fix": "Add a self-referencing absolute canonical to every indexable page through the shared metadata helper.",
+      "count": 4,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/pricing/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/docs/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-001"
+    },
+    {
+      "check": "title-missing-sitewide",
+      "rule": "META-01",
+      "severity": "blocker",
+      "category": "Metadata",
+      "title": "4 indexable pages have no title, or all share one default title",
+      "what": "4 cases, for example http://127.0.0.1:<port>/ (“Create Next App”).",
+      "why": "The title is the headline in search results. With none, or one default title such as “Create Next App” on almost every page, search engines write their own and every page looks the same.",
+      "fix": "Give every page a unique title through the shared metadata helper.",
+      "count": 4,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "“Create Next App”"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/pricing/",
+          "detail": "“Create Next App”"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/",
+          "detail": "“Create Next App”"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/docs/",
+          "detail": "“Create Next App”"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-002"
+    },
+    {
+      "check": "h1-missing-sitewide",
+      "rule": "CONTENT-01",
+      "severity": "blocker",
+      "category": "Headings & content",
+      "title": "4 indexable pages have no H1",
+      "what": "4 cases, for example http://127.0.0.1:<port>/.",
+      "why": "Almost no page states its topic in a main heading, so search engines have to guess what each page is about.",
+      "fix": "Give every page template one H1 that names the page's topic.",
+      "count": 4,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/pricing/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/docs/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-003"
+    },
+    {
+      "check": "near-duplicate",
+      "rule": "CONTENT-04",
+      "severity": "high",
+      "category": "Headings & content",
+      "title": "6 pair(s) of indexable pages share most of their main content",
+      "what": "6 cases, for example http://127.0.0.1:<port>/ (91% shared with http://127.0.0.1:<port>/pricing/).",
+      "why": "Pages that differ only by a swapped name (a city, product or tool) look like doorway or scaled content. Google can filter them out or hold down the whole site.",
+      "fix": "Give each page its own substance: specific details, local proof, its own intro and FAQs. Merge or noindex pages that can't be made unique.",
+      "count": 6,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "91% shared with http://127.0.0.1:<port>/pricing/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "92% shared with http://127.0.0.1:<port>/about/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "92% shared with http://127.0.0.1:<port>/docs/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/pricing/",
+          "detail": "90% shared with http://127.0.0.1:<port>/about/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/pricing/",
+          "detail": "90% shared with http://127.0.0.1:<port>/docs/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/",
+          "detail": "91% shared with http://127.0.0.1:<port>/docs/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-004"
+    },
+    {
+      "check": "sitemap-missing",
+      "rule": "MAP-01",
+      "severity": "high",
+      "category": "Sitemaps & robots",
+      "title": "No XML sitemap found",
+      "what": "Found on http://127.0.0.1:<port>/sitemap.xml (http://127.0.0.1:<port>/sitemap.xml → 404).",
+      "why": "Without a sitemap, new and deep pages are found slowly.",
+      "fix": "Generate `/sitemap.xml` from the live content data and reference it in robots.txt.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/sitemap.xml",
+          "detail": "http://127.0.0.1:<port>/sitemap.xml → 404"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-005"
+    },
+    {
+      "check": "thin-page",
+      "rule": "CONTENT-05",
+      "severity": "medium",
+      "category": "Headings & content",
+      "title": "4 indexable page(s) have fewer than 150 words",
+      "what": "4 cases, for example http://127.0.0.1:<port>/ (65 words).",
+      "why": "Thin pages rarely rank and can lower the site's overall quality signals.",
+      "fix": "Add useful, specific content, merge the page into a stronger one, or noindex it until it grows.",
+      "count": 4,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "65 words"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/pricing/",
+          "detail": "68 words"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/",
+          "detail": "66 words"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/docs/",
+          "detail": "66 words"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-006"
+    },
+    {
+      "check": "desc-dup",
+      "rule": "META-02",
+      "severity": "medium",
+      "category": "Metadata",
+      "title": "4 description(s) are shared by more than one page",
+      "what": "4 cases, for example http://127.0.0.1:<port>/ (Generated by create next app).",
+      "why": "Duplicate descriptions signal templated pages.",
+      "fix": "Write a specific description for each page.",
+      "count": 4,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "Generated by create next app"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/pricing/",
+          "detail": "Generated by create next app"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/",
+          "detail": "Generated by create next app"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/docs/",
+          "detail": "Generated by create next app"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-007"
+    },
+    {
+      "check": "breadcrumb-missing",
+      "rule": "SCHEMA-07",
+      "severity": "medium",
+      "category": "Structured data",
+      "title": "3 page(s) below the home page have no BreadcrumbList",
+      "what": "3 cases, for example http://127.0.0.1:<port>/pricing/.",
+      "why": "Breadcrumb rich results still show in Google and clarify site structure.",
+      "fix": "Render BreadcrumbList from the same array as the visible breadcrumb.",
+      "count": 3,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/pricing/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/docs/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-008"
+    },
+    {
+      "check": "org-missing",
+      "rule": "SCHEMA-02",
+      "severity": "medium",
+      "category": "Structured data",
+      "title": "The home page has no Organization (or business) schema",
+      "what": "Found on http://127.0.0.1:<port>/.",
+      "why": "Organization schema identifies who runs the site and anchors every other schema node.",
+      "fix": "Add one Organization (or the right LocalBusiness subtype) node in the root layout with a stable `@id`.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-009"
+    },
+    {
+      "check": "favicon-missing",
+      "rule": "META-10",
+      "severity": "medium",
+      "category": "Metadata",
+      "title": "The site has no favicon that loads",
+      "what": "Found on http://127.0.0.1:<port>/ (no icon link on the home page, and /favicon.ico → 404).",
+      "why": "Google shows the site's favicon next to its name in search results. Without one that loads, results show a generic globe icon, which looks unfinished next to other sites' logos.",
+      "fix": "Add `<link rel=\"icon\" href=\"/favicon.png\">` to the home page's `<head>`, pointing at a square PNG or ICO of at least 48 × 48 px that returns 200. Keep its URL stable and don't block it in robots.txt.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "no icon link on the home page, and /favicon.ico → 404"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-010"
+    },
+    {
+      "check": "sec-headers",
+      "rule": "TRUST-01",
+      "severity": "low",
+      "category": "Trust & security",
+      "title": "The site is missing 5 recommended security header(s)",
+      "what": "5 cases, for example http://127.0.0.1:<port>/ (X-Content-Type-Options).",
+      "why": "Security headers protect visitors and are a trust signal, especially for technical audiences.",
+      "fix": "Add the missing headers at the server or framework level.",
+      "count": 5,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "X-Content-Type-Options"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "Referrer-Policy"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "Content-Security-Policy"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "X-Frame-Options or CSP frame-ancestors"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "Permissions-Policy"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-011"
+    },
+    {
+      "check": "desc-length",
+      "rule": "META-02",
+      "severity": "low",
+      "category": "Metadata",
+      "title": "4 description(s) are outside 120–160 characters",
+      "what": "4 cases, for example http://127.0.0.1:<port>/ (28 chars).",
+      "why": "Short descriptions undersell the page; long ones get cut off.",
+      "fix": "Aim for 120–160 characters.",
+      "count": 4,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "28 chars"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/pricing/",
+          "detail": "28 chars"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/",
+          "detail": "28 chars"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/docs/",
+          "detail": "28 chars"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-012"
+    },
+    {
+      "check": "og-missing",
+      "rule": "META-04",
+      "severity": "low",
+      "category": "Metadata",
+      "title": "4 page(s) lack og:title or og:image",
+      "what": "4 cases, for example http://127.0.0.1:<port>/ (og:title, og:image).",
+      "why": "Without og:title and og:image, shared links on Slack, LinkedIn and X show a bare URL instead of a card. Where og:description is listed too, the page has no description at all, so each platform guesses its text from the page or shows none.",
+      "fix": "Emit Open Graph and Twitter tags from the metadata helper, with a default image and per-page images for key pages, and og:description from the page's meta description.",
+      "count": 4,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "og:title, og:image"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/pricing/",
+          "detail": "og:title, og:image"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/",
+          "detail": "og:title, og:image"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/docs/",
+          "detail": "og:title, og:image"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-013"
+    },
+    {
+      "check": "no-large-preview",
+      "rule": "MEDIA-03",
+      "severity": "low",
+      "category": "Media",
+      "title": "4 indexable page(s) don't allow large image previews",
+      "what": "4 cases, for example http://127.0.0.1:<port>/.",
+      "why": "Without `max-image-preview:large`, Google shows small thumbnails at most, and pages are less likely to appear with large images in Discover.",
+      "fix": "Add `max-image-preview:large` to the robots meta of indexable pages through the metadata helper.",
+      "count": 4,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/pricing/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/docs/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-014"
+    },
+    {
+      "check": "jsonld-none",
+      "rule": "SCHEMA-03",
+      "severity": "low",
+      "category": "Structured data",
+      "title": "4 indexable page(s) have no structured data",
+      "what": "4 cases, for example http://127.0.0.1:<port>/.",
+      "why": "Schema tells search and AI engines what each page is.",
+      "fix": "Add the schema type the profile assigns to each page type.",
+      "count": 4,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/pricing/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/docs/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-015"
+    },
+    {
+      "check": "sitemap-not-in-robots",
+      "rule": "MAP-01",
+      "severity": "low",
+      "category": "Sitemaps & robots",
+      "title": "robots.txt doesn't reference the sitemap",
+      "what": "Found on http://127.0.0.1:<port>/robots.txt.",
+      "why": "The `Sitemap:` line lets every crawler find it without manual submission.",
+      "fix": "Add `Sitemap: https://…/sitemap.xml` (absolute URL) to robots.txt.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/robots.txt"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-016"
+    },
+    {
+      "check": "llms-txt-missing",
+      "rule": "MAP-07",
+      "severity": "low",
+      "category": "Sitemaps & robots",
+      "title": "The site has no llms.txt",
+      "what": "Found on http://127.0.0.1:<port>/llms.txt (status 404).",
+      "why": "llms.txt is a short Markdown map of a site's key pages, served at /llms.txt. Some AI tools and coding assistants read it to find their way around a site, which matters most for developer docs and API sites. SEO Supervisor asks for one because it makes the site easier for AI tools to read. It isn't a ranking factor: Google says an llms.txt file “will neither harm nor help your site's visibility or rankings in Google Search”, and no search engine says it ranks pages by it.",
+      "fix": "Serve a plain-text file at /llms.txt: a `# Site name` heading, a one-line `>` summary, then Markdown links to the key pages (`- [Page](https://…): one sentence`). A copy-ready example is in `examples/snippets.md`. Build it from the same data as the sitemap so it stays current. A site that doesn't want one can turn this check off in `seo-audit/settings.json`: `\"checks\": { \"off\": [\"llms-txt-missing\"] }`.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/llms.txt",
+          "detail": "status 404"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-017"
+    },
+    {
+      "check": "security-txt",
+      "rule": "TRUST-02",
+      "severity": "low",
+      "category": "Trust & security",
+      "title": "No /.well-known/security.txt",
+      "what": "Found on http://127.0.0.1:<port>/.well-known/security.txt (status 404).",
+      "why": "security.txt tells researchers how to report vulnerabilities.",
+      "fix": "Publish one following RFC 9116 with Contact and Expires.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/.well-known/security.txt",
+          "detail": "status 404"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-018"
+    },
+    {
+      "check": "website-missing",
+      "rule": "SCHEMA-02",
+      "severity": "low",
+      "category": "Structured data",
+      "title": "The home page has no WebSite schema",
+      "what": "Found on http://127.0.0.1:<port>/.",
+      "why": "WebSite schema names the site and links pages to the organization.",
+      "fix": "Add a WebSite node with a stable `@id` and `publisher` pointing at the organization.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-019"
+    },
+    {
+      "check": "no-speculation-rules",
+      "rule": "PERF-09",
+      "severity": "low",
+      "category": "Performance",
+      "title": "No page asks the browser to start loading the next page early (speculation rules)",
+      "what": "Found on http://127.0.0.1:<port>/ (none of 4 pages).",
+      "why": "Speculation rules let Chrome and Edge start loading a page as soon as a visitor shows they're about to open it (hovering over or pressing a link), so it appears almost at once. A few lines in the shared layout turn this on for the whole site; other browsers ignore them.",
+      "fix": "Add `<script type=\"speculationrules\">{\"prefetch\":[{\"where\":{\"href_matches\":\"/*\"},\"eagerness\":\"moderate\"}]}</script>` to the shared layout, or send a `Speculation-Rules` header from the server or CDN. Leave out links that change something (log out, add to cart) with a `not` condition.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "none of 4 pages"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-020"
+    }
+  ],
+  "passed": [
+    {
+      "rule": "AI-01",
+      "title": "Pages are eligible for snippets and AI answers",
+      "category": "AI search"
+    },
+    {
+      "rule": "AI-03",
+      "title": "Bing/Copilot preferences use the new directives",
+      "category": "AI search"
+    },
+    {
+      "rule": "CONTENT-02",
+      "title": "Heading levels are not skipped",
+      "category": "Headings & content"
+    },
+    {
+      "rule": "CONTENT-08",
+      "title": "Images have alt text",
+      "category": "Headings & content"
+    },
+    {
+      "rule": "CONTENT-09",
+      "title": "No placeholder, test or broken-encoding text",
+      "category": "Headings & content"
+    },
+    {
+      "rule": "CRAWL-01",
+      "title": "robots.txt lets search engines crawl the site",
+      "category": "Crawling & indexing"
+    },
+    {
+      "rule": "CRAWL-02",
+      "title": "Pages meant to rank are not set to noindex",
+      "category": "Crawling & indexing"
+    },
+    {
+      "rule": "CRAWL-05",
+      "title": "Correct HTTP status codes, no soft 404s",
+      "category": "Crawling & indexing"
+    },
+    {
+      "rule": "CRAWL-06",
+      "title": "Sitemap URLs return 200",
+      "category": "Crawling & indexing"
+    },
+    {
+      "rule": "CRAWL-07",
+      "title": "No internal links to broken pages",
+      "category": "Crawling & indexing"
+    },
+    {
+      "rule": "CRAWL-08",
+      "title": "Redirects take one hop and internal links skip them",
+      "category": "Crawling & indexing"
+    },
+    {
+      "rule": "LINK-01",
+      "title": "Pages are within three clicks of the home page",
+      "category": "Internal linking"
+    },
+    {
+      "rule": "LINK-02",
+      "title": "No orphan pages",
+      "category": "Internal linking"
+    },
+    {
+      "rule": "LINK-05",
+      "title": "Descriptive anchor text",
+      "category": "Internal linking"
+    },
+    {
+      "rule": "LINK-06",
+      "title": "Link counts per page stay reasonable",
+      "category": "Internal linking"
+    },
+    {
+      "rule": "MAP-02",
+      "title": "Sitemap lists only canonical, indexable URLs on the right host",
+      "category": "Sitemaps & robots"
+    },
+    {
+      "rule": "MAP-03",
+      "title": "Indexable pages are in the sitemap",
+      "category": "Sitemaps & robots"
+    },
+    {
+      "rule": "MAP-04",
+      "title": "Sitemap lastmod dates are real",
+      "category": "Sitemaps & robots"
+    },
+    {
+      "rule": "MAP-05",
+      "title": "robots.txt blocks only junk, never CSS/JS",
+      "category": "Sitemaps & robots"
+    },
+    {
+      "rule": "MAP-06",
+      "title": "AI crawler policy is deliberate",
+      "category": "Sitemaps & robots"
+    },
+    {
+      "rule": "META-05",
+      "title": "Page language declared",
+      "category": "Metadata"
+    },
+    {
+      "rule": "META-06",
+      "title": "Robots meta depends on page type, using the object form",
+      "category": "Metadata"
+    },
+    {
+      "rule": "META-08",
+      "title": "hreflang only when there are real language or region versions",
+      "category": "Metadata"
+    },
+    {
+      "rule": "PERF-03",
+      "title": "The first image is not lazy-loaded",
+      "category": "Performance"
+    },
+    {
+      "rule": "PERF-04",
+      "title": "Images reserve their space (width and height)",
+      "category": "Performance"
+    },
+    {
+      "rule": "PERF-06",
+      "title": "HTML documents stay lightweight",
+      "category": "Performance"
+    },
+    {
+      "rule": "REND-01",
+      "title": "Content is in the server HTML, not only in JavaScript",
+      "category": "Rendering"
+    },
+    {
+      "rule": "REND-04",
+      "title": "Links are real <a href> links",
+      "category": "Rendering"
+    },
+    {
+      "rule": "REND-08",
+      "title": "HTML stays under Googlebot's 2 MB limit",
+      "category": "Rendering"
+    },
+    {
+      "rule": "REND-09",
+      "title": "Pages declare a doctype, a charset and a mobile viewport",
+      "category": "Rendering"
+    },
+    {
+      "rule": "REND-10",
+      "title": "No obsolete HTML tags (frames, font, center, marquee)",
+      "category": "Rendering"
+    },
+    {
+      "rule": "SCHEMA-01",
+      "title": "JSON-LD parses without errors",
+      "category": "Structured data"
+    },
+    {
+      "rule": "SCHEMA-04",
+      "title": "Schema matches what the page visibly shows",
+      "category": "Structured data"
+    },
+    {
+      "rule": "SCHEMA-05",
+      "title": "No deprecated schema types",
+      "category": "Structured data"
+    },
+    {
+      "rule": "URL-01",
+      "title": "Clean, lowercase, hyphenated URLs",
+      "category": "URLs & canonicals"
+    },
+    {
+      "rule": "URL-02",
+      "title": "One trailing-slash style, the other variant redirects",
+      "category": "URLs & canonicals"
+    },
+    {
+      "rule": "URL-05",
+      "title": "Every breadcrumb level is a real page",
+      "category": "URLs & canonicals"
+    }
+  ],
+  "notChecked": [
+    {
+      "rule": "TRUST-07",
+      "area": "TRUST-07 The HTTPS certificate is trusted, covers every host and renews in time",
+      "reason": "Pass --check-live once the site is live."
+    },
+    {
+      "rule": "URL-03",
+      "area": "URL-03 One host, HTTPS only",
+      "reason": "Pass --check-live once the site is live."
+    },
+    {
+      "rule": "PERF-01",
+      "area": "PERF-01 Core Web Vitals pass on mobile",
+      "reason": "Outside checks are off. With the owner's go-ahead, --outside fetches real-user speed data from Google PageSpeed Insights."
+    },
+    {
+      "rule": "REND-06",
+      "area": "REND-06 JavaScript doesn't fight the HTML",
+      "reason": "Outside checks are off. With the owner's go-ahead, --outside renders sample pages in headless Chrome (running the site's own scripts) and compares them with the raw HTML."
+    },
+    {
+      "rule": "REND-07",
+      "area": "REND-07 Mobile shows the same content as desktop",
+      "reason": "Outside checks are off. With the owner's go-ahead, --outside loads sample pages in headless Chrome at desktop and phone size (running the site's own scripts) and saves screenshots."
+    },
+    {
+      "rule": "PERF-07",
+      "area": "PERF-07 Popups don't block content or crawlers",
+      "reason": "Outside checks are off. With the owner's go-ahead, --outside loads sample pages in headless Chrome at desktop and phone size (running the site's own scripts) and saves screenshots."
+    },
+    {
+      "rule": "PERF-10",
+      "area": "PERF-10 Back and Forward are instant (back/forward cache)",
+      "reason": "Chrome's back/forward cache test didn't run: outside checks are off (with the owner's go-ahead, --outside runs it in headless Chrome). The HTML hints (Cache-Control: no-store, inline unload handlers) found nothing."
+    },
+    {
+      "rule": "REND-11",
+      "area": "REND-11 Phones get a working menu, and pages that aren't crowded with ads",
+      "reason": "Outside checks are off. With the owner's go-ahead, --outside loads sample pages in headless Chrome at phone size (running the site's own scripts) to try the menu button and measure ads."
+    },
+    {
+      "rule": "CRAWL-09",
+      "area": "CRAWL-09 Bot protection and firewall",
+      "reason": "A Googlebot user agent got the same status, robots tag, canonical, title and text as a visitor on 4 page(s) of the local build, where no CDN or firewall sits in between; crawl the live site to include them. A real Googlebot comes from Google's IP addresses, which a firewall can treat differently; confirm with the live test in Search Console's URL Inspection."
+    },
+    {
+      "rule": "CRAWL-11",
+      "area": "CRAWL-11 Drafts and publish flags",
+      "reason": "The crawler can't see publish flags; check the content layer (scripts/content-scan.mjs)."
+    },
+    {
+      "rule": "SCHEMA-08",
+      "area": "SCHEMA-08 Rich result eligibility",
+      "reason": "Run one URL per template through Google's Rich Results Test."
+    },
+    {
+      "rule": "META-07",
+      "area": "META-07 Search Console and Bing verification",
+      "reason": "Check DNS or ask the owner."
+    },
+    {
+      "rule": "LINK-03",
+      "area": "LINK-03 Circular linking design",
+      "reason": "Needs a read of the related-content code and data."
+    },
+    {
+      "rule": "CONTENT-03",
+      "area": "CONTENT-03 Keyword targeting and cannibalization",
+      "reason": "Needs the content plan or Search Console query data."
+    },
+    {
+      "rule": "CONTENT-11",
+      "area": "CONTENT-11 Spam policies (scaled content, doorways, site reputation, back-button hijacking)",
+      "reason": "Needs a read of content strategy and scripts. The crawler covers parts of it: near-duplicate pages, links in comment sections without rel=\"ugc\" or \"nofollow\", and inline scripts that may trap the Back button; scripts loaded from files aren't read."
+    },
+    {
+      "rule": "AI-02",
+      "area": "AI-02 AI crawler access through the CDN/WAF",
+      "reason": "robots.txt is checked; firewall behaviour toward OAI-SearchBot, Claude-SearchBot and PerplexityBot isn't visible locally."
+    },
+    {
+      "rule": "URL-07",
+      "area": "URL-07 Old-URL redirects",
+      "reason": "No redirect list given. Pass --urls (old site URLs) or --next-manifest .next/routes-manifest.json."
+    },
+    {
+      "rule": "CONTENT-10",
+      "area": "CONTENT-10 Banned and unconfirmed claims",
+      "reason": "Pass --banned and --verify with the profile's claim lists."
+    }
+  ],
+  "agents": {
+    "pages": [],
+    "ucp": null,
+    "wellKnown": []
+  },
+  "writingNotes": [
+    {
+      "url": "http://127.0.0.1:<port>/",
+      "longSentences": 1,
+      "longestSentence": "It has some real words in it so that it is not treated as a page rendered only by JavaScript, but it has no main heading, no canonical tag and the same default title as every other page on the site.",
+      "longParagraphs": 0,
+      "stockPhrases": [],
+      "readingEase": null,
+      "examples": [
+        "It has some real words in it so that it is not…"
+      ]
+    },
+    {
+      "url": "http://127.0.0.1:<port>/about/",
+      "longSentences": 1,
+      "longestSentence": "It has some real words in it so that it is not treated as a page rendered only by JavaScript, but it has no main heading, no canonical tag and the same default title as every other page on the site.",
+      "longParagraphs": 0,
+      "stockPhrases": [],
+      "readingEase": null,
+      "examples": [
+        "It has some real words in it so that it is not…"
+      ]
+    },
+    {
+      "url": "http://127.0.0.1:<port>/docs/",
+      "longSentences": 1,
+      "longestSentence": "It has some real words in it so that it is not treated as a page rendered only by JavaScript, but it has no main heading, no canonical tag and the same default title as every other page on the site.",
+      "longParagraphs": 0,
+      "stockPhrases": [],
+      "readingEase": null,
+      "examples": [
+        "It has some real words in it so that it is not…"
+      ]
+    },
+    {
+      "url": "http://127.0.0.1:<port>/pricing/",
+      "longSentences": 1,
+      "longestSentence": "It has some real words in it so that it is not treated as a page rendered only by JavaScript, but it has no main heading, no canonical tag and the same default title as every other page on the site.",
+      "longParagraphs": 0,
+      "stockPhrases": [],
+      "readingEase": null,
+      "examples": [
+        "It has some real words in it so that it is not…"
+      ]
+    }
+  ],
+  "businessType": {
+    "guess": null,
+    "alternatives": [],
+    "evidence": [],
+    "confidence": "none"
+  },
+  "images": [],
+  "robotsTxt": {
+    "status": 200,
+    "hash": "16ceb5ee3e0dc13aa9adf31a3ebbe45a1d965b8c2b9f72eaf84e5911e140ed95",
+    "text": "User-agent: *\nAllow: /\n"
+  },
+  "redirects": [],
+  "sections": [
+    {
+      "path": "/",
+      "pages": 4,
+      "share": 1
+    }
+  ],
+  "aiBots": [
+    {
+      "bot": "OAI-SearchBot",
+      "vendor": "OpenAI",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Claude-SearchBot",
+      "vendor": "Anthropic",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "PerplexityBot",
+      "vendor": "Perplexity",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "MistralAI-Index",
+      "vendor": "Mistral",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "DuckAssistBot",
+      "vendor": "DuckDuckGo",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Amzn-SearchBot",
+      "vendor": "Amazon",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "YandexAdditionalBot",
+      "vendor": "Yandex",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Applebot",
+      "vendor": "Apple",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "GPTBot",
+      "vendor": "OpenAI",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "ClaudeBot",
+      "vendor": "Anthropic",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Google-Extended",
+      "vendor": "Google",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Applebot-Extended",
+      "vendor": "Apple",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "CCBot",
+      "vendor": "Common Crawl",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Bytespider",
+      "vendor": "ByteDance",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "meta-externalagent",
+      "vendor": "Meta",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "MistralAI-Training",
+      "vendor": "Mistral",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Amazonbot",
+      "vendor": "Amazon",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "ChatGPT-User",
+      "vendor": "OpenAI",
+      "kind": "user",
+      "robots": "allowed",
+      "mayIgnore": true
+    },
+    {
+      "bot": "Claude-User",
+      "vendor": "Anthropic",
+      "kind": "user",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Perplexity-User",
+      "vendor": "Perplexity",
+      "kind": "user",
+      "robots": "allowed",
+      "mayIgnore": true
+    },
+    {
+      "bot": "Google-Agent",
+      "vendor": "Google",
+      "kind": "user",
+      "robots": "allowed",
+      "mayIgnore": true
+    },
+    {
+      "bot": "Google-GeminiNotebook",
+      "vendor": "Google",
+      "kind": "user",
+      "robots": "allowed",
+      "mayIgnore": true
+    },
+    {
+      "bot": "MistralAI-User",
+      "vendor": "Mistral",
+      "kind": "user",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Amzn-User",
+      "vendor": "Amazon",
+      "kind": "user",
+      "robots": "allowed",
+      "mayIgnore": true
+    },
+    {
+      "bot": "Meta-ExternalFetcher",
+      "vendor": "Meta",
+      "kind": "user",
+      "robots": "allowed",
+      "mayIgnore": true
+    },
+    {
+      "bot": "OAI-AdsBot",
+      "vendor": "OpenAI",
+      "kind": "other",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Google-CloudVertexBot",
+      "vendor": "Google",
+      "kind": "other",
+      "robots": "allowed"
+    }
+  ],
+  "trainingOptOut": "not-set",
+  "linkStrength": {
+    "pages": {
+      "/": 100,
+      "/pricing/": 100,
+      "/about/": 100,
+      "/docs/": 100
+    },
+    "median": 100
+  },
+  "pageWords": {
+    "file": "seo-crawl.words.json",
+    "stamp": 1795176000000,
+    "pages": 4
+  },
+  "landmarks": {
+    "checked": 4,
+    "count": 4,
+    "pages": [
+      {
+        "url": "http://127.0.0.1:<port>/",
+        "missing": [
+          "header",
+          "footer"
+        ]
+      },
+      {
+        "url": "http://127.0.0.1:<port>/pricing/",
+        "missing": [
+          "header",
+          "footer"
+        ]
+      },
+      {
+        "url": "http://127.0.0.1:<port>/about/",
+        "missing": [
+          "header",
+          "footer"
+        ]
+      },
+      {
+        "url": "http://127.0.0.1:<port>/docs/",
+        "missing": [
+          "header",
+          "footer"
+        ]
+      }
+    ]
+  },
+  "media": {
+    "serverTimes": {
+      "pages": 4,
+      "median": 0,
+      "p95": 0,
+      "slow": []
+    }
+  },
+  "linksToOtherSites": {
+    "pages": {
+      "http://127.0.0.1:<port>/": 0,
+      "http://127.0.0.1:<port>/pricing/": 0,
+      "http://127.0.0.1:<port>/about/": 0,
+      "http://127.0.0.1:<port>/docs/": 0
+    },
+    "domains": {}
+  },
+  "trustSignals": [
+    {
+      "id": "about",
+      "label": "About page",
+      "rule": "TRUST-04",
+      "applies": true,
+      "found": true,
+      "evidence": "/about/ on /",
+      "add": "Add an About page that says who runs the site and why visitors can trust it, and link it from the main menu or the footer."
+    },
+    {
+      "id": "contact",
+      "label": "Contact details",
+      "rule": "TRUST-04",
+      "applies": true,
+      "found": false,
+      "evidence": null,
+      "add": "Add a Contact page, or show an email address or phone number, and link it from every page."
+    },
+    {
+      "id": "org-schema",
+      "label": "Organization schema",
+      "rule": "SCHEMA-02",
+      "applies": true,
+      "found": false,
+      "evidence": "no Organization schema",
+      "add": "Add Organization schema (or your business type) to the home page with the business's `name`, `logo` and `sameAs` links to its official profiles."
+    },
+    {
+      "id": "author-byline",
+      "label": "Author names",
+      "rule": "CONTENT-07",
+      "applies": false,
+      "found": false,
+      "evidence": null,
+      "add": "Name the author on each article, on the page and as `author` in its Article schema."
+    },
+    {
+      "id": "author-page",
+      "label": "Author pages",
+      "rule": "CONTENT-07",
+      "applies": false,
+      "found": false,
+      "evidence": null,
+      "add": "Link each author's name to a page about them (role, experience, credentials), and give the author a `url` in the schema."
+    },
+    {
+      "id": "dates",
+      "label": "Dates on articles",
+      "rule": "CONTENT-07",
+      "applies": false,
+      "found": false,
+      "evidence": null,
+      "add": "Show when each article was published or last reviewed, and add `datePublished` and `dateModified` to its schema. Change them only with real edits (CONTENT-12)."
+    },
+    {
+      "id": "sources",
+      "label": "Sources cited",
+      "rule": "CONTENT-10",
+      "applies": true,
+      "found": false,
+      "evidence": null,
+      "add": "Link the source next to each fact and figure in your content."
+    },
+    {
+      "id": "customer-proof",
+      "label": "Customer reviews",
+      "rule": "TRUST-05",
+      "applies": true,
+      "found": false,
+      "evidence": null,
+      "add": "Show real reviews, testimonials or case studies from customers. Only real ones count: never invent or edit them."
+    },
+    {
+      "id": "policies",
+      "label": "Policies",
+      "rule": "TRUST-03",
+      "applies": true,
+      "found": false,
+      "evidence": "no link to a privacy policy",
+      "add": "Add a privacy policy and link it from the footer."
+    },
+    {
+      "id": "https",
+      "label": "HTTPS and security headers",
+      "rule": "TRUST-01",
+      "applies": true,
+      "found": false,
+      "evidence": "HTTPS, with open security findings",
+      "add": "Serve every page over HTTPS and fix the open security findings (TRUST-01, TRUST-07)."
+    },
+    {
+      "id": "own-media",
+      "label": "Own images",
+      "rule": null,
+      "applies": true,
+      "found": false,
+      "evidence": null,
+      "add": "Use your own photos, screenshots or diagrams on content pages, rather than none or stock photos."
+    }
+  ],
+  "errors": [],
+  "pages": [
+    {
+      "url": "http://127.0.0.1:<port>/",
+      "status": 200,
+      "depth": 0,
+      "inSitemap": false,
+      "noindex": false,
+      "canonical": null,
+      "title": "Create Next App",
+      "description": "Generated by create next app",
+      "ogTitle": null,
+      "ogImage": null,
+      "h1Text": null,
+      "words": 65,
+      "h1": 0,
+      "schema": [],
+      "schemaOther": [],
+      "schemaProps": {},
+      "linksOut": 4,
+      "linksIn": 3,
+      "h2s": [],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": null,
+      "hreflang": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/pricing/",
+      "status": 200,
+      "depth": 1,
+      "inSitemap": false,
+      "noindex": false,
+      "canonical": null,
+      "title": "Create Next App",
+      "description": "Generated by create next app",
+      "ogTitle": null,
+      "ogImage": null,
+      "h1Text": null,
+      "words": 68,
+      "h1": 0,
+      "schema": [],
+      "schemaOther": [],
+      "schemaProps": {},
+      "linksOut": 4,
+      "linksIn": 3,
+      "h2s": [],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": null,
+      "hreflang": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/about/",
+      "status": 200,
+      "depth": 1,
+      "inSitemap": false,
+      "noindex": false,
+      "canonical": null,
+      "title": "Create Next App",
+      "description": "Generated by create next app",
+      "ogTitle": null,
+      "ogImage": null,
+      "h1Text": null,
+      "words": 66,
+      "h1": 0,
+      "schema": [],
+      "schemaOther": [],
+      "schemaProps": {},
+      "linksOut": 4,
+      "linksIn": 3,
+      "h2s": [],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": null,
+      "hreflang": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/docs/",
+      "status": 200,
+      "depth": 1,
+      "inSitemap": false,
+      "noindex": false,
+      "canonical": null,
+      "title": "Create Next App",
+      "description": "Generated by create next app",
+      "ogTitle": null,
+      "ogImage": null,
+      "h1Text": null,
+      "words": 66,
+      "h1": 0,
+      "schema": [],
+      "schemaOther": [],
+      "schemaProps": {},
+      "linksOut": 4,
+      "linksIn": 3,
+      "h2s": [],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": null,
+      "hreflang": []
+    }
+  ]
+}

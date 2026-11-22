@@ -1,0 +1,4362 @@
+{
+  "site": {
+    "name": "Example Plumbing & Heating \"Kitchen Sink\" <test> Zürich",
+    "url": "https://www.example.com",
+    "framework": "Next.js 16 (App Router)",
+    "siteTypes": [
+      "local-business",
+      "services",
+      "ecommerce"
+    ],
+    "profile": "docs/seo-profile.md"
+  },
+  "run": {
+    "mode": "fix",
+    "date": "2026-11-20",
+    "pagesCrawled": 1240,
+    "auditor": "seo-supervisor & content-scan.mjs"
+  },
+  "summary": "Not ready: two blockers hold the score down, the 80 town pages that only swap the town name and a noindex on the home page. The boiler and heat-pump pages are solid & well linked, and this run fixed the staging canonicals and the sitemap host. Fix the two blockers first, then the slow combi-boiler page, the short HSTS header and the long titles; the owner's call on AI crawlers is under Decisions. Everything else is minor.",
+  "findings": [
+    {
+      "id": "F-001",
+      "rule": "LOCAL-02",
+      "severity": "blocker",
+      "category": "Local business",
+      "status": "open",
+      "fixBy": "owner",
+      "effort": "half-day",
+      "title": "80 town pages differ only by the town name",
+      "what": "Intros and FAQs are one template with `{town}` swapped, so “Zürich” & “Winterthur” read the same; the crawler found 1,204 page pairs sharing over 60% of their main text. Related: CONTENT-04.",
+      "why": "Google treats pages that only swap a place name as doorway pages and can filter them or hold down the whole site.",
+      "evidence": [
+        {
+          "url": "https://www.example.com/plumber-zurich/",
+          "detail": "74% shared with /plumber-winterthur/ <main> & \"FAQ\" — only “Zürich” differs"
+        },
+        {
+          "url": "https://www.example.com/plumber-winterthur/",
+          "detail": "71% shared with /plumber-uster/ (Winterthur)"
+        },
+        {
+          "url": "https://www.example.com/plumber-uster/",
+          "detail": "72% shared with /plumber-dubendorf/ (Uster)"
+        },
+        {
+          "url": "https://www.example.com/plumber-dubendorf/",
+          "detail": "73% shared with /plumber-wetzikon/ (Dübendorf)"
+        },
+        {
+          "url": "https://www.example.com/plumber-wetzikon/",
+          "detail": "74% shared with /plumber-kloten/ (Wetzikon)"
+        },
+        {
+          "url": "https://www.example.com/plumber-kloten/",
+          "detail": "75% shared with /plumber-horgen/ (Kloten)"
+        },
+        {
+          "url": "https://www.example.com/plumber-horgen/",
+          "detail": "76% shared with /plumber-thalwil/ (Horgen)"
+        },
+        {
+          "url": "https://www.example.com/plumber-thalwil/",
+          "detail": "77% shared with /plumber-adliswil/ (Thalwil)"
+        },
+        {
+          "url": "https://www.example.com/plumber-adliswil/",
+          "detail": "78% shared with /plumber-wadenswil/ (Adliswil)"
+        },
+        {
+          "url": "https://www.example.com/plumber-wadenswil/",
+          "detail": "79% shared with /plumber-bulach/ (Wädenswil)"
+        },
+        {
+          "url": "https://www.example.com/plumber-bulach/",
+          "detail": "80% shared with /plumber-dietikon/ (Bülach)"
+        },
+        {
+          "url": "https://www.example.com/plumber-dietikon/",
+          "detail": "81% shared with /plumber-zurich/ (Dietikon)"
+        },
+        {
+          "file": "src/lib/towns.ts",
+          "line": 214,
+          "detail": "intro template only swaps `{town}`"
+        }
+      ],
+      "count": 80,
+      "fix": "Publish only towns with real local proof (jobs, photos, reviews from that town), each with its own intro and FAQs, in `src/data/towns.ts`. Hold the rest with the publish flag."
+    },
+    {
+      "id": "F-002",
+      "rule": "CRAWL-02",
+      "severity": "blocker",
+      "category": "Crawling & indexing",
+      "status": "open",
+      "check": "home-noindex",
+      "effort": "quick",
+      "title": "The home page is noindex",
+      "what": "The home page sends `X-Robots-Tag: noindex` from a leftover staging header in `next.config.ts`.",
+      "why": "Google drops a noindex page from search, and the home page carries the brand searches.",
+      "evidence": [
+        {
+          "url": "https://www.example.com/",
+          "detail": "X-Robots-Tag: noindex, nofollow"
+        },
+        {
+          "file": "next.config.ts",
+          "line": 31,
+          "detail": "headers() adds X-Robots-Tag for every path"
+        }
+      ],
+      "fix": "Remove the X-Robots-Tag header from `next.config.ts` for production builds."
+    },
+    {
+      "id": "F-003",
+      "rule": "TRUST-01",
+      "severity": "high",
+      "category": "Trust & security",
+      "status": "open",
+      "check": "hsts-short",
+      "effort": "quick",
+      "title": "HSTS max-age is one day",
+      "what": "`Strict-Transport-Security: max-age=86400` on every page; the preload list asks for a year and **includeSubDomains**.",
+      "why": "A short HSTS lifetime leaves visitors open to downgrade attacks between visits.",
+      "evidence": [
+        {
+          "url": "https://www.example.com/",
+          "detail": "Strict-Transport-Security: max-age=86400"
+        }
+      ],
+      "fix": "Set `max-age=31536000; includeSubDomains` in the CDN's response headers."
+    },
+    {
+      "id": "F-004",
+      "rule": "PERF-01",
+      "severity": "high",
+      "category": "Performance",
+      "status": "open",
+      "effort": "hours",
+      "title": "The combi-boiler page fails Core Web Vitals (LCP 4.6 s)",
+      "what": "The hero image is a 2.4 MB JPEG loaded lazily; real visitors wait 4.6 s for it. Related: PERF-08.",
+      "why": "Slow pages lose visitors and rank lower in close calls.",
+      "evidence": [
+        {
+          "url": "https://www.example.com/boilers/combi/",
+          "detail": "LCP 4.6 s (poor), hero.jpg 2.4 MB, loading=\"lazy\""
+        },
+        {
+          "url": "https://www.example.com/boilers/",
+          "detail": "LCP 3.1 s, same hero component"
+        }
+      ],
+      "count": 2,
+      "fix": "Serve the hero as WebP at 1,600 px, give it `fetchpriority=\"high\"` and drop `loading=\"lazy\"` in `src/components/Hero.tsx`."
+    },
+    {
+      "id": "F-005",
+      "rule": "URL-04",
+      "severity": "high",
+      "category": "URLs & canonicals",
+      "status": "fixed",
+      "check": "canonical-not-self",
+      "title": "52 canonicals pointed at the staging host",
+      "what": "Canonicals used `https://staging.example.com` because `NEXT_PUBLIC_SITE_URL` was unset in the production build.",
+      "why": "Canonicals on the wrong host send ranking signals to a site that shouldn't be indexed.",
+      "evidence": [
+        {
+          "url": "https://www.example.com/heat-pumps/",
+          "detail": "canonical → https://staging.example.com/heat-pumps/"
+        }
+      ],
+      "count": 52,
+      "fix": "Set the production origin in one place and use it for `metadataBase`.",
+      "fixed": {
+        "summary": "metadataBase now reads SITE_URL, which fails the build if missing; production env updated.",
+        "files": [
+          "src/lib/seo.ts",
+          "next.config.ts"
+        ],
+        "verified": "re-crawl 20 Nov: 0 canonicals on the wrong host"
+      }
+    },
+    {
+      "id": "F-006",
+      "rule": "MAP-02",
+      "severity": "high",
+      "category": "Sitemaps & robots",
+      "status": "fixed",
+      "title": "The sitemap listed localhost URLs",
+      "what": "All 1,240 `<loc>` entries used `http://localhost:3000`.",
+      "why": "Google ignores sitemap URLs on the wrong host, so new pages are found slowly.",
+      "evidence": [
+        {
+          "url": "https://www.example.com/sitemap.xml",
+          "detail": "<loc>http://localhost:3000/boilers/</loc>"
+        }
+      ],
+      "count": 1240,
+      "fix": "Build sitemap URLs from the production origin.",
+      "fixed": {
+        "summary": "sitemap.ts uses the same SITE_URL constant as the metadata helper.",
+        "files": [
+          "src/app/sitemap.ts"
+        ],
+        "verified": "re-crawl 20 Nov: all 1,240 URLs on https://www.example.com"
+      }
+    },
+    {
+      "id": "F-007",
+      "rule": "AI-02",
+      "severity": "needs-decision",
+      "category": "AI search",
+      "status": "needs-decision",
+      "title": "robots.txt blocks OAI-SearchBot and PerplexityBot",
+      "what": "The robots file blocks every AI crawler, including the search crawlers that decide whether the site is cited in AI answers.",
+      "why": "Blocking search crawlers keeps a local business out of AI answers; blocking only training crawlers is a common middle ground.",
+      "evidence": [
+        {
+          "url": "https://www.example.com/robots.txt",
+          "detail": "User-agent: OAI-SearchBot / Disallow: /"
+        }
+      ],
+      "fix": "Decide the policy and record it in the SEO profile.",
+      "decision": {
+        "question": "Should AI search crawlers be allowed?",
+        "options": [
+          "Allow all AI crawlers",
+          "Block training crawlers only (GPTBot, ClaudeBot, Google-Extended, CCBot)",
+          "Block all (current)"
+        ],
+        "recommendation": "Block training only, so the business can still be cited in AI answers."
+      }
+    },
+    {
+      "id": "F-008",
+      "rule": "META-01",
+      "severity": "medium",
+      "category": "Metadata",
+      "status": "in-progress",
+      "effort": "hours",
+      "title": "14 titles are longer than 60 characters",
+      "what": "Service titles append “Fast & Friendly” and the brand, e.g. 74 characters for the boiler-repair page.",
+      "why": "Long titles get cut off in results, often losing the brand or the key phrase.",
+      "evidence": [
+        {
+          "url": "https://www.example.com/boilers/repair/",
+          "detail": "74 chars: Boiler Repair Zürich - Fast & Friendly <24/7> | Example Plumbing & Heating"
+        },
+        {
+          "url": "https://www.example.com/search?q=boiler&page=2",
+          "detail": "68 chars, \"Search results\" page"
+        }
+      ],
+      "count": 14,
+      "fix": "Shorten the service title pattern in `src/lib/seo.ts` to “{Service} in {Town} | Example Plumbing”."
+    },
+    {
+      "id": "F-009",
+      "rule": "CONTENT-01",
+      "severity": "medium",
+      "category": "Headings & content",
+      "status": "open",
+      "title": "The heat-pump guide lost its H1",
+      "what": "A layout change turned the H1 into a styled `<div>`.",
+      "why": "The H1 tells people and search engines what the page is about.",
+      "evidence": [
+        {
+          "url": "https://www.example.com/blog/heat-pump-guide/",
+          "detail": "no <h1> in the server HTML"
+        }
+      ],
+      "fix": "Restore the `<h1>` in `src/app/blog/[slug]/page.tsx`."
+    },
+    {
+      "id": "F-010",
+      "rule": "SCHEMA-03",
+      "severity": "medium",
+      "category": "Structured data",
+      "status": "wont-fix",
+      "title": "Product schema has no aggregateRating",
+      "what": "The 40 shop products give no `aggregateRating`, so no review stars can show.",
+      "why": "Review stars can lift clicks on product results.",
+      "evidence": [
+        {
+          "url": "https://www.example.com/shop/thermostat-x2/",
+          "detail": "Product without aggregateRating"
+        }
+      ],
+      "count": 40,
+      "fix": "Add aggregateRating from the review system once it collects real reviews."
+    },
+    {
+      "id": "F-011",
+      "rule": "LINK-02",
+      "severity": "low",
+      "category": "Internal linking",
+      "status": "open",
+      "effort": "quick",
+      "title": "3 pages are linked from nowhere",
+      "what": "Old landing pages, such as O'Brien's partner page, have no internal links.",
+      "why": "Pages nothing links to are found late and rank poorly.",
+      "evidence": [
+        {
+          "url": "https://www.example.com/o'brien-partners/",
+          "detail": "0 internal links in"
+        },
+        {
+          "url": "https://www.example.com/offers/spring-2025/",
+          "detail": "0 internal links in"
+        },
+        {
+          "url": "https://partner.example.org/plumbers",
+          "detail": "another site's page, left out of page scores"
+        }
+      ],
+      "count": 3,
+      "fix": "Link them from `/about/` or retire them with a 301."
+    },
+    {
+      "id": "F-012",
+      "severity": "low",
+      "category": "Accessibility",
+      "status": "open",
+      "effort": "someday",
+      "title": "The booking form's date field has no label",
+      "what": "The date input has a placeholder but no `<label>`.",
+      "why": "Screen-reader users can't tell what to type.",
+      "evidence": [
+        {
+          "file": "src/components/BookingForm.tsx",
+          "line": 48,
+          "detail": "<input type=\"date\" placeholder=\"When?\">"
+        }
+      ],
+      "fix": "Add a visible `<label for>` in `BookingForm.tsx`."
+    },
+    {
+      "id": "F-013",
+      "rule": "MEDIA-01",
+      "severity": "low",
+      "category": "Images & media",
+      "status": "open",
+      "title": "Gallery images use “image1.jpg”-style names and empty alt text",
+      "what": "18 gallery photos have `alt=\"\"` and file names like `IMG_0042.jpg`.",
+      "why": "Image search can't tell what the photos show.",
+      "evidence": [
+        {
+          "url": "https://www.example.com/gallery/",
+          "detail": "18 of 18 images have alt=\"\""
+        }
+      ],
+      "count": 18,
+      "fix": "Write short alt text in the CMS gallery fields.",
+      "fixBy": "owner"
+    },
+    {
+      "id": "F-014",
+      "rule": "TRUST-02",
+      "severity": "low",
+      "category": "Trust & security",
+      "status": "open",
+      "title": "No /.well-known/security.txt",
+      "what": "The path returns 404.",
+      "why": "A missing security contact slows down people who want to report a problem.",
+      "fix": "Publish one following RFC 9116."
+    }
+  ],
+  "decisions": [
+    {
+      "question": "Keep the 80 town pages live while they're rewritten?",
+      "context": "They're linked from the footer & the service-area map.",
+      "options": [
+        "Rewrite first (2–3 days)",
+        "Keep the 12 towns with real jobs live, hold the rest"
+      ],
+      "recommendation": "Keep the 12 towns with real local proof live and hold the rest."
+    },
+    {
+      "question": "Is the emergency call-out price still CHF 120?"
+    }
+  ],
+  "passed": [
+    {
+      "rule": "REND-01",
+      "title": "Content is in the server HTML, not only in JavaScript",
+      "category": "Rendering",
+      "detail": "src/app/[slug]/page.tsx is a server component"
+    },
+    {
+      "rule": "REND-02",
+      "title": "Collapsed content stays in the HTML",
+      "category": "Rendering"
+    },
+    {
+      "rule": "CONTENT-02",
+      "title": "Heading levels are not skipped",
+      "category": "Headings & content"
+    },
+    {
+      "rule": "CONTENT-05",
+      "title": "No thin pages",
+      "category": "Headings & content"
+    },
+    {
+      "rule": "SCHEMA-01",
+      "title": "JSON-LD parses without errors",
+      "category": "Structured data"
+    },
+    {
+      "rule": "SCHEMA-02",
+      "title": "LocalBusiness and WebSite schema on the home page",
+      "category": "Structured data",
+      "detail": "src/app/layout.tsx:44"
+    },
+    {
+      "rule": "URL-02",
+      "title": "One trailing-slash style, the other variant redirects",
+      "category": "URLs & canonicals"
+    },
+    {
+      "rule": "URL-07",
+      "title": "Old URLs 301 to their new address",
+      "category": "URLs & canonicals"
+    },
+    {
+      "rule": "MAP-01",
+      "title": "The sitemap is valid XML",
+      "category": "Sitemaps & robots"
+    },
+    {
+      "rule": "MAP-05",
+      "title": "robots.txt answers 200 and names the sitemap",
+      "category": "Sitemaps & robots"
+    },
+    {
+      "rule": "CRAWL-07",
+      "title": "No internal links to broken pages",
+      "category": "Crawling & indexing"
+    },
+    {
+      "rule": "LINK-01",
+      "title": "Every page is within 3 clicks of the home page",
+      "category": "Internal linking"
+    },
+    {
+      "rule": "LOCAL-01",
+      "title": "Name, address & phone match across the site",
+      "category": "Local business"
+    },
+    {
+      "rule": "LOCAL-06",
+      "title": "The address is in the LocalBusiness schema",
+      "category": "Local business"
+    },
+    {
+      "rule": "PERF-03",
+      "title": "The first image is not lazy-loaded on most templates",
+      "category": "Performance"
+    },
+    {
+      "rule": "META-03",
+      "title": "Every page has a meta description",
+      "category": "Metadata"
+    },
+    {
+      "rule": "AI-01",
+      "title": "An llms.txt is not required and none is served",
+      "category": "AI search"
+    },
+    {
+      "rule": "TRUST-03",
+      "title": "Privacy and terms pages are linked from every page",
+      "category": "Trust & security"
+    },
+    {
+      "rule": "SHOP-01",
+      "title": "Products have price and availability",
+      "category": "E-commerce"
+    },
+    {
+      "rule": "SVC-01",
+      "title": "Each service has its own page",
+      "category": "Services"
+    }
+  ],
+  "notChecked": [
+    {
+      "area": "Core Web Vitals for the town pages",
+      "reason": "Too few Chrome visits for field data; the lab numbers are on the Overview."
+    },
+    {
+      "rule": "SHOP-05",
+      "reason": "Merchant Center feed: no access to the account."
+    },
+    {
+      "area": "CDN/WAF behaviour toward search & AI crawlers",
+      "reason": "Can't be seen from a crawl; check after launch with **URL Inspection**."
+    }
+  ],
+  "notes": [
+    "Crawled https://www.example.com with `--outside --lighthouse all`, stopped at 1,240 pages (--max).",
+    "F-010 is won't fix: the owner has no review system yet, so there are no real ratings to mark up (accepted in the SEO profile).",
+    "Matomo & PostHog numbers cover 22 Aug to 19 Nov 2026; Clarity's cover the 3 days before 20 Nov."
+  ],
+  "speed": {
+    "strategy": "mobile",
+    "samples": [
+      {
+        "url": "https://www.example.com/",
+        "field": {
+          "lcp": 2300,
+          "inp": 170,
+          "cls": 0.04,
+          "fcp": 1400,
+          "ttfb": 650
+        },
+        "origin": {
+          "lcp": 2400,
+          "inp": 180,
+          "cls": 0.05,
+          "fcp": 1500,
+          "ttfb": 900,
+          "shares": {
+            "lcp": [
+              0.78,
+              0.15,
+              0.07
+            ],
+            "inp": [
+              0.81,
+              0.14,
+              0.05
+            ],
+            "cls": [
+              0.9,
+              0.07,
+              0.03
+            ],
+            "fcp": [
+              0.7,
+              0.2,
+              0.1
+            ],
+            "ttfb": [
+              0.6,
+              0.3,
+              0.1
+            ]
+          }
+        },
+        "lab": {
+          "lcp": 2100,
+          "cls": 0.02,
+          "tbt": 150,
+          "lcpElement": "img.hero",
+          "version": "13.0.2"
+        }
+      },
+      {
+        "url": "https://www.example.com/boilers/combi/",
+        "field": {
+          "lcp": 4600,
+          "inp": 240,
+          "cls": 0.12
+        },
+        "origin": {
+          "lcp": 2400,
+          "inp": 180,
+          "cls": 0.05
+        },
+        "lab": {
+          "lcp": 5200,
+          "cls": 0.1,
+          "tbt": 620,
+          "version": "13.0.2"
+        }
+      }
+    ],
+    "trend": {
+      "weeks": 25,
+      "lcp": [
+        2800,
+        2400
+      ],
+      "inp": [
+        220,
+        180
+      ],
+      "cls": [
+        0.08,
+        0.05
+      ],
+      "avg4": {
+        "lcp": [
+          2750,
+          2420
+        ],
+        "inp": [
+          215,
+          182
+        ],
+        "cls": [
+          0.08,
+          0.05
+        ]
+      },
+      "series": {
+        "lcp": [
+          2800,
+          2790,
+          null,
+          2700
+        ],
+        "inp": [
+          220,
+          218,
+          null,
+          200
+        ],
+        "cls": [
+          0.08,
+          0.08,
+          null,
+          0.06
+        ]
+      },
+      "periods": [
+        "2026-06-07",
+        "2026-11-15"
+      ],
+      "period": {
+        "from": "2026-10-19",
+        "to": "2026-11-15"
+      }
+    },
+    "lcpBreakdown": {
+      "source": "real visitors",
+      "url": "https://www.example.com",
+      "ttfb": 600,
+      "loadDelay": 1200,
+      "loadDuration": 400,
+      "renderDelay": 200
+    },
+    "tablet": {
+      "trend": {
+        "weeks": 25,
+        "lcp": [
+          2600,
+          2300
+        ]
+      },
+      "lcpBreakdown": {
+        "ttfb": 500,
+        "loadDelay": 300,
+        "loadDuration": 900,
+        "renderDelay": 100
+      }
+    },
+    "pageTrend": {
+      "url": "https://www.example.com/",
+      "trend": {
+        "weeks": 25,
+        "lcp": [
+          2900,
+          2500
+        ],
+        "inp": [
+          230,
+          190
+        ],
+        "cls": [
+          0.09,
+          0.04
+        ]
+      }
+    },
+    "desktop": {
+      "strategy": "desktop",
+      "samples": [
+        {
+          "url": "https://www.example.com/",
+          "origin": {
+            "lcp": 1600,
+            "inp": 90,
+            "cls": 0.12
+          }
+        }
+      ],
+      "trend": {
+        "weeks": 25,
+        "lcp": [
+          1900,
+          1600
+        ]
+      }
+    }
+  },
+  "labSpeed": [
+    {
+      "url": "https://www.example.com/",
+      "lcp": 3200,
+      "cls": 0.04,
+      "tbt": 450
+    },
+    {
+      "url": "https://www.example.com/boilers/combi/",
+      "lcp": 5600,
+      "cls": 0.11,
+      "tbt": 800
+    }
+  ],
+  "lighthouse": [
+    {
+      "url": "https://www.example.com/",
+      "scores": {
+        "performance": 72,
+        "seo": 92,
+        "accessibility": 88,
+        "bestPractices": 96
+      },
+      "metrics": {
+        "lcp": 2000,
+        "cls": 0.02,
+        "tbt": 100,
+        "fcp": 1200,
+        "speedIndex": 2400
+      },
+      "failed": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility"
+        }
+      ],
+      "lcpParts": {
+        "ttfb": 500,
+        "loadDelay": 900,
+        "loadDuration": 600,
+        "renderDelay": 200
+      },
+      "detail": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility",
+          "items": [
+            "<img src=\"/images/van-0.jpg\">",
+            "img.gallery-thumb"
+          ]
+        },
+        {
+          "id": "uses-optimized-images",
+          "title": "Efficiently encode images",
+          "category": "Performance",
+          "items": [
+            "/images/hero.jpg",
+            "/images/boiler & pipes.png"
+          ]
+        },
+        {
+          "id": "color-contrast",
+          "title": "Background and foreground colors do not have a sufficient contrast ratio",
+          "category": "Accessibility",
+          "items": [
+            "a.footer-link",
+            "p.small <muted>"
+          ]
+        }
+      ],
+      "passed": 40,
+      "version": "13.3.0",
+      "lcpElement": "img.hero",
+      "agentic": {
+        "passed": 5,
+        "total": 7,
+        "failed": [
+          {
+            "id": "agent-button-names",
+            "title": "Buttons have names agents can read"
+          },
+          {
+            "id": "agent-form-labels",
+            "title": "Form fields have labels & descriptions"
+          }
+        ]
+      }
+    },
+    {
+      "url": "https://www.example.com/boilers/",
+      "scores": {
+        "performance": 58,
+        "seo": 91,
+        "accessibility": 87,
+        "bestPractices": 96
+      },
+      "metrics": {
+        "lcp": 2300,
+        "cls": 0.02,
+        "tbt": 140,
+        "fcp": 1200,
+        "speedIndex": 2400
+      },
+      "failed": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility"
+        }
+      ],
+      "lcpParts": {
+        "ttfb": 500,
+        "loadDelay": 900,
+        "loadDuration": 600,
+        "renderDelay": 200
+      },
+      "detail": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility",
+          "items": [
+            "<img src=\"/images/van-1.jpg\">",
+            "img.gallery-thumb"
+          ]
+        },
+        {
+          "id": "uses-optimized-images",
+          "title": "Efficiently encode images",
+          "category": "Performance",
+          "items": [
+            "/images/hero.jpg",
+            "/images/boiler & pipes.png"
+          ]
+        }
+      ],
+      "passed": 39,
+      "version": "13.3.0",
+      "lcpElement": "img.hero"
+    },
+    {
+      "url": "https://www.example.com/boilers/combi/",
+      "scores": {
+        "performance": 41,
+        "seo": 90,
+        "accessibility": 86,
+        "bestPractices": 96
+      },
+      "metrics": {
+        "lcp": 2600,
+        "cls": 0.02,
+        "tbt": 180,
+        "fcp": 1200,
+        "speedIndex": 2400
+      },
+      "failed": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility"
+        }
+      ],
+      "lcpParts": {
+        "ttfb": 500,
+        "loadDelay": 900,
+        "loadDuration": 600,
+        "renderDelay": 200
+      },
+      "detail": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility",
+          "items": [
+            "<img src=\"/images/van-2.jpg\">",
+            "img.gallery-thumb"
+          ]
+        },
+        {
+          "id": "uses-optimized-images",
+          "title": "Efficiently encode images",
+          "category": "Performance",
+          "items": [
+            "/images/hero.jpg",
+            "/images/boiler & pipes.png"
+          ]
+        }
+      ],
+      "passed": 38,
+      "version": "13.3.0",
+      "lcpElement": "img.hero"
+    },
+    {
+      "url": "https://www.example.com/heat-pumps/",
+      "scores": {
+        "performance": 66,
+        "seo": 92,
+        "accessibility": 85,
+        "bestPractices": 96
+      },
+      "metrics": {
+        "lcp": 2900,
+        "cls": 0.02,
+        "tbt": 220,
+        "fcp": 1200,
+        "speedIndex": 2400
+      },
+      "failed": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility"
+        }
+      ],
+      "lcpParts": {
+        "ttfb": 500,
+        "loadDelay": 900,
+        "loadDuration": 600,
+        "renderDelay": 200
+      },
+      "detail": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility",
+          "items": [
+            "<img src=\"/images/van-3.jpg\">",
+            "img.gallery-thumb"
+          ]
+        },
+        {
+          "id": "uses-optimized-images",
+          "title": "Efficiently encode images",
+          "category": "Performance",
+          "items": [
+            "/images/hero.jpg",
+            "/images/boiler & pipes.png"
+          ]
+        }
+      ],
+      "passed": 37,
+      "version": "13.3.0",
+      "lcpElement": "img.hero"
+    },
+    {
+      "url": "https://www.example.com/blog/",
+      "scores": {
+        "performance": 80,
+        "seo": 91,
+        "accessibility": 84,
+        "bestPractices": 96
+      },
+      "metrics": {
+        "lcp": 3200,
+        "cls": 0.02,
+        "tbt": 260,
+        "fcp": 1200,
+        "speedIndex": 2400
+      },
+      "failed": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility"
+        }
+      ],
+      "lcpParts": {
+        "ttfb": 500,
+        "loadDelay": 900,
+        "loadDuration": 600,
+        "renderDelay": 200
+      },
+      "detail": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility",
+          "items": [
+            "<img src=\"/images/van-4.jpg\">",
+            "img.gallery-thumb"
+          ]
+        },
+        {
+          "id": "uses-optimized-images",
+          "title": "Efficiently encode images",
+          "category": "Performance",
+          "items": [
+            "/images/hero.jpg",
+            "/images/boiler & pipes.png"
+          ]
+        }
+      ],
+      "passed": 36,
+      "version": "13.3.0",
+      "lcpElement": "img.hero"
+    },
+    {
+      "url": "https://www.example.com/blog/boiler-sizes/",
+      "scores": {
+        "performance": 35,
+        "seo": 90,
+        "accessibility": 83,
+        "bestPractices": 96
+      },
+      "metrics": {
+        "lcp": 3500,
+        "cls": 0.02,
+        "tbt": 300,
+        "fcp": 1200,
+        "speedIndex": 2400
+      },
+      "failed": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility"
+        }
+      ],
+      "lcpParts": {
+        "ttfb": 500,
+        "loadDelay": 900,
+        "loadDuration": 600,
+        "renderDelay": 200
+      },
+      "detail": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility",
+          "items": [
+            "<img src=\"/images/van-5.jpg\">",
+            "img.gallery-thumb"
+          ]
+        },
+        {
+          "id": "uses-optimized-images",
+          "title": "Efficiently encode images",
+          "category": "Performance",
+          "items": [
+            "/images/hero.jpg",
+            "/images/boiler & pipes.png"
+          ]
+        }
+      ],
+      "passed": 35,
+      "version": "13.3.0",
+      "lcpElement": "img.hero"
+    },
+    {
+      "url": "https://www.example.com/contact/",
+      "scores": {
+        "performance": 88,
+        "seo": 92,
+        "accessibility": 82,
+        "bestPractices": 96
+      },
+      "metrics": {
+        "lcp": 3800,
+        "cls": 0.02,
+        "tbt": 340,
+        "fcp": 1200,
+        "speedIndex": 2400
+      },
+      "failed": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility"
+        }
+      ],
+      "lcpParts": {
+        "ttfb": 500,
+        "loadDelay": 900,
+        "loadDuration": 600,
+        "renderDelay": 200
+      },
+      "detail": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility",
+          "items": [
+            "<img src=\"/images/van-6.jpg\">",
+            "img.gallery-thumb"
+          ]
+        },
+        {
+          "id": "uses-optimized-images",
+          "title": "Efficiently encode images",
+          "category": "Performance",
+          "items": [
+            "/images/hero.jpg",
+            "/images/boiler & pipes.png"
+          ]
+        }
+      ],
+      "passed": 34,
+      "version": "13.3.0",
+      "lcpElement": "img.hero"
+    },
+    {
+      "url": "https://www.example.com/plumber-zurich/",
+      "scores": {
+        "performance": 52,
+        "seo": 91,
+        "accessibility": 81,
+        "bestPractices": 96
+      },
+      "metrics": {
+        "lcp": 4100,
+        "cls": 0.02,
+        "tbt": 380,
+        "fcp": 1200,
+        "speedIndex": 2400
+      },
+      "failed": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility"
+        }
+      ],
+      "lcpParts": {
+        "ttfb": 500,
+        "loadDelay": 900,
+        "loadDuration": 600,
+        "renderDelay": 200
+      },
+      "detail": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility",
+          "items": [
+            "<img src=\"/images/van-7.jpg\">",
+            "img.gallery-thumb"
+          ]
+        },
+        {
+          "id": "uses-optimized-images",
+          "title": "Efficiently encode images",
+          "category": "Performance",
+          "items": [
+            "/images/hero.jpg",
+            "/images/boiler & pipes.png"
+          ]
+        }
+      ],
+      "passed": 33,
+      "version": "13.3.0",
+      "lcpElement": "img.hero"
+    },
+    {
+      "url": "https://www.example.com/plumber-winterthur/",
+      "scores": {
+        "performance": 50,
+        "seo": 90,
+        "accessibility": 80,
+        "bestPractices": 96
+      },
+      "metrics": {
+        "lcp": 4400,
+        "cls": 0.02,
+        "tbt": 420,
+        "fcp": 1200,
+        "speedIndex": 2400
+      },
+      "failed": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility"
+        }
+      ],
+      "lcpParts": {
+        "ttfb": 500,
+        "loadDelay": 900,
+        "loadDuration": 600,
+        "renderDelay": 200
+      },
+      "detail": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility",
+          "items": [
+            "<img src=\"/images/van-8.jpg\">",
+            "img.gallery-thumb"
+          ]
+        },
+        {
+          "id": "uses-optimized-images",
+          "title": "Efficiently encode images",
+          "category": "Performance",
+          "items": [
+            "/images/hero.jpg",
+            "/images/boiler & pipes.png"
+          ]
+        }
+      ],
+      "passed": 32,
+      "version": "13.3.0",
+      "lcpElement": "img.hero"
+    },
+    {
+      "url": "https://www.example.com/shop/",
+      "scores": {
+        "performance": 31,
+        "seo": 92,
+        "accessibility": 79,
+        "bestPractices": 96
+      },
+      "metrics": {
+        "lcp": 4700,
+        "cls": 0.02,
+        "tbt": 460,
+        "fcp": 1200,
+        "speedIndex": 2400
+      },
+      "failed": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility"
+        }
+      ],
+      "lcpParts": {
+        "ttfb": 500,
+        "loadDelay": 900,
+        "loadDuration": 600,
+        "renderDelay": 200
+      },
+      "detail": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility",
+          "items": [
+            "<img src=\"/images/van-9.jpg\">",
+            "img.gallery-thumb"
+          ]
+        },
+        {
+          "id": "uses-optimized-images",
+          "title": "Efficiently encode images",
+          "category": "Performance",
+          "items": [
+            "/images/hero.jpg",
+            "/images/boiler & pipes.png"
+          ]
+        }
+      ],
+      "passed": 31,
+      "version": "13.3.0",
+      "lcpElement": "img.hero"
+    },
+    {
+      "url": "https://www.example.com/shop/thermostat-x2/",
+      "scores": {
+        "performance": 44,
+        "seo": 91,
+        "accessibility": 78,
+        "bestPractices": 96
+      },
+      "metrics": {
+        "lcp": 5000,
+        "cls": 0.02,
+        "tbt": 500,
+        "fcp": 1200,
+        "speedIndex": 2400
+      },
+      "failed": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility"
+        }
+      ],
+      "lcpParts": {
+        "ttfb": 500,
+        "loadDelay": 900,
+        "loadDuration": 600,
+        "renderDelay": 200
+      },
+      "detail": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility",
+          "items": [
+            "<img src=\"/images/van-10.jpg\">",
+            "img.gallery-thumb"
+          ]
+        },
+        {
+          "id": "uses-optimized-images",
+          "title": "Efficiently encode images",
+          "category": "Performance",
+          "items": [
+            "/images/hero.jpg",
+            "/images/boiler & pipes.png"
+          ]
+        }
+      ],
+      "passed": 30,
+      "version": "13.3.0",
+      "lcpElement": "img.hero"
+    },
+    {
+      "url": "https://www.example.com/about/",
+      "scores": {
+        "performance": 90,
+        "seo": 90,
+        "accessibility": 77,
+        "bestPractices": 96
+      },
+      "metrics": {
+        "lcp": 5300,
+        "cls": 0.02,
+        "tbt": 540,
+        "fcp": 1200,
+        "speedIndex": 2400
+      },
+      "failed": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility"
+        }
+      ],
+      "lcpParts": {
+        "ttfb": 500,
+        "loadDelay": 900,
+        "loadDuration": 600,
+        "renderDelay": 200
+      },
+      "detail": [
+        {
+          "id": "image-alt",
+          "title": "Image elements do not have `[alt]` attributes",
+          "category": "Accessibility",
+          "items": [
+            "<img src=\"/images/van-11.jpg\">",
+            "img.gallery-thumb"
+          ]
+        }
+      ],
+      "passed": 29,
+      "version": "13.3.0",
+      "lcpElement": "img.hero"
+    }
+  ],
+  "authority": [
+    {
+      "domain": "example.com",
+      "openPageRank": 3.6
+    },
+    {
+      "domain": "rival.example",
+      "openPageRank": 5.1
+    }
+  ],
+  "positions": {
+    "queries": 840,
+    "top3": 0.12,
+    "top10": 0.41,
+    "beyond": 0.59
+  },
+  "traffic": {
+    "/": {
+      "clicks": 1840,
+      "impressions": 52300,
+      "ctr": 0.0352,
+      "position": 6.4
+    },
+    "/boilers/": {
+      "clicks": 960,
+      "impressions": 31200,
+      "ctr": 0.0308,
+      "position": 7.9
+    },
+    "/boilers/combi/": {
+      "clicks": 420,
+      "impressions": 18000,
+      "ctr": 0.0233,
+      "position": 9.1
+    },
+    "/plumber-zurich/": {
+      "clicks": 310,
+      "impressions": 9800,
+      "ctr": 0.0316,
+      "position": 5.2
+    },
+    "/blog/boiler-sizes/": {
+      "clicks": 120,
+      "impressions": 9800,
+      "ctr": 0.0122,
+      "position": 14.2
+    },
+    "/heat-pumps/": {
+      "clicks": 0,
+      "impressions": 2400,
+      "ctr": 0,
+      "position": 22
+    }
+  },
+  "trafficPeriod": "Last 3 months",
+  "analytics": {
+    "/": {
+      "sessions": 3400,
+      "engaged": 2100
+    },
+    "/boilers/combi/": {
+      "sessions": 340,
+      "engaged": 150
+    },
+    "/boilers/": {
+      "sessions": 1580,
+      "engaged": 900
+    }
+  },
+  "trafficChange": {
+    "previous": {
+      "from": "2026-05-24",
+      "to": "2026-08-21",
+      "clicks": 1240,
+      "impressions": 41000
+    },
+    "current": {
+      "from": "2026-08-22",
+      "to": "2026-11-19",
+      "clicks": 980,
+      "impressions": 45200
+    },
+    "drops": [
+      {
+        "path": "/boilers/combi/",
+        "before": 210,
+        "after": 90
+      },
+      {
+        "path": "/plumber-uster/",
+        "before": 60,
+        "after": 20
+      }
+    ]
+  },
+  "newQueries": [
+    {
+      "query": "combi boiler cost <2026> & fitting",
+      "clicks": 4,
+      "impressions": 900,
+      "ctr": 0.004,
+      "position": 11.2
+    },
+    {
+      "query": "wärmepumpe zürich",
+      "clicks": 1,
+      "impressions": 300,
+      "ctr": 0.003,
+      "position": 18.5
+    }
+  ],
+  "searchTypes": {
+    "discover": {
+      "clicks": 300,
+      "impressions": 9000,
+      "pages": 12
+    },
+    "image": {
+      "clicks": 120,
+      "impressions": 15000,
+      "pages": 40
+    },
+    "webMultimodal": {
+      "clicks": 8,
+      "impressions": 400,
+      "pages": 3
+    }
+  },
+  "byDevice": {
+    "MOBILE": {
+      "clicks": 600,
+      "impressions": 30000
+    },
+    "DESKTOP": {
+      "clicks": 340,
+      "impressions": 14000
+    },
+    "TABLET": {
+      "clicks": 40,
+      "impressions": 1200
+    }
+  },
+  "byCountry": {
+    "che": {
+      "clicks": 820,
+      "impressions": 38000
+    },
+    "deu": {
+      "clicks": 90,
+      "impressions": 4100
+    },
+    "aut": {
+      "clicks": 40,
+      "impressions": 1900
+    }
+  },
+  "brandSplit": {
+    "branded": {
+      "clicks": 80,
+      "impressions": 1200
+    },
+    "nonBranded": {
+      "clicks": 900,
+      "impressions": 44000
+    }
+  },
+  "anomalies": [
+    {
+      "from": "2026-10-02",
+      "to": "2026-10-04",
+      "what": "impressions under-reported for some properties",
+      "url": "https://status.example.org/search-data-anomalies"
+    }
+  ],
+  "bing": {
+    "siteUrl": "https://www.example.com/",
+    "period": {
+      "from": "2026-05-18",
+      "to": "2026-11-15"
+    },
+    "traffic": {
+      "/": {
+        "clicks": 14,
+        "impressions": 600
+      },
+      "/boilers/": {
+        "clicks": 9,
+        "impressions": 410
+      }
+    },
+    "queries": [
+      {
+        "query": "plumber zurich",
+        "clicks": 6,
+        "impressions": 200
+      }
+    ],
+    "backlinks": {
+      "pages": [
+        {
+          "url": "https://www.example.com/",
+          "count": 120
+        },
+        {
+          "url": "https://www.example.com/boilers/",
+          "count": 34
+        },
+        {
+          "url": "https://www.example.com/blog/boiler-sizes/",
+          "count": 12
+        }
+      ],
+      "sample": [
+        {
+          "url": "https://blog.example.org/heating-tips",
+          "anchorText": "Example Plumbing & Heating"
+        },
+        {
+          "url": "https://news.example.net/local-firms",
+          "anchorText": "a <trusted> plumber"
+        }
+      ],
+      "byPage": {
+        "/boilers/": [
+          {
+            "url": "https://blog.example.org/heating-tips",
+            "anchorText": "boiler guide"
+          }
+        ]
+      }
+    },
+    "crawlIssues": [],
+    "sister": {
+      "site": "https://www.example.net",
+      "onlySister": [
+        "guide.example.org",
+        "forum.example.org",
+        "directory.example.org"
+      ],
+      "shared": 4
+    }
+  },
+  "matomo": {
+    "period": {
+      "from": "2026-08-22",
+      "to": "2026-11-19"
+    },
+    "traffic": {
+      "/": {
+        "visits": 3100
+      },
+      "/boilers/combi/": {
+        "visits": 31
+      },
+      "/boilers/": {
+        "visits": 420
+      }
+    },
+    "byDevice": {
+      "desktop": {
+        "visits": 2100
+      },
+      "smartphone": {
+        "visits": 1300
+      },
+      "tablet": {
+        "visits": 0
+      }
+    },
+    "byCountry": {
+      "ch": {
+        "visits": 2900
+      },
+      "de": {
+        "visits": 120
+      }
+    },
+    "byChannel": {
+      "search": {
+        "visits": 3520
+      },
+      "direct": {
+        "visits": 900
+      },
+      "website": {
+        "visits": 210
+      }
+    },
+    "byEngine": {
+      "Google": {
+        "visits": 3300
+      },
+      "Bing": {
+        "visits": 180
+      },
+      "DuckDuckGo": {
+        "visits": 40
+      }
+    },
+    "daily": {
+      "2026-11-18": 40,
+      "2026-11-19": 38
+    }
+  },
+  "posthog": {
+    "period": {
+      "from": "2026-08-22",
+      "to": "2026-11-19"
+    },
+    "traffic": {
+      "/": {
+        "visits": 800
+      },
+      "/boilers/combi/": {
+        "visits": 12
+      }
+    },
+    "byDevice": {
+      "Desktop": {
+        "visits": 500
+      },
+      "Mobile": {
+        "visits": 312
+      }
+    },
+    "byCountry": {
+      "ch": {
+        "visits": 700
+      },
+      "at": {
+        "visits": 40
+      }
+    },
+    "byReferrer": {
+      "$direct": {
+        "visits": 300
+      },
+      "search.example.org": {
+        "visits": 600
+      },
+      "search.example.net": {
+        "visits": 12
+      }
+    },
+    "daily": {
+      "2026-11-19": {
+        "pageviews": 90,
+        "visitors": 40
+      }
+    },
+    "organicBy": "referrer",
+    "referrersCaptured": true
+  },
+  "clarity": {
+    "days": 3,
+    "read": "2026-11-20",
+    "traffic": {
+      "/": {
+        "sessions": 120,
+        "botSessions": 4,
+        "scrollDepth": 48,
+        "quickBacks": 22,
+        "rageClicks": 3,
+        "deadClicks": 6,
+        "excessiveScroll": 0.4
+      },
+      "/boilers/combi/": {
+        "sessions": 40,
+        "botSessions": 1,
+        "scrollDepth": 61,
+        "quickBacks": 35,
+        "rageClicks": 0
+      },
+      "/contact/": {
+        "sessions": 5,
+        "botSessions": 0,
+        "quickBacks": 60
+      }
+    }
+  },
+  "googleUpdates": {
+    "from": "2026-08-22",
+    "to": "2026-11-19",
+    "updates": [
+      {
+        "name": "August 2026 spam update",
+        "start": "2026-08-26",
+        "end": "2026-08-29",
+        "url": "https://status.example.org/updates/2026-08-spam"
+      },
+      {
+        "name": "October 2026 core update",
+        "start": "2026-10-28",
+        "end": "2026-11-12",
+        "url": "https://status.example.org/updates/2026-10-core"
+      },
+      {
+        "name": "November 2026 <reviews> update",
+        "start": "2026-11-17",
+        "end": null
+      }
+    ],
+    "posts": [
+      {
+        "title": "Update to the site reputation policy & “parasite” pages",
+        "date": "2026-08-28",
+        "url": "https://blog.example.org/search/2026/08/site-reputation"
+      },
+      {
+        "title": "A new <report> in Search Console",
+        "date": "2026-11-05",
+        "url": "https://blog.example.org/search/2026/11/new-report"
+      }
+    ]
+  },
+  "trustSignals": [
+    {
+      "id": "about",
+      "label": "About page",
+      "rule": "TRUST-04",
+      "applies": true,
+      "found": true,
+      "evidence": "/about/ linked from the footer",
+      "add": ""
+    },
+    {
+      "id": "contact",
+      "label": "Contact details",
+      "rule": "TRUST-04",
+      "applies": true,
+      "found": true,
+      "evidence": "tel: and mailto: links on every page",
+      "add": ""
+    },
+    {
+      "id": "org-schema",
+      "label": "Organization schema",
+      "rule": "SCHEMA-02",
+      "applies": true,
+      "found": true,
+      "evidence": "Plumber schema on /",
+      "add": ""
+    },
+    {
+      "id": "author-byline",
+      "label": "Author names",
+      "rule": "CONTENT-07",
+      "applies": true,
+      "found": true,
+      "evidence": "“By Anna Example” on articles",
+      "add": ""
+    },
+    {
+      "id": "author-page",
+      "label": "Author pages",
+      "rule": "CONTENT-07",
+      "applies": true,
+      "found": false,
+      "evidence": null,
+      "add": "Link each author's name to a page about them (role, experience, credentials), and give the author a `url` in the schema."
+    },
+    {
+      "id": "dates",
+      "label": "Dates on articles",
+      "rule": "CONTENT-07",
+      "applies": true,
+      "found": true,
+      "evidence": "datePublished on 38 of 40 articles",
+      "add": ""
+    },
+    {
+      "id": "sources",
+      "label": "Sources cited",
+      "rule": "CONTENT-10",
+      "applies": true,
+      "found": false,
+      "evidence": null,
+      "add": "Link the source next to each fact and figure in your content."
+    },
+    {
+      "id": "customer-proof",
+      "label": "Customer reviews",
+      "rule": "TRUST-05",
+      "applies": true,
+      "found": false,
+      "evidence": null,
+      "add": "Show real reviews, testimonials or case studies from customers. Only real ones count: never invent or edit them."
+    },
+    {
+      "id": "policies",
+      "label": "Policies",
+      "rule": "TRUST-03",
+      "applies": true,
+      "found": true,
+      "evidence": "privacy, terms & returns pages",
+      "add": ""
+    },
+    {
+      "id": "https",
+      "label": "HTTPS and security headers",
+      "rule": "TRUST-01",
+      "applies": true,
+      "found": true,
+      "evidence": "HTTPS on every page",
+      "add": ""
+    },
+    {
+      "id": "own-media",
+      "label": "Own images",
+      "rule": null,
+      "applies": false,
+      "found": false,
+      "evidence": null,
+      "add": "Use your own photos."
+    }
+  ],
+  "links": {
+    "sites": [
+      {
+        "domain": "blog.example.org",
+        "links": 140,
+        "targets": 3
+      },
+      {
+        "domain": "directory.example.org",
+        "links": 96,
+        "targets": 1
+      },
+      {
+        "domain": "news.example.net",
+        "links": 22
+      },
+      {
+        "domain": "forum.example.org",
+        "links": 9
+      },
+      {
+        "domain": "café.example",
+        "links": 4
+      },
+      {
+        "domain": "partner.example.org",
+        "links": 2
+      }
+    ],
+    "texts": [
+      {
+        "text": "Example Plumbing & Heating",
+        "links": 120
+      },
+      {
+        "text": "click here",
+        "links": null
+      }
+    ],
+    "pages": [
+      {
+        "url": "https://www.example.com/",
+        "links": 210
+      },
+      {
+        "url": "https://www.example.com/boilers/",
+        "links": 40
+      },
+      {
+        "url": "https://www.example.com/blog/boiler-sizes/",
+        "links": 12
+      }
+    ],
+    "source": "search-console",
+    "when": "2026-11-18"
+  },
+  "anchorMix": {
+    "brand": 0.4,
+    "address": 0.2,
+    "generic": 0.1,
+    "other": 0.3
+  },
+  "worthALook": [
+    {
+      "kind": "sitewide",
+      "subject": "directory.example.org",
+      "why": "96 links from 96 of its pages to 1 of yours, 31% of all links.",
+      "look": "See whether it's a footer or sidebar link you asked for.",
+      "examples": [
+        "https://directory.example.org/plumbers?page=1&sort=az",
+        "https://directory.example.org/zurich/"
+      ]
+    },
+    {
+      "kind": "keyword-text",
+      "subject": "“cheap boiler repair” and 11 similar texts",
+      "why": "80% of 15 link texts are descriptive phrases.",
+      "look": "Check they came from real mentions, not a link scheme."
+    }
+  ],
+  "linksChange": {
+    "kind": "links-dropped",
+    "what": "sites",
+    "before": 120,
+    "after": 70
+  },
+  "backlinks": {
+    "when": "2026-11-19",
+    "checked": 40,
+    "live": 34,
+    "gone": [
+      {
+        "url": "https://news.example.org/old-story",
+        "reason": "404 <Not Found>"
+      },
+      {
+        "url": "https://blog.example.org/2019/plumbers",
+        "reason": "the link to the site was removed"
+      }
+    ],
+    "unreachable": [
+      {
+        "url": "https://down.example.net/",
+        "reason": "timed out after 15 s"
+      }
+    ],
+    "nofollow": [
+      {
+        "url": "https://forum.example.org/t/42",
+        "rel": "nofollow ugc"
+      }
+    ],
+    "found": [
+      {
+        "url": "https://blog.example.org/heating-tips",
+        "links": [
+          {
+            "href": "https://www.example.com/boilers/",
+            "text": "boiler guide & prices",
+            "rel": "ugc"
+          }
+        ],
+        "pageNofollow": false
+      },
+      {
+        "url": "https://news.example.net/local-firms",
+        "links": [
+          {
+            "href": "https://www.example.com/",
+            "text": "",
+            "rel": ""
+          }
+        ]
+      }
+    ],
+    "nofollowSites": [
+      {
+        "site": "forum.example.org",
+        "pages": 3
+      }
+    ]
+  },
+  "newLinks": {
+    "count": 6,
+    "sites": [
+      {
+        "domain": "guide.example.org",
+        "links": 4
+      },
+      {
+        "domain": "news.example.net",
+        "links": 2
+      },
+      {
+        "domain": "café.example"
+      },
+      {
+        "domain": "school.example.org",
+        "links": 1
+      },
+      {
+        "domain": "club.example.org",
+        "links": 1
+      },
+      {
+        "domain": "shop.example.net",
+        "links": 1
+      }
+    ],
+    "since": "2026-08-18",
+    "capped": true
+  },
+  "noNewLinks": {
+    "newest": "2026-07-30",
+    "asOf": "2026-11-18"
+  },
+  "unlinkedPages": {
+    "count": 900,
+    "of": 1180,
+    "urls": [
+      "https://www.example.com/heat-pumps/",
+      "https://www.example.com/boilers/repair/",
+      "https://www.example.com/plumber-uster/",
+      "https://www.example.com/contact/",
+      "https://www.example.com/gallery/",
+      "https://www.example.com/shop/"
+    ]
+  },
+  "linksToOtherSites": {
+    "pages": {
+      "https://www.example.com/": 3,
+      "https://www.example.com/blog/boiler-sizes/": 5,
+      "https://www.example.com/contact/": 0
+    },
+    "domains": {
+      "supplier.example.org": 40,
+      "maps.example.net": 30,
+      "standards.example.org": 12,
+      "café.example": 3,
+      "news.example.net": 2,
+      "forum.example.org": 1
+    }
+  },
+  "commonCrawl": {
+    "when": "2026-11-19",
+    "crawl": {
+      "id": "CC-MAIN-2026-44",
+      "name": "CC-MAIN-2026-44"
+    },
+    "site": {
+      "captures": 840,
+      "capped": false,
+      "pages": 800,
+      "home": true
+    },
+    "linkingPages": [
+      {
+        "url": "https://blog.example.org/heating-tips",
+        "state": "links",
+        "captured": "2026-10-30",
+        "links": 1
+      },
+      {
+        "url": "https://news.example.org/old-story",
+        "state": "not-in-crawl"
+      },
+      {
+        "url": "https://forum.example.org/t/42",
+        "state": "no-link"
+      }
+    ],
+    "linkingSites": [
+      "blog.example.org",
+      "news.example.org",
+      "forum.example.org"
+    ],
+    "rank": {
+      "release": "cc-main-2026-jul-aug-oct",
+      "domain": "example.com",
+      "checked": true,
+      "found": true,
+      "harmonicPos": 1203456,
+      "harmonic": 0.0021,
+      "pageRankPos": 2345678,
+      "pageRank": 0.000001,
+      "hosts": 300000000,
+      "domains": 120000000
+    }
+  },
+  "agents": {
+    "pages": [
+      {
+        "url": "https://www.example.com/book/?step=1&ref=nav",
+        "tools": [
+          "bookVisit",
+          "getQuote <beta>"
+        ]
+      },
+      {
+        "url": "https://www.example.com/contact/",
+        "tools": []
+      }
+    ],
+    "ucp": "2026-01-11",
+    "wellKnown": [
+      "/.well-known/api-catalog",
+      "/.well-known/agent-card.json",
+      "/.well-known/oauth-protected-resource"
+    ]
+  },
+  "writingNotes": [
+    {
+      "url": "https://www.example.com/blog/heat-pump-guide/",
+      "longSentences": 11,
+      "longestSentence": "When you choose a heat pump & a buffer tank for an older house in Zürich, there are many “rules of thumb”…",
+      "longParagraphs": 0,
+      "stockPhrases": [
+        "in today's fast-paced world",
+        "look no further"
+      ],
+      "readingEase": 40,
+      "examples": [
+        "When you choose a heat pump"
+      ]
+    },
+    {
+      "url": "https://www.example.com/blog/post-1/",
+      "longSentences": 10,
+      "longestSentence": "Sentence 1 runs on and on",
+      "longParagraphs": 1,
+      "stockPhrases": [
+        "peace of mind"
+      ],
+      "readingEase": 41,
+      "examples": [
+        "When you choose a heat pump"
+      ]
+    },
+    {
+      "url": "https://www.example.com/blog/post-2/",
+      "longSentences": 9,
+      "longestSentence": "Sentence 2 runs on and on",
+      "longParagraphs": 2,
+      "stockPhrases": [],
+      "readingEase": 42,
+      "examples": [
+        "When you choose a heat pump"
+      ]
+    },
+    {
+      "url": "https://www.example.com/blog/post-3/",
+      "longSentences": 8,
+      "longestSentence": "Sentence 3 runs on and on",
+      "longParagraphs": 0,
+      "stockPhrases": [
+        "peace of mind"
+      ],
+      "readingEase": 43,
+      "examples": [
+        "When you choose a heat pump"
+      ]
+    },
+    {
+      "url": "https://www.example.com/blog/post-4/",
+      "longSentences": 7,
+      "longestSentence": "Sentence 4 runs on and on",
+      "longParagraphs": 1,
+      "stockPhrases": [],
+      "readingEase": 44,
+      "examples": [
+        "When you choose a heat pump"
+      ]
+    },
+    {
+      "url": "https://www.example.com/blog/post-5/",
+      "longSentences": 6,
+      "longestSentence": "Sentence 5 runs on and on",
+      "longParagraphs": 2,
+      "stockPhrases": [
+        "peace of mind"
+      ],
+      "readingEase": 45,
+      "examples": [
+        "When you choose a heat pump"
+      ]
+    },
+    {
+      "url": "https://www.example.com/blog/post-6/",
+      "longSentences": 5,
+      "longestSentence": "Sentence 6 runs on and on",
+      "longParagraphs": 0,
+      "stockPhrases": [],
+      "readingEase": 46,
+      "examples": [
+        "When you choose a heat pump"
+      ]
+    },
+    {
+      "url": "https://www.example.com/blog/post-7/",
+      "longSentences": 4,
+      "longestSentence": "Sentence 7 runs on and on",
+      "longParagraphs": 1,
+      "stockPhrases": [
+        "peace of mind"
+      ],
+      "readingEase": 47,
+      "examples": [
+        "When you choose a heat pump"
+      ]
+    },
+    {
+      "url": "https://www.example.com/blog/post-8/",
+      "longSentences": 3,
+      "longestSentence": "Sentence 8 runs on and on",
+      "longParagraphs": 2,
+      "stockPhrases": [],
+      "readingEase": 48,
+      "examples": [
+        "When you choose a heat pump"
+      ]
+    },
+    {
+      "url": "https://www.example.com/blog/post-9/",
+      "longSentences": 2,
+      "longestSentence": "Sentence 9 runs on and on",
+      "longParagraphs": 0,
+      "stockPhrases": [
+        "peace of mind"
+      ],
+      "readingEase": 49,
+      "examples": [
+        "When you choose a heat pump"
+      ]
+    },
+    {
+      "url": "https://www.example.com/blog/post-10/",
+      "longSentences": 1,
+      "longestSentence": "Sentence 10 runs on and on",
+      "longParagraphs": 1,
+      "stockPhrases": [],
+      "readingEase": null,
+      "examples": [
+        "When you choose a heat pump"
+      ]
+    }
+  ],
+  "audiences": [
+    {
+      "name": "Landlords & property managers",
+      "wants": "a fixed price for a gas safety certificate",
+      "checked": "2026-11-19",
+      "pages": [
+        {
+          "url": "https://www.example.com/gas-safety/",
+          "has": [
+            "Who it's for: “Landlord gas safety certificates” in the H1",
+            "Next step: a Book button above the fold"
+          ],
+          "missing": [
+            "No price on the page or linked from it",
+            "No reviews from landlords"
+          ]
+        },
+        {
+          "url": "https://www.example.com/pricing/",
+          "has": [
+            "Prices for boiler services <from CHF 120>"
+          ],
+          "missing": []
+        }
+      ]
+    },
+    {
+      "name": "Homeowners in Zürich",
+      "wants": "an emergency plumber tonight",
+      "checked": "2026-11-19",
+      "pages": [
+        {
+          "url": "https://www.example.com/emergency/",
+          "has": [
+            "24/7 phone number in the header"
+          ],
+          "missing": [
+            "No call-out price"
+          ]
+        }
+      ]
+    }
+  ],
+  "images": [
+    {
+      "url": "https://www.example.com/images/hero zürich.jpg",
+      "bytes": 2400000,
+      "width": 3200,
+      "height": 2000,
+      "format": "jpeg",
+      "pages": 10,
+      "estSaving": 1800000
+    },
+    {
+      "url": "https://www.example.com/images/photo-1.png",
+      "bytes": 2280000,
+      "width": 3100,
+      "height": 2000,
+      "format": "png",
+      "pages": 9,
+      "estSaving": 1700000
+    },
+    {
+      "url": "https://www.example.com/images/photo-2.jpg",
+      "bytes": 2160000,
+      "width": 3000,
+      "height": 2000,
+      "format": "jpeg",
+      "pages": 8,
+      "estSaving": 1600000
+    },
+    {
+      "url": "https://www.example.com/images/photo-3.png",
+      "bytes": 2040000,
+      "width": 2900,
+      "height": 2000,
+      "format": "png",
+      "pages": 7,
+      "estSaving": 1500000
+    },
+    {
+      "url": "https://www.example.com/images/photo-4.jpg",
+      "bytes": 1920000,
+      "width": 2800,
+      "height": 2000,
+      "format": "jpeg",
+      "pages": 6,
+      "estSaving": 1400000
+    },
+    {
+      "url": "https://www.example.com/images/photo-5.png",
+      "bytes": 1800000,
+      "width": 2700,
+      "height": 2000,
+      "format": "png",
+      "pages": 10,
+      "estSaving": 1300000
+    },
+    {
+      "url": "https://www.example.com/images/photo-6.jpg",
+      "bytes": 1680000,
+      "width": 2600,
+      "height": 2000,
+      "format": "jpeg",
+      "pages": 9,
+      "estSaving": 1200000
+    },
+    {
+      "url": "https://www.example.com/images/photo-7.png",
+      "bytes": 1560000,
+      "width": 2500,
+      "height": 2000,
+      "format": "png",
+      "pages": 8,
+      "estSaving": 1100000
+    },
+    {
+      "url": "https://www.example.com/images/photo-8.jpg",
+      "bytes": 1440000,
+      "width": 2400,
+      "height": 2000,
+      "format": "jpeg",
+      "pages": 7,
+      "estSaving": 1000000
+    },
+    {
+      "url": "https://www.example.com/images/photo-9.png",
+      "bytes": 1320000,
+      "width": 2300,
+      "height": 2000,
+      "format": "png",
+      "pages": 6,
+      "estSaving": 900000
+    },
+    {
+      "url": "https://www.example.com/images/photo-10.jpg",
+      "bytes": 1200000,
+      "width": 2200,
+      "height": 2000,
+      "format": "jpeg",
+      "pages": 10,
+      "estSaving": 800000
+    },
+    {
+      "url": "https://www.example.com/images/photo-11.png",
+      "bytes": 1080000,
+      "width": 2100,
+      "height": 2000,
+      "format": "png",
+      "pages": 9,
+      "estSaving": 700000
+    },
+    {
+      "url": "https://www.example.com/images/photo-12.jpg",
+      "bytes": 960000,
+      "width": 2000,
+      "height": 2000,
+      "format": "jpeg",
+      "pages": 8,
+      "estSaving": 600000
+    },
+    {
+      "url": "https://www.example.com/images/photo-13.png",
+      "bytes": 840000,
+      "width": 1900,
+      "height": 2000,
+      "format": "png",
+      "pages": 7,
+      "estSaving": 500000
+    },
+    {
+      "url": "https://www.example.com/images/photo-14.jpg",
+      "bytes": 720000,
+      "width": 1800,
+      "height": 2000,
+      "format": "jpeg",
+      "pages": 6,
+      "estSaving": 400000
+    },
+    {
+      "url": "https://www.example.com/images/photo-15.png",
+      "bytes": 600000,
+      "width": 1700,
+      "height": 2000,
+      "format": "png",
+      "pages": 10,
+      "estSaving": 300000
+    },
+    {
+      "url": "https://www.example.com/images/tiny.webp",
+      "bytes": 9000,
+      "width": 64,
+      "height": 64,
+      "format": "webp",
+      "pages": 1,
+      "estSaving": 0
+    }
+  ],
+  "hstsPreload": {
+    "ready": false,
+    "missing": [
+      "a max-age of at least 31536000 (one year)",
+      "includeSubDomains",
+      "preload"
+    ]
+  },
+  "sections": [
+    {
+      "path": "/",
+      "pages": 40,
+      "share": 0.03
+    },
+    {
+      "path": "/blog/",
+      "pages": 600,
+      "share": 0.48
+    },
+    {
+      "path": "/plumber-<town>/",
+      "pages": 80,
+      "share": 0.06
+    },
+    {
+      "path": "/shop/",
+      "pages": 420,
+      "share": 0.34
+    },
+    {
+      "path": "/boilers/",
+      "pages": 100,
+      "share": 0.08
+    }
+  ],
+  "siteSize": {
+    "crawled": 1240,
+    "known": 1610,
+    "sitemapUrls": 1580
+  },
+  "indexing": {
+    "date": "2026-11-18",
+    "indexed": 1102,
+    "notIndexed": 380,
+    "crawlIndexable": 1180,
+    "capped": true
+  },
+  "aiBots": [
+    {
+      "bot": "GPTBot",
+      "vendor": "OpenAI",
+      "kind": "training",
+      "robots": "blocked"
+    },
+    {
+      "bot": "OAI-SearchBot",
+      "vendor": "OpenAI",
+      "kind": "search",
+      "robots": "blocked"
+    },
+    {
+      "bot": "ChatGPT-User",
+      "vendor": "OpenAI",
+      "kind": "user",
+      "robots": "allowed",
+      "mayIgnore": true
+    },
+    {
+      "bot": "ClaudeBot",
+      "vendor": "Anthropic",
+      "kind": "training",
+      "robots": "blocked-by-star"
+    },
+    {
+      "bot": "PerplexityBot",
+      "vendor": "Perplexity",
+      "kind": "search",
+      "robots": "blocked"
+    },
+    {
+      "bot": "Applebot-Extended",
+      "vendor": "Apple",
+      "kind": "training",
+      "robots": "blocked-by-googlebot"
+    },
+    {
+      "bot": "CCBot",
+      "vendor": "Common Crawl",
+      "kind": "other",
+      "robots": "blocked"
+    }
+  ],
+  "trainingOptOut": "partly",
+  "contentUsage": [
+    {
+      "agents": "*",
+      "rule": "train-ai=n"
+    },
+    {
+      "agents": null,
+      "rule": "search=y, train-ai=n"
+    }
+  ],
+  "botPreferenceSync": true,
+  "aiBotPaid": [
+    {
+      "url": "https://www.example.com/guides/heat-pumps/",
+      "bot": "OAI-SearchBot",
+      "price": "USD 0.01"
+    },
+    {
+      "url": "https://www.example.com/guides/boilers/",
+      "bot": "PerplexityBot"
+    }
+  ],
+  "landmarks": {
+    "checked": 1240,
+    "count": 2,
+    "pages": [
+      {
+        "url": "https://www.example.com/offers/spring-2025/",
+        "missing": [
+          "main",
+          "nav"
+        ]
+      },
+      {
+        "url": "https://www.example.com/gallery/",
+        "missing": [
+          "footer"
+        ]
+      }
+    ]
+  },
+  "productFields": {
+    "products": 40,
+    "brand": 38,
+    "gtin": 12,
+    "sku": 40,
+    "color": 5,
+    "size": 9,
+    "material": 3,
+    "category": 30
+  },
+  "media": {
+    "heroImages": [
+      {
+        "url": "https://www.example.com/",
+        "element": "img.hero",
+        "src": "/images/hero zürich.jpg",
+        "source": "lab"
+      },
+      {
+        "url": "https://www.example.com/boilers/combi/",
+        "element": "h1.title <text>"
+      }
+    ],
+    "serverTimes": {
+      "pages": 1240,
+      "median": 210,
+      "p95": 900,
+      "slow": [
+        {
+          "url": "https://www.example.com/shop/",
+          "ms": 1400
+        },
+        {
+          "url": "https://www.example.com/search?q=boiler&page=2",
+          "ms": 2100
+        }
+      ]
+    },
+    "domShape": {
+      "deep": [
+        {
+          "url": "https://www.example.com/shop/thermostat-x2/",
+          "depth": 41
+        }
+      ],
+      "wide": [
+        {
+          "url": "https://www.example.com/plumber-zurich/",
+          "tag": "ul",
+          "children": 140
+        }
+      ]
+    },
+    "imageCredits": {
+      "read": 120,
+      "creator": 40,
+      "ai": [
+        "https://www.example.com/images/ai-van.png"
+      ],
+      "aiCount": 1,
+      "c2pa": 2,
+      "noCreator": [
+        "https://www.example.com/images/photo-3.png",
+        "https://www.example.com/images/photo-4.jpg"
+      ]
+    },
+    "imageCache": {
+      "checked": 200,
+      "uncached": [
+        "https://www.example.com/images/photo-1.png",
+        "https://www.example.com/images/photo-2.jpg"
+      ],
+      "uncachedCount": 7,
+      "cdn": "Example CDN",
+      "otherHosts": {
+        "img.example.net": 30,
+        "cdn.example.org": 4
+      }
+    },
+    "lighthouseMedians": {
+      "pages": 12,
+      "performance": 61,
+      "seo": 91,
+      "accessibility": 82,
+      "bestPractices": 96
+    }
+  },
+  "renderSample": [
+    {
+      "url": "https://www.example.com/",
+      "h1": {
+        "desktop": true,
+        "phone": true
+      },
+      "cta": {
+        "desktop": "Book a visit",
+        "phone": "Call now"
+      },
+      "words": {
+        "html": 820,
+        "rendered": 840
+      },
+      "menu": "ok",
+      "ads": 0,
+      "errors": []
+    },
+    {
+      "url": "https://www.example.com/boilers/combi/",
+      "h1": {
+        "desktop": true,
+        "phone": false
+      },
+      "cta": {
+        "desktop": "Get a quote",
+        "phone": ""
+      },
+      "words": {
+        "html": 600,
+        "rendered": 610
+      },
+      "menu": "no-button",
+      "ads": 0,
+      "errors": [
+        "TypeError: Cannot read properties of undefined (reading 'price') <at Hero>",
+        "404 /api/stock"
+      ],
+      "hidden": {
+        "words": 120,
+        "by": {
+          "display:none": 100,
+          "aria-hidden": 20
+        },
+        "examples": [
+          {
+            "text": "Free “no-fix-no-fee” guarantee & more"
+          }
+        ]
+      },
+      "jumpLinks": {
+        "broken": [
+          "prices",
+          "faq"
+        ],
+        "deepLink": "scrolled-away",
+        "target": "reviews"
+      }
+    },
+    {
+      "url": "https://www.example.com/shop/",
+      "h1": {
+        "desktop": false,
+        "phone": false
+      },
+      "cta": {
+        "desktop": "Shop",
+        "phone": "Shop"
+      },
+      "words": {
+        "html": 300,
+        "rendered": 1200
+      },
+      "menu": "covered",
+      "ads": 0,
+      "errors": [],
+      "jumpLinks": {
+        "broken": [
+          "top"
+        ]
+      }
+    },
+    {
+      "url": "https://www.example.com/account/",
+      "gate": "a login screen",
+      "h1": {
+        "desktop": false,
+        "phone": false
+      },
+      "cta": {},
+      "words": {
+        "html": 40,
+        "rendered": 40
+      },
+      "menu": "ok",
+      "ads": 0,
+      "errors": []
+    }
+  ],
+  "renderedPage": {
+    "url": "https://www.example.com/heat-pumps/?model=x2&size=8kw",
+    "steps": "click #accept, scroll to #prices",
+    "words": {
+      "html": 120,
+      "rendered": 940
+    },
+    "changes": [
+      {
+        "field": "h1",
+        "raw": null,
+        "rendered": "Heat pumps & <buffers>"
+      },
+      {
+        "field": "title",
+        "raw": "Loading…",
+        "rendered": "Heat pumps | Example Plumbing"
+      }
+    ],
+    "gate": "a cookie wall",
+    "errors": [
+      "ReferenceError: dataLayer is not defined"
+    ]
+  },
+  "templatedDescriptions": {
+    "pages": 600,
+    "templated": 210,
+    "share": 0.35,
+    "clusters": [
+      {
+        "section": "/plumber-<town>/",
+        "pages": 80,
+        "templated": 72
+      },
+      {
+        "section": "/blog/",
+        "pages": 400,
+        "templated": 60
+      }
+    ],
+    "outsideClusters": 78,
+    "verdict": "cluster"
+  },
+  "keywordUse": {
+    "counts": {
+      "natural": 400,
+      "missing": 30,
+      "repetitive": 8,
+      "forced": 2
+    },
+    "pages": [
+      {
+        "url": "https://www.example.com/plumber-zurich/",
+        "phrase": "plumber Zürich & area",
+        "verdict": "missing",
+        "density": null,
+        "spots": []
+      },
+      {
+        "url": "https://www.example.com/blog/post-1/",
+        "phrase": "phrase 1",
+        "verdict": "repetitive",
+        "density": 3.5,
+        "spots": []
+      },
+      {
+        "url": "https://www.example.com/blog/post-2/",
+        "phrase": "phrase 2",
+        "verdict": "forced",
+        "density": 4,
+        "spots": []
+      },
+      {
+        "url": "https://www.example.com/blog/post-3/",
+        "phrase": "phrase 3",
+        "verdict": "missing",
+        "density": null,
+        "spots": []
+      },
+      {
+        "url": "https://www.example.com/blog/post-4/",
+        "phrase": "phrase 4",
+        "verdict": "repetitive",
+        "density": 5,
+        "spots": []
+      },
+      {
+        "url": "https://www.example.com/blog/post-5/",
+        "phrase": "phrase 5",
+        "verdict": "forced",
+        "density": 5.5,
+        "spots": []
+      },
+      {
+        "url": "https://www.example.com/blog/post-6/",
+        "phrase": "phrase 6",
+        "verdict": "missing",
+        "density": null,
+        "spots": []
+      },
+      {
+        "url": "https://www.example.com/blog/post-7/",
+        "phrase": "phrase 7",
+        "verdict": "repetitive",
+        "density": 6.5,
+        "spots": []
+      },
+      {
+        "url": "https://www.example.com/blog/post-8/",
+        "phrase": "phrase 8",
+        "verdict": "forced",
+        "density": 7,
+        "spots": []
+      },
+      {
+        "url": "https://www.example.com/blog/post-9/",
+        "phrase": "phrase 9",
+        "verdict": "missing",
+        "density": null,
+        "spots": []
+      },
+      {
+        "url": "https://www.example.com/blog/post-10/",
+        "phrase": "phrase 10",
+        "verdict": "repetitive",
+        "density": 8,
+        "spots": []
+      },
+      {
+        "url": "https://www.example.com/blog/post-11/",
+        "phrase": "phrase 11",
+        "verdict": "forced",
+        "density": 8.5,
+        "spots": []
+      }
+    ]
+  },
+  "localBusiness": {
+    "kind": "hybrid",
+    "name": "Example Plumbing & Heating",
+    "type": "Plumber",
+    "address": "1 Example Street, 8000 Zürich",
+    "geo": {
+      "lat": 47.3769,
+      "lng": 8.5417
+    },
+    "areas": [
+      "Zürich",
+      "Winterthur"
+    ],
+    "evidence": [
+      "LocalBusiness schema with a street address",
+      "“We come to you” on /emergency/",
+      "areaServed lists 12 towns",
+      "Opening hours for the showroom",
+      "A map embed on /contact/",
+      "Phone number in the header",
+      "A seventh piece that isn't shown"
+    ],
+    "streetHidden": false
+  },
+  "nearby": {
+    "type": "craft=plumber",
+    "label": "plumbers",
+    "tags": [
+      "craft=plumber"
+    ],
+    "center": {
+      "lat": 47.3769,
+      "lon": 8.5417
+    },
+    "centerFrom": "the schema's geo",
+    "radiusM": 2000,
+    "count": 14,
+    "unnamed": 2,
+    "perKm2": 1.1,
+    "places": [
+      {
+        "name": "Müller & Söhne <Sanitär>",
+        "distanceM": 350,
+        "osm": "node/1000"
+      },
+      {
+        "name": "Plumber 1",
+        "distanceM": 550,
+        "osm": "node/1001"
+      },
+      {
+        "name": "Plumber 2",
+        "distanceM": 700,
+        "osm": "node/1002"
+      },
+      {
+        "name": "Plumber 3",
+        "distanceM": 850,
+        "osm": "node/1003"
+      },
+      {
+        "name": "Plumber 4",
+        "distanceM": 1000,
+        "osm": "node/1004"
+      },
+      {
+        "name": "Plumber 5",
+        "distanceM": 1150,
+        "osm": "node/1005"
+      },
+      {
+        "name": "Plumber 6",
+        "distanceM": 1300,
+        "osm": "node/1006"
+      },
+      {
+        "name": "Plumber 7",
+        "distanceM": 1450,
+        "osm": "node/1007"
+      },
+      {
+        "name": "Plumber 8",
+        "distanceM": 1600,
+        "osm": "node/1008"
+      },
+      {
+        "name": "Plumber 9",
+        "distanceM": 1750,
+        "osm": "node/1009"
+      },
+      {
+        "name": "Plumber 10",
+        "distanceM": 1900,
+        "osm": "node/1010"
+      }
+    ]
+  },
+  "geocode": {
+    "query": "1 Example Street, 8000 Zürich",
+    "found": {
+      "lat": 47.3801,
+      "lon": 8.5401
+    },
+    "schemaGeo": {
+      "lat": 47.3769,
+      "lng": 8.5417
+    },
+    "distanceM": 420,
+    "suggestGeo": false
+  },
+  "domainAge": [
+    {
+      "domain": "example.com",
+      "registered": "1995-08-14",
+      "expires": "2027-08-13",
+      "registrar": "Example Registrar, Inc. <reg>",
+      "server": "rdap.example.net"
+    },
+    {
+      "domain": "rival.example",
+      "registered": "2014-03-02",
+      "registrar": ""
+    }
+  ],
+  "youtube": {
+    "channel": {
+      "id": "UCexample",
+      "title": "Example Plumbing & Heating",
+      "subscribers": 1200,
+      "videos": 48,
+      "views": 230000
+    },
+    "topics": [
+      {
+        "topic": "how to bleed a radiator",
+        "videos": [
+          {
+            "id": "v1",
+            "url": "https://video.example.org/watch?v=v1",
+            "title": "Bleed a radiator in 5 minutes <easy>",
+            "channel": "Example Plumbing & Heating",
+            "published": "2026-01-10",
+            "own": true
+          },
+          {
+            "id": "v2",
+            "url": "https://video.example.org/watch?v=v2",
+            "title": "Radiator tips",
+            "channel": "Rival Heating",
+            "published": "2025-11-02",
+            "own": false
+          }
+        ]
+      }
+    ]
+  },
+  "siteTotals": {
+    "clicks": 1240,
+    "impressions": 45200,
+    "ctr": 0.027,
+    "position": 12.3,
+    "queryClicks": 980,
+    "complete": false
+  },
+  "analyticsDetail": {
+    "sessions": 5320,
+    "users": 4100,
+    "daily": {},
+    "byDevice": {
+      "mobile": {
+        "sessions": 3000
+      },
+      "desktop": {
+        "sessions": 2320
+      }
+    },
+    "byCountry": {
+      "Switzerland": {
+        "sessions": 4800
+      },
+      "Germany": {
+        "sessions": 300
+      }
+    },
+    "aiAssistant": {
+      "sessions": 42,
+      "bySource": {
+        "ChatGPT": {
+          "sessions": 30
+        },
+        "Perplexity": {
+          "sessions": 12
+        }
+      }
+    }
+  },
+  "aiReports": {
+    "google": {
+      "impressions": 3400,
+      "pages": {
+        "/": {
+          "impressions": 2000
+        },
+        "/boilers/": {
+          "impressions": 900
+        },
+        "/heat-pumps/": {
+          "impressions": 300
+        },
+        "/contact/": {
+          "impressions": 200
+        }
+      }
+    },
+    "bing": {
+      "citations": 120,
+      "pages": {
+        "/blog/boiler-sizes/": {
+          "citations": 80
+        },
+        "/": {
+          "citations": 40
+        }
+      }
+    }
+  },
+  "linkedOnce": {
+    "count": 23,
+    "pages": [
+      {
+        "url": "https://www.example.com/blog/post-20/",
+        "from": "https://www.example.com/blog/?page=2&sort=new"
+      },
+      {
+        "url": "https://www.example.com/blog/post-21/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-22/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-23/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-24/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-25/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-26/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-27/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-28/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-29/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-30/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-31/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-32/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-33/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-34/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-35/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-36/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-37/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-38/",
+        "from": "https://www.example.com/blog/"
+      },
+      {
+        "url": "https://www.example.com/blog/post-39/",
+        "from": "https://www.example.com/blog/"
+      }
+    ],
+    "capped": true
+  },
+  "linkStrength": {
+    "pages": {
+      "/": 100,
+      "/boilers/": 81,
+      "/contact/": 77,
+      "/plumber-zurich/": 60,
+      "/heat-pumps/": 55,
+      "/shop/": 50,
+      "/about/": 44,
+      "/blog/": 40,
+      "/gallery/": 30,
+      "/emergency/": 25,
+      "/blog/heat-pump-guide/": 20,
+      "/boilers/combi/": 12,
+      "/blog/boiler-sizes/": 8,
+      "/offers/spring-2025/": 0,
+      "/o'brien-partners/": 0
+    },
+    "median": 40,
+    "capped": true
+  },
+  "linkIdeas": [
+    {
+      "page": "/boilers/combi/",
+      "query": "combi boiler & tank",
+      "impressions": 900,
+      "clicks": 20,
+      "position": 8.2,
+      "from": [
+        "/boilers/",
+        "/blog/boiler-sizes/"
+      ]
+    },
+    {
+      "page": "/blog/post-1/",
+      "query": "query 1",
+      "impressions": 850,
+      "clicks": 19,
+      "position": 9.2,
+      "from": [
+        "/boilers/",
+        "/blog/boiler-sizes/"
+      ]
+    },
+    {
+      "page": "/blog/post-2/",
+      "query": "query 2",
+      "impressions": 800,
+      "clicks": 18,
+      "position": 10.2,
+      "from": [
+        "/boilers/",
+        "/blog/boiler-sizes/"
+      ]
+    },
+    {
+      "page": "/blog/post-3/",
+      "query": "query 3",
+      "impressions": 750,
+      "clicks": 17,
+      "position": 11.2,
+      "from": [
+        "/boilers/",
+        "/blog/boiler-sizes/"
+      ]
+    },
+    {
+      "page": "/blog/post-4/",
+      "query": "query 4",
+      "impressions": 700,
+      "clicks": 16,
+      "position": 12.2,
+      "from": [
+        "/boilers/",
+        "/blog/boiler-sizes/"
+      ]
+    },
+    {
+      "page": "/blog/post-5/",
+      "query": "query 5",
+      "impressions": 650,
+      "clicks": 15,
+      "position": 13.2,
+      "from": [
+        "/boilers/",
+        "/blog/boiler-sizes/"
+      ]
+    },
+    {
+      "page": "/blog/post-6/",
+      "query": "query 6",
+      "impressions": 600,
+      "clicks": 14,
+      "position": 14.2,
+      "from": [
+        "/boilers/",
+        "/blog/boiler-sizes/"
+      ]
+    },
+    {
+      "page": "/blog/post-7/",
+      "query": "query 7",
+      "impressions": 550,
+      "clicks": 13,
+      "position": 15.2,
+      "from": [
+        "/boilers/",
+        "/blog/boiler-sizes/"
+      ]
+    },
+    {
+      "page": "/blog/post-8/",
+      "query": "query 8",
+      "impressions": 500,
+      "clicks": 12,
+      "position": 16.2,
+      "from": [
+        "/boilers/",
+        "/blog/boiler-sizes/"
+      ]
+    },
+    {
+      "page": "/blog/post-9/",
+      "query": "query 9",
+      "impressions": 450,
+      "clicks": 11,
+      "position": 17.2,
+      "from": [
+        "/boilers/",
+        "/blog/boiler-sizes/"
+      ]
+    },
+    {
+      "page": "/blog/post-10/",
+      "query": "query 10",
+      "impressions": 400,
+      "clicks": 10,
+      "position": 18.2,
+      "from": [
+        "/boilers/",
+        "/blog/boiler-sizes/"
+      ]
+    }
+  ],
+  "queryGaps": [
+    {
+      "page": "/heat-pumps/",
+      "query": "wärmepumpe <preis>",
+      "impressions": 600,
+      "clicks": 3,
+      "position": 15.1,
+      "missing": [
+        "wärmepumpe",
+        "preis"
+      ]
+    },
+    {
+      "page": "/blog/post-1/",
+      "query": "gap 1",
+      "impressions": 560,
+      "clicks": 3,
+      "position": 15.1,
+      "missing": [
+        "word"
+      ]
+    },
+    {
+      "page": "/blog/post-2/",
+      "query": "gap 2",
+      "impressions": 520,
+      "clicks": 3,
+      "position": 15.1,
+      "missing": [
+        "word"
+      ]
+    },
+    {
+      "page": "/blog/post-3/",
+      "query": "gap 3",
+      "impressions": 480,
+      "clicks": 3,
+      "position": 15.1,
+      "missing": [
+        "word"
+      ]
+    },
+    {
+      "page": "/blog/post-4/",
+      "query": "gap 4",
+      "impressions": 440,
+      "clicks": 3,
+      "position": 15.1,
+      "missing": [
+        "word"
+      ]
+    },
+    {
+      "page": "/blog/post-5/",
+      "query": "gap 5",
+      "impressions": 400,
+      "clicks": 3,
+      "position": 15.1,
+      "missing": [
+        "word"
+      ]
+    },
+    {
+      "page": "/blog/post-6/",
+      "query": "gap 6",
+      "impressions": 360,
+      "clicks": 3,
+      "position": 15.1,
+      "missing": [
+        "word"
+      ]
+    },
+    {
+      "page": "/blog/post-7/",
+      "query": "gap 7",
+      "impressions": 320,
+      "clicks": 3,
+      "position": 15.1,
+      "missing": [
+        "word"
+      ]
+    },
+    {
+      "page": "/blog/post-8/",
+      "query": "gap 8",
+      "impressions": 280,
+      "clicks": 3,
+      "position": 15.1,
+      "missing": [
+        "word"
+      ]
+    },
+    {
+      "page": "/blog/post-9/",
+      "query": "gap 9",
+      "impressions": 240,
+      "clicks": 3,
+      "position": 15.1,
+      "missing": [
+        "word"
+      ]
+    },
+    {
+      "page": "/blog/post-10/",
+      "query": "gap 10",
+      "impressions": 200,
+      "clicks": 3,
+      "position": 15.1,
+      "missing": [
+        "word"
+      ]
+    }
+  ],
+  "changeCheck": {
+    "source": "search-console",
+    "site": "https://www.example.com",
+    "property": "sc-domain:example.com",
+    "changeDate": "2026-10-01",
+    "days": 28,
+    "windows": {
+      "before": {
+        "from": "2026-08-04",
+        "to": "2026-08-31"
+      },
+      "after": {
+        "from": "2026-10-02",
+        "to": "2026-10-29"
+      }
+    },
+    "groups": {
+      "changed": {
+        "pages": 3,
+        "paths": [
+          "/boilers/",
+          "/boilers/combi/",
+          "/heat-pumps/"
+        ],
+        "clicks": {
+          "before": 400,
+          "after": 470
+        },
+        "impressions": {
+          "before": 12000,
+          "after": 13100
+        }
+      },
+      "control": {
+        "pages": 20,
+        "rule": "same section, similar clicks",
+        "clicks": {
+          "before": 900,
+          "after": 910
+        },
+        "impressions": {
+          "before": 30000,
+          "after": 30500
+        }
+      }
+    },
+    "verdict": "likely up",
+    "clicks": {
+      "verdict": "likely up",
+      "percent": 18,
+      "low": 5,
+      "high": 33
+    },
+    "impressions": {
+      "verdict": "inconclusive",
+      "percent": 6,
+      "low": -4,
+      "high": 15
+    },
+    "method": "difference in differences",
+    "notes": []
+  },
+  "appLinks": [
+    {
+      "platform": "Android",
+      "file": "/.well-known/assetlinks.json",
+      "page": "https://www.example.com/",
+      "missing": true,
+      "problem": "It's missing (404)"
+    },
+    {
+      "platform": "iOS",
+      "file": "/.well-known/apple-app-site-association",
+      "page": "https://www.example.com/",
+      "missing": false,
+      "problem": "It isn't valid JSON <unexpected token>"
+    }
+  ],
+  "pdfLinks": {
+    "count": 2,
+    "pdfs": [
+      {
+        "url": "https://www.example.com/files/price-list 2026.pdf",
+        "pages": 14,
+        "menu": true
+      },
+      {
+        "url": "https://www.example.com/files/warranty.pdf",
+        "pages": 3,
+        "menu": false
+      }
+    ]
+  },
+  "aiAnswers": {
+    "source": "ai-answers",
+    "date": "2026-11-19",
+    "site": "https://www.example.com",
+    "host": "www.example.com",
+    "rivals": [
+      "rival.example",
+      "boilers.example.org"
+    ],
+    "questions": [
+      "Who is the best plumber in Zürich?",
+      "How much does a combi boiler cost & who fits them?",
+      "Who fits heat pumps near Winterthur?"
+    ],
+    "repeat": 2,
+    "engines": {
+      "perplexity": {
+        "name": "Perplexity",
+        "model": "sonar",
+        "asked": 6,
+        "answers": 6,
+        "cited": 2,
+        "rivals": {
+          "rival.example": 4,
+          "boilers.example.org": 1
+        },
+        "pages": {
+          "/boilers/": 2,
+          "/plumber-zurich/": 1
+        },
+        "neverCited": [
+          "Who fits heat pumps near Winterthur?"
+        ]
+      },
+      "openai": {
+        "name": "OpenAI",
+        "model": "example-model-1 <mini>",
+        "asked": 6,
+        "answers": 3,
+        "cited": 0,
+        "rivals": {
+          "rival.example": 2
+        },
+        "pages": {},
+        "neverCited": [],
+        "error": "rate limited (429) after 3 answers"
+      }
+    },
+    "answers": [
+      {
+        "engine": "perplexity",
+        "question": "Who is the best plumber in Zürich?",
+        "run": 1,
+        "model": "sonar",
+        "cited": [
+          "https://www.example.com/boilers/"
+        ]
+      }
+    ],
+    "notes": []
+  },
+  "geoGrid": {
+    "source": "geo-grid",
+    "date": "2026-11-19",
+    "placeId": "ChIJexample000",
+    "size": 5,
+    "spacingKm": 1.5,
+    "biasRadiusM": 1000,
+    "attribution": "Google Maps",
+    "label": "ignored label",
+    "keywords": [
+      {
+        "keyword": "plumber",
+        "cells": [
+          {
+            "row": 0,
+            "col": 0,
+            "rank": 12
+          },
+          {
+            "row": 0,
+            "col": 1,
+            "rank": 8
+          },
+          {
+            "row": 0,
+            "col": 2,
+            "rank": 5
+          },
+          {
+            "row": 0,
+            "col": 3,
+            "rank": 9
+          },
+          {
+            "row": 0,
+            "col": 4,
+            "rank": null
+          },
+          {
+            "row": 1,
+            "col": 0,
+            "rank": 6
+          },
+          {
+            "row": 1,
+            "col": 1,
+            "rank": 3
+          },
+          {
+            "row": 1,
+            "col": 2,
+            "rank": 2
+          },
+          {
+            "row": 1,
+            "col": 3,
+            "rank": 4
+          },
+          {
+            "row": 1,
+            "col": 4,
+            "rank": 15
+          },
+          {
+            "row": 2,
+            "col": 0,
+            "rank": 4
+          },
+          {
+            "row": 2,
+            "col": 1,
+            "rank": 2
+          },
+          {
+            "row": 2,
+            "col": 2,
+            "rank": 1
+          },
+          {
+            "row": 2,
+            "col": 3,
+            "rank": 3
+          },
+          {
+            "row": 2,
+            "col": 4,
+            "rank": 11
+          },
+          {
+            "row": 3,
+            "col": 0,
+            "rank": 7
+          },
+          {
+            "row": 3,
+            "col": 1,
+            "rank": 3
+          },
+          {
+            "row": 3,
+            "col": 2,
+            "rank": 2
+          },
+          {
+            "row": 3,
+            "col": 3,
+            "rank": "error"
+          },
+          {
+            "row": 3,
+            "col": 4,
+            "rank": 18
+          },
+          {
+            "row": 4,
+            "col": 0,
+            "rank": null
+          },
+          {
+            "row": 4,
+            "col": 1,
+            "rank": 10
+          },
+          {
+            "row": 4,
+            "col": 2,
+            "rank": 6
+          },
+          {
+            "row": 4,
+            "col": 3,
+            "rank": 14
+          },
+          {
+            "row": 4,
+            "col": 4,
+            "rank": null
+          }
+        ],
+        "top3": 0,
+        "top10": 0,
+        "top20": 0,
+        "notFound": 0,
+        "failed": 0
+      },
+      {
+        "keyword": "emergency plumber & heating",
+        "cells": [
+          {
+            "row": 0,
+            "col": 0,
+            "rank": null
+          },
+          {
+            "row": 0,
+            "col": 1,
+            "rank": null
+          },
+          {
+            "row": 0,
+            "col": 2,
+            "rank": 19
+          },
+          {
+            "row": 0,
+            "col": 3,
+            "rank": null
+          },
+          {
+            "row": 0,
+            "col": 4,
+            "rank": null
+          },
+          {
+            "row": 1,
+            "col": 0,
+            "rank": null
+          },
+          {
+            "row": 1,
+            "col": 1,
+            "rank": 11
+          },
+          {
+            "row": 1,
+            "col": 2,
+            "rank": 7
+          },
+          {
+            "row": 1,
+            "col": 3,
+            "rank": 13
+          },
+          {
+            "row": 1,
+            "col": 4,
+            "rank": null
+          },
+          {
+            "row": 2,
+            "col": 0,
+            "rank": 16
+          },
+          {
+            "row": 2,
+            "col": 1,
+            "rank": 5
+          },
+          {
+            "row": 2,
+            "col": 2,
+            "rank": 2
+          },
+          {
+            "row": 2,
+            "col": 3,
+            "rank": 6
+          },
+          {
+            "row": 2,
+            "col": 4,
+            "rank": null
+          },
+          {
+            "row": 3,
+            "col": 0,
+            "rank": null
+          },
+          {
+            "row": 3,
+            "col": 1,
+            "rank": 9
+          },
+          {
+            "row": 3,
+            "col": 2,
+            "rank": 4
+          },
+          {
+            "row": 3,
+            "col": 3,
+            "rank": 12
+          },
+          {
+            "row": 3,
+            "col": 4,
+            "rank": null
+          },
+          {
+            "row": 4,
+            "col": 0,
+            "rank": null
+          },
+          {
+            "row": 4,
+            "col": 1,
+            "rank": null
+          },
+          {
+            "row": 4,
+            "col": 2,
+            "rank": 17
+          },
+          {
+            "row": 4,
+            "col": 3,
+            "rank": null
+          },
+          {
+            "row": 4,
+            "col": 4,
+            "rank": null
+          }
+        ],
+        "top3": 0,
+        "top10": 0,
+        "top20": 0,
+        "notFound": 0,
+        "failed": 0
+      }
+    ],
+    "notes": [
+      "Some results include data © Example Maps Partner.",
+      "Two spots were checked again after a timeout."
+    ]
+  },
+  "plan": {
+    "status": "approved",
+    "approvedOn": "2026-11-18",
+    "summary": "A local plumbing & heating site with a shop. Setup adds one metadata helper, LocalBusiness and Product schema, and a real `/pricing` page.",
+    "yes": [
+      {
+        "id": "Y1",
+        "what": "Redirect example.com to www.example.com",
+        "why": "One host for every URL",
+        "approved": false
+      },
+      {
+        "id": "Y2",
+        "what": "Turn on HSTS preload",
+        "approved": true
+      },
+      {
+        "id": "Y3",
+        "what": "Retire the 2025 offers pages",
+        "why": "They're out of date",
+        "declined": true
+      }
+    ],
+    "pages": [
+      {
+        "url": "/",
+        "type": "Home",
+        "status": "exists",
+        "target": "plumber zürich",
+        "intent": "Someone who needs a plumber now",
+        "title": "Plumber & Heating Engineer in Zürich | Example Plumbing",
+        "h1": "Plumbing & heating in Zürich",
+        "schema": [
+          "Plumber",
+          "WebSite"
+        ]
+      },
+      {
+        "url": "/boilers/",
+        "type": "Service hub",
+        "status": "to-build",
+        "parent": "/",
+        "target": "boiler service zürich",
+        "secondary": [
+          "boiler repair",
+          "combi boiler"
+        ],
+        "title": "Boilers | Example Plumbing",
+        "description": "Boiler service & repair <same day>.",
+        "h1": "Boilers",
+        "schema": [
+          "Service",
+          "BreadcrumbList"
+        ],
+        "linksTo": [
+          "/boilers/combi/",
+          "/pricing"
+        ],
+        "owner": {
+          "needs": "yes",
+          "what": "Approve moving the boiler FAQ onto the hub",
+          "done": false
+        },
+        "finding": "F-004"
+      },
+      {
+        "url": "/pricing",
+        "type": "Pricing page",
+        "status": "to-create",
+        "parent": "/",
+        "target": "plumber prices zürich",
+        "intent": "Comparing call-out prices",
+        "title": "Prices | Example Plumbing",
+        "h1": "Prices",
+        "schema": [
+          "WebPage"
+        ],
+        "intro": "Fixed prices for the jobs we do most, from boiler services to gas safety certificates.",
+        "owner": {
+          "needs": "facts",
+          "what": "Confirm the call-out price",
+          "draft": "drafts/pricing.md",
+          "done": false
+        }
+      },
+      {
+        "url": "/heat-pumps/",
+        "from": "/waermepumpen/",
+        "type": "Service page",
+        "status": "built",
+        "parent": "/",
+        "target": "heat pump installer",
+        "title": "Heat Pumps | Example Plumbing",
+        "h1": "Heat pumps",
+        "schema": [
+          "Service"
+        ],
+        "owner": {
+          "needs": "copy",
+          "what": "Write the grant paragraph",
+          "done": true
+        }
+      },
+      {
+        "url": "/offers/",
+        "type": "Offers",
+        "status": "exists",
+        "parent": "/",
+        "owner": {
+          "needs": "decision",
+          "what": "Keep the offers page?",
+          "declined": true
+        }
+      },
+      {
+        "pattern": "/plumber-{town}/",
+        "count": 24,
+        "built": 10,
+        "type": "Town page",
+        "status": "to-build",
+        "parent": "/",
+        "target": "plumber {town}",
+        "title": "Plumber in {Town} | Example Plumbing",
+        "description": "Local plumbers in {Town}: jobs, photos & reviews from {Town}.",
+        "h1": "Plumber in {Town}",
+        "schema": [
+          "Service",
+          "BreadcrumbList"
+        ],
+        "samples": [
+          {
+            "url": "/plumber-zurich/",
+            "title": "Plumber in Zürich | Example Plumbing"
+          },
+          {
+            "url": "/plumber-winterthur/"
+          }
+        ],
+        "finding": "F-001"
+      }
+    ],
+    "alsoFixes": [
+      "F-003",
+      "F-009"
+    ]
+  },
+  "diff": {
+    "since": "2026-10-20",
+    "regressions": [
+      {
+        "path": "/blog/heat-pump-guide/",
+        "kind": "h1-removed",
+        "before": 1,
+        "after": 0
+      },
+      {
+        "path": "/boilers/combi/",
+        "kind": "speed-slower",
+        "source": "real visitors",
+        "before": "LCP 3.1 s",
+        "after": "LCP 4.6 s"
+      },
+      {
+        "path": "/",
+        "kind": "noindex-added",
+        "before": "index",
+        "after": "noindex"
+      },
+      {
+        "path": "/guides/dns/",
+        "kind": "status-error",
+        "before": 200,
+        "after": 500
+      },
+      {
+        "path": "/shop/thermostat-x2/",
+        "kind": "schema-fields-removed",
+        "detail": "Product lost aggregateRating, offers"
+      },
+      {
+        "path": "/robots.txt",
+        "kind": "robots-changed",
+        "detail": "− Allow: /blog/ · + Disallow: /search?q=* & /cart/"
+      },
+      {
+        "path": "/plumber-uster/",
+        "kind": "left-sitemap",
+        "before": "listed",
+        "after": null
+      },
+      {
+        "path": "/de/",
+        "kind": "hreflang-changed",
+        "detail": "hreflang changed: − de → /de/b/"
+      },
+      {
+        "path": "/about/",
+        "kind": "og-removed",
+        "before": "og:title, og:image",
+        "after": null
+      },
+      {
+        "path": "/blog/post-3/",
+        "kind": "content-shrunk",
+        "before": 900,
+        "after": 410
+      },
+      {
+        "path": "/old-offer/",
+        "kind": "redirect-changed",
+        "before": "301 → /offers/",
+        "after": "302 → /"
+      }
+    ],
+    "improvements": [
+      {
+        "path": "/heat-pumps/",
+        "kind": "canonical-changed",
+        "before": "https://staging.example.com/heat-pumps/",
+        "after": "https://www.example.com/heat-pumps/"
+      },
+      {
+        "path": "/contact/",
+        "kind": "status-fixed",
+        "before": 404,
+        "after": 200
+      },
+      {
+        "path": "/",
+        "kind": "speed-faster",
+        "source": "lab",
+        "before": "LCP 4.2 s",
+        "after": "LCP 3.2 s"
+      },
+      {
+        "path": "/gallery/",
+        "kind": "schema-added",
+        "before": null,
+        "after": "ImageGallery"
+      },
+      {
+        "path": "/emergency/",
+        "kind": "h1-added",
+        "before": 0,
+        "after": 1
+      }
+    ],
+    "changed": [
+      {
+        "path": "/boilers/repair/",
+        "kind": "title-changed",
+        "before": "Boiler Repair",
+        "after": "Boiler Repair Zürich - Fast & Friendly <24/7> | Example Plumbing & Heating"
+      },
+      {
+        "path": "/boilers/",
+        "kind": "description-changed",
+        "before": "Boilers.",
+        "after": "Boiler service & “same-day” repair."
+      },
+      {
+        "path": "/pricing/",
+        "kind": "h1-changed",
+        "before": "Prices",
+        "after": "Prices & fees"
+      },
+      {
+        "path": "/blog/boiler-sizes/",
+        "kind": "h2-changed",
+        "detail": "H2s changed: 3 → 4; − Prices · + Plans and prices"
+      },
+      {
+        "path": "/faq/",
+        "kind": "schema-retired-removed",
+        "detail": "HowTo"
+      },
+      {
+        "path": "/heat-pumps/",
+        "kind": "joined-sitemap",
+        "before": null,
+        "after": "listed"
+      },
+      {
+        "path": "/waermepumpen/",
+        "kind": "redirect-added",
+        "before": null,
+        "after": "301 → /heat-pumps/"
+      },
+      {
+        "path": "/kontakt/",
+        "kind": "redirect-removed",
+        "before": "301 → /contact/",
+        "after": null
+      },
+      {
+        "path": "/shop/",
+        "kind": "og-added",
+        "before": null,
+        "after": "og:description, og:url"
+      },
+      {
+        "path": "/blog/post-4/",
+        "kind": "content-grew",
+        "before": 300,
+        "after": 820
+      },
+      {
+        "path": "/shop/valve-k1/",
+        "kind": "schema-fields-added",
+        "detail": "Product gained gtin13"
+      },
+      {
+        "path": "/offers/spring-2025/",
+        "kind": "noindex-removed",
+        "before": "noindex",
+        "after": "index"
+      },
+      {
+        "path": "/gallery/old/",
+        "kind": "schema-removed",
+        "before": "ImageGallery",
+        "after": null
+      },
+      {
+        "path": "/beta/",
+        "kind": "a-future-kind",
+        "before": "x",
+        "after": "y"
+      }
+    ],
+    "added": [
+      "/blog/post-100/",
+      "/blog/post-101/",
+      "/heat-pumps/air-to-water/",
+      "/plumber-uster/",
+      "/shop/valve-k1/"
+    ],
+    "removed": [],
+    "removedUnknown": true,
+    "compared": [
+      "description",
+      "og",
+      "words",
+      "schemaProps",
+      "speed",
+      "robots",
+      "sitemap",
+      "redirects",
+      "h2",
+      "hreflang"
+    ],
+    "addedBurst": {
+      "pages": 212,
+      "before": 600,
+      "share": 0.35,
+      "sections": [
+        {
+          "path": "/blog/",
+          "pages": 150
+        },
+        {
+          "path": "/",
+          "pages": 2
+        },
+        {
+          "path": "/shop/",
+          "pages": 40
+        }
+      ],
+      "examples": [
+        {
+          "path": "/blog/post-100/",
+          "title": "Cheap <pills> & more"
+        },
+        {
+          "path": "/shop/valve-k1/",
+          "title": null
+        },
+        {
+          "path": "/new-page/",
+          "title": "Neue Seite für Zürich"
+        }
+      ]
+    },
+    "timeline": [
+      {
+        "date": "2026-07-21",
+        "pages": 1100,
+        "findings": 40,
+        "regressions": null,
+        "improvements": null,
+        "added": null,
+        "removed": null
+      },
+      {
+        "date": "2026-08-20",
+        "pages": 1150,
+        "findings": 38,
+        "regressions": 2,
+        "improvements": 5,
+        "added": 60,
+        "removed": 10
+      },
+      {
+        "date": "2026-10-20",
+        "pages": 1028,
+        "findings": 35,
+        "regressions": 1,
+        "improvements": 3,
+        "added": 12,
+        "removed": 134
+      },
+      {
+        "date": "2026-11-20",
+        "pages": 1240,
+        "findings": 33,
+        "regressions": 11,
+        "improvements": 5,
+        "added": 212,
+        "removed": null
+      }
+    ]
+  }
+}
