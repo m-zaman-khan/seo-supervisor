@@ -7,7 +7,9 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { fileCrawl } from "./seo-diff.mjs";
-import { proxyNote, chromeProxyArgs } from "./lib/proxy.mjs";
+import { chromeProxyArgs } from "./lib/proxy.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
 import { redact, hideSecrets } from "./lib/redact.mjs";
 import { createFindings } from "./lib/findings.mjs";
 import { RULES, CHECKS } from "./crawl/catalog.mjs";
@@ -58,29 +60,73 @@ import { trustSignals } from "./checks/trust.mjs";
 import { checkBusinessType, detectBusinessType } from "./checks/business-type.mjs";
 import { slowNote } from "./checks/crawl.mjs";
 import { maskKeys } from "./checks/hygiene.mjs";
-{
-  const n = proxyNote();
-  if (n) console.error("note: " + n);
-} // once, before any request
+warnProxy(); // once, before any request
 
 const VERSION = "2.0.0";
 const UA = "seo-supervisor-crawler/" + VERSION;
 
 // ---------- args ----------
-const args = {};
-for (let i = 2; i < process.argv.length; i++) {
-  const a = process.argv[i];
-  if (!a.startsWith("--")) continue;
-  const k = a.slice(2);
-  const v = process.argv[i + 1] && !process.argv[i + 1].startsWith("--") ? process.argv[++i] : true;
-  args[k] = v;
-}
-if (!args.url || args.url === true) {
-  console.error(
-    "Usage: node seo-crawl.mjs --url http://localhost:3000 [--site-origin https://example.com] [--trailing-slash auto|always|never] [--brand Name] [--ignore-noindex] [--banned regex] [--verify regex] [--urls file] [--next-manifest file] [--max 1000] [--concurrency 4] [--include-query] [--out seo-audit/seo-crawl.json]",
-  );
-  process.exit(2);
-}
+// An unknown option or unusable value stops the crawl (exit 2) before anything is asked of the site.
+const USAGE =
+  "Usage: node seo-crawl.mjs --url http://localhost:3000 [--site-origin https://example.com] [--trailing-slash auto|always|never] [--brand Name] [--ignore-noindex] [--banned regex] [--verify regex] [--urls file] [--next-manifest file] [--max 1000] [--concurrency 4] [--include-query] [--out seo-audit/seo-crawl.json]";
+const FLAGS = [
+  "url",
+  "site-origin",
+  "trailing-slash",
+  "brand",
+  "banned",
+  "verify",
+  "urls",
+  "next-manifest",
+  "psi-endpoint",
+  "crux-endpoint",
+  "render",
+  "lighthouse",
+  "render-page",
+  "render-steps",
+  "include",
+  "exclude",
+  "gsc-indexing",
+  "max",
+  "concurrency",
+  "out",
+];
+const BOOLEANS = [
+  "ignore-noindex",
+  "check-live",
+  "outside",
+  "outbound-links",
+  "desktop",
+  "hreflang-other-sites",
+  "ai-bot-probe",
+  "clean-screenshots",
+  "include-query",
+];
+/** @type {{ args: ReturnType<typeof parseArgs> } | undefined} */
+let options;
+await runMain(() => {
+  const a = parseArgs(process.argv.slice(2), { flags: FLAGS, booleans: BOOLEANS, positionals: 0 });
+  if (typeof a.url !== "string") throw new Fail(USAGE);
+  const no = (k, why) => {
+    throw new Fail(`seo-crawl: --${k} ${why}`);
+  };
+  for (const k of ["url", "site-origin"])
+    if (k in a && !(URL.canParse(a[k]) && /^https?:$/.test(new URL(a[k]).protocol)))
+      no(k, `needs a full web address, like http://localhost:3000 (got “${a[k]}”).`);
+  for (const k of ["max", "concurrency"])
+    if (k in a && !/^[1-9]\d*$/.test(a[k]))
+      no(k, `needs a whole number of 1 or more, like --${k} ${k === "max" ? 1000 : 4}.`);
+  for (const k of ["banned", "verify"])
+    if (typeof a[k] === "string")
+      try {
+        new RegExp(a[k], "i");
+      } catch (e) {
+        no(k, `isn't a valid pattern (${e.message}).`);
+      }
+  options = { args: a };
+});
+if (!options) process.exit(); // runMain said why and set the exit code; nothing has been asked of the site yet
+const { args } = options;
 const START = new URL(args.url);
 const START_ORIGIN = START.origin;
 const MAX = Number(args.max || 1000);
@@ -89,15 +135,15 @@ const BANNED = typeof args.banned === "string" ? new RegExp(args.banned, "i") : 
 const VERIFY = typeof args.verify === "string" ? new RegExp(args.verify, "i") : null;
 const URL_LIST = typeof args.urls === "string" ? args.urls : null;
 const NEXT_MANIFEST = typeof args["next-manifest"] === "string" ? args["next-manifest"] : null;
-const CONC = Math.max(1, Number(args.concurrency || 4));
+const CONC = Number(args.concurrency || 4);
 const SLASH = ["always", "never"].includes(args["trailing-slash"]) ? args["trailing-slash"] : "auto";
 const BRAND = typeof args.brand === "string" ? args.brand : "";
 const INCLUDE_QUERY = !!args["include-query"];
 const CHECK_LIVE = !!args["check-live"];
 const OUTSIDE = !!args.outside; // nothing leaves the machine without it
-const LIGHTHOUSE_ALL = args.lighthouse === "all" || !!args["lighthouse=all"]; // --lighthouse all, or --lighthouse=all
-const LIGHTHOUSE = !!args.lighthouse || LIGHTHOUSE_ALL;
-const RENDER_ALL = args.render === "all" || !!args["render=all"]; // with --outside: every indexable page, not the sample
+const LIGHTHOUSE_ALL = args.lighthouse === "all"; // --lighthouse all, or --lighthouse=all
+const LIGHTHOUSE = !!args.lighthouse;
+const RENDER_ALL = args.render === "all"; // with --outside: every indexable page, not the sample
 const DESKTOP = !!args.desktop; // a separate opt-in: it sends the sample URLs to Google a second time
 const OUT = resolve(typeof args.out === "string" ? args.out : "seo-audit/seo-crawl.json");
 let SITE_ORIGIN = typeof args["site-origin"] === "string" ? new URL(args["site-origin"]).origin : "";
