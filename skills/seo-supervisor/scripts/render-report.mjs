@@ -11,6 +11,25 @@ import { VERSION } from "./update-check.mjs";
 import { SEV, EARN, isOpen, findingsOf, buildRules as rulesOf, score, bandOf, OWN_SCORE } from "./lib/score.mjs";
 import { recheckOf, RECHECK_NOTE } from "./lib/recheck.mjs";
 import { isMain } from "./lib/is-main.mjs";
+import {
+  SEV_LABEL,
+  STATUS_LABEL,
+  esc,
+  inl,
+  fmtDate,
+  num,
+  obj,
+  plural,
+  firstSentence,
+  ICON,
+  dot,
+  noteMd,
+  noteCode,
+  notePath,
+  cellMd,
+  isCount,
+  isText,
+} from "./report/format.mjs";
 
 // Bundled woff2 fonts (SIL OFL), inlined so the report stays a single offline file.
 const FONTS = [
@@ -274,14 +293,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
       auditor: "seo-crawl.mjs " + raw.version,
     });
   if (isScan) Object.assign(run, { mode: "content scan", date: raw.scannedAt, auditor: "content-scan.mjs" });
-  const SEV_LABEL = { blocker: "Blocker", high: "High", "needs-decision": "Decision", medium: "Medium", low: "Low" };
-  const STATUS_LABEL = {
-    open: "Open",
-    fixed: "Fixed",
-    "wont-fix": "Won't fix",
-    "needs-decision": "Needs decision",
-    "in-progress": "In progress",
-  };
   // The check settings (settings.json beside the audit file) apply before the score.
   const { findings, ...checkSettings } = findingsOf(raw, dir);
   findings.sort(
@@ -395,27 +406,10 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   else if (open.length) verdict = "In good shape: only minor issues left";
   else verdict = "Every checked rule passes";
 
-  const esc = s =>
-    String(s ?? "").replace(
-      /[&<>"']/g,
-      c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-    );
-  const inl = s =>
-    esc(s)
-      .replace(/`([^`]+)`/g, "<code>$1</code>")
-      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  const fmtDate = d => {
-    const x = new Date(d || Date.now());
-    return isNaN(x.getTime())
-      ? String(d)
-      : x.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-  };
-  const num = n => Number(n).toLocaleString("en-US");
   // Search traffic by path, one line on findings and plan rows: Search Console (`traffic`, gsc-import.mjs or
   // google.mjs), Bing (`bing.traffic`, connect-keys.mjs), GA4 organic visits (`analytics`, google.mjs) and the visits
   // from search engines in Matomo and PostHog (`matomo.traffic`, `posthog.traffic`, connect-keys.mjs). Each part only
   // when present.
-  const obj = x => (x && typeof x === "object" ? x : null);
   const traffic = obj(raw.traffic),
     bing = obj(raw.bing),
     analytics = obj(raw.analytics),
@@ -612,22 +606,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     ].filter(Boolean);
   }
   const linkCount = p => plural(Number(p.count) || 0, "link");
-  const plural = (n, w, p = w + "s") => `${num(n)} ${n === 1 ? w : p}`;
-  const firstSentence = s => {
-    const m = String(s || "").match(/^.*?[.!?](\s|$)/);
-    return m ? m[0].trim() : String(s || "");
-  };
-  const ICON = {
-    chevron:
-      '<svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5 10 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    check:
-      '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    arrow:
-      '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9.5M8.5 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    search:
-      '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
-  };
-  const dot = s => `<i class="dot d-${s}" aria-hidden="true"></i>`;
 
   // ---------- overview ----------
   function scoreScale(v) {
@@ -1042,19 +1020,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
 
   // AI agents and writing notes, from the crawler. Crawled text (tool names, sentences, URLs) is escaped for HTML and
   // Markdown.
-  const noteMd = s =>
-    String(s ?? "")
-      .replace(/\s+/g, " ")
-      .replace(/[\\`*_[\]<>]/g, "\\$&");
-  const noteCode = s => "`" + String(s ?? "").replace(/[`\r\n]/g, " ") + "`";
-  const notePath = u => {
-    try {
-      const x = new URL(u);
-      return x.pathname + x.search;
-    } catch {
-      return String(u ?? "");
-    }
-  };
   const AGENT_FILE = {
     "/.well-known/api-catalog": "API catalog (RFC 9727)",
     "/.well-known/agent-card.json": "A2A agent card",
@@ -1176,7 +1141,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     imageRows.length
       ? `\n    <details class="how images"><summary>Images by possible saving</summary><p>${esc(IMAGES_INTRO)}</p><div class="tablewrap"><table><thead><tr><th scope="col">Image</th><th scope="col">Size</th><th scope="col">Format</th><th scope="col">Possible saving</th></tr></thead><tbody>${imageRows.map(i => `<tr><td><code>${esc(notePath(i.url))}</code></td><td>${kbOf(i.bytes)}</td><td>${esc(imageWhat(i))}</td><td>about ${kbOf(i.estSaving)}</td></tr>`).join("")}</tbody></table></div></details>`
       : "";
-  const cellMd = s => s.replace(/\|/g, "\\|");
   const imagesMd = () =>
     imageRows.length
       ? [
@@ -1283,19 +1247,18 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
 
   // Pages per top-level section show only with two or more; siteSize is set when the crawl stopped at --max, and
   // indexing is Search Console's indexed count. Paths are escaped.
-  const countOf = x => Number.isInteger(x) && x >= 0;
   const crawlSections = (Array.isArray(raw.sections) ? raw.sections : [])
-    .filter(s => obj(s) && typeof s.path === "string" && countOf(s.pages) && Number.isFinite(s.share))
+    .filter(s => obj(s) && typeof s.path === "string" && isCount(s.pages) && Number.isFinite(s.share))
     .slice(0, 20);
   const crawlLines = () => {
     const z = obj(raw.siteSize),
       i = obj(raw.indexing);
     return [
       z &&
-        [z.crawled, z.known, z.sitemapUrls].every(countOf) &&
+        [z.crawled, z.known, z.sitemapUrls].every(isCount) &&
         `The crawl stopped at ${num(z.crawled)} pages (--max). It knew of ${num(z.known)} URLs on the site from links and sitemaps (the sitemaps list ${num(z.sitemapUrls)}), so the site has at least ${num(Math.max(z.known, z.sitemapUrls))} URLs.`,
       i &&
-        [i.indexed, i.notIndexed, i.crawlIndexable].every(countOf) &&
+        [i.indexed, i.notIndexed, i.crawlIndexable].every(isCount) &&
         /^\d{4}-\d{2}-\d{2}$/.test(i.date) &&
         `Search Console counted ${num(i.indexed)} indexed pages (and ${num(i.notIndexed)} not indexed) on ${i.date}; this crawl found ${num(i.crawlIndexable)} pages meant to be indexed${i.capped ? " before it stopped at --max" : ""}. Information only: it doesn't change the score.`,
     ].filter(Boolean);
@@ -1358,12 +1321,12 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     b => obj(b) && typeof b.bot === "string" && Object.hasOwn(AI_STATUS, b.robots),
   );
   const bare = (l =>
-    l && [l.checked, l.count].every(countOf) && Array.isArray(l.pages)
+    l && [l.checked, l.count].every(isCount) && Array.isArray(l.pages)
       ? { ...l, pages: l.pages.filter(p => obj(p) && typeof p.url === "string" && Array.isArray(p.missing)) }
       : null)(obj(raw.landmarks));
   const agenticRows = (Array.isArray(raw.lighthouse) ? raw.lighthouse : [])
     .filter(
-      x => obj(x) && typeof x.url === "string" && obj(x.agentic) && [x.agentic.passed, x.agentic.total].every(countOf),
+      x => obj(x) && typeof x.url === "string" && obj(x.agentic) && [x.agentic.passed, x.agentic.total].every(isCount),
     )
     .map(x => ({
       path: notePath(x.url),
@@ -1445,7 +1408,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
       ["category", "a category"],
     ];
   const shopLine =
-    fields && countOf(fields.products) && fields.products > 0 && FIELDS.every(([k]) => countOf(fields[k]))
+    fields && isCount(fields.products) && fields.products > 0 && FIELDS.every(([k]) => isCount(fields[k]))
       ? `Of ${plural(fields.products, "product")} in the schema: ${FIELDS.map(([k, w]) => `${num(fields[k])} with ${w}`).join(", ")}. Google recommends each one where the product has it, so a GTIN, colour or material can rightly be missing. Information only: it doesn't change the score.`
       : "";
   const shopHtml = () => (shopLine ? `\n    <p class="quiet">${esc(shopLine)}</p>` : ""),
@@ -1616,7 +1579,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     .slice(0, 10);
   const renderChosen = (c => (c && typeof c.url === "string" ? c : null))(obj(raw.renderedPage));
   const renderStrs = x => (Array.isArray(x) ? x.filter(s => typeof s === "string" && s) : []);
-  const renderNum = x => Number.isInteger(x) && x >= 0;
   const renderSummary = () => {
     const seen = renderPages.filter(p => !p.gate && obj(p.h1) && obj(p.cta)),
       n = seen.length;
@@ -1645,10 +1607,10 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
           `the H1 isn't on the first screen on ${d === "phone" ? "a phone" : "desktop"}`,
       ),
       h &&
-        renderNum(h.words) &&
+        isCount(h.words) &&
         h.words >= 50 &&
         /* our own line */ `${num(h.words)} hidden words (${Object.entries(obj(h.by) || {})
-          .filter(([, v]) => renderNum(v))
+          .filter(([, v]) => isCount(v))
           .map(([k, v]) => `${k} ${num(v)}`)
           .join(", ")})${typeof h.examples?.[0]?.text === "string" ? `, most in “${h.examples[0].text}”` : ""}`,
       broken.length &&
@@ -1669,7 +1631,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     const changes = (Array.isArray(c.changes) ? c.changes : [])
       .filter(x => obj(x) && typeof x.field === "string")
       .map(x => `${x.field}: ${x.raw ?? "none"} → ${x.rendered ?? "none"}`);
-    return `: ${renderNum(w.html) ? `${num(w.html)} words in the HTML, ${renderNum(w.rendered) ? num(w.rendered) : "?"}` : `${renderNum(w.rendered) ? num(w.rendered) : "?"} words`} after JavaScript${steps}. ${changes.length ? `What changed: ${changes.join("; ")}.` : "The title, canonical, robots tag, H1, schema and links match the HTML."}${typeof c.gate === "string" ? ` It showed ${c.gate}.` : ""}${errors.length ? ` ${plural(errors.length, "browser error")}, first: ${errors[0]}.` : ""}`;
+    return `: ${isCount(w.html) ? `${num(w.html)} words in the HTML, ${isCount(w.rendered) ? num(w.rendered) : "?"}` : `${isCount(w.rendered) ? num(w.rendered) : "?"} words`} after JavaScript${steps}. ${changes.length ? `What changed: ${changes.join("; ")}.` : "The title, canonical, robots tag, H1, schema and links match the HTML."}${typeof c.gate === "string" ? ` It showed ${c.gate}.` : ""}${errors.length ? ` ${plural(errors.length, "browser error")}, first: ${errors[0]}.` : ""}`;
   };
   const RENDER_INTRO =
     "The sample pages loaded again in Chrome at desktop and phone size. Information only; what is a finding is listed with the other findings.";
@@ -1875,50 +1837,48 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   // More about links, in one collapsed panel on the Overview (a section in the Markdown). Names, addresses and link
   // text come from other sites, so each is escaped (code spans in the Markdown).
   const asArray = (x, ok) => (Array.isArray(x) ? x.filter(ok) : []);
-  const asString = x => typeof x === "string" && x !== "";
-  const asInt = x => Number.isInteger(x) && x >= 0;
   const asDay = x => typeof x === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x) && !isNaN(Date.parse(x));
   const newItems = (n =>
-    n && asInt(n.count) && n.count > 0
-      ? { ...n, sites: asArray(n.sites, s => obj(s) && asString(s.domain)).slice(0, 5) }
+    n && isCount(n.count) && n.count > 0
+      ? { ...n, sites: asArray(n.sites, s => obj(s) && isText(s.domain)).slice(0, 5) }
       : null)(obj(raw.newLinks));
   const stale = (n => (n && asDay(n.newest) && asDay(n.asOf) ? n : null))(obj(raw.noNewLinks));
   const unlinked = (u =>
-    u && asInt(u.count) && u.count > 0 && asInt(u.of) && u.of >= u.count
-      ? { ...u, urls: asArray(u.urls, asString).slice(0, 5) }
+    u && isCount(u.count) && u.count > 0 && isCount(u.of) && u.of >= u.count
+      ? { ...u, urls: asArray(u.urls, isText).slice(0, 5) }
       : null)(obj(raw.unlinkedPages));
-  const nfSites = asArray(linkCheck?.nofollowSites, s => obj(s) && asString(s.site) && asInt(s.pages)).slice(0, 10);
-  const foundItems = asArray(linkCheck?.found, f => obj(f) && asString(f.url) && Array.isArray(f.links))
+  const nfSites = asArray(linkCheck?.nofollowSites, s => obj(s) && isText(s.site) && isCount(s.pages)).slice(0, 10);
+  const foundItems = asArray(linkCheck?.found, f => obj(f) && isText(f.url) && Array.isArray(f.links))
     .flatMap(f =>
-      asArray(f.links, l => obj(l) && asString(l.href))
+      asArray(f.links, l => obj(l) && isText(l.href))
         .slice(0, 1)
         .map(l => ({ url: f.url, ...l })),
     )
     .slice(0, 10);
   const cc = (c =>
-    c && asString(obj(c.crawl)?.name)
+    c && isText(obj(c.crawl)?.name)
       ? {
           name: c.crawl.name,
-          site: obj(c.site) && asInt(c.site.captures) ? c.site : null,
-          pages: asArray(c.linkingPages, p => obj(p) && asString(p.url) && asString(p.state)),
-          sites: asArray(c.linkingSites, asString),
+          site: obj(c.site) && isCount(c.site.captures) ? c.site : null,
+          pages: asArray(c.linkingPages, p => obj(p) && isText(p.url) && isText(p.state)),
+          sites: asArray(c.linkingSites, isText),
         }
       : null)(obj(raw.commonCrawl));
   // commoncrawl.mjs --rank: the domain's place in Common Crawl's web graph by harmonic centrality, or how far down it
   // isn't.
   const rankInfo = (r =>
     r &&
-    asString(r.domain) &&
-    asString(r.release) &&
-    asInt(r.domains) &&
-    (r.found === true ? asInt(r.harmonicPos) : r.found === false && asInt(r.scanned))
+    isText(r.domain) &&
+    isText(r.release) &&
+    isCount(r.domains) &&
+    (r.found === true ? isCount(r.harmonicPos) : r.found === false && isCount(r.scanned))
       ? r
       : null)(obj(obj(raw.commonCrawl)?.rank));
   const out = (o =>
     o && obj(o.pages) && Object.keys(o.pages).length
       ? {
-          pages: Object.values(o.pages).filter(asInt),
-          domains: Object.entries(obj(o.domains) || {}).filter(([k, v]) => asString(k) && asInt(v)),
+          pages: Object.values(o.pages).filter(isCount),
+          domains: Object.entries(obj(o.domains) || {}).filter(([k, v]) => isText(k) && isCount(v)),
         }
       : null)(obj(raw.linksToOtherSites));
   const bingSample = Array.isArray(bing?.backlinks?.sample) ? bing.backlinks.sample.filter(obj).length : 0;
@@ -1927,7 +1887,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     if (newItems)
       L.push([
         `${plural(newItems.count, "new site")} ${newItems.count === 1 ? "links" : "link"} to you since the last export${Date.parse(newItems.since) ? ` (${fmtDate(newItems.since)})` : ""}, from Search Console's Top linking sites.${newItems.capped === true ? " Some may be older links: an export holds 1,000 sites at most, so they may have been past the cut before." : ""}`,
-        newItems.sites.map(s => [s.domain, asInt(s.links) ? plural(s.links, "link") : ""]),
+        newItems.sites.map(s => [s.domain, isCount(s.links) ? plural(s.links, "link") : ""]),
       ]);
     if (stale)
       L.push([
@@ -1949,7 +1909,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
         "Links the backlink check found, with the page each points at and its text:",
         foundItems.map(f => [
           f.url,
-          `→ ${f.href}${asString(f.text) ? ` “${f.text}”` : ""}${asString(f.rel) ? ` (${f.rel})` : ""}`,
+          `→ ${f.href}${isText(f.text) ? ` “${f.text}”` : ""}${isText(f.rel) ? ` (${f.rel})` : ""}`,
         ]),
       ]);
     if (cc) {
@@ -1971,7 +1931,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     }
     if (rankInfo)
       L.push([
-        `Common Crawl's web graph (${rankInfo.release}): ${rankInfo.found ? `${rankInfo.domain} is #${num(rankInfo.harmonicPos)} of ${num(rankInfo.domains)} domains by how well linked it is (harmonic centrality)${asInt(rankInfo.pageRankPos) ? `, #${num(rankInfo.pageRankPos)} by PageRank` : ""}` : `${rankInfo.domain} isn't in the top ${num(rankInfo.scanned)} of ${num(rankInfo.domains)} domains${rankInfo.capped ? " (the read stopped there)" : ""}`}. Common Crawl's own number, not Google's, and information only.`,
+        `Common Crawl's web graph (${rankInfo.release}): ${rankInfo.found ? `${rankInfo.domain} is #${num(rankInfo.harmonicPos)} of ${num(rankInfo.domains)} domains by how well linked it is (harmonic centrality)${isCount(rankInfo.pageRankPos) ? `, #${num(rankInfo.pageRankPos)} by PageRank` : ""}` : `${rankInfo.domain} isn't in the top ${num(rankInfo.scanned)} of ${num(rankInfo.domains)} domains${rankInfo.capped ? " (the read stopped there)" : ""}`}. Common Crawl's own number, not Google's, and information only.`,
         [],
       ]);
     if (out) {
@@ -2134,13 +2094,13 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   // One row per crawl from seo-diff.mjs --history, shown from three crawls on, as two are just Since last audit.
   const timelineRows = () =>
     (Array.isArray(obj(raw.diff)?.timeline) ? raw.diff.timeline : [])
-      .filter(x => obj(x) && !isNaN(Date.parse(x.date)) && asInt(x.pages))
+      .filter(x => obj(x) && !isNaN(Date.parse(x.date)) && isCount(x.pages))
       .slice(-100)
       .reverse();
   const timelineCells = x => [
     fmtDate(x.date),
     ...["pages", "findings", "regressions", "improvements", "added", "removed"].map(k =>
-      asInt(x[k]) ? num(x[k]) : "–",
+      isCount(x[k]) ? num(x[k]) : "–",
     ),
   ];
   const TIMELINE_HEAD = [
@@ -2396,9 +2356,9 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
       timeZone: "UTC",
     });
     const what = ranged
-      ? `${m.verdict}, about ${signed(m.percent)} compared with ${asInt(control) ? plural(control, "similar unchanged page") : "similar unchanged pages"} (likely range ${signed(m.low)} to ${signed(m.high)}${m.verdict === "inconclusive" ? ", which includes no change" : ""})`
-      : `inconclusive${asString(m.reason) ? `, ${m.reason}` : ""}`;
-    return `Change check, ${asInt(changed) ? plural(changed, "page") : "the pages"} changed on ${when}${asInt(c.days) ? `, ${c.days} days before and after` : ""}: Google Search clicks ${what}. This shows what happened to the numbers, not why. Information only.`;
+      ? `${m.verdict}, about ${signed(m.percent)} compared with ${isCount(control) ? plural(control, "similar unchanged page") : "similar unchanged pages"} (likely range ${signed(m.low)} to ${signed(m.high)}${m.verdict === "inconclusive" ? ", which includes no change" : ""})`
+      : `inconclusive${isText(m.reason) ? `, ${m.reason}` : ""}`;
+    return `Change check, ${isCount(changed) ? plural(changed, "page") : "the pages"} changed on ${when}${isCount(c.days) ? `, ${c.days} days before and after` : ""}: Google Search clicks ${what}. This shows what happened to the numbers, not why. Information only.`;
   };
   const changeHtml = () => {
     const l = changeLine();
@@ -2411,7 +2371,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   // Indexable pages with exactly one internal link in: the first 20, capped when the crawl stopped at --max. Paths are
   // escaped.
   const once = (o =>
-    o && countOf(o.count) && Array.isArray(o.pages)
+    o && isCount(o.count) && Array.isArray(o.pages)
       ? {
           ...o,
           pages: o.pages.filter(p => obj(p) && typeof p.url === "string" && typeof p.from === "string").slice(0, 20),
@@ -2438,10 +2398,10 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   // which Microsoft Advertising advised against for core information (8 Oct 2025). Crawled text is escaped.
   // https://developers.google.com/search/blog/2025/05/app-deep-links
   const apps = (Array.isArray(raw.appLinks) ? raw.appLinks : [])
-    .filter(a => obj(a) && ["Android", "iOS"].includes(a.platform) && asString(a.file) && asString(a.problem))
+    .filter(a => obj(a) && ["Android", "iOS"].includes(a.platform) && isText(a.file) && isText(a.problem))
     .slice(0, 2);
   const pdfLinkFiles = (l =>
-    l && Array.isArray(l.pdfs) ? l.pdfs.filter(p => obj(p) && asString(p.url) && asInt(p.pages)).slice(0, 20) : [])(
+    l && Array.isArray(l.pdfs) ? l.pdfs.filter(p => obj(p) && isText(p.url) && isCount(p.pages)).slice(0, 20) : [])(
     obj(raw.pdfLinks),
   );
   const APP_INTRO =
@@ -2616,7 +2576,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
           .slice(0, 20)
           .filter(x => x.v <= cut && x.v < top)
       : [];
-    return { pages, median: asInt(s.median) ? s.median : null, capped: s.capped === true, weak };
+    return { pages, median: isCount(s.median) ? s.median : null, capped: s.capped === true, weak };
   })(obj(raw.linkStrength));
   const LS_LABEL =
     "This is our own measure, computed with the PageRank formula (Brin and Page, 1998) on this site's own links. It's not Google's PageRank, which uses links from the whole web and isn't public.";
@@ -3282,12 +3242,12 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   const BURST_NOTE =
     "Our own line: this shows when at least 50 pages are new and they add at least 20% to the pages the last audit found. Information only: it doesn't change the score.";
   const burst = (b =>
-    b && asInt(b.pages) && asInt(b.before) && b.before > 0
+    b && isCount(b.pages) && isCount(b.before) && b.before > 0
       ? {
           pages: b.pages,
           before: b.before,
           sections: (Array.isArray(b.sections) ? b.sections : []).filter(
-            s => typeof s?.path === "string" && asInt(s.pages),
+            s => typeof s?.path === "string" && isCount(s.pages),
           ),
           examples: (Array.isArray(b.examples) ? b.examples : []).filter(e => typeof e?.path === "string").slice(0, 10),
         }
