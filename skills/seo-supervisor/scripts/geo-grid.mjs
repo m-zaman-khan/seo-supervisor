@@ -5,8 +5,9 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { isMain } from "./lib/is-main.mjs";
-import { proxyNote } from "./lib/proxy.mjs";
-import { SERVICES, activeKeys, keyFile, call, Refused, Fail } from "./connect-keys.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
+import { SERVICES, activeKeys, keyFile, call, Refused } from "./connect-keys.mjs";
 
 const SIZES = [5, 7, 9],
   SIZE = 7,
@@ -254,12 +255,11 @@ async function find({ text, key, from, endpoint, placeFile, yes }) {
 }
 
 async function main(argv) {
-  const args = {};
-  for (let i = 0; i < argv.length; i++)
-    if (argv[i].startsWith("--")) {
-      const k = argv[i].slice(2);
-      args[k] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : true;
-    }
+  const args = parseArgs(argv, {
+    flags: ["place-id", "keywords", "center", "size", "spacing", "out", "find"],
+    booleans: ["yes"],
+    positionals: 0,
+  });
   const str = k => (typeof args[k] === "string" ? args[k].trim() : null),
     yes = args.yes === true;
   const out = resolve(str("out") || "seo-audit/geo-grid.json"),
@@ -365,17 +365,6 @@ async function main(argv) {
 }
 
 if (isMain(import.meta.url)) {
-  {
-    const n = proxyNote();
-    if (n) console.error("note: " + n);
-  }
-  process.exitCode = await main(process.argv.slice(2)).then(null, e => {
-    if (e instanceof Refused) {
-      console.log("geo-grid: " + e.message);
-      return 1;
-    }
-    if (!(e instanceof Fail) && e.code !== "SEO_SETTINGS") throw e;
-    console.error(e.message);
-    return 2;
-  });
+  warnProxy();
+  await runMain(() => main(process.argv.slice(2)));
 }

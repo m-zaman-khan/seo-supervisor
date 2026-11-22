@@ -4,8 +4,9 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
-import { proxyNote } from "./lib/proxy.mjs";
-import { SERVICES, activeKeys, keyFile, call, Refused, Fail, domainOf } from "./connect-keys.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
+import { SERVICES, activeKeys, keyFile, call, Refused, domainOf } from "./connect-keys.mjs";
 
 // Answers vary from run to run, so each question is asked several times.
 const MAX_QUESTIONS = 20,
@@ -143,13 +144,14 @@ function summarize({ answers, questions, repeat, host, rivals, engines, errors =
   );
 }
 
+// --competitors is the name rdap.mjs and connect-keys.mjs use for --rivals.
 function main(argv) {
-  const args = {};
-  for (let i = 0; i < argv.length; i++)
-    if (argv[i].startsWith("--")) {
-      const k = argv[i].slice(2);
-      args[k] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : true;
-    }
+  const args = parseArgs(argv, {
+    flags: ["site", "questions", "rivals", "repeat", "engines", "out"],
+    booleans: ["yes"],
+    aliases: { competitors: "rivals" },
+    positionals: 0,
+  });
   const str = k => (typeof args[k] === "string" ? args[k] : null);
   if (!str("site") || !str("questions")) throw new Fail(USAGE);
   let site;
@@ -206,7 +208,7 @@ function main(argv) {
     endpoints = Object.fromEntries(IDS.map(id => [id, process.env[SERVICES[id].endpointEnv] || SERVICES[id].endpoint]));
   const engines = chosen.filter(id => keys[id]);
 
-  if (args.yes !== true) {
+  if (!args.yes) {
     const lines = chosen.map(id => {
       const s = SERVICES[id],
         k = keys[id],
@@ -305,17 +307,7 @@ async function run({ siteUrl, host, questions, repeat, rivals, engines, keys, en
   return Object.keys(errors).length ? 1 : 0;
 }
 
-// Not process.exit(): exiting while fetch's sockets close crashes Node on Windows.
 if (isMain(import.meta.url)) {
-  {
-    const n = proxyNote();
-    if (n) console.error("note: " + n);
-  }
-  process.exitCode = await Promise.resolve()
-    .then(() => main(process.argv.slice(2)))
-    .then(null, e => {
-      if (!(e instanceof Fail) && e.code !== "SEO_SETTINGS") throw e;
-      console.error(e.message);
-      return 2;
-    });
+  warnProxy();
+  await runMain(() => main(process.argv.slice(2)));
 }
