@@ -427,7 +427,7 @@
       "category": "Sitemaps & robots",
       "title": "robots.txt blocks 1 AI crawler(s)",
       "what": "Found on `http://127.0.0.1:<port>/robots.txt` (GPTBot).",
-      "why": "Blocking AI crawlers can keep the site out of ChatGPT, Claude, Perplexity and Google AI answers.",
+      "why": "Blocking an AI search crawler, or a fetcher for pages a person asks about, can keep the site out of that assistant's answers, such as ChatGPT, Claude or Perplexity. Blocking a training crawler keeps the content out of that vendor's AI training only: Google-Extended, for one, doesn't remove a site from AI Overviews or AI Mode.",
       "fix": "Confirm this is deliberate. A common middle ground blocks training crawlers and allows search crawlers.",
       "count": 1,
       "evidence": [
@@ -1996,7 +1996,7 @@
     },
     {
       "bot": "MistralAI-Index",
-      "vendor": "Mistral",
+      "vendor": "Mistral AI",
       "kind": "search",
       "robots": "allowed"
     },
@@ -2009,6 +2009,12 @@
     {
       "bot": "Amzn-SearchBot",
       "vendor": "Amazon",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Meta-WebIndexer",
+      "vendor": "Meta",
       "kind": "search",
       "robots": "allowed"
     },
@@ -2068,7 +2074,7 @@
     },
     {
       "bot": "MistralAI-Training",
-      "vendor": "Mistral",
+      "vendor": "Mistral AI",
       "kind": "training",
       "robots": "allowed"
     },
@@ -2114,7 +2120,7 @@
     },
     {
       "bot": "MistralAI-User",
-      "vendor": "Mistral",
+      "vendor": "Mistral AI",
       "kind": "user",
       "robots": "allowed"
     },
@@ -2141,6 +2147,12 @@
     {
       "bot": "Google-CloudVertexBot",
       "vendor": "Google",
+      "kind": "other",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Meta-ExternalAds",
+      "vendor": "Meta",
       "kind": "other",
       "robots": "allowed"
     }

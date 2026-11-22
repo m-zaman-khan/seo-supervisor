@@ -938,7 +938,7 @@
     },
     {
       "bot": "MistralAI-Index",
-      "vendor": "Mistral",
+      "vendor": "Mistral AI",
       "kind": "search",
       "robots": "allowed"
     },
@@ -951,6 +951,12 @@
     {
       "bot": "Amzn-SearchBot",
       "vendor": "Amazon",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Meta-WebIndexer",
+      "vendor": "Meta",
       "kind": "search",
       "robots": "allowed"
     },
@@ -1010,7 +1016,7 @@
     },
     {
       "bot": "MistralAI-Training",
-      "vendor": "Mistral",
+      "vendor": "Mistral AI",
       "kind": "training",
       "robots": "allowed"
     },
@@ -1056,7 +1062,7 @@
     },
     {
       "bot": "MistralAI-User",
-      "vendor": "Mistral",
+      "vendor": "Mistral AI",
       "kind": "user",
       "robots": "allowed"
     },
@@ -1083,6 +1089,12 @@
     {
       "bot": "Google-CloudVertexBot",
       "vendor": "Google",
+      "kind": "other",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Meta-ExternalAds",
+      "vendor": "Meta",
       "kind": "other",
       "robots": "allowed"
     }
