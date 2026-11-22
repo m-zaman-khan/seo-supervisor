@@ -39,7 +39,8 @@ With no options it asks where to install and for which agents.
   --agent <keys>    Comma-separated agents, or "all". No questions about agents.
   --scope <scope>   "user" (you, in every project) or "project" (this folder, to commit for your team)
   --project         Same as --scope project
-  --yes, -y         No questions: the agents it finds (Claude Code if none), user scope
+  --agents          Also install into the shared .agents folder (read by Codex, Cline, Zed, Warp and others), in the chosen scope
+  --yes, -y        No questions: the agents it finds (Claude Code if none), user scope
   --uninstall       Remove what this installer added, in the chosen scope (user by default)
   --force           Replace a skill folder or command file that isn't SEO Supervisor's
   --with-lighthouse Also install the optional Lighthouse add-on (about 170 MB, in the settings folder's tools: ~/.seo-supervisor/tools, or SEO_SUPERVISOR_HOME; not your project)
@@ -50,8 +51,10 @@ With no options it asks where to install and for which agents.
   --version         Print the version
 
 Commands that run here, with no agent:
-  npx seo-supervisor doctor                  Check Node, Chrome or Edge, the add-ons and the connections (changes nothing)
-  npx seo-supervisor dashboard [folders...]  Every audit's score, lowest first; --out dashboard.html writes a page
+  npx seo-supervisor doctor                     Check Node, Chrome or Edge, the add-ons and the connections (changes nothing)
+  npx seo-supervisor dashboard [folders...]     Every audit's score, lowest first; --out dashboard.html writes a page
+  npx seo-supervisor deploy-check --site <url>  A ten-second check after a deploy; exits 1 on a blocker (for CI)
+  npx seo-supervisor issues --audit <file>      The audit's findings as GitHub issues: a dry run until --yes
 
 The settings folder (~/.seo-supervisor) moves with SEO_SUPERVISOR_HOME. SEO_SUPERVISOR_CLIENT=<name> keeps a
 client's logins and keys apart, in clients/<name> inside it.
