@@ -213,7 +213,9 @@ export function checkJsonLd(text) {
     !(r.as && via !== r.as) &&
     (!r.when ||
       Object.entries(r.when).some(([k, want]) =>
-        want === "*" ? has(v, k) : list(v[k]).some(x => String(x).toLowerCase() === String(want)),
+        want === "*"
+          ? has(v, k)
+          : list(v[k]).some(x => term(String(x).trim()).toLowerCase() === String(want).toLowerCase()),
       )) &&
     (!r.test || r.test(v));
 

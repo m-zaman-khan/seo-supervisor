@@ -7,6 +7,7 @@ import { serve } from "./serve.mjs";
 import { SCRIPTS, node, tmp } from "./helpers.mjs";
 import { isA, isBusinessType, isLocalBusinessType } from "../skills/seo-supervisor/scripts/lib/business.mjs";
 import { localFeatures } from "../skills/seo-supervisor/scripts/checks/local.mjs";
+import { checkJsonLd } from "../skills/seo-supervisor/scripts/schema-check.mjs";
 
 const ORIGIN = "https://site.example";
 const COPY =
@@ -53,6 +54,92 @@ test("the crawler's schema helpers come from checks/schema.mjs, and schema-check
     assert.equal(cli[k], shared[k], k);
   }
   assert.equal(typeof cli.checkJsonLd, "function");
+});
+
+// ---------- Google's conditional return-policy fields ----------
+const issuesOf = o =>
+  checkJsonLd(JSON.stringify({ "@context": "https://schema.org", ...o }))
+    .filter(i => i.severity === "error")
+    .map(i => i.message);
+const PRODUCT = policy => ({
+  "@type": "Product",
+  name: "Kettle",
+  image: "https://site.example/k.jpg",
+  offers: {
+    "@type": "Offer",
+    price: "20.00",
+    priceCurrency: "GBP",
+    availability: "https://schema.org/InStock",
+    hasMerchantReturnPolicy: { "@type": "MerchantReturnPolicy", applicableCountry: "GB", ...policy },
+  },
+});
+const ORG = policy => ({
+  "@type": "OnlineStore",
+  name: "Shop",
+  hasMerchantReturnPolicy: { "@type": "MerchantReturnPolicy", ...policy },
+});
+
+test("a finite return window needs merchantReturnDays, and a return shipping fee needs its amount, on an offer and on the organization", () => {
+  for (const category of [
+    "https://schema.org/MerchantReturnFiniteReturnWindow",
+    "MerchantReturnFiniteReturnWindow",
+    "http://schema.org/MerchantReturnFiniteReturnWindow",
+  ]) {
+    assert.deepEqual(
+      issuesOf(PRODUCT({ returnPolicyCategory: category })),
+      ['missing "merchantReturnDays", required for Google return policies (a finite return window)'],
+      category,
+    );
+    assert.deepEqual(
+      issuesOf(ORG({ applicableCountry: "GB", returnPolicyCategory: category })),
+      ['missing "merchantReturnDays", required for Google return policies (a finite return window)'],
+      category,
+    );
+  }
+  assert.deepEqual(
+    issuesOf(
+      PRODUCT({ returnPolicyCategory: "https://schema.org/MerchantReturnFiniteReturnWindow", merchantReturnDays: 30 }),
+    ),
+    [],
+  );
+  assert.deepEqual(
+    issuesOf(PRODUCT({ returnPolicyCategory: "https://schema.org/MerchantReturnUnlimitedWindow" })),
+    [],
+    "an unlimited window needs no days",
+  );
+  const fee = { returnPolicyCategory: "https://schema.org/MerchantReturnNotPermitted" };
+  assert.deepEqual(issuesOf(PRODUCT({ ...fee, returnFees: "https://schema.org/ReturnShippingFees" })), [
+    'missing "returnShippingFeesAmount", required for Google return policies (a return shipping fee)',
+  ]);
+  assert.deepEqual(
+    issuesOf(
+      PRODUCT({
+        ...fee,
+        returnFees: "https://schema.org/ReturnShippingFees",
+        returnShippingFeesAmount: { "@type": "MonetaryAmount", value: 4.99, currency: "GBP" },
+      }),
+    ),
+    [],
+  );
+  assert.deepEqual(issuesOf(PRODUCT({ ...fee, returnFees: "https://schema.org/FreeReturn" })), []);
+});
+
+test("an organization's return policy needs applicableCountry with returnPolicyCategory (option A), or merchantReturnLink (option B)", () => {
+  assert.deepEqual(issuesOf(ORG({ returnPolicyCategory: "https://schema.org/MerchantReturnNotPermitted" })), [
+    'missing "applicableCountry" or "merchantReturnLink", required for Google return policies',
+  ]);
+  assert.deepEqual(issuesOf(ORG({ applicableCountry: "GB" })), [
+    'missing "returnPolicyCategory" or "merchantReturnLink", required for Google return policies',
+  ]);
+  assert.deepEqual(
+    issuesOf(ORG({ applicableCountry: "GB", returnPolicyCategory: "https://schema.org/MerchantReturnNotPermitted" })),
+    [],
+  );
+  assert.deepEqual(issuesOf(ORG({ merchantReturnLink: "https://site.example/returns" })), []);
+  assert.deepEqual(issuesOf(ORG({})), [
+    'missing "applicableCountry" or "merchantReturnLink", required for Google return policies',
+    'missing "returnPolicyCategory" or "merchantReturnLink", required for Google return policies',
+  ]);
 });
 
 // ---------- One business-type test ----------
