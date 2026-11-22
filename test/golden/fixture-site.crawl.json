@@ -34,7 +34,7 @@
   },
   "notes": [
     "Public origin https://example-security.com was mapped onto http://127.0.0.1:<port> for crawling.",
-    "https://example-security.com/sitemap.xml: 1 of 8 entries use <priority> or <changefreq>. Google and Bing ignore both, so they can go when the sitemap code is next touched; an accurate lastmod is the signal that counts.",
+    "\"https://example-security.com/sitemap.xml\": 1 of 8 entries use <priority> or <changefreq>. Google and Bing ignore both, so they can go when the sitemap code is next touched; an accurate lastmod is the signal that counts.",
     "Security headers were read from a local server; production headers set by a CDN or proxy may differ.",
     "No share image (og:image) could be read, so share image sizes weren't checked.",
     "No Product schema image on the crawled site could be read (they're on another host, missing, or SVG or AVIF), so product image sizes weren't checked."

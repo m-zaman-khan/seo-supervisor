@@ -4,6 +4,7 @@ import { HIDDEN_MIN, PDF_PAGES, JS_CAPS, APP_FILES, secretsIn, appFile } from ".
 import { pathKey, upTo, urlOr } from "../crawl/fetch.mjs";
 import { pool } from "../crawl/queue.mjs";
 import { NOSPACE_RUN } from "../lib/html.mjs";
+import { quote } from "../lib/findings.mjs";
 import { mainWords as pickMainWords } from "../keyword-ideas.mjs";
 
 // Analytics and secret keys are checked on every page read, since both matter on pages search engines skip too; the
@@ -98,7 +99,11 @@ export async function hygieneChecks(site, UA) {
     const cap = Math.min(JS_CAPS.each, JS_CAPS.all - jsBytes),
       r = got[i],
       over = r.over || r.bytes > cap;
-
+    // Still 429 or 503 after the slow-down means busy, not broken, as for images and stylesheets.
+    if (r.status === 429 || r.status === 503) {
+      notes.push(`The script ${quote(src)} answered ${r.status} (busy), so it wasn't checked.`);
+      continue;
+    }
     if (r.status >= 400) add("own-file-broken", from.sort()[0], `script ${src} → ${r.status}`);
     jsBytes += over ? cap : r.bytes;
     if (over) {
