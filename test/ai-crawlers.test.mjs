@@ -466,11 +466,15 @@ test("the AI panel shows the bot table, landmarks and Lighthouse's agentic check
     without = await renderReport({ ...base, lighthouse: [{ ...data.lighthouse[0], agentic: undefined }] });
   const panel = withAi.html.match(/\n {4}<details class="how aibots">[\s\S]*?<\/details>(?=\n|$)/)?.[0];
   assert.ok(panel, "an AI crawlers panel");
-  assert.equal(
-    withAi.html.replace(panel, ""),
-    without.html,
-    "the panel is the only change: the score and areas are the same",
-  );
+  const tabOf = (h, id) =>
+    h.slice(h.indexOf(`id="p-${id}"`), h.indexOf('<section class="tp"', h.indexOf(`id="p-${id}"`)));
+  assert.ok(tabOf(withAi.html, "search-ai").includes(panel), "on the Search & AI tab");
+  for (const t of ["overview", "findings", "limits"])
+    assert.equal(
+      tabOf(withAi.html, t),
+      tabOf(without.html, t),
+      `the panel is the only change: the score and areas are the same (${t})`,
+    );
   assert.ok(
     panel.includes("Blocked by <code>User-agent: *</code>") &&
       panel.includes("may ignore robots.txt") &&
@@ -482,9 +486,9 @@ test("the AI panel shows the bot table, landmarks and Lighthouse's agentic check
     !withAi.html.includes("<img src=x") && withAi.html.includes("&lt;img src=x onerror=alert(1)&gt;"),
     "crawled and Lighthouse text is escaped",
   );
-  const section = withAi.md.match(/## AI crawlers and agents\n[\s\S]*?\n\n(?=## |$)/)?.[0];
+  const section = withAi.md.match(/### AI crawlers and agents\n[\s\S]*?\n\n(?=#{2,3} |$)/)?.[0];
   assert.ok(section && section.includes("| GPTBot | OpenAI |"), withAi.md);
-  assert.equal(withAi.md.replace(section, ""), without.md);
+  assert.equal(withAi.md.replace(section, "").replace(/## Search & AI\n\n.*\n\n(?=## )/, ""), without.md);
   assert.ok(!/(^|[^\\])<img src=x/m.test(withAi.md));
   assert.equal(without.html.includes('class="how aibots"'), false, "nothing without the data");
 });

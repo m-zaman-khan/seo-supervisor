@@ -406,7 +406,7 @@ const base = {
   passed: [{ rule: "LINK-02", title: "No orphan pages", category: "Internal linking" }],
 };
 const panel = s => s.match(/\n {4}<details class="how aianswers">[\s\S]*?<\/details>/)?.[0] ?? assert.fail("no panel");
-const mdPart = s => s.match(/## AI answer check[\s\S]*?(?=\n## |$)/)?.[0] ?? assert.fail("no Markdown section");
+const mdPart = s => s.match(/### AI answer check[\s\S]*?(?=\n#{2,3} |$)/)?.[0] ?? assert.fail("no Markdown section");
 const aiAnswers = {
   source: "ai-answers",
   date: "2026-11-20",
@@ -445,11 +445,15 @@ const aiAnswers = {
 test("the report's AI answer check: counts with the sample and date, rivals, pages, never-cited questions, escaped, and the score doesn't change", async () => {
   const on = await renderReport({ ...base, aiAnswers }),
     off = await renderReport(base);
-  assert.equal(
-    on.html.replace(panel(on.html), ""),
-    off.html,
-    "only the panel changes: information only, never a finding or the score",
-  );
+  const tabOf = (h, id) =>
+    h.slice(h.indexOf(`id="p-${id}"`), h.indexOf('<section class="tp"', h.indexOf(`id="p-${id}"`)));
+  assert.ok(tabOf(on.html, "search-ai").includes(panel(on.html)), "on the Search & AI tab");
+  for (const t of ["overview", "findings", "limits"])
+    assert.equal(
+      tabOf(on.html, t),
+      tabOf(off.html, t),
+      `only the panel changes: information only, never a finding or the score (${t})`,
+    );
   const html = panel(on.html),
     md = mdPart(on.md);
   assert.match(html, /<summary>AI answer check<\/summary>/);

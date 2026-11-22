@@ -13,7 +13,8 @@ const render = async audiences => {
   return { html: readFileSync(join(dir, "a.html"), "utf8"), md: readFileSync(join(dir, "a.md"), "utf8") };
 };
 const panelOf = html => html.match(/\n {4}<details class="how audience">[\s\S]*?<\/details>/)?.[0];
-const sectionOf = md => md.match(/## Audience check\n[\s\S]*?\n\n(?=## )/)?.[0];
+// A panel on a topic tab is a ### section in the Markdown, its own lists ####.
+const sectionOf = md => md.match(/### Audience check\n[\s\S]*?\n\n(?=#{2,3} )/)?.[0];
 const ADMINS = () => ({
   name: "IT admins",
   wants: "a quick check of their domain's email setup",
@@ -44,17 +45,23 @@ const OWNERS = () => ({
   ],
 });
 
-test("the audience check renders on the Overview and in the Markdown, and changes nothing else: same score, findings and area scores", async () => {
+test("the audience check renders on the Site & content tab and in the Markdown, and changes nothing else: same score, findings and area scores", async () => {
   const withIt = await render([ADMINS(), OWNERS()]),
     without = await render();
   const det = panelOf(withIt.html);
   assert.ok(det, "a collapsed Audience check panel");
   assert.ok(
-    withIt.html.indexOf(det) > withIt.html.indexOf('id="p-overview"') &&
-      withIt.html.indexOf(det) < withIt.html.indexOf('id="p-findings"'),
-    "on the Overview",
+    withIt.html.indexOf(det) > withIt.html.indexOf('id="p-site-content"') &&
+      withIt.html.indexOf(det) < withIt.html.indexOf('id="p-changes"'),
+    "on the Site & content tab",
   );
-  assert.equal(withIt.html.replace(det, ""), without.html, "the panel is the only change");
+  assert.equal(
+    withIt.html
+      .replace(det, "")
+      .replace('\n  <section class="panel topic"><h2>Content and writing</h2>\n  </section>', ""),
+    without.html,
+    "the panel (in its card) is the only change",
+  );
   for (const s of [
     "<b>IT admins</b>",
     "a quick check of their domain&#39;s email setup",
@@ -74,7 +81,7 @@ test("the audience check renders on the Overview and in the Markdown, and change
   assert.equal(withIt.md.replace(sec, ""), without.md);
   assert.match(
     sec,
-    /^### IT admins\n\nWhat they come for: a quick check of their domain's email setup\. Checked on 2026-11-21\.$/m,
+    /^#### IT admins\n\nWhat they come for: a quick check of their domain's email setup\. Checked on 2026-11-21\.$/m,
   );
   assert.match(
     sec,

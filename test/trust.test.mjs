@@ -291,8 +291,13 @@ test("missing signals never change the overall score", async () => {
     assert.match(out, /73\/100/);
     assert.match(out, /8 of 11 signals found · missing: author pages, sources cited, customer reviews/);
   }
+  // The findings end where the decisions and the data by topic begin.
   assert.ok(
-    !JSON.stringify(withTrust.md.split("## Findings")[1]).includes("Author pages"),
+    !JSON.stringify(
+      withTrust.md
+        .split("## Findings\n")[1]
+        .split(/\n## (?:Decisions needed|What was changed|Search & AI|Speed|Links|Site & content)\n/)[0],
+    ).includes("Author pages"),
     "missing signals aren't findings",
   );
 });

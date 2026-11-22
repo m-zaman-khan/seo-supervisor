@@ -4,10 +4,10 @@
 import { SEV, bandOf } from "../lib/score.mjs";
 import { recheckOf } from "../lib/recheck.mjs";
 import { planMarkdown } from "../report-plan.mjs";
-import { SEV_LABEL, STATUS_LABEL, cellMd, fmtDate, mdLink, mdSafe, noteCode, noteMd, plural } from "./format.mjs";
+import { SEV_LABEL, STATUS_LABEL, cellMd, fmtDate, mdSafe, noteCode, noteMd, num, plural } from "./format.mjs";
 import { needsYou } from "./model.mjs";
-import { effortOf } from "./findings.mjs";
-import { SCORE_HOW } from "./overview.mjs";
+import { effortOf, nextStep } from "./findings.mjs";
+import { SCORE_HOW, actions, keyNumbers, scopeText } from "./overview.mjs";
 
 /**
  * Follows the page's order (page.mjs), every finding with all its evidence, and ends with "How the score works",
@@ -18,20 +18,10 @@ export function markdown(
   {
     plan,
     diff,
-    speedText,
-    labSpeedText,
-    lcpText,
-    lighthouseText,
-    authorityText,
-    ahrefsCredit,
-    desktopSpeedText,
-    positionsText,
-    analyticsSplitLines,
-    googleUpdatesText,
-    searchLines,
-    viewsMd,
-    panelsMd,
+    topics,
+    tabs,
     burstMd,
+    googleUpdatesText,
     googlePostsText,
     diffSections,
     diffText,
@@ -59,7 +49,9 @@ export function markdown(
     passed,
     notChecked,
     notes,
+    notShown = [],
   } = m;
+  const panels = id => (tabs[id] || []).flatMap(x => x.md);
   const L = [];
   const files = list => list.map(x => noteCode(x)).join(", ");
   L.push(`# SEO report: ${noteMd(site.name)}`, "");
@@ -100,61 +92,50 @@ export function markdown(
     `Open: ${open.length} (${SEV.map(s => `${countSev(s)} ${SEV_LABEL[s].toLowerCase()}`).join(", ")}) · Fixed: ${fixed.length} · Rules passing: ${overall ? `${overall.passing} of ${overall.rules}` : "n/a"}`,
     "",
   );
+  const { fixFirst, needsYou: yours, yours: allYours, tasks } = actions(m);
+  const { clicks, period, cwv, strategy } = keyNumbers(m);
+  if (overall) L.push(`${scopeText(m)} Limits of this audit, below.`, "");
+  if (clicks != null || cwv)
+    L.push(
+      [
+        clicks != null && `Clicks from Google: ${num(clicks)}${period ? ` (${noteMd(period)})` : ""}`,
+        cwv && `Core Web Vitals (real visitors, ${noteMd(strategy)}): ${cwv.toLowerCase()}`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      "",
+    );
+  const item = x => `- ${x.id ? `**${noteMd(x.id)}** · ` : ""}${SEV_LABEL[x.sev]} · ${mdSafe(x.title)}`;
+  if (fixFirst.length)
+    L.push(
+      "## Fix first",
+      "",
+      "What the agent can fix in code. Each line fixes one.",
+      "",
+      ...fixFirst.map(x => `${item(x)}${x.id ? ` · ${noteCode(`/seo-fix ${x.id}`)}` : ""}`),
+      "",
+    );
+  if (yours.length)
+    L.push(
+      "## Needs you",
+      "",
+      "Your call, your accounts or your go-ahead: the agent won't change these without you.",
+      "",
+      ...yours.map(item),
+      "",
+      `All ${allYours.length} are under Decisions needed, below.`,
+      "",
+    );
   if (areas.length) {
-    // The one-line summaries carry crawled paths, rivals' domains and feed names, so they're escaped.
-    for (const t of [speedText(), labSpeedText(), lcpText(), lighthouseText()]) if (t) L.push(noteMd(t), "");
-    if (authorityText())
-      L.push(
-        `${noteMd(authorityText())}${ahrefsCredit() ? ` · ${mdLink(ahrefsCredit().url, noteMd(ahrefsCredit().text))}` : ""}`,
-        "",
-      );
-    if (desktopSpeedText()) L.push(noteMd(desktopSpeedText()), "");
-    if (positionsText()) L.push(noteMd(positionsText()), "");
-    for (const t of analyticsSplitLines()) L.push(noteMd(t), "");
-    if (googleUpdatesText()) L.push(googleUpdatesText(), "");
-    for (const t of searchLines()) L.push(noteMd(t), ""); // paths from Search Console, escaped
     L.push("## Area scores", "", "| Area | Score | Open findings | Top issue |", "| --- | ---: | ---: | --- |");
     for (const a of areas)
       L.push(
         `| ${cellMd(noteMd(a.name))} | ${a.value} | ${a.top.length} | ${cellMd(a.top[0] ? mdSafe(a.top[0].title) : "All checks pass")} |`,
       );
     L.push("");
-    L.push(...viewsMd());
-    L.push(...panelsMd());
   }
   if (plan) L.push(...planMarkdown(plan));
-  if (diff) {
-    L.push("## Since last audit", "", ...burstMd(), `Compared with the crawl of ${noteMd(fmtDate(diff.since))}.`, "");
-    if (googleUpdatesText()) L.push(googleUpdatesText(), "");
-    if (googlePostsText()) L.push(googlePostsText(), "");
-    for (const [h, list] of diffSections(diff))
-      L.push(`### ${h}`, "", ...list.map(c => `- ${noteCode(c.path)} ${noteMd(diffText(c))}`), ""); // crawled titles and robots.txt rules, escaped
-    for (const t of unknownLines(diff)) L.push(t, "");
-    for (const [h, l] of [
-      ["Pages added", diff.added],
-      ["Pages gone", diff.removed],
-    ])
-      if ((l || []).length) L.push(`### ${h}`, "", ...l.map(p => `- ${noteCode(p)}`), "");
-    L.push(...linksDroppedMd());
-  }
   const options = d => [...(d.options || []).map(o => `- ${mdSafe(o)}`), ...((d.options || []).length ? [""] : [])];
-  if (decisions.length) {
-    L.push("## Decisions needed", "");
-    for (const d of decisions) {
-      L.push(`### ${d.id ? `${noteMd(d.id)}: ` : ""}${mdSafe(d.question)}`, "");
-      if (d.context) L.push(mdSafe(d.context), "");
-      L.push(...options(d));
-      if (d.recommendation) L.push(`**Recommended:** ${mdSafe(d.recommendation)}`, "");
-    }
-  }
-  if (fixed.length) {
-    L.push("## What was changed", "");
-    for (const f of fixed)
-      L.push(
-        `- **${noteMd(f.id)}** ${mdSafe(f.title)}${f.fixed?.summary ? `: ${mdSafe(f.fixed.summary)}` : ""}${(f.fixed?.files || []).length ? ` (${files(f.fixed.files)})` : ""}${f.fixed?.verified ? `. Verified: ${mdSafe(f.fixed.verified)}` : ""}`,
-      );
-    L.push("");
-  }
   L.push("## Findings", "");
   for (const f of findings) {
     // Titles and what's wrong can quote crawled pages and Google's messages, so they're escaped like evidence.
@@ -191,20 +172,76 @@ export function markdown(
       if (f.count > f.evidence.length) L.push("", `${f.count - f.evidence.length} more cases not listed.`);
       L.push("");
     }
+    if (nextStep(f)) L.push(`**Next step.** ${mdSafe(nextStep(f))}`, "");
     const rc = recheckOf(f);
     if (rc) L.push(`**Check the fix yourself.** ${noteCode(rc.command)} ${rc.hint}`, "");
   }
+  L.push(...panels("findings"));
+  if (decisions.length || tasks.length) {
+    L.push("## Decisions needed", "");
+    for (const d of decisions) {
+      L.push(`### ${d.id ? `${noteMd(d.id)}: ` : ""}${mdSafe(d.question)}`, "");
+      if (d.context) L.push(mdSafe(d.context), "");
+      L.push(...options(d));
+      if (d.recommendation) L.push(`**Recommended:** ${mdSafe(d.recommendation)}`, "");
+    }
+    if (tasks.length)
+      L.push(
+        "### Your tasks",
+        "",
+        "Findings only you can resolve: a setting on your host or an account, your content or your facts. The agent won't change them without your go-ahead.",
+        "",
+        ...tasks.map(f => `- **${noteMd(f.id)}** ${mdSafe(f.title)} · ${SEV_LABEL[f.severity]}`),
+        "",
+      );
+  }
+  if (fixed.length) {
+    L.push("## What was changed", "");
+    for (const f of fixed)
+      L.push(
+        `- **${noteMd(f.id)}** ${mdSafe(f.title)}${f.fixed?.summary ? `: ${mdSafe(f.fixed.summary)}` : ""}${(f.fixed?.files || []).length ? ` (${files(f.fixed.files)})` : ""}${f.fixed?.verified ? `. Verified: ${mdSafe(f.fixed.verified)}` : ""}`,
+      );
+    L.push("");
+  }
+  for (const [id, label] of topics)
+    L.push(`## ${label}`, "", "Information only: nothing here changes the score.", "", ...panels(id));
+  if (diff || tabs.since) L.push("## Since last audit", "");
+  if (diff) {
+    L.push(...burstMd(), `Compared with the crawl of ${noteMd(fmtDate(diff.since))}.`, "");
+    if (googleUpdatesText()) L.push(googleUpdatesText(), "");
+    if (googlePostsText()) L.push(googlePostsText(), "");
+    for (const [h, list] of diffSections(diff))
+      L.push(`### ${h}`, "", ...list.map(c => `- ${noteCode(c.path)} ${noteMd(diffText(c))}`), ""); // crawled titles and robots.txt rules, escaped
+    for (const t of unknownLines(diff)) L.push(t, "");
+    for (const [h, l] of [
+      ["Pages added", diff.added],
+      ["Pages gone", diff.removed],
+    ])
+      if ((l || []).length) L.push(`### ${h}`, "", ...l.map(p => `- ${noteCode(p)}`), "");
+    L.push(...linksDroppedMd());
+  }
+  L.push(...panels("since"));
   if (passed.length) {
     L.push("## Passed checks", "");
     for (const p of passed)
       L.push(`- **${noteMd(p.rule)}** ${mdSafe(p.title)}${p.detail ? ` (${mdSafe(p.detail)})` : ""}`);
     L.push("");
   }
-  if (notChecked.length || notes.length) {
+  if (notChecked.length || notes.length || notShown.length || tabs.limits) {
     L.push("## Limits of this audit", "");
     for (const n of notChecked) L.push(`- **${noteMd(n.area || n.rule)}:** ${mdSafe(n.reason || "")}`);
     for (const n of notes) L.push(`- ${mdSafe(n)}`);
     L.push("");
+    if (notShown.length)
+      L.push(
+        "### Not shown",
+        "",
+        "Results that were produced but can't be shown in this report, and why. Information only: they never change the score.",
+        "",
+        ...notShown.map(n => `- **${noteMd(n.what)}:** ${noteMd(n.why)}`),
+        "",
+      );
+    L.push(...panels("limits"));
   }
   L.push("## How the score works", "", SCORE_HOW, "");
   return L.join("\n");

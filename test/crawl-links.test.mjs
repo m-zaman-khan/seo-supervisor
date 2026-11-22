@@ -285,11 +285,15 @@ test("the report lists pages with one incoming link, escaped, and the score does
     off = await renderReport(base);
   const panel = s =>
     s.match(/\n {4}<details class="how linkedonce">[\s\S]*?<\/details>/)?.[0] ?? assert.fail("no panel");
-  assert.equal(
-    on.html.replace(panel(on.html), ""),
-    off.html,
-    "only the panel changes: the score and areas are the same",
-  );
+  const tabOf = (h, id) =>
+    h.slice(h.indexOf(`id="p-${id}"`), h.indexOf('<section class="tp"', h.indexOf(`id="p-${id}"`)));
+  assert.ok(tabOf(on.html, "links").includes(panel(on.html)), "on the Links tab");
+  for (const t of ["overview", "findings", "limits"])
+    assert.equal(
+      tabOf(on.html, t),
+      tabOf(off.html, t),
+      `only the panel changes: the score and areas are the same (${t})`,
+    );
   for (const s of [panel(on.html), on.md]) {
     assert.match(s, /25 pages/);
     assert.match(s, /first 20/);

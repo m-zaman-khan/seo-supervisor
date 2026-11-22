@@ -468,8 +468,8 @@ test("the report shows a link summary and the anchor mix, and Since last audit s
   assert.equal(scoreOf(r.html), scoreOf(none.html), "information only: the score is unchanged");
   assert.equal(r.md.match(/\*\*SEO health score: [^*]+\*\*/)[0], none.md.match(/\*\*SEO health score: [^*]+\*\*/)[0]);
 
-  const det = tab(r.html, "overview").match(/<details class="how links">[\s\S]*?<\/details>/)?.[0];
-  assert.ok(det, "on the Overview");
+  const det = tab(r.html, "links").match(/<details class="how links">[\s\S]*?<\/details>/)?.[0];
+  assert.ok(det, "on the Links tab");
   assert.match(det, /<summary>Links from other sites \(Search Console\)<\/summary>/);
   assert.ok(det.includes("Search Console (export of 18 Nov 2026): 7 sites link to you · 2 of your pages have links"));
   assert.ok(
@@ -488,7 +488,7 @@ test("the report shows a link summary and the anchor mix, and Since last audit s
   assert.match(since, /backlinks\.mjs/);
   assert.ok(!tab(none.html, "diff").includes("Links dropped"));
 
-  assert.match(r.md, /^## Links from other sites \(Search Console\)$/m);
+  assert.match(r.md, /^### Links from other sites \(Search Console\)$/m);
   assert.ok(
     r.md.includes("\n- `<img src=x onerror=alert(1)>.example` 1,200 links\n"),
     "Markdown: domains in code spans",
@@ -554,7 +554,7 @@ test("the Links panel lists links worth a look, escaped, and the score doesn't c
   assert.equal(scoreOf(r.html), scoreOf(none.html), "information only: the score is unchanged");
   assert.equal(r.md.match(/\*\*SEO health score: [^*]+\*\*/)[0], none.md.match(/\*\*SEO health score: [^*]+\*\*/)[0]);
 
-  const det = tab(r.html, "overview").match(/<details class="how links">[\s\S]*?<\/details>/)?.[0];
+  const det = tab(r.html, "links").match(/<details class="how links">[\s\S]*?<\/details>/)?.[0];
   assert.ok(det, "the Links panel shows");
   assert.match(
     det,
@@ -574,7 +574,7 @@ test("the Links panel lists links worth a look, escaped, and the score doesn't c
   assert.equal(det.match(/<li>/g).length, 2, "malformed items are skipped");
   assert.doesNotMatch(r.html, /<img src=x|<b>here/);
 
-  assert.match(r.md, /^## Links from other sites$/m);
+  assert.match(r.md, /^### Links from other sites$/m);
   assert.ok(
     r.md.includes(
       "\nWorth a look: links that stand out. It isn't a score or a finding, and most turn out to be fine.\n\n",

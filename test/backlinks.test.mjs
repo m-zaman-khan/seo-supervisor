@@ -433,7 +433,7 @@ test("the report's links section says how many known links are still there and l
   );
   assert.ok(det.includes("gone10.example") && !det.includes("gone11.example"), "the first 10 gone links");
   assert.doesNotMatch(html, /<img src=x/);
-  assert.match(md, /^## Links from other sites$/m);
+  assert.match(md, /^### Links from other sites$/m, "a ### section under Links");
   assert.ok(md.includes(`\n${LINE}\n`));
   assert.ok(
     md.includes("\n- `https://blog.example/<img src=x onerror=alert(1)>` the page answered 404: it no longer exists\n"),

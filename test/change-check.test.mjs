@@ -379,11 +379,11 @@ test("the report shows one information-only line for changeCheck, escaped, and n
     "Change check, 3 pages changed on 1 Oct 2026, 28 days before and after: Google Search clicks likely up, about +18% compared with 20 similar unchanged pages (likely range +5% to +33%). This shows what happened to the numbers, not why. Information only.";
   assert.ok(up.html.includes(line), "HTML line");
   assert.ok(up.md.includes("## Change check\n\n" + line), "Markdown line");
-  assert.equal(
-    up.html.replace(`\n    <p class="quiet">${line}</p>`, ""),
-    before.html,
-    "adds that line and nothing else: never the score",
-  );
+  const tabOf = (h, id) =>
+    h.slice(h.indexOf(`id="p-${id}"`), h.indexOf('<section class="tp"', h.indexOf(`id="p-${id}"`)));
+  assert.ok(tabOf(up.html, "diff").includes(`\n    <p class="quiet">${line}</p>`), "on Since last audit");
+  for (const t of ["overview", "findings", "limits"])
+    assert.equal(tabOf(up.html, t), tabOf(before.html, t), `adds that line and nothing else: never the score (${t})`);
   const xss = "<img src=x onerror=alert(1)>";
   const no = await render({
     changeCheck: {

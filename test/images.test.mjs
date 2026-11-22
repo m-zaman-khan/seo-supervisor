@@ -222,11 +222,15 @@ test("the images table is ranked by saving, escaped and not scored", async () =>
     without = await render({ ...report, images: undefined });
   const panels = withInfo.html.match(/\n {4}<details class="how images">[\s\S]*?<\/details>/g) || [];
   assert.equal(panels.length, 1, "one collapsed Images panel");
-  assert.equal(
-    withInfo.html.replace(panels[0], ""),
-    without.html,
-    "the panel is the only change: the score and areas are the same",
-  );
+  const tabOf = (h, id) =>
+    h.slice(h.indexOf(`id="p-${id}"`), h.indexOf('<section class="tp"', h.indexOf(`id="p-${id}"`)));
+  assert.ok(tabOf(withInfo.html, "speed").includes(panels[0]), "on the Speed tab");
+  for (const t of ["overview", "findings", "limits"])
+    assert.equal(
+      tabOf(withInfo.html, t),
+      tabOf(without.html, t),
+      `the panel is the only change: the score and areas are the same (${t})`,
+    );
   const p = panels[0];
   assert.match(p, /<summary>Images by possible saving<\/summary>/);
   assert.equal((p.match(/<tr>/g) || []).length - 1, 15, "the top 15 rows under the header");
@@ -239,9 +243,13 @@ test("the images table is ranked by saving, escaped and not scored", async () =>
   assert.match(p, /rough/i);
   assert.match(p, /never changes? the score/);
 
-  const sections = withInfo.md.match(/## Images by possible saving\n[\s\S]*?\n\n(?=## )/g) || [];
+  const sections = withInfo.md.match(/### Images by possible saving\n[\s\S]*?\n\n(?=#{2,3} )/g) || [];
   assert.equal(sections.length, 1);
-  assert.equal(withInfo.md.replace(sections[0], ""), without.md);
+  assert.equal(
+    withInfo.md.replace(sections[0], "").replace(/## Speed\n\n.*\n\n(?=## )/, ""),
+    without.md,
+    "the section, under its Speed heading, is the only change",
+  );
   const rows = sections[0].split("\n").filter(l => /^\| `/.test(l));
   assert.equal(rows.length, 15);
   for (const row of rows)

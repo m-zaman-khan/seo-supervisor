@@ -699,7 +699,7 @@ test("report: the templated share with its verdict and keyword use show in one p
     "crawled text is escaped",
   );
   assert.ok(!panel.includes("/x<"), "a row with an unknown verdict is dropped");
-  const section = withInfo.md.match(/## Descriptions and keyword use\n[\s\S]*?\n\n(?=## |$)/)?.[0] || "";
+  const section = withInfo.md.match(/### Descriptions and keyword use\n[\s\S]*?\n\n(?=#{2,3} |$)/)?.[0] || "";
   assert.ok(section && withInfo.md.replace(section, "") === without.md, "the Markdown gains only its section");
   assert.match(section, /- `\/stuffed\/` “cheap boiler repair”: forced/);
   assert.ok(!/(^|[^\\])<img src=x/m.test(section) && section.includes("\\<img src=x onerror=alert(1)\\>"));

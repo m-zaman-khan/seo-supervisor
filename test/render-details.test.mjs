@@ -237,7 +237,7 @@ test("the report shows what the browser saw on the render sample and the chosen 
     };
   });
   const det = html.match(/<details class="how render">[\s\S]*?<\/details>/)?.[0];
-  assert.ok(det, "a collapsed section on the Overview");
+  assert.ok(det, "a collapsed section on the Site & content tab");
   assert.match(det, /<summary>What the browser saw<\/summary>/);
   assert.match(
     det,
@@ -254,7 +254,7 @@ test("the report shows what the browser saw on the render sample and the chosen 
   assert.match(det, /50 words in the HTML, 640 after JavaScript and the steps \(scroll; click #more\)/);
   assert.match(det, /link-count: 3 → 40/);
   assert.ok(!det.includes(EVIL), "crawled text is escaped");
-  assert.match(md, /^## What the browser saw$/m);
+  assert.match(md, /^### What the browser saw$/m);
   assert.match(
     md,
     /- `\/blog\/` .*2 browser errors, first: TypeError: \\<img src=x onerror=alert\(1\)\\> \(app\.js:3\)/,

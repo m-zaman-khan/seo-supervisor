@@ -179,17 +179,18 @@ test("writing notes and agent info never change the score", async () => {
     without = await render({ ...r, writingNotes: undefined, agents: undefined });
   const panels = withInfo.html.match(/\n {4}<details class="how (agents|writing)">[\s\S]*?<\/details>/g) || [];
   assert.equal(panels.length, 2, "an AI agents and a Writing notes panel");
-  assert.equal(
-    panels.reduce((h, p) => h.replace(p, ""), withInfo.html),
-    without.html,
-    "the panels are the only change: the score and areas are the same",
-  );
-  const sections = withInfo.md.match(/## (AI agents|Writing notes)\n[\s\S]*?\n\n(?=## )/g) || [];
+  const tabOf = (h, id) =>
+    h.slice(h.indexOf(`id="p-${id}"`), h.indexOf('<section class="tp"', h.indexOf(`id="p-${id}"`)));
+  for (const t of ["overview", "findings", "limits"])
+    assert.equal(
+      tabOf(withInfo.html, t),
+      tabOf(without.html, t),
+      `the panels are the only change: the score and areas are the same (${t})`,
+    );
+  const sections = withInfo.md.match(/### (AI agents|Writing notes)\n[\s\S]*?\n\n(?=#{2,3} )/g) || [];
   assert.equal(sections.length, 2);
-  assert.equal(
-    sections.reduce((m, s) => m.replace(s, ""), withInfo.md),
-    without.md,
-  );
+  const beforeData = md => md.split(/\n## (?:Search & AI|Speed|Links|Site & content|Passed checks)\n/)[0];
+  assert.equal(beforeData(withInfo.md), beforeData(without.md), "the score, findings and decisions are the same");
   const writing = panels.find(p => p.includes("how writing"));
   assert.ok(
     writing.includes("<code>/guide/</code>") &&

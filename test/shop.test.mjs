@@ -427,7 +427,11 @@ test("report: the product field counts show as one information line that never c
   const p = withInfo.html.match(/\n {4}<p class="quiet">Of 12 products[^<]*<\/p>/)?.[0] || "";
   assert.ok(p.includes(line), withInfo.html.slice(0, 200));
   assert.match(p, /Information only/);
-  assert.equal(withInfo.html.replace(p, ""), without.html, "the line is the only change");
+  const tabOf = (h, id) =>
+    h.slice(h.indexOf(`id="p-${id}"`), h.indexOf('<section class="tp"', h.indexOf(`id="p-${id}"`)));
+  assert.ok(tabOf(withInfo.html, "site-content").includes(p), "on the Site & content tab");
+  for (const t of ["overview", "findings", "limits"])
+    assert.equal(tabOf(withInfo.html, t), tabOf(without.html, t), `the line is the only change (${t})`);
   assert.ok(withInfo.md.includes(`## Product data\n\n${line}`));
   assert.equal(bad.html, without.html);
   assert.ok(!bad.md.includes("## Product data"));

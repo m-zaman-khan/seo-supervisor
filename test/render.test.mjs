@@ -379,8 +379,8 @@ test("the links list shows Bing's 10 most-linked pages and 5 sample links, escap
   const det = html.match(/<details class="how links">[\s\S]*?<\/details>/)?.[0];
   assert.ok(det, "a collapsed details");
   assert.ok(
-    html.indexOf(det) > html.indexOf('id="p-overview"') && html.indexOf(det) < html.indexOf('id="p-findings"'),
-    "on the Overview",
+    html.indexOf(det) > html.indexOf('id="p-links"') && html.indexOf(det) < html.indexOf('id="p-changes"'),
+    "on the Links tab",
   );
   assert.deepEqual(
     [...det.matchAll(/security\.example\/p(\d+)\//g)].map(m => Number(m[1])),
@@ -394,7 +394,7 @@ test("the links list shows Bing's 10 most-linked pages and 5 sample links, escap
   );
   assert.ok(det.includes("&lt;img src=x onerror=alert(1)&gt;"), "anchor text is escaped");
   assert.doesNotMatch(html, /<img src=x/);
-  assert.match(md, /^## Links from other sites \(Bing\)$/m);
+  assert.match(md, /^### Links from other sites \(Bing\)$/m);
   assert.match(md, /^- `https:\/\/security\.example\/p12\/` 120 links$/m);
   assert.doesNotMatch(md, /example\/p[12]\/`/, "the Markdown lists the top 10 too");
   assert.ok(md.includes("\\<img src=x onerror=alert(1)\\>"), "the Markdown escapes the anchor text");
@@ -427,11 +427,17 @@ test("a report without Search Console, Bing or Analytics data has no traffic or 
     none.html + none.md,
     /Search Console:|Bing|Google Analytics|Matomo|PostHog|Links from other sites/,
   );
-  assert.match(
-    none.html.replace(/\n    <details class="how pagescores">.*<\/details>/, ""),
-    /<\/ol>\n    <\/section>\n    <\/div>\n  <\/div>/,
-    "nothing but the page scores added after the score factors",
+  // The Overview ends with the scope line and the key numbers, and without data there's no clicks number.
+  const ov = none.html.slice(
+    none.html.indexOf('id="p-overview"'),
+    none.html.indexOf('<section class="tp"', none.html.indexOf('id="p-overview"')),
   );
+  assert.match(
+    ov,
+    /<\/ol>\n    <\/section>\n    <p class="scope">.*\n    <section class="panel stats"[\s\S]*<\/section>\n    <\/div>\n  <\/div>\n<\/section>\s*$/,
+    "nothing but the scope and the key numbers after the score factors",
+  );
+  assert.doesNotMatch(ov, /Clicks from Google/);
   assert.doesNotMatch(none.md, /\n\n\n/, "no empty lines");
   assert.doesNotMatch(none.html, /<p class="quiet"><\/p>/);
 });

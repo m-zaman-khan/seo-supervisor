@@ -4,6 +4,7 @@ import { SEV, isOpen } from "../lib/score.mjs";
 import { recheckOf, RECHECK_NOTE } from "../lib/recheck.mjs";
 import { SEV_LABEL, STATUS_LABEL, ICON, dot, esc, inl, link, num } from "./format.mjs";
 import { needsYou } from "./model.mjs";
+import { actions, isOwnersCall } from "./overview.mjs";
 
 // A finding's optional effort; an unknown value shows nothing.
 const EFFORT = { quick: "under 30 minutes", hours: "an hour or two", "half-day": "half a day or more" };
@@ -16,11 +17,15 @@ const recheckHtml = f => {
     ? `<div class="ev recheck"><h4>Check the fix yourself</h4><p><code>${esc(r.command)}</code></p><p class="quiet">${esc(r.hint)}</p></div>`
     : "";
 };
+// Plain text with the command in backticks: inl renders it on the page, mdSafe in the Markdown. Fix mode asks first
+// on anything isOwnersCall() marks.
+export const nextStep = f =>
+  !isOpen(f) || f.status === "wont-fix" || !f.id
+    ? ""
+    : `\`/seo-fix ${f.id}\` ${isOwnersCall(f) ? "asks you first: the agent won't change this without your go-ahead." : "fixes it and checks the fix."}`;
 
-export function findingTabs(
-  { findings, decisions, fixed, passed, notChecked, notes, mdFile },
-  { trafficHtml, clarityHtml },
-) {
+export function findingTabs(m, { trafficHtml, clarityHtml }) {
+  const { findings, decisions, fixed, passed, notChecked, notes, mdFile, notShown = [] } = m;
   const anyRecheck = () => findings.some(f => recheckOf(f));
   const recheckNote = () => anyRecheck() && { title: "Checking a fix yourself", blocks: [{ quiet: RECHECK_NOTE }] };
   function evidenceHtml(f) {
@@ -59,13 +64,14 @@ export function findingTabs(
           ${isFixed && f.fixed ? `<div class="donebox"><h4>What was done</h4><p>${inl(f.fixed.summary || "")}</p>${(f.fixed.files || []).length ? `<p class="files">${f.fixed.files.map(x => `<code>${esc(x)}</code>`).join(" ")}</p>` : ""}${f.fixed.verified ? `<p class="quiet">${ICON.check} ${inl(f.fixed.verified)}</p>` : ""}</div>` : ""}
         </div>
       </div>
-      ${trafficHtml(f)}${clarityHtml(f)}${evidenceHtml(f)}${recheckHtml(f)}
+      ${trafficHtml(f)}${clarityHtml(f)}${evidenceHtml(f)}${nextStep(f) ? `<div class="ev next"><h4>Next step</h4><p>${inl(nextStep(f))}</p></div>` : ""}${recheckHtml(f)}
     </div>
   </article>`;
   }
-  function findingsHtml() {
+  // extra: panels render-report.mjs appends after the list.
+  function findingsHtml(extra = "") {
     if (!findings.length)
-      return `<section class="panel empty-state"><h2>No findings</h2><p>Every checked rule passed. See Passed for what was checked and Limits for what wasn't.</p></section>`;
+      return `<section class="panel empty-state"><h2>No findings</h2><p>Every checked rule passed. See Passed for what was checked and Limits for what wasn't.</p></section>${extra}`;
     const sevPresent = SEV.filter(s => findings.some(f => f.severity === s));
     const areasPresent = [...new Set(findings.map(f => f.category))].sort();
     const statuses = [...new Set(findings.map(f => f.status))];
@@ -77,22 +83,31 @@ export function findingTabs(
       <p class="showing" id="showing" aria-live="polite">${findings.length} findings</p>
     </div>
     <div class="flist" id="flist">${findings.map(findingHtml).join("")}</div>
-    <p class="empty" id="fnone" hidden>No findings match these filters. <button type="button" class="link" id="freset">Clear filters</button></p>`;
+    <p class="empty" id="fnone" hidden>No findings match these filters. <button type="button" class="link" id="freset">Clear filters</button></p>${extra}`;
   }
 
-  // ---------- other tabs ----------
+  // Decisions, then the fixBy: "owner" tasks, so everything the Overview marks "Needs you" is on one tab.
+  const { tasks } = actions(m);
+  const tasksHtml = () =>
+    tasks.length
+      ? `<section class="panel"><h2>Your tasks</h2><p class="quiet">Findings only you can resolve: a setting on your host or an account, your content or your facts. The agent won't change them without your go-ahead.</p><ul class="lim">${tasks.map(f => `<li><b><a href="#${esc(f.id)}">${esc(f.id)}</a></b><span>${inl(f.title)} · ${SEV_LABEL[f.severity]}</span></li>`).join("")}</ul></section>`
+      : "";
   const decisionsHtml = () =>
-    decisions.length
-      ? `<div class="cards">${decisions
-          .map(
-            d => `<article class="panel dcard">
+    decisions.length || tasks.length
+      ? `${
+          decisions.length
+            ? `<div class="cards">${decisions
+                .map(
+                  d => `<article class="panel dcard">
     ${d.id ? `<a class="mono idlink" href="#${esc(d.id)}">${esc(d.id)}</a>` : ""}
     <h3>${inl(d.question)}</h3>${d.context ? `<p>${inl(d.context)}</p>` : ""}
     ${(d.options || []).length ? `<ul class="opts">${d.options.map(o => `<li>${inl(o)}</li>`).join("")}</ul>` : ""}
     ${d.recommendation ? `<p class="rec"><strong>Recommended</strong> ${inl(d.recommendation)}</p>` : ""}
   </article>`,
-          )
-          .join("")}</div>`
+                )
+                .join("")}</div>`
+            : ""
+        }${tasksHtml()}`
       : `<section class="panel empty-state"><h2>No decisions needed</h2><p>Nothing in this audit needs an owner's call.</p></section>`;
   const changesHtml = () =>
     fixed.length
@@ -128,12 +143,23 @@ export function findingTabs(
       )
       .join("")}</div>`;
   }
-  const limitsHtml = () =>
-    notChecked.length || notes.length
+  // notShown (report/sources.mjs) lists results that couldn't be shown: unreadable, for another site or out of date.
+  // extra: panels render-report.mjs adds, such as the check settings.
+  const limitsHtml = (extra = "") =>
+    notChecked.length || notes.length || notShown.length || extra
       ? `<div class="limits">
   ${notChecked.length ? `<section class="panel"><h2>Not checked</h2><p class="quiet">These couldn't be verified in this run, so they count neither for nor against the score.</p><ul class="lim">${notChecked.map(n => `<li><b>${inl(n.area || n.rule || "")}</b><span>${inl(n.reason || "")}</span></li>`).join("")}</ul></section>` : ""}
-  ${notes.length ? `<section class="panel"><h2>Notes from the audit</h2><ul class="lim">${notes.map(n => `<li><span>${inl(n)}</span></li>`).join("")}</ul></section>` : ""}
+  ${notShown.length ? `<section class="panel"><h2>Not shown</h2><p class="quiet">Results that were produced but can't be shown in this report, and why. Information only: they never change the score.</p><ul class="lim">${notShown.map(n => `<li><b>${esc(n.what)}</b><span>${esc(n.why)}</span></li>`).join("")}</ul></section>` : ""}
+  ${notes.length ? `<section class="panel"><h2>Notes from the audit</h2><ul class="lim">${notes.map(n => `<li><span>${inl(n)}</span></li>`).join("")}</ul></section>` : ""}${extra}
 </div>`
       : `<section class="panel empty-state"><h2>No limits recorded</h2><p>Every planned check ran.</p></section>`;
-  return { findingsHtml, decisionsHtml, changesHtml, passedHtml, limitsHtml, recheckNote };
+  return {
+    findingsHtml,
+    decisionsHtml,
+    changesHtml,
+    passedHtml,
+    limitsHtml,
+    recheckNote,
+    decisionCount: decisions.length + tasks.length,
+  };
 }

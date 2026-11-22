@@ -172,12 +172,15 @@ test("WebMCP tools, a UCP profile and agent files are listed, with no finding an
   const withInfo = await render(r),
     without = await render({ ...r, agents: undefined });
   const det = withInfo.html.match(/\n {4}<details class="how agents">[\s\S]*?<\/details>/)?.[0];
-  assert.ok(det, "an AI agents panel on the Overview");
-  assert.equal(
-    withInfo.html.replace(det, ""),
-    without.html,
-    "the panel is the only change: same score, same everything else",
-  );
+  const tabOf = (h, id) =>
+    h.slice(h.indexOf(`id="p-${id}"`), h.indexOf('<section class="tp"', h.indexOf(`id="p-${id}"`)));
+  assert.ok(det && tabOf(withInfo.html, "search-ai").includes(det), "an AI agents panel on the Search & AI tab");
+  for (const t of ["overview", "findings", "decisions", "limits"])
+    assert.equal(
+      tabOf(withInfo.html, t),
+      tabOf(without.html, t),
+      `the panel is the only change: same score, same everything else (${t})`,
+    );
   assert.ok(
     det.includes("<code>/book/</code>") &&
       det.includes("bookTable") &&
@@ -188,9 +191,9 @@ test("WebMCP tools, a UCP profile and agent files are listed, with no finding an
     det.includes("&lt;img src=x onerror=alert(1)&gt;") && !withInfo.html.includes("<img src=x"),
     "tool names are escaped",
   );
-  const sec = withInfo.md.match(/## AI agents\n[\s\S]*?\n\n(?=## )/)?.[0];
+  const sec = withInfo.md.match(/### AI agents\n[\s\S]*?\n\n(?=#{2,3} )/)?.[0];
   assert.ok(sec, "an AI agents section in the Markdown");
-  assert.equal(withInfo.md.replace(sec, ""), without.md);
+  assert.equal(withInfo.md.replace(sec, "").replace(/## Search & AI\n\n.*\n\n(?=## )/, ""), without.md);
   assert.ok(sec.includes("\\<img src=x onerror=alert(1)\\>") && sec.includes("`/.well-known/ucp`"));
   assert.ok(
     !without.html.includes('class="how agents"') && !without.md.includes("## AI agents"),

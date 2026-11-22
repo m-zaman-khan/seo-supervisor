@@ -538,11 +538,15 @@ test("the report lists app link files and PDFs as information, escaped, and neve
     off = await renderReport(base);
   const panel = s =>
     s.match(/\n {4}<details class="how hygiene">[\s\S]*?<\/details>(?=\n|$)/)?.[0] ?? assert.fail("no hygiene panel");
-  assert.equal(
-    on.html.replace(panel(on.html), ""),
-    off.html,
-    "only the panel is added: the score and areas are the same",
-  );
+  const tabOf = (h, id) =>
+    h.slice(h.indexOf(`id="p-${id}"`), h.indexOf('<section class="tp"', h.indexOf(`id="p-${id}"`)));
+  assert.ok(tabOf(on.html, "site-content").includes(panel(on.html)), "on the Site & content tab");
+  for (const t of ["overview", "findings", "limits"])
+    assert.equal(
+      tabOf(on.html, t),
+      tabOf(off.html, t),
+      `only the panel is added: the score and areas are the same (${t})`,
+    );
   assert.ok(!off.html.includes('class="how hygiene"') && !off.md.includes("App links and PDFs"));
   for (const s of [panel(on.html), on.md]) {
     assert.match(s, /assetlinks\.json/);

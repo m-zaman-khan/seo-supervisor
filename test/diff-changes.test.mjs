@@ -38,7 +38,7 @@ const render = async extra => {
     md.indexOf("## Since last audit"),
     md.indexOf("\n## ", md.indexOf("## Since last audit") + 3),
   );
-  return { html, md, overview: panel("overview"), diff: panel("diff"), mdDiff };
+  return { html, md, overview: panel("overview"), diff: panel("diff"), search: panel("search-ai"), mdDiff };
 };
 const EMPTY = {
   since: "2026-10-01T09:00:00.000Z",
@@ -439,7 +439,7 @@ test("the Overview shows the audit timeline once there are three crawls, newest 
     },
     { date: "<script>", pages: "x" },
   ];
-  const { overview, md } = await render({ diff: { ...EMPTY, timeline } });
+  const { diff: overview, md } = await render({ diff: { ...EMPTY, timeline } }); // the timeline sits on Since last audit
   assert.match(overview, /<summary>Audit timeline<\/summary>/);
   assert.ok(overview.indexOf("1 Nov 2026") < overview.indexOf("15 Oct 2026"), "newest first");
   assert.ok(overview.includes("<td>1 Nov 2026</td><td>1,200</td><td>4</td><td>0</td><td>3</td><td>–</td><td>–</td>"));
@@ -584,11 +584,11 @@ test("the report lists the blog's posts on the Overview and in Since last audit,
       { title: "", date: "2026-10-31" },
     ],
   };
-  const { overview, diff, md, mdDiff } = await render({ googleUpdates });
+  const { search: overview, diff, md, mdDiff } = await render({ googleUpdates }); // on the Search & AI tab
   const text =
     "Google Search Central announcements in this period: Update to the Site Reputation Policy (28 Aug) · AI &lt;b&gt;Mode&lt;/b&gt; rolls out (30 Oct)";
   for (const [where, html] of [
-    ["Overview", overview],
+    ["Search & AI", overview],
     ["Since last audit", diff],
   ])
     assert.ok(html.replace(/<a [^>]*>|<\/a>/g, "").includes(text), where);

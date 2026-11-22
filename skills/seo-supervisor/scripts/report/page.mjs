@@ -5,6 +5,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { planStats, planHtml, PLAN_CSS } from "../report-plan.mjs";
 import { VERSION } from "../update-check.mjs";
 import { esc, inl, link, num, fmtDate, firstSentence } from "./format.mjs";
+import { cardsHtml } from "./panel.mjs";
 
 // Bundled woff2 fonts (SIL OFL), inlined so the report stays a single offline file.
 const FONTS = [
@@ -36,29 +37,54 @@ const csp = scripts =>
  * (report/panel.mjs byTab).
  */
 export function pageHtml(
-  { raw, site, run, findings, decisions, fixed, passed, notChecked, mdFile },
-  { plan, diff, overviewHtml, diffHtml, trafficFor, findingsHtml, decisionsHtml, changesHtml, passedHtml, limitsHtml },
+  { raw, site, run, findings, fixed, passed, notChecked, mdFile },
+  {
+    plan,
+    diff,
+    overviewHtml,
+    diffHtml,
+    trafficFor,
+    findingsHtml,
+    decisionsHtml,
+    decisionCount,
+    changesHtml,
+    passedHtml,
+    limitsHtml,
+    topics,
+    tabs: panels,
+  },
 ) {
+  // Action first (Overview, Findings, Decisions), then the data, then the record (Changes, Passed, Limits).
+  // markdown.mjs keeps this order.
   const tabs = [
     ["overview", "Overview", null],
     ["findings", "Findings", findings.length],
-    ["decisions", "Decisions", decisions.length],
+    ["decisions", "Decisions", decisionCount],
+    ...topics.map(([id, label]) => [id, label, null]),
     ["changes", "Changes", fixed.length],
     ["passed", "Passed", passed.length + fixed.length],
     ["limits", "Limits", notChecked.length],
   ];
-  if (diff) tabs.splice(1, 0, ["diff", "Since last audit", (diff.regressions || []).length]);
+  if (diff || panels.since)
+    tabs.splice(1, 0, ["diff", "Since last audit", diff ? (diff.regressions || []).length : null]);
   if (plan) tabs.splice(plan.status === "proposed" ? 0 : 1, 0, ["plan", "Plan", planStats(plan).rows]);
   const DEFAULT_TAB = tabs[0][0];
   const PANELS = {
     overview: overviewHtml,
-    diff: diffHtml,
+    diff: () => `${diff ? diffHtml() : ""}${cardsHtml(panels.since)}`,
     plan: () => planHtml(plan, { esc, inl, num, traffic: u => trafficFor(u, true) }),
-    findings: findingsHtml,
+    findings: () => findingsHtml(cardsHtml(panels.findings)),
     decisions: decisionsHtml,
     changes: changesHtml,
     passed: passedHtml,
-    limits: limitsHtml,
+    limits: () => limitsHtml(cardsHtml(panels.limits)),
+    ...Object.fromEntries(
+      topics.map(([id]) => [
+        id,
+        () =>
+          `<p class="quiet topic-note">Information only: nothing on this tab changes the score.</p>${cardsHtml(panels[id])}`,
+      ]),
+    ),
   };
   const metaBits = [
     site.url && link(site.url, esc(String(site.url).replace(/^https?:\/\//, ""))),

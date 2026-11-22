@@ -1,8 +1,56 @@
 // @ts-check
 // The Overview tab, action first. Information panels belong on the topic tabs (render-report.mjs).
 import { SEV, bandOf, OWN_SCORE } from "../lib/score.mjs";
-import { SEV_LABEL, ICON, dot, esc, inl, link, num, plural } from "./format.mjs";
+import { passes } from "../checks/speed.mjs";
+import { SEV_LABEL, ICON, dot, esc, inl, num, obj, plural } from "./format.mjs";
 import { needsYou } from "./model.mjs";
+import { byPath } from "./traffic.mjs";
+
+// Fix first and Needs you, for the page and the Markdown. Needs you takes what /seo-fix won't change unasked: fixBy:
+// "owner" findings, open decisions and the audit's listed decisions. Fix first takes the rest except won't-fixes, so
+// nothing is in both. Both sort by severity, then by Search Console clicks on the finding's pages.
+export const isOwnersCall = f => needsYou(f) || f.status === "needs-decision" || f.severity === "needs-decision";
+export function actions({ raw, open, decisions }) {
+  const clicks = f =>
+    Math.max(
+      0,
+      ...(Array.isArray(f.evidence) ? f.evidence : []).map(e => Number(byPath(raw.traffic, e?.url)?.clicks) || 0),
+    );
+  const order = list => list.sort((a, b) => SEV.indexOf(a.sev) - SEV.indexOf(b.sev) || b.clicks - a.clicks);
+  const item = f => ({ id: f.id, title: f.title, sev: f.severity, f, clicks: clicks(f) });
+  const code = order(open.filter(f => !isOwnersCall(f) && f.status !== "wont-fix").map(item)),
+    serious = code.filter(x => x.sev === "blocker" || x.sev === "high");
+  const own = open.filter(isOwnersCall),
+    asked = decisions.filter(d => !own.some(f => f.id && f.id === d.id));
+  const yours = order([
+    ...own.map(item),
+    ...asked.map(d => ({ id: d.id, title: d.question, sev: "needs-decision", d, clicks: 0 })),
+  ]);
+  return {
+    fixFirst: (serious.length ? serious : code.slice(0, 3)).slice(0, 5),
+    needsYou: yours.slice(0, 3),
+    yours,
+    tasks: own.filter(f => !decisions.some(d => d.id === f.id)),
+  };
+}
+// The scope line ends in "see": the page adds the Limits tab's name after it, as a link.
+export const scopeText = ({ run, overall, notChecked }) =>
+  `Checked ${run.pagesCrawled != null ? `${plural(Number(run.pagesCrawled) || 0, "page")} against ` : ""}${plural(overall?.rules || 0, "rule")} · ${notChecked.length ? `${plural(notChecked.length, "check")} couldn't run` : "every planned check ran"}: see`;
+// Clicks are the property's total, else the pages' sum; Core Web Vitals use origin data, else the first page's.
+export function keyNumbers({ raw }) {
+  const t = obj(raw.traffic),
+    tot = Number(obj(raw.siteTotals)?.clicks),
+    sum = t ? Object.values(t).reduce((s, x) => s + (Number(x?.clicks) || 0), 0) : 0;
+  const clicks = tot > 0 ? tot : t && Object.keys(t).length ? sum : null;
+  const s = (Array.isArray(raw.speed?.samples) ? raw.speed.samples : []).filter(obj),
+    v = s.find(x => obj(x.origin))?.origin || s.find(x => obj(x.field))?.field;
+  return {
+    clicks,
+    period: raw.trafficPeriod ? String(raw.trafficPeriod).toLowerCase() : "",
+    cwv: v && Number.isFinite(v.lcp) ? (passes(v) ? "Pass" : "Fail") : null,
+    strategy: raw.speed?.strategy || "mobile",
+  };
+}
 
 // The health score is a local formula, and the text says so.
 export const SCORE_HOW = `Every checked rule is worth 10 points. A rule that passes, or whose findings are all fixed, earns 10. A rule with open findings earns by its worst one: low 8, medium or decision 6, high 3, blocker 0. The score is the share of points earned. Each open blocker caps it: one at 59, two at 49, three at 39. While a blocker is open, the panel also shows the score you reach once it is fixed. Area scores use the same rules within each area. This is ${OWN_SCORE}: it counts only the rules this audit checked, and search engines don't use it.`;
@@ -43,29 +91,9 @@ function unlockHtml({ unlock, overall, openBlockers }, delta) {
       </div>`;
 }
 
-/**
- * m is the model from model.mjs; the rest are the one-line summaries (overview-lines.mjs, traffic.mjs), the score
- * views and the panels' HTML, in order.
- */
-export function overviewHtml(
-  m,
-  {
-    speedText,
-    labSpeedText,
-    lcpText,
-    lighthouseText,
-    authorityText,
-    ahrefsCredit,
-    desktopSpeedText,
-    positionsText,
-    analyticsSplitLines,
-    googleUpdatesText,
-    searchLines,
-    viewsHtml,
-    panelsHtml,
-  },
-) {
-  const { overall, deltaOf, countSev, open, fixed, findings, notChecked, verdict, impact, areas } = m;
+/** m is the model from model.mjs, with raw. */
+export function overviewHtml(m) {
+  const { run, overall, deltaOf, countSev, open, fixed, findings, verdict, impact, areas } = m;
   if (!overall)
     return `<section class="panel empty-state"><h2>Nothing to score</h2><p>This file has no findings or passed rules. Run the audit to fill it.</p></section>`;
   const [, bandName, bandCls] = bandOf(overall.value);
@@ -75,8 +103,14 @@ export function overviewHtml(
   const delta = deltaOf();
   const sevBar = SEV.map(s => [s, countSev(s)]).filter(([, n]) => n);
   const totalOpen = open.length;
-  const fixFirst = open.filter(f => ["blocker", "high", "needs-decision"].includes(f.severity)).slice(0, 5);
-  const fallbackFirst = fixFirst.length ? fixFirst : open.slice(0, 3);
+  const { fixFirst, needsYou: yours, yours: allYours } = actions(m),
+    keys = keyNumbers(m);
+  // A row links to the finding's card, or to the Decisions tab for a decision no finding carries: its id (D-1) is no
+  // anchor on the page.
+  const row = x =>
+    `<a href="#${esc(x.id || "decisions")}">${dot(x.sev)}<span class="sev-t">${SEV_LABEL[x.sev]}</span><span class="t">${inl(x.title)}</span><span class="c">${esc(x.f?.category || "")}</span>${ICON.arrow}</a>`;
+  const stat = (h, n, rest = "") =>
+    `\n      <div class="stat">\n        <h3>${h}</h3>\n        <p class="stat-n"><span class="n">${n}</span>${rest}</p>`;
   return `
   <div class="ov-top">
     <div class="ov-left">
@@ -92,34 +126,25 @@ export function overviewHtml(
         <p>${SCORE_HOW}</p>
       </details>
     </section>
-    <section class="panel stats" aria-label="Issues, fixes and rules">
-      <div class="stat">
-        <h3>Open issues</h3>
-        <p class="stat-n"><span class="n">${totalOpen}</span>${totalOpen ? "" : " · nothing open"}</p>
-        ${
-          totalOpen
-            ? `<div class="stack" role="img" aria-label="${sevBar.map(([sv, n]) => `${n} ${SEV_LABEL[sv]}`).join(", ")}">${sevBar.map(([sv, n]) => `<span class="s-${sv}" style="flex:${n}"></span>`).join("")}</div>
-        <ul class="legend">${sevBar.map(([sv, n]) => `<li>${dot(sv)}<span>${SEV_LABEL[sv]}</span><b>${n}</b></li>`).join("")}</ul>`
-            : ""
-        }
-      </div>
-      <div class="stat">
-        <h3>Fixed this run</h3>
-        <p class="stat-n"><span class="n">${fixed.length}</span> of ${findings.length}</p>
-        <div class="stack" role="img" aria-label="${fixed.length} fixed, ${open.length} still open"><span class="s-fixed" style="flex:${fixed.length || 0.0001}"></span><span class="s-rest" style="flex:${open.length || 0.0001}"></span></div>
-        <p class="quiet">${fixed.length ? `${num(open.length)} still open` : "Run /seo-fix to start"}</p>
-      </div>
-      <div class="stat">
-        <h3>Rules checked</h3>
-        <p class="stat-n"><span class="n">${overall.passing}</span> of ${overall.rules} pass</p>
-        <div class="stack" role="img" aria-label="${overall.passing} pass, ${overall.rules - overall.passing} with open findings"><span class="s-pass" style="flex:${overall.passing || 0.0001}"></span><span class="s-fail" style="flex:${overall.rules - overall.passing || 0.0001}"></span></div>
-        <p class="quiet"><span class="key k-fail" aria-hidden="true"></span>${num(overall.rules - overall.passing)} failing${notChecked.length ? ` · ${num(notChecked.length)} not checked` : ""}</p>
-      </div>
-    </section>
-    ${speedText() ? `<p class="quiet">${esc(speedText())}</p>` : ""}${labSpeedText() ? `\n    <p class="quiet">${esc(labSpeedText())}</p>` : ""}${lcpText() ? `\n    <p class="quiet">${esc(lcpText())}</p>` : ""}${lighthouseText() ? `\n    <p class="quiet">${esc(lighthouseText())}</p>` : ""}${authorityText() ? `\n    <p class="quiet">${esc(authorityText())}${ahrefsCredit() ? ` · ${link(ahrefsCredit().url, esc(ahrefsCredit().text))}` : ""}</p>` : ""}${desktopSpeedText() ? `\n    <p class="quiet">${esc(desktopSpeedText())}</p>` : ""}${positionsText() ? `\n    <p class="quiet">${esc(positionsText())}</p>` : ""}${analyticsSplitLines()
-      .map(t => `\n    <p class="quiet">${esc(t)}</p>`)
-      .join("")}
-    ${googleUpdatesText() ? `<p class="quiet">${googleUpdatesText(true)}</p>\n    ` : ""}</div>
+    ${
+      fixFirst.length
+        ? `<section class="panel fixfirst" aria-labelledby="h-first">
+      <div class="ph"><h2 id="h-first">Fix first</h2><a class="link" href="#findings">All findings ${ICON.arrow}</a></div>
+      <p class="sub">What the agent can fix in code. Each line fixes one.</p>
+      <ol>${fixFirst.map(x => `<li>${row(x)}${x.id ? `<p class="next"><code>/seo-fix ${esc(x.id)}</code></p>` : ""}</li>`).join("")}</ol>
+    </section>`
+        : ""
+    }
+    ${
+      yours.length
+        ? `<section class="panel fixfirst needsyou" aria-labelledby="h-you">
+      <div class="ph"><h2 id="h-you">Needs you</h2><a class="link" href="#decisions">All ${allYours.length} in Decisions ${ICON.arrow}</a></div>
+      <p class="sub">Your call, your accounts or your go-ahead: the agent won't change these without you.</p>
+      <ol>${yours.map(x => `<li>${row(x)}</li>`).join("")}</ol>
+    </section>`
+        : ""
+    }
+    </div>
     <div class="ov-right">
     <section class="panel factors" aria-labelledby="h-factors">
       <div class="ph"><h2 id="h-factors">What's moving your score</h2><span class="sub">Points lost, biggest first</span></div>
@@ -149,18 +174,39 @@ export function overviewHtml(
         }
         return rows.join("");
       })()}</ol>
-    </section>${viewsHtml()}${searchLines()
-      .map(t => `\n    <p class="quiet">${esc(t)}</p>`)
-      .join("")}${panelsHtml()}
+    </section>
+    <p class="scope">${esc(scopeText(m))} <a href="#limits">Limits</a></p>
+    <section class="panel stats" aria-labelledby="h-keys">
+      <h2 id="h-keys" class="sr">Key numbers</h2>${
+        run.pagesCrawled != null
+          ? `${stat("Pages checked", num(Number(run.pagesCrawled) || 0))}
+      </div>`
+          : ""
+      }${stat("Open issues", totalOpen, totalOpen ? "" : " · nothing open")}
+        ${
+          totalOpen
+            ? `<div class="stack" role="img" aria-label="${sevBar.map(([sv, n]) => `${n} ${SEV_LABEL[sv]}`).join(", ")}">${sevBar.map(([sv, n]) => `<span class="s-${sv}" style="flex:${n}"></span>`).join("")}</div>
+        <ul class="legend">${sevBar.map(([sv, n]) => `<li>${dot(sv)}<span>${SEV_LABEL[sv]}</span><b>${n}</b></li>`).join("")}</ul>`
+            : ""
+        }
+      </div>${stat("Fixed this run", fixed.length, ` of ${findings.length}`)}
+        <div class="stack" role="img" aria-label="${fixed.length} fixed, ${open.length} still open"><span class="s-fixed" style="flex:${fixed.length || 0.0001}"></span><span class="s-rest" style="flex:${open.length || 0.0001}"></span></div>
+        <p class="quiet">${fixed.length ? `${num(open.length)} still open` : "Run /seo-fix to start"}</p>
+      </div>${
+        keys.clicks != null
+          ? `${stat("Clicks from Google", num(keys.clicks))}
+        <p class="quiet">Search Console${keys.period ? `, ${esc(keys.period)}` : ""}</p>
+      </div>`
+          : ""
+      }${
+        keys.cwv
+          ? `${stat("Core Web Vitals", keys.cwv)}
+        <p class="quiet">Real visitors, ${esc(keys.strategy)}</p>
+      </div>`
+          : ""
+      }
+    </section>
     </div>
   </div>
-  ${
-    fallbackFirst.length
-      ? `<section class="panel fixfirst" aria-labelledby="h-first">
-    <div class="ph"><h2 id="h-first">Fix first</h2><a class="link" href="#findings">All findings ${ICON.arrow}</a></div>
-    <ol>${fallbackFirst.map(f => `<li><a href="#${esc(f.id)}">${dot(f.severity)}<span class="sev-t">${SEV_LABEL[f.severity]}</span><span class="t">${inl(f.title)}${needsYou(f) ? ` <span class="own">Needs you</span>` : ""}</span><span class="c">${esc(f.category)}</span>${ICON.arrow}</a></li>`).join("")}</ol>
-  </section>`
-      : ""
-  }
 `;
 }

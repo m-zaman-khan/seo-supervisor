@@ -250,13 +250,13 @@ async function render(googleUpdates) {
   return {
     html,
     md,
-    overview: panel("overview"),
+    overview: panel("search-ai"),
     diff: panel("diff"),
     mdDiff: md.slice(md.indexOf("## Since last audit"), md.indexOf("\n## ", md.indexOf("## Since last audit") + 3)),
   };
 }
 
-test("the report names Google's ranking updates in the period on the Overview and Since last audit, and never a cause", async () => {
+test("the report names Google's ranking updates in the period on the Search & AI tab and Since last audit, and never a cause", async () => {
   const r = await render({
     from: "2026-03-01",
     to: "2026-11-19",
@@ -279,7 +279,7 @@ test("the report names Google's ranking updates in the period on the Overview an
   const line =
     "Google ranking updates in this period: March 2026 core update (5–19 Mar) · May 2026 core update (21 May – 2 Jun) · November 2026 core update (10 Nov, still rolling out)";
   for (const [where, text] of [
-    ["Overview", r.overview],
+    ["Search & AI", r.overview],
     ["Since last audit", r.diff],
     ["Markdown", r.md],
     ["Markdown since last audit", r.mdDiff],

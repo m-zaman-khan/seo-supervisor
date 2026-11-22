@@ -598,7 +598,7 @@ test("the report's More about links section shows the imported link data, escape
   assert.match(det, /1 of your 2 crawled pages links to other sites/);
   assert.match(det, /isn(&#39;|')t a comprehensive list/, "how much the free data covers");
   assert.doesNotMatch(html, /<img src=x/);
-  assert.match(md, /^## More about links$/m);
+  assert.match(md, /^### More about links$/m);
   assert.ok(md.includes("`new<img src=x onerror=alert(1)>.example`"), "third-party names in code spans");
   assert.ok(md.includes("isn't a comprehensive list"));
 

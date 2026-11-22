@@ -84,8 +84,12 @@ function blockHtml(b) {
   if ("panel" in b) return panelHtml(b.panel);
   return b.html ?? "";
 }
-/** @param {Block} b @returns {string[]} */
-function blockMd(b) {
+/**
+ * @param {Block} b
+ * @param {string} level the panel's heading: a list or panel inside it sits one level below
+ * @returns {string[]}
+ */
+function blockMd(b, level) {
   if ("quiet" in b || "p" in b) return [M(b.quiet ?? b.p), ""];
   if ("head" in b)
     return [
@@ -103,11 +107,21 @@ function blockMd(b) {
           "",
         ]
       : [];
-  if ("sub" in b) return [`### ${M(b.heading ?? b.sub)}`, "", ...b.blocks.filter(Boolean).flatMap(blockMd)];
-  if ("panel" in b) return panelMd(b.panel, "###");
-  if ("md" in b) return b.md;
+  if ("sub" in b)
+    return [
+      `${level}# ${M(b.heading ?? b.sub)}`,
+      "",
+      ...b.blocks.filter(Boolean).flatMap(x => blockMd(x, `${level}#`)),
+    ];
+  if ("panel" in b) return panelMd(b.panel, `${level}#`);
+  if ("md" in b) return deeper(b.md, level.length - 2);
   return [];
 }
+/**
+ * Markdown written for a ## panel, its headings n levels down (a panel on a topic tab is ###).
+ * @param {string[]} lines @param {number} n
+ */
+export const deeper = (lines, n) => (n > 0 ? lines.map(l => (/^#{2,5} /.test(l) ? "#".repeat(n) + l : l)) : lines);
 
 /** The panel on the page: a collapsed <details>, or its quiet lines as they are. @param {Panel} p */
 export function panelHtml(p) {
@@ -119,13 +133,40 @@ export function panelHtml(p) {
 }
 /** The panel in the Markdown: a ## section (### when level is given). @param {Panel} p @param {string} [level] */
 export function panelMd(p, level = "##") {
-  return p ? [`${level} ${p.title}`, "", ...p.blocks.filter(Boolean).flatMap(blockMd)] : [];
+  return p ? [`${level} ${p.title}`, "", ...p.blocks.filter(Boolean).flatMap(b => blockMd(b, level))] : [];
+}
+
+/**
+ * Groups panels by tab. Each entry is [tab, card, panel]: a view model function, or a [page, Markdown] pair for one
+ * drawn its own way. A view model's own `tab` wins, else "site-content". Panels in one card share a box on the page
+ * (null: no box). A panel with nothing to show is left out.
+ * @param {[string | null, string | null, (() => any) | [() => string, () => string[]]][]} entries
+ * @returns {Record<string, { card: string | null, html: string, md: string[] }[]>}
+ */
+export function byTab(entries) {
+  const tabs = /** @type {Record<string, { card: string | null, html: string, md: string[] }[]>} */ ({});
+  for (const [tab, card, x] of entries) {
+    const p = Array.isArray(x) ? null : x() || null,
+      [html, md] = Array.isArray(x) ? [x[0](), x[1]()] : [panelHtml(p), panelMd(p, "###")];
+    if (html || md.length) (tabs[p?.tab || tab || "site-content"] ||= []).push({ card, html, md });
+  }
+  return tabs;
 }
 /**
- * A panel's [page, Markdown] pair, for the Overview's panel list.
- * @param {() => Panel | false | "" | 0 | undefined} vm
+ * One tab's panels on the page: a box per card, in the order the cards first appear.
+ * @param {{ card: string | null, html: string }[]} items
  */
-export const drawn = vm => [() => panelHtml(vm() || null), () => panelMd(vm() || null)];
+export function cardsHtml(items = []) {
+  const cards = new Map();
+  items.forEach((x, i) =>
+    cards.set(x.card ?? i, { card: x.card, html: (cards.get(x.card ?? i)?.html || "") + x.html }),
+  );
+  return [...cards.values()]
+    .map(c =>
+      c.card == null ? c.html : `\n  <section class="panel topic"><h2>${esc(c.card)}</h2>${c.html}\n  </section>`,
+    )
+    .join("");
+}
 /** The page's note under a capped list: the Markdown has every row. @param {number} n @param {string | null} mdFile */
 export const listedIn = (n, mdFile) =>
   mdFile && { page: [`All ${num(n)} pages are listed in `, { code: mdFile }, "."] };

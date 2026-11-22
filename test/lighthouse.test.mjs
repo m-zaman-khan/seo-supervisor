@@ -245,7 +245,7 @@ test("Lighthouse detail lists each failed audit with its files, escaped", async 
   has(/<code>https:\/\/cdn\.example\/app\.js\?v=&lt;b&gt;1&lt;\/b&gt;<\/code>/, html);
   has(/Avoid <code>&lt;marquee&gt;<\/code>/, html);
   assert.ok(!/v=<b>|<marquee>|\/<x>\//.test(html), "escaped");
-  has(/^## Lighthouse details$/m, md);
+  has(/^### Lighthouse details$/m, md);
   has(/^- Reduce unused JavaScript \(Performance\): `http:\/\/127\.0\.0\.1:1\/chunk-0\.js`/m, md);
   has(
     /^- Avoid \\`\\<marquee\\>\\` \\\*\\\*now\\\*\\\* \(Best Practices\): `https:\/\/cdn\.example\/a\.js\?q= x \|y`$/m,

@@ -483,7 +483,7 @@ test("the report's Local business panel: the kind and its evidence, nearby place
   assert.match(html, /1\.5 km/);
   assert.match(html, /1\.3 km from the schema/);
   assert.match(html, /© OpenStreetMap contributors/);
-  assert.match(md, /^## Local business$/m);
+  assert.match(md, /^### Local business$/m);
   assert.match(md, /© OpenStreetMap contributors/);
   assert.ok(!md.includes(XSS), "escaped in the Markdown too");
   const sab = await render({

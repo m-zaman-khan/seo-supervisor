@@ -183,16 +183,21 @@ const base = {
 const panel = s =>
   s.match(/\n {4}<details class="how linkstrength">[\s\S]*?<\/details>/)?.[0] ?? assert.fail("no panel");
 const text = s => panel(s).replaceAll("&#39;", "'"); // esc writes an apostrophe as &#39;
-const mdPart = s => s.match(/## Internal link strength[\s\S]*?(?=\n## |$)/)?.[0] ?? assert.fail("no Markdown section");
+const mdPart = s =>
+  s.match(/### Internal link strength[\s\S]*?(?=\n#{2,3} |$)/)?.[0] ?? assert.fail("no Markdown section");
 
 test("the report's panel: the 10 strongest pages with honest labels, escaped, and the score doesn't change", async () => {
   const on = await renderReport({ ...base, linkStrength: strength }),
     off = await renderReport(base);
-  assert.equal(
-    on.html.replace(panel(on.html), ""),
-    off.html,
-    "only the panel changes: the score and areas are the same",
-  );
+  const tabOf = (h, id) =>
+    h.slice(h.indexOf(`id="p-${id}"`), h.indexOf('<section class="tp"', h.indexOf(`id="p-${id}"`)));
+  assert.ok(tabOf(on.html, "links").includes(panel(on.html)), "on the Links tab");
+  for (const t of ["overview", "findings", "limits"])
+    assert.equal(
+      tabOf(on.html, t),
+      tabOf(off.html, t),
+      `only the panel changes: the score and areas are the same (${t})`,
+    );
   assert.match(panel(on.html), /<summary>Internal link strength<\/summary>/);
   for (const s of [text(on.html), mdPart(on.md)]) {
     assert.match(s, /our own measure/);

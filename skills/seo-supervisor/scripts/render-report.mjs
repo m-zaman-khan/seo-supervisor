@@ -9,7 +9,7 @@ import { SEV, bandOf } from "./lib/score.mjs";
 import { isMain } from "./lib/is-main.mjs";
 import { Fail, runMain } from "./lib/cli.mjs";
 import { parseArgs } from "./lib/args.mjs";
-import { SEV_LABEL } from "./report/format.mjs";
+import { SEV_LABEL, esc, link, mdLink, noteMd } from "./report/format.mjs";
 import { buildModel } from "./report/model.mjs";
 import { loadSources } from "./report/sources.mjs";
 import { overviewLines } from "./report/overview-lines.mjs";
@@ -23,10 +23,18 @@ import { contentPanels } from "./report/panels/content.mjs";
 import { speedPanels } from "./report/panels/speed-media.mjs";
 import { localPanels } from "./report/panels/local.mjs";
 import { connectionPanels } from "./report/panels/connections.mjs";
+import {
+  logsPanel,
+  brandTrendPanel,
+  topSearchesPanel,
+  keywordIdeasPanel,
+  indexVerdictPanel,
+} from "./report/panels/data-search.mjs";
+import { schemaInventoryPanel } from "./report/panels/data-site.mjs";
 import { overviewHtml } from "./report/overview.mjs";
 import { pageHtml } from "./report/page.mjs";
 import { markdown } from "./report/markdown.mjs";
-import { drawn } from "./report/panel.mjs";
+import { byTab, deeper } from "./report/panel.mjs";
 
 /**
  * Builds the report as text and writes nothing.
@@ -73,10 +81,10 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     unknownLines,
     linksDroppedMd,
   } = diffParts(m, { googleUpdatesText });
-  const { findingsHtml, decisionsHtml, changesHtml, passedHtml, limitsHtml, recheckNote } = findingTabs(m, {
-    trafficHtml,
-    clarityHtml,
-  });
+  const { findingsHtml, decisionsHtml, changesHtml, passedHtml, limitsHtml, recheckNote, decisionCount } = findingTabs(
+    m,
+    { trafficHtml, clarityHtml },
+  );
   const {
     viewsHtml,
     viewsMd,
@@ -93,45 +101,104 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   const { images, lighthouseDetail, speedDetails, a11y } = speedPanels(m);
   const { local, geoGridHtml, geoGridMd } = localPanels(m);
   const { connections, changeCheck, newSearches } = connectionPanels(m);
-  // The Overview's panels, in order: on the page after the score views and search lines, in the Markdown after the area
-  // scores. Each is a [page, Markdown] pair: drawn() makes one from a panel's view model (report/panel.mjs). The local
-  // rank grid, a drawn grid on the page and a text grid in the Markdown, has its own pair.
-  const panels = [
-    links,
-    agents,
-    writing,
-    audience,
-    images,
-    lighthouseDetail,
-    hstsPreload,
-    crawlCoverage,
-    aiCrawlers,
-    productData,
-    speedDetails,
-    browser,
-    descriptions,
-    local,
-    moreLinks,
-    connections,
-    posts,
-    timeline,
-    pageScores,
-    linkIdeas,
-    queryGaps,
-    changeCheck,
-    linkedOnce,
-    appsPdfs,
-    newSearches,
-    checkSettingsPanel,
-    recheckNote,
-    a11y,
-    linkStrength,
-    aiAnswers,
-  ]
-    .map(drawn)
-    .concat([[geoGridHtml, geoGridMd]]);
-  const panelsHtml = () => panels.map(([html]) => html()).join(""),
-    panelsMd = () => panels.flatMap(([, md]) => md());
+
+  // The one-line summaries, each topic's as one panel of quiet lines at the top of its tab.
+  const lines = (title, list) => () => {
+    const l = list().filter(Boolean);
+    return l.length && { title, blocks: l.map(quiet => ({ quiet })) };
+  };
+  const searchGlance = lines("Search at a glance", () => [
+    ...searchLines(),
+    positionsText(),
+    ...analyticsSplitLines(),
+    googleUpdatesText() && { html: googleUpdatesText(true), md: googleUpdatesText() },
+  ]);
+  const speedGlance = lines("Speed at a glance", () => [
+    speedText(),
+    desktopSpeedText(),
+    labSpeedText(),
+    lcpText(),
+    lighthouseText(),
+  ]);
+  // Ahrefs' licence requires its credit beside a Domain Rating.
+  const credit = ahrefsCredit();
+  const authority = lines("Authority", () => [
+    authorityText() && {
+      html: `${esc(authorityText())}${credit ? ` · ${link(credit.url, esc(credit.text))}` : ""}`,
+      md: `${noteMd(authorityText())}${credit ? ` · ${mdLink(credit.url, noteMd(credit.text))}` : ""}`,
+    },
+  ]);
+  // Score views are labelled as estimates. Like every topic panel, they and the rank grid sit a heading level down in
+  // the Markdown.
+  const ESTIMATES = "Estimates, not part of the score";
+  /** @type {[() => string, () => string[]]} */
+  const views = [
+    () =>
+      viewsHtml().replace(
+        '<span class="sub">The audit read another way</span>',
+        `<span class="sub">${ESTIMATES}</span>`,
+      ),
+    () => {
+      const v = viewsMd();
+      return v.length ? ["### Score views", "", `${ESTIMATES}.`, "", ...v.slice(2)] : [];
+    },
+  ];
+  /** @type {[() => string, () => string[]]} */
+  const grid = [geoGridHtml, () => deeper(geoGridMd(), 1)];
+
+  // [tab, card, panel] rows. Panels that share a card render as one box. "since", "limits" and "findings" add to
+  // those existing tabs.
+  const [S, SP, L, SC] = ["search-ai", "speed", "links", "site-content"];
+  const tabs = byTab([
+    [S, "Search traffic", searchGlance],
+    [S, "Search traffic", () => topSearchesPanel(m)],
+    [S, "Search traffic", () => brandTrendPanel(m)],
+    [S, "Search traffic", () => indexVerdictPanel(m)],
+    [S, "Search traffic", newSearches],
+    [S, "Search traffic", connections],
+    [S, "Search traffic", posts],
+    [S, "Search ideas", () => keywordIdeasPanel(m)],
+    [S, "Search ideas", queryGaps],
+    [S, "AI crawlers, agents and answers", aiCrawlers],
+    [S, "AI crawlers, agents and answers", agents],
+    [S, "AI crawlers, agents and answers", () => logsPanel(m)],
+    [S, "AI crawlers, agents and answers", aiAnswers],
+    [SP, "Speed and Lighthouse", speedGlance],
+    [SP, "Speed and Lighthouse", lighthouseDetail],
+    [SP, "Speed and Lighthouse", speedDetails],
+    [SP, "Speed and Lighthouse", images],
+    [L, "Internal links", linkStrength],
+    [L, "Internal links", linkedOnce],
+    [L, "Internal links", linkIdeas],
+    [L, "Links from other sites", authority],
+    [L, "Links from other sites", links],
+    [L, "Links from other sites", moreLinks],
+    [SC, null, views],
+    [SC, "Structured data", () => schemaInventoryPanel(m)],
+    [SC, "Local business", local],
+    [SC, "Local business", grid],
+    [SC, "Content and writing", writing],
+    [SC, "Content and writing", descriptions],
+    [SC, "Content and writing", audience],
+    [SC, "Content and writing", productData],
+    [SC, "Content and writing", pageScores],
+    [SC, "Site hygiene", crawlCoverage],
+    [SC, "Site hygiene", browser],
+    [SC, "Site hygiene", hstsPreload],
+    [SC, "Site hygiene", appsPdfs],
+    [SC, "Site hygiene", a11y],
+    ["since", "Over time", timeline],
+    ["since", "Over time", changeCheck],
+    ["limits", "Check settings", checkSettingsPanel],
+    ["findings", "Checking a fix yourself", recheckNote],
+  ]);
+  // The topic tabs that have something to show, in this order.
+  const topics = /** @type {[string, string][]} */ ([
+    [S, "Search & AI"],
+    [SP, "Speed"],
+    [L, "Links"],
+    [SC, "Site & content"],
+  ]).filter(([id]) => tabs[id]);
 
   const html = pageHtml(m, {
     plan,
@@ -140,44 +207,22 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     trafficFor,
     findingsHtml,
     decisionsHtml,
+    decisionCount,
     changesHtml,
     passedHtml,
     limitsHtml,
-    overviewHtml: () =>
-      overviewHtml(m, {
-        speedText,
-        labSpeedText,
-        lcpText,
-        lighthouseText,
-        authorityText,
-        ahrefsCredit,
-        desktopSpeedText,
-        positionsText,
-        analyticsSplitLines,
-        googleUpdatesText,
-        searchLines,
-        viewsHtml,
-        panelsHtml,
-      }),
+    topics,
+    tabs,
+    overviewHtml: () => overviewHtml(m),
   });
   const md = mdFile
     ? markdown(m, {
         plan,
         diff,
-        speedText,
-        labSpeedText,
-        lcpText,
-        lighthouseText,
-        authorityText,
-        ahrefsCredit,
-        desktopSpeedText,
-        positionsText,
-        analyticsSplitLines,
-        googleUpdatesText,
-        searchLines,
-        viewsMd,
-        panelsMd,
+        topics,
+        tabs,
         burstMd,
+        googleUpdatesText,
         googlePostsText,
         diffSections,
         diffText,
