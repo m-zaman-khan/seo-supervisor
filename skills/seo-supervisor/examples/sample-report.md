@@ -12,7 +12,26 @@ Close to launch-ready: the tool pages are server-rendered and well structured, b
 
 Open: 7 (2 blocker, 1 high, 1 decision, 2 medium, 1 low) · Fixed: 2 · Rules passing: 14 of 21
 
-Real-user speed (mobile): LCP 2.4 s (good) · INP 180 ms (good) · CLS 0.05 (good), passes Core Web Vitals
+Checked 214 pages against 21 rules · 2 checks couldn't run: see Limits of this audit, below.
+
+Clicks from Google: 2,920 (last 3 months) · Core Web Vitals (real visitors, mobile): pass
+
+## Fix first
+
+What the agent can fix in code. Each line fixes one.
+
+- **F-001** · Blocker · 1,240 shareable scan reports are indexable · `/seo-fix F-001`
+- **F-005** · High · Unknown URLs return 200 on the first request (soft 404) · `/seo-fix F-005`
+
+## Needs you
+
+Your call, your accounts or your go-ahead: the agent won't change these without you.
+
+- **F-002** · Blocker · 36 tool pages share most of their text
+- **F-008** · Decision · robots.txt blocks OAI-SearchBot and PerplexityBot
+- Decision · Launch the 36 DNS tools now or after rewriting?
+
+All 3 are under Decisions needed, below.
 
 ## Area scores
 
@@ -30,17 +49,6 @@ Real-user speed (mobile): LCP 2.4 s (good) · INP 180 ms (good) · CLS 0.05 (goo
 | Sitemaps & robots | 100 | 0 | All checks pass |
 | Structured data | 100 | 0 | All checks pass |
 | URLs & canonicals | 100 | 0 | All checks pass |
-
-## Page scores
-
-Each page with open findings, scored with the same rules as the site but counting only the findings listed for that page. It's SEO Supervisor's own score, not Google's, and it doesn't change the site score. Pages come from the findings' examples, so a finding with more cases than examples can affect pages not listed here.
-
-| Page | Score | Open findings |
-| --- | ---: | --- |
-| `/r/8f2k1/` | 59/100 | F-001 |
-| `/tools/mx-lookup/` | 59/100 | F-002 |
-| `/seo-supervisor-404-probe-x1/` | 97/100 | F-005 |
-| `/tools/ssl-checker/` | 98/100 | F-007 |
 
 ## SEO plan
 
@@ -63,49 +71,6 @@ Intros for new pages (approving the plan approves these words):
 
 - /docs: Guides and API reference for Example Security. Start with the API guide to run checks from your own scripts.
 
-## Since last audit
-
-Compared with the crawl of 3 Nov 2026.
-
-### Regressions
-
-- `/tools/whois-lookup/` H1 removed: 1 → 0
-- `/guides/dns-records/` Now an error: 200 → 500
-
-### Improvements
-
-- `/tools/ssl-checker/` Canonical changed: https://security.example/tools/ → https://security.example/tools/ssl-checker/
-
-### Pages added
-
-- `/tools/dmarc-checker/`
-
-## Decisions needed
-
-### Launch the 36 DNS tools now or after rewriting?
-
-They're live in staging and linked from the tools hub.
-
-- Rewrite first (2–3 days)
-- Launch 6 core types now, hold the rest
-
-**Recommended:** Launch the 6 most-searched types now with unique copy and hold the rest.
-
-### F-008: Should AI search crawlers be allowed?
-
-The robots file blocks every AI crawler, including the search crawlers that decide whether the site is cited in ChatGPT and Perplexity answers.
-
-- Allow all AI crawlers
-- Block training crawlers only (GPTBot, ClaudeBot, Google-Extended, CCBot)
-- Block all (current)
-
-**Recommended:** Block training only, so the tools can still be cited in AI answers.
-
-## What was changed
-
-- **F-004** The sitemap listed localhost URLs: sitemap.ts uses the same SITE\_URL constant as the metadata helper. (`src/app/sitemap.ts`). Verified: re-crawl 17 Nov: all 214 URLs on `https://security.example`
-- **F-003** 52 canonicals pointed at the staging host: metadataBase now reads SITE\_URL, which fails the build if missing; production env updated. (`src/lib/seo.ts`, `next.config.ts`). Verified: re-crawl 17 Nov: 0 canonicals on the wrong host
-
 ## Findings
 
 ### F-001 · Blocker · 1,240 shareable scan reports are indexable
@@ -124,6 +89,8 @@ Status: Open · Area: Interactive tools · Rule: TOOL-05 · Cases: 1240
 | `src/app/r/[id]/page.tsx:12` | metadata has no robots field |
 
 1238 more cases not listed.
+
+**Next step.** `/seo-fix F-001` fixes it and checks the fix.
 
 ### F-002 · Blocker · Needs you · 36 tool pages share most of their text
 
@@ -144,6 +111,8 @@ Search Console: 120 clicks · 9,800 impressions (last 3 months) on `/tools/mx-lo
 
 416 more cases not listed.
 
+**Next step.** `/seo-fix F-002` asks you first: the agent won't change this without your go-ahead.
+
 ### F-005 · High · Unknown URLs return 200 on the first request (soft 404)
 
 Status: Open · Area: Crawling & indexing · Rule: CRAWL-05
@@ -157,6 +126,8 @@ Status: Open · Area: Crawling & indexing · Rule: CRAWL-05
 | Where | Detail |
 | --- | --- |
 | `https://security.example/seo-supervisor-404-probe-x1/` | 200, x-nextjs-postponed: 1 |
+
+**Next step.** `/seo-fix F-005` fixes it and checks the fix.
 
 ### F-008 · Decision · robots.txt blocks OAI-SearchBot and PerplexityBot
 
@@ -180,6 +151,8 @@ Recommended: Block training only, so the tools can still be cited in AI answers.
 | --- | --- |
 | `https://security.example/robots.txt` | User-agent: OAI-SearchBot / Disallow: / |
 
+**Next step.** `/seo-fix F-008` asks you first: the agent won't change this without your go-ahead.
+
 ### F-007 · Medium · 14 titles are longer than 60 characters
 
 Status: Open · Area: Metadata · Rule: META-01 · Cases: 14
@@ -198,6 +171,8 @@ Search Console: 960 clicks · 31,200 impressions (last 3 months) on `/tools/ssl-
 
 13 more cases not listed.
 
+**Next step.** `/seo-fix F-007` fixes it and checks the fix.
+
 ### F-006 · Medium · 9 tool forms use placeholder text instead of labels
 
 Status: Open · Area: Interactive tools · Rule: TOOL-03 · Cases: 9
@@ -214,6 +189,8 @@ Status: Open · Area: Interactive tools · Rule: TOOL-03 · Cases: 9
 
 8 more cases not listed.
 
+**Next step.** `/seo-fix F-006` fixes it and checks the fix.
+
 ### F-009 · Low · No /.well-known/security.txt
 
 Status: Open · Area: Trust & security · Rule: TRUST-02
@@ -227,6 +204,8 @@ Status: Open · Area: Trust & security · Rule: TRUST-02
 | Where | Detail |
 | --- | --- |
 | `https://security.example/.well-known/security.txt` | status 404 |
+
+**Next step.** `/seo-fix F-009` fixes it and checks the fix.
 
 ### F-004 · High · The sitemap listed localhost URLs
 
@@ -265,6 +244,94 @@ Search Console: 960 clicks · 31,200 impressions (last 3 months) on `/tools/ssl-
 | `https://security.example/tools/ssl-checker/` | canonical → `https://staging.security.example/tools/ssl-checker/` |
 
 51 more cases not listed.
+
+## Decisions needed
+
+### Launch the 36 DNS tools now or after rewriting?
+
+They're live in staging and linked from the tools hub.
+
+- Rewrite first (2–3 days)
+- Launch 6 core types now, hold the rest
+
+**Recommended:** Launch the 6 most-searched types now with unique copy and hold the rest.
+
+### F-008: Should AI search crawlers be allowed?
+
+The robots file blocks every AI crawler, including the search crawlers that decide whether the site is cited in ChatGPT and Perplexity answers.
+
+- Allow all AI crawlers
+- Block training crawlers only (GPTBot, ClaudeBot, Google-Extended, CCBot)
+- Block all (current)
+
+**Recommended:** Block training only, so the tools can still be cited in AI answers.
+
+### Your tasks
+
+Findings only you can resolve: a setting on your host or an account, your content or your facts. The agent won't change them without your go-ahead.
+
+- **F-002** 36 tool pages share most of their text · Blocker
+
+## What was changed
+
+- **F-004** The sitemap listed localhost URLs: sitemap.ts uses the same SITE\_URL constant as the metadata helper. (`src/app/sitemap.ts`). Verified: re-crawl 17 Nov: all 214 URLs on `https://security.example`
+- **F-003** 52 canonicals pointed at the staging host: metadataBase now reads SITE\_URL, which fails the build if missing; production env updated. (`src/lib/seo.ts`, `next.config.ts`). Verified: re-crawl 17 Nov: 0 canonicals on the wrong host
+
+## Search & AI
+
+Information only: nothing here changes the score.
+
+### Top searches and pages
+
+Google Search, last 3 months. Google hides searches very few people make, so the searches add up to fewer clicks than the pages. Information only.
+
+#### Pages with the most clicks
+
+| Page | Clicks | Impressions |
+| --- | ---: | ---: |
+| `/` | 1,840 | 52,300 |
+| `/tools/ssl-checker/` | 960 | 31,200 |
+| `/tools/mx-lookup/` | 120 | 9,800 |
+
+## Speed
+
+Information only: nothing here changes the score.
+
+### Speed at a glance
+
+Real-user speed (mobile): LCP 2.4 s (good) · INP 180 ms (good) · CLS 0.05 (good), passes Core Web Vitals
+
+## Site & content
+
+Information only: nothing here changes the score.
+
+### Page scores
+
+Each page with open findings, scored with the same rules as the site but counting only the findings listed for that page. It's SEO Supervisor's own score, not Google's, and it doesn't change the site score. Pages come from the findings' examples, so a finding with more cases than examples can affect pages not listed here.
+
+| Page | Score | Open findings |
+| --- | ---: | --- |
+| `/r/8f2k1/` | 59/100 | F-001 |
+| `/tools/mx-lookup/` | 59/100 | F-002 |
+| `/seo-supervisor-404-probe-x1/` | 97/100 | F-005 |
+| `/tools/ssl-checker/` | 98/100 | F-007 |
+
+## Since last audit
+
+Compared with the crawl of 3 Nov 2026.
+
+### Regressions
+
+- `/tools/whois-lookup/` H1 removed: 1 → 0
+- `/guides/dns-records/` Now an error: 200 → 500
+
+### Improvements
+
+- `/tools/ssl-checker/` Canonical changed: https://security.example/tools/ → https://security.example/tools/ssl-checker/
+
+### Pages added
+
+- `/tools/dmarc-checker/`
 
 ## Passed checks
 
