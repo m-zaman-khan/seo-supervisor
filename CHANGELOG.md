@@ -372,6 +372,16 @@ Deeper checks, optional real-world data and search intent. Everything still work
 - **render-report.** The audit file can come anywhere among the options (`--out x.html audit.json` works). A misspelt option stops it. A missing or broken input file gives one plain line and exit code 2. A failed PDF exits 1.
 - **Sturdier report.** One bad URL in the lab speed, LCP or Lighthouse data no longer stops the whole report.
 - **Inside the report.** Each Overview panel is drawn from one view model, so its page and Markdown versions can't drift. "How this score works" is written once, and a dead CSS rule is gone.
+- **Fixed before release** (from the round's final review):
+  - An off-site answer compressed with gzip, deflate or br that stalls or drops halfway now fails once the request's time is up, instead of hanging the crawl.
+  - Image, stylesheet, script, icon and sitemap reads wait out the crawler's slow-down and ask again after a 429 or 503, like page reads. A file still busy after that is noted as not checked, never reported as broken, and a rate-limited sitemap's URLs are no longer lost.
+  - Sitemap files are read 2 at a time at most (our own limit), so huge sitemaps can't hold 1 GB of memory, and agent files (`/.well-known/…`) are read up to 1 MB once unpacked (our own limit).
+  - Site text in the sitemap, hreflang-target and jump-link notes is quoted and cut short, like the other notes.
+  - A site whose home page address redirects (for example `/` to `/en/`) gets its home page checks again: Organization and WebSite schema, and the favicon.
+  - `--help` and `-h` print each script's usage and exit 0 again.
+  - The secret hider no longer hides crawled addresses that only look like keys (such as `/blog/sk-guide-…`).
+  - A crawl that reads no pages (a site that's down) reports the plain "No XML sitemap found", not the small, well-linked site's version.
+  - In an audit made before this version, an "exactly one H1" finding reads as "no H1" or "more than one H1" by its pages, so a setting for either applies.
 - The schema checker's vocabulary comes from Schema.org (CC BY-SA 3.0); see `NOTICE`.
 
 ## 1.2.0 (2026-11-18)
