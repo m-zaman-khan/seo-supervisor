@@ -12,6 +12,7 @@ import { isMain } from "./lib/is-main.mjs";
 import { parseArgs } from "./lib/args.mjs";
 import { Fail, runMain } from "./lib/cli.mjs";
 import { findingOf, numbered } from "./lib/findings.mjs";
+import { BOTS as BOT_ROWS } from "./checks/agents.mjs";
 
 // --site is the other scripts' name for --site-origin.
 async function main(argv) {
@@ -43,161 +44,22 @@ async function main(argv) {
     }
   }
 
-  // [user-agent token, vendor, group, what the vendor says the bot is for]. Matched as a case-insensitive User-Agent
-  // substring and the first match wins, so Google's other agents sit above Googlebot. Google-Extended,
-  // Applebot-Extended and YandexAdditionalBot are robots.txt tokens, not user agents, so logs can't show them.
-  // Google-NotebookLM, Google-GeminiNotebook's former name, is supported until August 2026. cohere-ai isn't here:
-  // Cohere runs no crawler.
-  // https://developers.openai.com/api/docs/bots
-  // https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers
-  // https://developers.google.com/search/docs/crawling-indexing/google-user-triggered-fetchers
-  // https://docs.mistral.ai/robots
-  // https://duckduckgo.com/duckduckgo-help-pages/results/duckassistbot
-  // https://developer.amazon.com/amazonbot
-  // https://developers.facebook.com/docs/sharing/webmasters/web-crawlers
-  // https://support.apple.com/en-us/119829
-  // https://support.claude.com/en/articles/18234133
-  // https://docs.cohere.com/docs/cohere-web-crawlers
-  const BOTS = [
-    [
-      "Google-CloudVertexBot",
-      "Google",
-      "other",
-      "Crawls a site only when its owner sets up a Vertex AI agent on it; no effect on Google Search",
-    ],
-    [
-      "Google-Agent",
-      "Google",
-      "ai-search",
-      "Browses pages and acts on them for a user, from agents on Google's servers; robots.txt may not apply",
-    ],
-    ["Google-GeminiNotebook", "Google", "ai-search", "Fetches a page a Gemini Notebook user added as a source"],
-    [
-      "Google-NotebookLM",
-      "Google",
-      "ai-search",
-      "Fetches a page a NotebookLM user added as a source (the former name of Google-GeminiNotebook)",
-    ],
-    ["GoogleMessages", "Google", "other", "Builds link previews for URLs sent in Google Messages chats"],
-    ["OAI-AdsBot", "OpenAI", "other", "Checks landing pages submitted as ChatGPT ads; not used for training"],
-    ["Googlebot", "Google", "search", "Crawls for Google Search, including AI Overviews and AI Mode"],
-    ["Bingbot", "Microsoft", "search", "Crawls for Bing; Copilot answers are grounded in Bing's index"],
-    [
-      "Applebot",
-      "Apple",
-      "search",
-      "Crawls for Apple's search features (Siri, Spotlight, Safari) and AI answers; may also be used to train Apple's models",
-    ],
-    ["DuckDuckBot", "DuckDuckGo", "search", "Crawls for DuckDuckGo search"],
-    [
-      "DuckAssistBot",
-      "DuckDuckGo",
-      "ai-search",
-      "Fetches pages in real time for DuckDuckGo's AI-assisted answers; not used to train AI models",
-    ],
-    [
-      "Claude-Agent",
-      "Anthropic",
-      "ai-search",
-      "An Anthropic-hosted browser acting for a user; it keeps the browser's own user agent and adds this token",
-    ],
-    [
-      "Amzn-SearchBot",
-      "Amazon",
-      "ai-search",
-      "Crawls for search in Amazon's products, including Alexa; not used to train AI models",
-    ],
-    [
-      "Amzn-User",
-      "Amazon",
-      "ai-search",
-      "Fetches a page for a live user request, such as an Alexa question; may not follow all robots.txt rules",
-    ],
-    [
-      "Meta-ExternalFetcher",
-      "Meta",
-      "ai-search",
-      "Fetches a link at a user's request for Meta's AI features, including AI agents browsing sites; may bypass robots.txt",
-    ],
-    [
-      "MistralAI-Index",
-      "Mistral AI",
-      "ai-search",
-      "Crawls to index pages for Mistral's search, which answers questions in Vibe; not used for training",
-    ],
-    ["YandexBot", "Yandex", "search", "Crawls for Yandex search"],
-    ["OAI-SearchBot", "OpenAI", "ai-search", "Crawls so sites can be shown and linked in ChatGPT search"],
-    ["ChatGPT-User", "OpenAI", "ai-search", "Fetches a page when a ChatGPT user's request needs it"],
-    ["Claude-SearchBot", "Anthropic", "ai-search", "Crawls to improve the search results Claude cites"],
-    ["Claude-User", "Anthropic", "ai-search", "Fetches a page when a Claude user's request needs it"],
-    ["PerplexityBot", "Perplexity", "ai-search", "Crawls so sites can be shown and linked in Perplexity answers"],
-    ["Perplexity-User", "Perplexity", "ai-search", "Fetches a page when a Perplexity user's request needs it"],
-    [
-      "MistralAI-User",
-      "Mistral AI",
-      "ai-search",
-      "Fetches a page when a Vibe user's question needs it, and links the source in the answer",
-    ],
-    ["GPTBot", "OpenAI", "ai-training", "Collects content to train OpenAI's models"],
-    ["ClaudeBot", "Anthropic", "ai-training", "Collects content to train Anthropic's models"],
-    ["CCBot", "Common Crawl", "ai-training", "Builds the open Common Crawl dataset, widely used to train AI models"],
-    ["Bytespider", "ByteDance", "ai-training", "Collects content to train ByteDance's models"],
-    [
-      "meta-externalagent",
-      "Meta",
-      "ai-training",
-      "Collects content to train Meta's AI models and index it for Meta's products",
-    ],
-    [
-      "MistralAI-Training",
-      "Mistral AI",
-      "ai-training",
-      "Collects content to train Mistral's models; not used for search or live answers",
-    ],
-    [
-      "Amazonbot",
-      "Amazon",
-      "ai-training",
-      "Crawls to improve Amazon's products and services; may be used to train Amazon's AI models",
-    ],
-  ].map(([name, vendor, group, purpose]) => ({ name, token: name.toLowerCase(), vendor, group, purpose }));
+  // Matched as a case-insensitive User-Agent substring and the first match wins, so Google's other agents sit above
+  // Googlebot in data/ai-bots.json. Rows with no group (Google-Extended, Applebot-Extended, YandexAdditionalBot) are
+  // robots.txt tokens, not user agents, so logs can't show them.
+  const BOTS = BOT_ROWS.filter(b => b.group).map(({ name, vendor, group, purpose }) => ({
+    name,
+    token: name.toLowerCase(),
+    vendor,
+    group,
+    purpose,
+  }));
   // Every vendor list uses the { prefixes: [{ ipv4Prefix | ipv6Prefix }] } format. Google doesn't tie Gemini Notebook
   // or Messages to one of its two user-triggered files, so either counts.
   // https://developers.google.com/search/docs/crawling-indexing/verifying-googlebot
-  const G = "https://developers.google.com/static/crawling/ipranges/",
-    GOOGLE_USER = [G + "user-triggered-fetchers-google.json", G + "user-triggered-fetchers.json"],
-    CLAUDE = ["https://claude.com/crawling/bots.json"];
-  const IP_LISTS = {
-    Googlebot: [G + "common-crawlers.json"],
-    "Google-CloudVertexBot": [G + "common-crawlers.json"],
-    "Google-Agent": [G + "user-triggered-agents.json"],
-    "Google-GeminiNotebook": GOOGLE_USER,
-    "Google-NotebookLM": GOOGLE_USER,
-    GoogleMessages: GOOGLE_USER,
-    Bingbot: ["https://www.bing.com/toolbox/bingbot.json"],
-    Applebot: ["https://search.developer.apple.com/applebot.json"],
-    CCBot: ["https://index.commoncrawl.org/ccbot.json"],
-    "OAI-SearchBot": ["https://openai.com/searchbot.json"],
-    "ChatGPT-User": ["https://openai.com/chatgpt-user.json"],
-    GPTBot: ["https://openai.com/gptbot.json"],
-    "OAI-AdsBot": ["https://openai.com/adsbot.json"],
-    "Claude-SearchBot": CLAUDE,
-    "Claude-User": CLAUDE,
-    ClaudeBot: CLAUDE,
-    PerplexityBot: ["https://www.perplexity.ai/perplexitybot.json"],
-    "Perplexity-User": ["https://www.perplexity.ai/perplexity-user.json"],
-    // Same format. Claude-Agent's list is a draft TOML file and Amazon's three agents' are web pages, so those can't be
-    // read here; UNREADABLE names them in a note.
-    DuckAssistBot: ["https://duckduckgo.com/duckassistbot.json"],
-    "MistralAI-User": ["https://mistral.ai/mistralai-user-ips.json"],
-    "MistralAI-Index": ["https://mistral.ai/mistralai-index-ips.json"],
-  };
-  const UNREADABLE = {
-    "Claude-Agent": "claude.com/.well-known/sail, in a draft format",
-    Amazonbot: "developer.amazon.com/amazonbot, as web pages",
-    "Amzn-SearchBot": "developer.amazon.com/amazonbot, as web pages",
-    "Amzn-User": "developer.amazon.com/amazonbot, as web pages",
-  };
+  // Lists published only as TOML or web pages (a row's ipsAt) can't be read here; UNREADABLE names them in a note.
+  const IP_LISTS = Object.fromEntries(BOT_ROWS.filter(b => b.group && b.ips).map(b => [b.name, b.ips]));
+  const UNREADABLE = Object.fromEntries(BOT_ROWS.filter(b => b.group && b.ipsAt).map(b => [b.name, b.ipsAt]));
   // bot name -> the BlockLists of its lists that loaded; null without --verify-ips. A folder holds lists saved under
   // their own file names (searchbot.json, common-crawlers.json …); a list that's missing or unreadable is skipped.
   // Downloading sends one GET per list and nothing about the site.

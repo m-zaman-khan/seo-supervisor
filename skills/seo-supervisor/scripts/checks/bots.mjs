@@ -3,6 +3,7 @@
 import { analyze } from "../crawl/page.mjs";
 import { isLocal, urlOr } from "../crawl/fetch.mjs";
 import { sleep } from "./crawl.mjs";
+import { BOTS } from "./agents.mjs";
 
 // ---------- what Googlebot gets ----------
 // Google's smartphone Googlebot, with a current Chrome version.
@@ -83,12 +84,12 @@ export async function aiBotProbe(site, { page, botSample, aiProbe: AI_PROBE, out
       await sleep(1000);
       return follow(u, ua);
     };
-  const AI_PROBE_UAS = {
-    "OAI-SearchBot":
-      "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; OAI-SearchBot/1.4; +https://openai.com/searchbot",
-    "Claude-SearchBot": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-SearchBot/1.0)",
-    PerplexityBot: "Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)",
-  };
+  // User agents as the vendors publish them; Anthropic names only the Claude-SearchBot token, so its string is built
+  // around that.
+  // https://developers.openai.com/api/docs/bots
+  // https://docs.perplexity.ai/guides/bots
+  // https://support.claude.com/en/articles/8896518
+  const AI_PROBE_UAS = Object.fromEntries(BOTS.filter(b => b.probeUa).map(b => [b.name, b.probeUa])); // data/ai-bots.json
   if (AI_PROBE && !OUTSIDE)
     notes.push(
       "--ai-bot-probe runs only with outside checks on (--outside) and the owner's own yes: it asks a few pages again as OAI-SearchBot, Claude-SearchBot and PerplexityBot. It didn't run.",

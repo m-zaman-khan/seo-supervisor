@@ -1,5 +1,7 @@
 // @ts-check
 // Agent readiness: what AI agents can use on a page, Bing's AI rules, AI crawler rules, and the AI bot list.
+import { readFileSync } from "node:fs";
+
 export const CHECKS = {
   "click-only-elements": [
     "AI-05",
@@ -213,11 +215,15 @@ export function agentFeatures(html) {
 const INTERACTIVE = /^(a|area|button|input|select|textarea|summary|label|option|details)$/;
 const LANDMARKS = { main: "main", nav: "navigation", header: "banner", footer: "contentinfo" };
 
-// The AI crawlers and fetchers in the robots table, as [token, vendor, kind, mayIgnore, { alias, fallback }]. kind:
-// search, training, user (fetches a page a person asked for) or other; mayIgnore: the vendor says robots.txt may not
-// apply; alias: a second accepted name; fallback: the group it follows when unnamed. Rows follow the vendors' pages
-// below or are tokens the crawl already checks. Cohere runs no crawler, and Claude-Agent is left out since its page
-// doesn't say how robots.txt applies.
+// The bots in data/ai-bots.json: the one list behind the robots table, ai-bots-blocked, log-scan and the AI crawler
+// probe. Fields beyond name (the vendor's robots.txt token) and vendor:
+// - kind (robots table): search, training, user (fetches a page a person asked for) or other; mayIgnore: the vendor
+//   says robots.txt may not apply; alias: a second accepted name; fallback: the group it follows when unnamed.
+// - group and purpose (log-scan, for bots with their own user agent); ips: published IP lists; ipsAt: where the
+//   vendor publishes them in a form log-scan can't read; probeUa: the user agent --ai-bot-probe sends.
+// Each row follows the vendor's own page. Anthropic names three bots, so anthropic-ai and Claude-Web aren't rows, and
+// Claude-Agent is log-scan only since its page doesn't say how robots.txt applies. Google-NotebookLM (supported until
+// Aug 2026) and GoogleMessages are log-scan only. Cohere runs no crawler, so it isn't listed.
 // https://developers.openai.com/api/docs/bots
 // https://docs.perplexity.ai/guides/bots
 // https://support.claude.com/en/articles/8896518
@@ -231,36 +237,17 @@ const LANDMARKS = { main: "main", nav: "navigation", header: "banner", footer: "
 // https://developers.facebook.com/docs/sharing/webmasters/web-crawlers
 // https://support.apple.com/en-us/119829
 // https://docs.cohere.com/docs/cohere-web-crawlers
+/** @type {{ name: string, vendor: string, kind?: string, mayIgnore?: boolean, alias?: string, fallback?: string, group?: string, purpose?: string, ips?: string[], ipsAt?: string, probeUa?: string }[]} */
+export const BOTS = JSON.parse(readFileSync(new URL("../data/ai-bots.json", import.meta.url), "utf8"));
+// The robots table's rows, in file order.
 /** @type {[string, string, string, boolean?, { alias?: string, fallback?: string }?][]} */
-export const AI_BOTS = [
-  ["OAI-SearchBot", "OpenAI", "search"],
-  ["Claude-SearchBot", "Anthropic", "search"],
-  ["PerplexityBot", "Perplexity", "search"],
-  ["MistralAI-Index", "Mistral", "search"],
-  ["DuckAssistBot", "DuckDuckGo", "search"],
-  ["Amzn-SearchBot", "Amazon", "search"],
-  ["YandexAdditionalBot", "Yandex", "search", false, { alias: "YandexAdditional" }],
-  ["Applebot", "Apple", "search", false, { fallback: "Googlebot" }],
-  ["GPTBot", "OpenAI", "training"],
-  ["ClaudeBot", "Anthropic", "training"],
-  ["Google-Extended", "Google", "training"],
-  ["Applebot-Extended", "Apple", "training"],
-  ["CCBot", "Common Crawl", "training"],
-  ["Bytespider", "ByteDance", "training"],
-  ["meta-externalagent", "Meta", "training"],
-  ["MistralAI-Training", "Mistral", "training"],
-  ["Amazonbot", "Amazon", "training"],
-  ["ChatGPT-User", "OpenAI", "user", true],
-  ["Claude-User", "Anthropic", "user"],
-  ["Perplexity-User", "Perplexity", "user", true],
-  ["Google-Agent", "Google", "user", true],
-  ["Google-GeminiNotebook", "Google", "user", true],
-  ["MistralAI-User", "Mistral", "user"],
-  ["Amzn-User", "Amazon", "user", true],
-  ["Meta-ExternalFetcher", "Meta", "user", true],
-  ["OAI-AdsBot", "OpenAI", "other"],
-  ["Google-CloudVertexBot", "Google", "other"],
-];
+export const AI_BOTS = BOTS.filter(b => b.kind).map(b => [
+  b.name,
+  b.vendor,
+  b.kind,
+  b.mayIgnore,
+  { alias: b.alias, fallback: b.fallback },
+]);
 
 // Bing's AI rules from robots meta contents and X-Robots-Tag lines. A "<crawler>:" prefix holds for the rules after
 // it; VALUED names take a value after the colon, so they aren't prefixes. legacy holds noarchive and nocache, which

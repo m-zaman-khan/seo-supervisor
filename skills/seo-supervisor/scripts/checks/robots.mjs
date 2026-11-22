@@ -94,24 +94,9 @@ export function checkRobots(robotsRes, { add, evalRules, startOrigin: START_ORIG
     for (const p of ["/_next/static/x.js", "/assets/x.js", "/static/x.css", "/x.css", "/x.js"])
       if (star && !allowedBy(star, p) && allowedBy(star, "/"))
         add("robots-blocks-assets", START_ORIGIN + "/robots.txt", `blocks ${p.replace(/x\.(js|css)$/, "")}`);
-    const AI = [
-      "GPTBot",
-      "OAI-SearchBot",
-      "ChatGPT-User",
-      "ClaudeBot",
-      "Claude-SearchBot",
-      "Claude-User",
-      "anthropic-ai",
-      "Claude-Web",
-      "PerplexityBot",
-      "Google-Extended",
-      "CCBot",
-      "Applebot-Extended",
-      "Bytespider",
-      "meta-externalagent",
-    ];
-    for (const bot of AI) {
-      const g = groupFor(robots, bot);
+    // Only a bot's own group counts here; a block by `User-agent: *` shows in the AI bot table instead.
+    for (const [bot, , , , { alias } = {}] of AI_BOTS) {
+      const g = ownGroup(robots, bot, alias);
       if (g && !allowedBy(g, "/")) add("ai-bots-blocked", START_ORIGIN + "/robots.txt", bot);
     }
     if (!robots.sitemaps.length) add("sitemap-not-in-robots", START_ORIGIN + "/robots.txt");
@@ -147,6 +132,9 @@ export function versionedNote(robots, notes) {
   }
 }
 
+// The group naming the bot, or the second name its vendor accepts.
+const ownGroup = (robots, bot, alias) => groupFor(robots, bot) || (alias ? groupFor(robots, alias) : null);
+
 // Each AI bot's access: its own group, else `User-agent: *`. Also flags Content-Signal lines crawlers won't read.
 // https://www.rfc-editor.org/rfc/rfc9309#section-2.2.1
 export function aiBotAccess({ robots, robotsRes, star }, { add, extra, startOrigin: START_ORIGIN }) {
@@ -154,7 +142,7 @@ export function aiBotAccess({ robots, robotsRes, star }, { add, extra, startOrig
     // Applebot falls back to Googlebot's group when it isn't named (https://support.apple.com/en-us/119829), and
     // YandexAdditional reads only its own group, never `*`.
     extra.aiBots = AI_BOTS.map(([bot, vendor, kind, mayIgnore, { alias, fallback } = {}]) => {
-      const own = groupFor(robots, bot) || (alias ? groupFor(robots, alias) : null),
+      const own = ownGroup(robots, bot, alias),
         via = !own && fallback ? groupFor(robots, fallback) : null,
         g = own || via || star;
       return {
