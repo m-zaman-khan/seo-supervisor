@@ -6,7 +6,7 @@
 // finding isn't won't-fix, it stops at 99, so 100 always means nothing is left to fix (rounding alone could reach 100).
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { currentId, currentIds } from "../crawl/catalog.mjs";
+import { CHECKS, currentId, currentIds } from "../crawl/catalog.mjs";
 export const SEV = ["blocker", "high", "needs-decision", "medium", "low"];
 export const EARN = { blocker: 0, high: 3, "needs-decision": 6, medium: 6, low: 8 };
 export const isOpen = f => f.status !== "fixed";
@@ -166,6 +166,27 @@ export function applyChecks(findings, settings, known = null) {
     warnings: [...warnings],
   };
 }
+// An older audit has one h1-count finding for both cases, so each page's detail ("0 H1s", "3 H1s") says which it
+// is. A finding with both becomes two (the second's ID ends in b), each titled and counted by its pages.
+// An old finding lists 100 pages at most, so one over 100 is split and counted by the 100 it lists.
+function oldH1(f) {
+  if (f.check !== "h1-count") return [f];
+  const ev = Array.isArray(f.evidence) ? f.evidence : [],
+    many = e => Number(/^(\d+) H1s\b/.exec(e?.detail ?? "")?.[1]) > 1;
+  const parts = [
+    ["h1-missing", ev.filter(e => !many(e))],
+    ["h1-multiple", ev.filter(many)],
+  ].filter(([, x]) => x.length);
+  if (parts.length < 2) return [{ ...f, check: parts[0]?.[0] ?? "h1-missing" }];
+  return parts.map(([check, evidence], i) => ({
+    ...f,
+    id: i ? `${f.id}b` : f.id,
+    check,
+    evidence,
+    count: evidence.length,
+    title: CHECKS[check][2](evidence.length),
+  }));
+}
 // The audit's findings as every reader sees them: normalised, then the settings beside the audit file (dir) applied.
 // A renamed check's old id (crawl/catalog.mjs ID_ALIASES) reads as its new one, in the settings and in an audit made
 // before the rename, so neither stops applying.
@@ -198,7 +219,9 @@ export function findingsOf(raw, dir) {
     if (plainObj(checks.severity)) Object.keys(checks.severity).forEach(note);
   }
   const r = applyChecks(
-    normalise(raw?.findings).map(f => (typeof f.check === "string" ? { ...f, check: currentId(f.check) } : f)),
+    normalise(raw?.findings)
+      .flatMap(oldH1)
+      .map(f => (typeof f.check === "string" ? { ...f, check: currentId(f.check) } : f)),
     checks,
   );
   return { ...r, warnings: [...(bad ? [bad] : []), ...renamed, ...r.warnings] };

@@ -160,3 +160,46 @@ test("a crawl that gets no pages reports the plain sitemap-missing, not the smal
   );
   assert.ok(!r.findings.some(f => f.check === "sitemap-missing-small"));
 });
+
+test("an old audit's h1-count finding reads as what its pages had: 2 H1s h1-multiple, 0 H1s h1-missing, both split in two", () => {
+  const dir = settings => {
+    const d = join(tmp(), "seo-audit");
+    mkdirSync(d, { recursive: true });
+    if (settings) writeFileSync(join(d, "settings.json"), JSON.stringify({ checks: settings }));
+    return d;
+  };
+  const old = (id, ...details) => ({
+    id,
+    check: "h1-count",
+    rule: "CONTENT-01",
+    severity: "medium",
+    title: `${details.length} page(s) don't have exactly one H1`,
+    count: details.length,
+    evidence: details.map((detail, i) => ({ url: `https://x.example/${i}`, detail })),
+  });
+  const audit = { findings: [old("F-001", "2 H1s"), old("F-002", "0 H1s"), old("F-003", "0 H1s", "3 H1s", "0 H1s")] };
+  const all = findingsOf(audit, dir(null)).findings.map(f => [
+    f.id,
+    f.check,
+    f.count,
+    f.evidence.map(e => e.detail).join("|"),
+  ]);
+  assert.deepEqual(all, [
+    ["F-001", "h1-multiple", 1, "2 H1s"],
+    ["F-002", "h1-missing", 1, "0 H1s"],
+    ["F-003", "h1-missing", 2, "0 H1s|0 H1s"],
+    ["F-003b", "h1-multiple", 1, "3 H1s"],
+  ]);
+  const split = findingsOf(audit, dir(null)).findings.find(f => f.id === "F-003b");
+  assert.equal(split.title, "1 page(s) have more than one H1");
+  // Settings reach each id, and the old id still reaches both.
+  assert.deepEqual(
+    findingsOf(audit, dir({ off: ["h1-multiple"] })).findings.map(f => f.id),
+    ["F-002", "F-003"],
+  );
+  assert.deepEqual(findingsOf(audit, dir({ off: ["h1-count"] })).findings, []);
+  assert.deepEqual(
+    findingsOf(audit, dir({ severity: { "h1-missing": "low" } })).findings.map(f => f.severity),
+    ["medium", "low", "low", "medium"],
+  );
+});
