@@ -310,8 +310,23 @@ function deleteHit(file, cwd) {
 
 // ---------- shell commands ----------
 // Splits on unquoted && || ; | & and newlines, then into words with quotes removed. Backslashes stay, since Windows
-// paths use them.
-function subcommands(cmd) {
+// paths use them. $( ) (in double quotes too) and ( ) subshells are read as subcommands, a $( ) leaving "$(…)" in its
+// word. A backtick span is read as a command but also left in place, since PowerShell's backtick is an escape.
+// PIPED maps a subcommand after a single | to the one whose output it reads.
+const closing = (s, i) => {
+  let d = 0,
+    q = "";
+  for (let j = i; j < s.length; j++) {
+    const c = s[j];
+    if (q) {
+      if (c === q) q = "";
+    } else if (c === '"' || c === "'") q = c;
+    else if (c === "(") d++;
+    else if (c === ")" && --d === 0) return j;
+  }
+  return s.length;
+};
+function subcommands(cmd, depth = 0) {
   const out = [];
   let words = [],
     cur = "",
@@ -329,6 +344,13 @@ function subcommands(cmd) {
   };
   for (let i = 0; i < cmd.length; i++) {
     const c = cmd[i];
+    if (c === "(" && q !== "'" && depth < 8 && (cur.endsWith("$") || (!q && !has))) {
+      const j = closing(cmd, i);
+      out.push(...subcommands(cmd.slice(i + 1, j), depth + 1));
+      if (has) cur += "(…)";
+      i = j;
+      continue;
+    }
     if (q) {
       if (c === q) q = "";
       else cur += c;
@@ -524,13 +546,40 @@ const OUTSIDE = {
     a.includes("--allow-remote") && "This lets the structured data check download pages from other websites.",
 };
 const KEY_HINT = key => `node "${join(SCRIPTS, "connect-keys.mjs")}" set ${key}`;
+// Where --yes could hide in an argument: $X, ${X}, $(…), cmd's %X% (not a %-escape like %E2%) and PowerShell's @splat.
+const VARIABLE = /\$[\w{(]|%(?![0-9a-f]{2})[a-z_]\w*%|^@\w+$/i;
+const SHELL = /^(bash|sh|zsh|dash|ksh)$/;
+// The command string another shell is handed: bash -c "…" (or -lc), powershell -Command "…" (any short form), cmd /c ….
+function shellString(cmd, words) {
+  const at = SHELL.test(cmd)
+    ? words.findIndex((w, i) => i > 0 && /^-[a-z]*c[a-z]*$/i.test(w))
+    : /^(powershell|pwsh)$/.test(cmd)
+      ? words.findIndex(w => /^[-/]c(o(m(m(a(n(d)?)?)?)?)?)?$/i.test(w))
+      : cmd === "cmd"
+        ? words.findIndex(w => /^\/[ck]$/i.test(w))
+        : -1;
+  return at < 1 ? null : SHELL.test(cmd) ? (words[at + 1] ?? "") : words.slice(at + 1).join(" ");
+}
 
-function bashHit(command, settings, cwd) {
+function bashHit(command, settings, cwd, dir = cwd, depth = 0) {
   for (let words of subcommands(command)) {
-    while (words.length && (/^\w+=/.test(words[0]) || WRAPPERS.has(words[0].toLowerCase()) || /^-/.test(words[0])))
-      words = words.slice(1);
+    // Wrappers that run the rest: sudo, env and the like; timeout with its options and duration; stdbuf with its modes.
+    for (let w; (w = words[0]?.toLowerCase()) !== undefined;) {
+      if (w === "timeout" || w === "stdbuf") {
+        words = words.slice(1);
+        while (words[0]?.startsWith("-")) words = words.slice(/^-[skioe]$/.test(words[0]) ? 2 : 1);
+        if (w === "timeout") words = words.slice(1);
+      } else if (/^\w+=/.test(w) || WRAPPERS.has(w) || w.startsWith("-")) words = words.slice(1);
+      else break;
+    }
     if (!words.length) continue;
     const cmd = nameOf(words[0]).replace(/\.exe$/, "");
+    const inner = shellString(cmd, words);
+    if (inner !== null) {
+      const hit = depth < 4 && bashHit(inner, settings, cwd, dir, depth + 1);
+      if (hit) return hit;
+      continue;
+    }
     // The skill's scripts by file name, run by node, bun or deno or directly. The bin's subcommands (seo-supervisor
     // issues, npx seo-supervisor@1.2.0 issues, node bin/seo-supervisor.mjs issues) run the script of that name.
     let script = null,
@@ -545,9 +594,13 @@ function bashHit(command, settings, cwd) {
       script = nameOf(words[at]).slice(0, -4);
       args = words.slice(at + 1);
     }
-    if (/^seo-supervisor(\.mjs)?$/.test(cmd) && words[1] === "issues") {
-      script = "issues";
-      args = words.slice(2);
+    if (/^seo-supervisor@[\w.^~-]+$/.test(cmd) || cmd === "seo-supervisor") {
+      script = "seo-supervisor";
+      args = words.slice(1);
+    }
+    if (script === "seo-supervisor" && /^[a-z][\w-]*$/.test(args[0] ?? "")) {
+      script = args[0];
+      args = args.slice(1);
     }
     if (script) {
       // connect-keys set <service> <key>, or a key piped into it: the words after set, minus --flag values.
@@ -566,8 +619,14 @@ function bashHit(command, settings, cwd) {
         };
       const crawl = script === "seo-crawl" && crawlHit(args, settings);
       if (crawl) return crawl;
-      const why = OUTSIDE[script]?.(args);
+      const why = Object.hasOwn(OUTSIDE, script) && OUTSIDE[script](args);
       if (why) return { rule: "outside", reason: why };
+      const v = (Object.hasOwn(OUTSIDE, script) || script === "seo-crawl") && args.find(a => VARIABLE.test(a));
+      if (v)
+        return {
+          rule: "outside",
+          reason: `One of the script's arguments is a variable (${v}), which could hold --yes or a flag that contacts an outside service. Write the arguments out in full, so the guard can see what it does.`,
+        };
       continue;
     }
     // Removing or moving files: rm, git rm, del, Remove-Item; mv, git mv, Move-Item (the last word is where it goes).

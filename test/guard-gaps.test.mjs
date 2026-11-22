@@ -88,3 +88,66 @@ test("the crawler's other outside flags ask unless outsideChecks.approved lists 
     assert.ok(fires("PowerShell", `${CRAWL} ${f}`), `PowerShell if: ${f}`);
   }
 });
+
+test("wrappers, subshells, $( ), shell strings, variables and the bin's own subcommands can't hide --yes", () => {
+  const g = `${S}/google.mjs submit-sitemap --site https://x.com --sitemap https://x.com/sitemap.xml --yes`;
+  for (const c of [
+    `timeout 60 ${g}`,
+    `timeout -s KILL 5m ${g}`,
+    `stdbuf -oL ${g}`,
+    `stdbuf -o L -e L ${g}`,
+    `(${g})`,
+    `echo $(${g})`,
+    `echo "$(${g})"`,
+    `bash -c "${g}"`,
+    `sh -lc '${g}'`,
+    `powershell -Command "${g}"`,
+    `pwsh -NoProfile -c "${g}"`,
+    `cmd /c ${g}`,
+    `cmd.exe /C "${g}"`,
+  ])
+    asks(bash(c), "outside");
+  // A variable where --yes could hide.
+  for (const c of [
+    `Y=--yes; ${S}/rdap.mjs --site https://x.com $Y`,
+    `${S}/rdap.mjs --site https://x.com \${FLAGS}`,
+    `${S}/indexnow.mjs submit %YES%`,
+    `${S}/rdap.mjs --site x $(echo --yes)`,
+    `${CRAWL} $EXTRA`,
+  ])
+    asks(bash(c), "outside");
+  // The bin's issues, run from the repo or as npx seo-supervisor@version.
+  for (const c of [
+    "node bin/seo-supervisor.mjs issues --audit a.json --yes",
+    "npx seo-supervisor@latest issues --yes",
+    "npx seo-supervisor@1.2.0 issues --yes",
+    "npx -y seo-supervisor issues --yes",
+    "bunx seo-supervisor issues --yes",
+  ])
+    asks(bash(c), "outside");
+  // Near-misses: the dry runs, a variable in the script's own path, a URL with %-escapes, other tools' -c.
+  for (const c of [
+    `timeout 60 ${S}/rdap.mjs --site https://x.com`,
+    `(${S}/rdap.mjs --site https://x.com)`,
+    `bash -c "npm test"`,
+    `cmd /c dir`,
+    `node "$SKILL/scripts/rdap.mjs" --site https://x.com`,
+    `${S}/rdap.mjs --site https://x.com/caf%C3%A9%E2%80%99s`,
+    "npx seo-supervisor@latest deploy-check --site https://x.com",
+    "node bin/seo-supervisor.mjs issues --audit a.json",
+    `echo $(date) && ${S}/rdap.mjs --site https://x.com`,
+  ])
+    allows(bash(c));
+  // Deletes inside shell strings and subshells too.
+  asks(bash('bash -c "rm public/robots.txt"'), "robots");
+  asks(bash("(rm public/robots.txt)"), "robots");
+  for (const c of [
+    'bash -c "rm public/robots.txt"',
+    "sh -lc 'rm public/robots.txt'",
+    "cmd /c del public\\robots.txt",
+    'powershell -Command "Remove-Item public/robots.txt"',
+    "pwsh -c Remove-Item x",
+    `${S}/rdap.mjs --site x $Y`,
+  ])
+    assert.ok(fires("Bash", c) && fires("PowerShell", c.replace(/^sh -lc/, "bash -c")), `if fires: ${c}`);
+});
