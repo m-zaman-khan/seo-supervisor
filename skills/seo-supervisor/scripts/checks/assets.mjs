@@ -4,6 +4,7 @@
 import { RULES } from "../crawl/catalog.mjs";
 import { clean, urlOr } from "../crawl/fetch.mjs";
 import { isBusinessType } from "../lib/business.mjs";
+import { pool } from "../crawl/queue.mjs";
 import { imageSize, imageMeta } from "../lib/image-size.mjs";
 import { altProblem, cdnOf, uncached } from "./media.mjs";
 import { medianScores } from "./lighthouse.mjs";
@@ -27,68 +28,7 @@ export async function checkAssets(site, { images, shareImages }) {
   // Only on-site images are read, so no third party is contacted, even through a page that redirected off the site.
   const onSiteImages = [...images].filter(([src]) => new URL(src).origin === START_ORIGIN),
     imageList = onSiteImages.slice(0, 50);
-  const imageRows = [];
-  const imageInfo = new Map(); // caching, CDN and creator data per weighed image
-  let weighed = 0; // PERF-08 counts as checked only when at least one image could be weighed
-  for (let i = 0; i < imageList.length; i += CONC)
-    await Promise.all(
-      imageList.slice(i, i + CONC).map(async ([src, page]) => {
-        const r = await firstBytes(src);
-        if (!r || r.status < 200 || r.status > 299 || !r.size) return;
-        weighed++;
-        const { size } = r,
-          type = r.type.split(";")[0].trim().toLowerCase(),
-          px = imageSize(r.bytes),
-          kb = Math.round(size / 1024);
-        imageInfo.set(src, { uncached: uncached(r.headers), cdn: cdnOf(r.headers), ...imageMeta(r.bytes) });
-        // 500 KB is a local threshold, not Google's; that finding replaces heavy-image rather than adding to it.
-        if (size > 500 * 1024) add("image-over-500kb", page, `${src} · ${kb} KB`);
-        else if (size > 200 * 1024) add("heavy-image", page, `${src} · ${kb} KB`);
-        if (/^image\/(jpeg|png)$/.test(type) && size > 100 * 1024)
-          add("legacy-image-format", page, `${src} · ${type} · ${kb} KB`);
-        imageRows.push({
-          url: src,
-          bytes: size,
-          width: px?.width ?? null,
-          height: px?.height ?? null,
-          format: px?.type || type.match(/^image\/([a-z0-9.-]+)/)?.[1] || null,
-        });
-      }),
-    );
-  if (weighed) evalRules("PERF-08");
-  if (onSiteImages.length > 50)
-    notes.push(`Image weight was checked for the first 50 of ${onSiteImages.length} images.`);
-  // The first 64 KB that firstBytes reads is enough for the pixel size.
   const shareList = [...shareImages].slice(0, 20);
-  let shareRead = 0,
-    shareAway = 0;
-  for (let i = 0; i < shareList.length; i += CONC)
-    await Promise.all(
-      shareList.slice(i, i + CONC).map(async ([crawlSrc, { src, page }]) => {
-        const r = await firstBytes(crawlSrc);
-        if (!r) {
-          shareAway++;
-          return;
-        } // redirects off the crawled site, so not fetched
-        if (r.status !== 200 && r.status !== 206)
-          return add("og-image-broken", page, `${src} → ${r.status || `no response (${r.error})`}`);
-        const size = imageSize(r.bytes);
-        if (!size) {
-          if (/html/.test(r.type)) add("og-image-broken", page, `${src} → an HTML page, not an image`);
-          return;
-        } // SVG, AVIF: size unknown
-        shareRead++;
-        if (size.width < 1200) add("og-image-small", page, `${src} · ${size.width}×${size.height} px`);
-      }),
-    );
-  if (shareAway)
-    notes.push(
-      `${shareAway} share image(s) (og:image) redirect away from the crawled site (often to the public origin), so they couldn't be read and their size wasn't checked.`,
-    );
-  if (shareImages.size && !shareRead)
-    notes.push("No share image (og:image) could be read, so share image sizes weren't checked.");
-  if (shareImages.size > 20)
-    notes.push(`Share image size was checked for the first 20 of ${shareImages.size} og:images.`);
   const productImgs = new Map(); // crawl URL -> { src, page }
   for (const p of htmlPages)
     if (indexable(p))
@@ -99,25 +39,95 @@ export async function checkAssets(site, { images, shareImages }) {
           productImgs.set(c, { src: src.href, page: p.finalUrl });
       }
   const productList = [...productImgs].slice(0, 20);
-  let productRead = 0;
-  for (let i = 0; i < productList.length; i += CONC)
-    await Promise.all(
-      productList.slice(i, i + CONC).map(async ([crawlSrc, { src, page }]) => {
-        const r = await firstBytes(crawlSrc),
-          size = r && (r.status === 200 || r.status === 206) ? imageSize(r.bytes) : null;
-        if (!size) return; // off the site, broken, SVG or AVIF: not measured
-        productRead++;
-        // Google recommends at least 50,000 pixels (width × height) for merchant listing images.
-        // https://developers.google.com/search/docs/appearance/structured-data/merchant-listing
-        const px = size.width * size.height;
-        if (px < 50000)
-          add(
-            "product-image-small",
-            page,
-            `${src} · ${size.width}×${size.height} px (${px.toLocaleString("en")} pixels)`,
-          );
-      }),
+  const onSite = c => !!c && new URL(c).origin === START_ORIGIN;
+  const declared = home?.html ? [...new Set(home.icons.map(h => urlOr(h, home.base)?.href).filter(Boolean))] : [];
+  const icons = home?.html
+    ? [...new Set([...declared.map(d => clean(toCrawl(d))).filter(onSite), START_ORIGIN + "/favicon.ico"])].slice(0, 5)
+    : [];
+  // One pool fetches every file below, schema images included. firstBytes keeps each answer, so the loops below
+  // make no new requests and a file several checks use is fetched once.
+  await pool(
+    [
+      ...new Set([
+        ...imageList.map(([s]) => s),
+        ...shareList.map(([c]) => c),
+        ...productList.map(([c]) => c),
+        ...icons,
+        ...schemaImageUrls(site).list.map(([c]) => c),
+      ]),
+    ],
+    CONC,
+    u => firstBytes(u),
+  );
+  const imageRows = [];
+  const imageInfo = new Map(); // caching, CDN and creator data per weighed image
+  let weighed = 0; // PERF-08 counts as checked only when at least one image could be weighed
+  for (const [src, page] of imageList) {
+    const r = await firstBytes(src);
+    if (!r || r.status < 200 || r.status > 299 || !r.size) continue;
+    weighed++;
+    const { size } = r,
+      type = r.type.split(";")[0].trim().toLowerCase(),
+      px = imageSize(r.bytes),
+      kb = Math.round(size / 1024);
+    imageInfo.set(src, { uncached: uncached(r.headers), cdn: cdnOf(r.headers), ...imageMeta(r.bytes) });
+    // 500 KB is a local threshold, not Google's; that finding replaces heavy-image rather than adding to it.
+    if (size > 500 * 1024) add("image-over-500kb", page, `${src} · ${kb} KB`);
+    else if (size > 200 * 1024) add("heavy-image", page, `${src} · ${kb} KB`);
+    if (/^image\/(jpeg|png)$/.test(type) && size > 100 * 1024)
+      add("legacy-image-format", page, `${src} · ${type} · ${kb} KB`);
+    imageRows.push({
+      url: src,
+      bytes: size,
+      width: px?.width ?? null,
+      height: px?.height ?? null,
+      format: px?.type || type.match(/^image\/([a-z0-9.-]+)/)?.[1] || null,
+    });
+  }
+  if (weighed) evalRules("PERF-08");
+  if (onSiteImages.length > 50)
+    notes.push(`Image weight was checked for the first 50 of ${onSiteImages.length} images.`);
+  // The first 64 KB that firstBytes reads is enough for the pixel size.
+  let shareRead = 0,
+    shareAway = 0;
+  for (const [crawlSrc, { src, page }] of shareList) {
+    const r = await firstBytes(crawlSrc);
+    if (!r) {
+      shareAway++;
+      continue;
+    } // redirects off the crawled site, so not fetched
+    if (r.status !== 200 && r.status !== 206) {
+      add("og-image-broken", page, `${src} → ${r.status || `no response (${r.error})`}`);
+      continue;
+    }
+    const size = imageSize(r.bytes);
+    if (!size) {
+      if (/html/.test(r.type)) add("og-image-broken", page, `${src} → an HTML page, not an image`);
+      continue;
+    } // SVG, AVIF: size unknown
+    shareRead++;
+    if (size.width < 1200) add("og-image-small", page, `${src} · ${size.width}×${size.height} px`);
+  }
+  if (shareAway)
+    notes.push(
+      `${shareAway} share image(s) (og:image) redirect away from the crawled site (often to the public origin), so they couldn't be read and their size wasn't checked.`,
     );
+  if (shareImages.size && !shareRead)
+    notes.push("No share image (og:image) could be read, so share image sizes weren't checked.");
+  if (shareImages.size > 20)
+    notes.push(`Share image size was checked for the first 20 of ${shareImages.size} og:images.`);
+  let productRead = 0;
+  for (const [crawlSrc, { src, page }] of productList) {
+    const r = await firstBytes(crawlSrc),
+      size = r && (r.status === 200 || r.status === 206) ? imageSize(r.bytes) : null;
+    if (!size) continue; // off the site, broken, SVG or AVIF: not measured
+    productRead++;
+    // Google recommends at least 50,000 pixels (width × height) for merchant listing images.
+    // https://developers.google.com/search/docs/appearance/structured-data/merchant-listing
+    const px = size.width * size.height;
+    if (px < 50000)
+      add("product-image-small", page, `${src} · ${size.width}×${size.height} px (${px.toLocaleString("en")} pixels)`);
+  }
   if (htmlPages.some(p => indexable(p) && p.productImages?.length) && !productRead)
     notes.push(
       "No Product schema image on the crawled site could be read (they're on another host, missing, or SVG or AVIF), so product image sizes weren't checked.",
@@ -131,14 +141,8 @@ export async function checkAssets(site, { images, shareImages }) {
   // Google wants a square favicon of 48 px or more in BMP, GIF, ICO, PNG, JPEG, PPM or TIFF. A type whose size can't
   // be read (BMP, TIFF) passes. https://developers.google.com/search/docs/appearance/favicon-in-search
   if (home && home.html) {
-    const onSite = c => !!c && new URL(c).origin === START_ORIGIN;
-    const declared = [...new Set(home.icons.map(h => urlOr(h, home.base)?.href).filter(Boolean))],
-      away = declared.some(d => !onSite(clean(toCrawl(d))));
-    const tried = await Promise.all(
-      [...new Set([...declared.map(d => clean(toCrawl(d))).filter(onSite), START_ORIGIN + "/favicon.ico"])]
-        .slice(0, 5)
-        .map(async c => ({ path: new URL(c).pathname, r: await firstBytes(c) })),
-    );
+    const away = declared.some(d => !onSite(clean(toCrawl(d))));
+    const tried = await Promise.all(icons.map(async c => ({ path: new URL(c).pathname, r: await firstBytes(c) })));
     const loaded = tried.filter(
       t => t.r && (t.r.status === 200 || t.r.status === 206) && t.r.bytes.length && !/html/i.test(t.r.type),
     );
@@ -210,16 +214,13 @@ export function imageList(site, { images, imageRows }) {
     .slice(0, 100)
     .map(x => ({ ...x, pages: [...new Set(usedOn.get(x.url))].slice(0, 10), estSaving: estSaving(x) }));
 }
-// JSON-LD placeholders, superseded types and broken schema images. Off-site images are never fetched.
-export async function schemaImages(site) {
-  const { htmlPages, add, notes, startOrigin: START_ORIGIN, conc: CONC, firstBytes, toCrawl, indexable } = site;
+
+// Up to 50 on-site schema images as [crawl URL, { src, page }], and the off-site ones. checkAssets fetches them early.
+function schemaImageUrls({ htmlPages, startOrigin: START_ORIGIN, toCrawl, indexable }) {
   const schemaImgs = new Map(),
     away = new Set(); // crawl URL -> { src, page }; images on other hosts
   for (const p of htmlPages) {
     if (p.clientOnly || !indexable(p)) continue;
-    if (p.schemaPlaceholder) add("schema-placeholder", p.finalUrl, `“${p.schemaPlaceholder}”`);
-    if (p.superseded.length)
-      add("schema-superseded", p.finalUrl, p.superseded.map(t => `${t} → ${SUPERSEDED[t]}`).join(", "));
     for (const s of p.schemaImages) {
       const src = urlOr(s, p.base);
       if (!src || !/^https?:$/.test(src.protocol)) continue;
@@ -228,23 +229,32 @@ export async function schemaImages(site) {
       else if (!schemaImgs.has(c)) schemaImgs.set(c, { src: src.href, page: p.finalUrl });
     }
   }
-  const list = [...schemaImgs].slice(0, 50);
-  for (let i = 0; i < list.length; i += CONC)
-    await Promise.all(
-      list.slice(i, i + CONC).map(async ([crawlSrc, { src, page }]) => {
-        const r = await firstBytes(crawlSrc);
-        if (!r)
-          away.add(src); // redirects off the crawled site, so not followed
-        else if (r.status !== 200 && r.status !== 206)
-          add("schema-image-broken", page, `${src} → ${r.status || `no response (${r.error})`}`);
-        else if (/html/i.test(r.type)) add("schema-image-broken", page, `${src} → an HTML page, not an image`);
-      }),
-    );
+  return { list: [...schemaImgs].slice(0, 50), size: schemaImgs.size, away };
+}
+// JSON-LD placeholders, superseded types and broken schema images. Off-site images are never fetched.
+export async function schemaImages(site) {
+  const { htmlPages, add, notes, firstBytes, indexable } = site;
+  for (const p of htmlPages) {
+    if (p.clientOnly || !indexable(p)) continue;
+    if (p.schemaPlaceholder) add("schema-placeholder", p.finalUrl, `“${p.schemaPlaceholder}”`);
+    if (p.superseded.length)
+      add("schema-superseded", p.finalUrl, p.superseded.map(t => `${t} → ${SUPERSEDED[t]}`).join(", "));
+  }
+  const { list, size, away } = schemaImageUrls(site);
+  for (const [crawlSrc, { src, page }] of list) {
+    // already fetched in checkAssets' pool
+    const r = await firstBytes(crawlSrc);
+    if (!r)
+      away.add(src); // redirects off the crawled site, so not followed
+    else if (r.status !== 200 && r.status !== 206)
+      add("schema-image-broken", page, `${src} → ${r.status || `no response (${r.error})`}`);
+    else if (/html/i.test(r.type)) add("schema-image-broken", page, `${src} → an HTML page, not an image`);
+  }
   if (away.size)
     notes.push(
       `${away.size} schema image(s) are on another host (often a CDN) or redirect there, e.g. ${[...away][0]}, so they weren't checked: only the crawled site is fetched.`,
     );
-  if (schemaImgs.size > 50) notes.push(`Schema images were checked for the first 50 of ${schemaImgs.size}.`);
+  if (size > 50) notes.push(`Schema images were checked for the first 50 of ${size}.`);
 }
 
 // Alt text, image preload and prerender findings, then extra.media: LCP elements, server times, DOM shape, image

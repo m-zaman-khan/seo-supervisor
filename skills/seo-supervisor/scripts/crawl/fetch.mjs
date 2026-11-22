@@ -225,10 +225,17 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl, dns 
   }
   // The start of an own-site file by Range request, read no further if the range is ignored. A redirect off the site
   // returns null, so no third party is contacted, as does one that maps back onto the same URL, which would loop.
-  // size is the whole file: Content-Range's total, or Content-Length when the range is ignored.
-  async function firstBytes(url, max = 65536) {
+  // size is the whole file: Content-Range's total, or Content-Length when the range is ignored. Answers are cached per
+  // URL and max, since several checks read the same file, and a 429 or 503 slows the crawl and retries once.
+  const starts = new Map();
+  const firstBytes = (url, max = 65536) => {
+    const k = `${max} ${url}`;
+    return starts.get(k) ?? starts.set(k, readStart(url, max)).get(k);
+  };
+  async function readStart(url, max) {
     try {
       for (let hop = 0; hop < 5; hop++) {
+        if (slow.until > Date.now()) await sleep(slow.until - Date.now());
         const r = await fetch(url, {
           redirect: "manual",
           headers: { "user-agent": UA, range: `bytes=0-${max - 1}`, accept: "image/avif,image/webp,image/*,*/*;q=0.8" },

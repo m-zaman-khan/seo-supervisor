@@ -4,6 +4,27 @@ import { FILE_EXT } from "../lib/html.mjs";
 import { PAGE_MAX, clean, urlOr } from "./fetch.mjs";
 import { agentRule, analyze, productImages } from "./page.mjs";
 
+/** Runs fn over items, at most conc at once, so the checks' own requests keep to --concurrency. Results come back in
+ * item order, so findings don't depend on which answer came first.
+ * @template T, R
+ * @param {T[]} items
+ * @param {number} conc
+ * @param {(item: T) => Promise<R>} fn
+ * @returns {Promise<R[]>} */
+export async function pool(items, conc, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(conc, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i]);
+      }
+    }),
+  );
+  return out;
+}
+
 /**
  * @param {{ start: URL, startOrigin: string, max: number, conc: number, includeQuery: boolean, inSection: (path: string) => boolean,
  *   fetcher: { follow: Function, xRobotsLines: Function }, page: any, toCrawl: (u: string) => string, notes: string[] }} o
