@@ -102,43 +102,59 @@ export function subagentFile(md, format, skillDir = "") {
 }
 
 // ---- the guard's hook entries ----
-const q = p => (/\s|\$\(/.test(p) ? `"${p}"` : p);
+// The guard's path is always quoted for the shell that runs it, so ' & ( ) or a space in a home folder can't break the
+// command. sh writes ' as '\''; PowerShell doubles ' and the curly quotes it also reads as '; cmd needs only "…", as a
+// Windows path can't hold a ". Known gap, rare in home folders: % under cmd, or $ and ` where PowerShell reads "…".
+// Codex runs $SHELL -lc, or cmd via commandWindows on Windows; Cursor runs PowerShell on Windows, else sh; Copilot has
+// bash and powershell fields. Devin's docs don't say, so Windows gets "…", read alike by cmd, PowerShell and Git Bash.
+// https://learn.chatgpt.com/docs/hooks
+// https://cursor.com/docs/hooks
+const QUOTE = {
+  sh: p => `'${p.replaceAll("'", "'\\''")}'`,
+  ps: p => `'${p.replace(/['‘’‚‛]/g, "$&$&")}'`,
+  cmd: p => `"${p}"`,
+};
 /** The hook entries for one agent, by event. guard is absolute, or relative to the project for a project install. */
 function entries(format, guard) {
-  const run = event => `node ${q(guard)} --agent ${format} --event ${event}`;
-  const group = (event, matcher) => ({
-    ...(matcher !== undefined ? { matcher } : {}),
-    hooks: [
-      {
-        type: "command",
-        command: run(event),
-        ...(format === "codex" ? { statusMessage: "SEO Supervisor guard" } : { timeout: 10 }),
-      },
-    ],
-  });
+  const win = process.platform === "win32";
+  const run = (event, shell) =>
+    `node ${guard.startsWith("$(") ? `"${guard}"` : QUOTE[shell](guard)} --agent ${format} --event ${event}`;
+  if (format === "cursor") {
+    const c = e => ({ command: run(e, win ? "ps" : "sh") });
+    return {
+      beforeShellExecution: [c("beforeShellExecution")],
+      preToolUse: [{ ...c("preToolUse"), matcher: "Write|Delete" }],
+      beforeSubmitPrompt: [c("beforeSubmitPrompt")],
+    };
+  }
+  if (format === "copilot") {
+    // Copilot's preToolUse denies the tool when a command hook fails, so a missing node must still exit 0.
+    const cp = event => ({
+      type: "command",
+      bash: `${run(event, "sh")} || true`,
+      powershell: `${run(event, "ps")}; exit 0`,
+      timeoutSec: 10,
+    });
+    return {
+      preToolUse: [{ ...cp("preToolUse"), matcher: "bash|powershell|edit|create" }],
+      userPromptTransformed: [cp("userPromptTransformed")],
+    };
+  }
+  const hook = event =>
+    format === "codex"
+      ? {
+          type: "command",
+          command: run(event, "sh"),
+          commandWindows: run(event, "cmd"),
+          statusMessage: "SEO Supervisor guard",
+        }
+      : { type: "command", command: run(event, win ? "cmd" : "sh"), timeout: 10 };
+  const group = (event, matcher) => ({ ...(matcher !== undefined ? { matcher } : {}), hooks: [hook(event)] });
   if (format === "codex")
     return { PreToolUse: [group("PreToolUse", "^(Bash|apply_patch)$")], UserPromptSubmit: [group("UserPromptSubmit")] };
-  if (format === "devin")
-    return {
-      PreToolUse: [group("PreToolUse", "^(exec|edit|write|apply_patch)$")],
-      UserPromptSubmit: [group("UserPromptSubmit", "")],
-    };
-  if (format === "cursor")
-    return {
-      beforeShellExecution: [{ command: run("beforeShellExecution") }],
-      preToolUse: [{ command: run("preToolUse"), matcher: "Write|Delete" }],
-      beforeSubmitPrompt: [{ command: run("beforeSubmitPrompt") }],
-    };
-  // Copilot's preToolUse denies the tool when a command hook fails, so a missing node must still exit 0.
-  const cp = event => ({
-    type: "command",
-    bash: `${run(event)} || true`,
-    powershell: `${run(event)}; exit 0`,
-    timeoutSec: 10,
-  });
   return {
-    preToolUse: [{ ...cp("preToolUse"), matcher: "bash|powershell|edit|create" }],
-    userPromptTransformed: [cp("userPromptTransformed")],
+    PreToolUse: [group("PreToolUse", "^(exec|edit|write|apply_patch)$")],
+    UserPromptSubmit: [group("UserPromptSubmit", "")],
   };
 }
 // Cline runs plugins in a worker, so the plugin runs the guard in a child process and returns what it prints. A

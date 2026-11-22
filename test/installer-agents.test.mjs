@@ -419,14 +419,14 @@ for (const scope of ["user", "project"]) {
         read(p),
         agent === "cline"
           ? /guard\.mjs"[\s\S]*"--agent", "cline", "--event", "beforeTool"/
-          : new RegExp(`scripts/guard\\.mjs(\\\\")? --agent ${agent} --event \\w+`),
+          : new RegExp(`scripts/guard\\.mjs(\\\\"|')? --agent ${agent} --event \\w+`),
         `${agent} guard in ${p}`,
       );
     if (scope === "project")
       assert.match(
         read(".cursor/hooks.json"),
-        /"node \.agents\/skills\/seo-supervisor\/scripts\/guard\.mjs --agent cursor --event beforeShellExecution"/,
-        "a committed project install names the guard relative to the project",
+        /"node '\.agents\/skills\/seo-supervisor\/scripts\/guard\.mjs' --agent cursor --event beforeShellExecution"/,
+        "a committed project install names the guard relative to the project, quoted",
       );
     if (scope === "project")
       assert.match(read(".codex/hooks.json"), /\$\(git rev-parse --show-toplevel\)\/\.agents\/skills/);
