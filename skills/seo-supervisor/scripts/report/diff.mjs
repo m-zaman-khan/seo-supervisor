@@ -60,41 +60,23 @@ export function diffParts({ raw, findings }, { googleUpdatesText }) {
   ];
   const TIMELINE_INTRO =
     "Every crawl filed in seo-audit/history, newest first, each compared with the one before it. Crawler findings are the crawler's own count, before the audit's review. – means it couldn't be told: that crawl or the one before covered part of the site. Information only.";
-  const timelineHtml = () => {
-    const rows = timelineRows(),
-      posts = googlePostsText(true);
+  const posts = () =>
+    googlePostsText() && {
+      title: "Google Search Central",
+      blocks: [{ quiet: { html: googlePostsText(true), md: googlePostsText() } }],
+    };
+  const timeline = () => {
+    const rows = timelineRows();
     return (
-      (posts ? `\n    <p class="quiet">${posts}</p>` : "") +
-      (rows.length >= 3
-        ? `\n    <details class="how timeline"><summary>Audit timeline</summary><p>${esc(TIMELINE_INTRO)}</p><div class="tablewrap"><table><thead><tr>${TIMELINE_HEAD.map(h => `<th scope="col">${h}</th>`).join("")}</tr></thead><tbody>${rows
-            .map(
-              x =>
-                `<tr>${timelineCells(x)
-                  .map(c => `<td>${esc(c)}</td>`)
-                  .join("")}</tr>`,
-            )
-            .join("")}</tbody></table></div></details>`
-        : "")
+      rows.length >= 3 && {
+        cls: "timeline",
+        title: "Audit timeline",
+        blocks: [
+          { p: TIMELINE_INTRO },
+          { head: TIMELINE_HEAD, align: ["---", ...Array(6).fill("---:")], rows: rows.map(timelineCells) },
+        ],
+      }
     );
-  };
-  const timelineMd = () => {
-    const rows = timelineRows(),
-      posts = googlePostsText();
-    return [
-      ...(posts ? ["## Google Search Central", "", posts, ""] : []),
-      ...(rows.length >= 3
-        ? [
-            "## Audit timeline",
-            "",
-            TIMELINE_INTRO,
-            "",
-            `| ${TIMELINE_HEAD.join(" | ")} |`,
-            `| --- |${" ---: |".repeat(6)}`,
-            ...rows.map(x => `| ${timelineCells(x).join(" | ")} |`),
-            "",
-          ]
-        : []),
-    ];
   };
 
   const diff = raw.diff && typeof raw.diff === "object" ? raw.diff : null;
@@ -270,8 +252,8 @@ export function diffParts({ raw, findings }, { googleUpdatesText }) {
   return {
     diff,
     diffHtml,
-    timelineHtml,
-    timelineMd,
+    posts,
+    timeline,
     googlePostsText,
     burstMd,
     diffSections,
