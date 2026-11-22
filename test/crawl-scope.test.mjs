@@ -266,6 +266,7 @@ test("a 429 makes the crawler wait for Retry-After, then ask again", async () =>
         res.writeHead(429, { "Retry-After": "1" }).end();
         return true;
       },
+      env: { ...process.env, SEO_SUPERVISOR_NO_PAUSES: "" }, // the real pause: the test suite's offline guard turns pauses off
     },
   );
   assert.equal(r.pages.find(p => new URL(p.url).pathname === "/about/")?.status, 200);

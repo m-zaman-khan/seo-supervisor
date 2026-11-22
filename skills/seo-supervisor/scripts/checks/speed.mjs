@@ -1,6 +1,8 @@
 // @ts-check
 // Core Web Vitals from PageSpeed Insights (CrUX field data plus a lab run) and the CrUX History API. The crawler
 // calls it only with --outside, for public URLs.
+import { sleep } from "./crawl.mjs";
+
 export const CHECKS = {
   "cwv-fail": [
     "PERF-01",
@@ -209,7 +211,7 @@ export async function checkSpeed(urls, { add, endpoint = PSI_ENDPOINT, key, fetc
       try {
         const r = await fetchFn(q.href, { signal: AbortSignal.timeout(90000) });
         if (r.status === 429 && attempt === 0) {
-          await new Promise(ok => setTimeout(ok, 5000));
+          await sleep(5000);
           continue;
         }
         if (r.status === 429) {

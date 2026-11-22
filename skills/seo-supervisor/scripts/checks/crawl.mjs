@@ -49,6 +49,11 @@ export const hasName = (ids, name) => {
   }
 };
 
+/** Every fixed wait in the crawler, speed.mjs's PageSpeed retry included. SEO_SUPERVISOR_NO_PAUSES makes them 0 ms:
+ * the tests' offline guard sets it, and it isn't a user setting.
+ * @param {number} ms */
+export const sleep = ms => new Promise(ok => setTimeout(ok, process.env.SEO_SUPERVISOR_NO_PAUSES ? 0 : ms));
+
 // Back-off after a 429, 503 or no answer: `until` is when requests may resume, `ms` the total paused, `busy` and
 // `silent` the causes. Pauses stop at PAUSE_CAP in total so a struggling site can't stall the crawl; `full` marks that.
 export const PAUSE_CAP = 120000;

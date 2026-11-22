@@ -1304,7 +1304,7 @@ RULES["CONTENT-11"] ??= ["Nothing breaks Google's spam policies", "Headings & co
 
 import { pageRank, scale as strengthScale } from "./checks/link-strength.mjs";
 
-import { CHECKS as CRAWL_CHECKS, brake, fragmentLinks, hasName, slowNote } from "./checks/crawl.mjs";
+import { CHECKS as CRAWL_CHECKS, brake, fragmentLinks, hasName, sleep, slowNote } from "./checks/crawl.mjs";
 Object.assign(CHECKS, CRAWL_CHECKS);
 
 // Every finding's URL and detail also has any secret key masked, so no key reaches the crawl file through another
@@ -1353,7 +1353,6 @@ const evaluated = new Set();
 const evalRules = (...ids) => ids.forEach(r => evaluated.add(r));
 
 // ---------- fetch helpers ----------
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 const TEMPORARY = new Set([302, 303, 307]); // redirects that tell search engines the old URL may come back
 // A redirect between URLs that differ only by a trailing slash counts under URL-02.
 const slashOnly = (a, b) => {

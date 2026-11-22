@@ -227,6 +227,7 @@ test("a 503 makes the crawler wait for Retry-After and ask again, a dropped conn
         else req.socket.destroy();
         return true;
       },
+      env: { ...process.env, SEO_SUPERVISOR_NO_PAUSES: "" }, // real pauses; the offline guard turns them off
     },
   );
   for (const p of ["/a/", "/b/"]) assert.equal(r.pages.find(x => new URL(x.url).pathname === p)?.status, 200, p);
