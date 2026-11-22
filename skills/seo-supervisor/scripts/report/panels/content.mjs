@@ -177,25 +177,28 @@ export function contentPanels({ raw, mdFile }) {
     .slice(0, 4);
   const AUDIENCE_INTRO =
     "What your key pages give each audience you named, with evidence from the page. It's a checklist, not a score: it never changes the score or the findings. A missing item becomes new text only through brief or rewrite mode, and only with your yes.";
-  const audienceHtml = () =>
-    audiences.length
-      ? `\n    <details class="how audience"><summary>Audience check</summary><p>${esc(AUDIENCE_INTRO)}</p>${audiences.map(a => `<p><b>${esc(a.name)}</b>${a.who ? ` · ${esc(a.who)}` : ""}</p><ul class="lim">${a.pages.map(p => `<li><b><code>${esc(p.path)}</code></b><span>${p.lines.map(esc).join("<br>")}</span></li>`).join("")}</ul>`).join("")}</details>`
-      : "";
-  const audienceMd = () =>
-    audiences.length
-      ? [
-          "## Audience check",
-          "",
-          AUDIENCE_INTRO,
-          "",
-          ...audiences.flatMap(a => [
-            `### ${noteMd(a.name)}`,
-            "",
-            ...(a.who ? [noteMd(a.who), ""] : []),
-            ...a.pages.flatMap(p => [`- ${noteCode(p.path)}`, ...p.lines.map(l => `  - ${noteMd(l)}`)]),
-            "",
-          ]),
-        ]
-      : [];
-  return { writing, productData, descriptions, appsPdfs, audienceHtml, audienceMd };
+  // Per audience: one line on the page, a ### heading in the Markdown. A page's lines break with <br> on the page and
+  // nest under it in the Markdown.
+  const audience = () =>
+    audiences.length && {
+      cls: "audience",
+      title: "Audience check",
+      blocks: [
+        { p: AUDIENCE_INTRO },
+        ...audiences.flatMap(a => [
+          {
+            html: `<p><b>${esc(a.name)}</b>${a.who ? ` · ${esc(a.who)}` : ""}</p>`,
+            md: [`### ${noteMd(a.name)}`, "", ...(a.who ? [noteMd(a.who), ""] : [])],
+          },
+          {
+            rows: a.pages.map(p => [
+              { code: p.path },
+              { html: p.lines.map(esc).join("<br>"), md: p.lines.map(l => `\n  - ${noteMd(l)}`).join("") },
+              "",
+            ]),
+          },
+        ]),
+      ],
+    };
+  return { writing, productData, descriptions, appsPdfs, audience };
 }
