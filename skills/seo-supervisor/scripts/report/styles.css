@@ -110,7 +110,6 @@ html:not(.js) .tp::before{content:attr(data-title);font:600 20px var(--sans)}
 .meter{height:8px;background:var(--line);border-radius:4px;overflow:hidden}
 .meter i{display:block;height:100%;border-radius:4px;background:var(--neutral)}
 .as{font:600 16px var(--mono);text-align:right}
-.as.b3-t,.as.b4-t{color:var(--ink)}
 .dot{display:inline-block;border-radius:50%;flex:none;justify-self:center}
 .d-blocker{width:12px;height:12px;background:var(--blocker)}.d-high{width:10px;height:10px;background:var(--high)}.d-needs-decision{width:10px;height:10px;background:var(--decision)}.d-medium{width:8px;height:8px;background:var(--medium)}.d-low{width:7px;height:7px;background:var(--low)}.d-pass{width:8px;height:8px;background:var(--pass)}
 .ov-right{display:grid;gap:18px;align-content:start}
