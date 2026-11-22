@@ -52,6 +52,9 @@ export function createCrawler({
     const x = new URL(c);
     if (x.origin !== START_ORIGIN) return;
     if (FILE_EXT.test(x.pathname)) return;
+    // Cloudflare serves its own endpoints under /cdn-cgi/ on every site it fronts; they aren't the site's pages.
+    // https://developers.cloudflare.com/fundamentals/reference/cdn-cgi-endpoint/
+    if (x.pathname.startsWith("/cdn-cgi/")) return;
     if (x.search && !INCLUDE_QUERY) return;
     if (!inSection(x.pathname) && c !== clean(START.href)) return; // the start page is always the way in
     if (seen.has(c)) return;
