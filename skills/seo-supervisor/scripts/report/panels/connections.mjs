@@ -136,13 +136,9 @@ export function connectionPanels({ raw }) {
       ? `New searches this period, with no impressions in the period before: ${q.map(x => `${x.query} (${num(x.impressions)} impressions)`).join(" · ")}. Google hides searches very few people make, so a few of these may have shown the site before. Information only.`
       : "";
   };
-  const newSearchesHtml = () => {
+  const newSearches = () => {
     const l = newSearchLine();
-    return l ? `\n    <p class="quiet">${esc(l)}</p>` : "";
+    return l && { title: "New searches", blocks: [{ quiet: l }] };
   };
-  const newSearchesMd = () => {
-    const l = newSearchLine();
-    return l ? ["## New searches", "", noteMd(l), ""] : [];
-  };
-  return { connectionsHtml, connectionsMd, changeCheck, newSearchesHtml, newSearchesMd };
+  return { connectionsHtml, connectionsMd, changeCheck, newSearches };
 }
