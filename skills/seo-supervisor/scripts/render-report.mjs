@@ -104,8 +104,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   const {
     writingHtml,
     writingMd,
-    productDataHtml,
-    productDataMd,
+    productData,
     descriptionsHtml,
     descriptionsMd,
     appsPdfsHtml,
@@ -138,7 +137,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     drawn(hstsPreload),
     [crawlCoverageHtml, crawlCoverageMd],
     [aiCrawlersHtml, aiCrawlersMd],
-    [productDataHtml, productDataMd],
+    drawn(productData),
     [speedDetailsHtml, speedDetailsMd],
     [browserHtml, browserMd],
     [descriptionsHtml, descriptionsMd],

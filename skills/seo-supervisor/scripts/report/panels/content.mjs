@@ -61,8 +61,7 @@ export function contentPanels({ raw, mdFile }) {
     PRODUCT_FIELDS.every(([k]) => isCount(productFields[k]))
       ? `Of ${plural(productFields.products, "product")} in the schema: ${PRODUCT_FIELDS.map(([k, w]) => `${num(productFields[k])} with ${w}`).join(", ")}. Google recommends each one where the product has it, so a GTIN, colour or material can rightly be missing. Information only: it doesn't change the score.`
       : "";
-  const productDataHtml = () => (productLine ? `\n    <p class="quiet">${esc(productLine)}</p>` : ""),
-    productDataMd = () => (productLine ? ["## Product data", "", productLine, ""] : []);
+  const productData = () => productLine && { title: "Product data", blocks: [{ quiet: productLine }] };
 
   // Templated descriptions (META-02) and keyword use on English pages (CONTENT-03). Crawled text is escaped.
   const tdShare = (t =>
@@ -255,8 +254,7 @@ export function contentPanels({ raw, mdFile }) {
   return {
     writingHtml,
     writingMd,
-    productDataHtml,
-    productDataMd,
+    productData,
     descriptionsHtml,
     descriptionsMd,
     appsPdfsHtml,
