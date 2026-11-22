@@ -3,7 +3,7 @@
 import { lookup } from "node:dns";
 import { get as httpGet, request as httpRequest } from "node:http";
 import { get as httpsGet, request as httpsRequest } from "node:https";
-import { Readable } from "node:stream";
+import { Readable, pipeline } from "node:stream";
 import { promisify } from "node:util";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import { guarded, isPublic, loopback } from "../lib/net.mjs";
@@ -74,7 +74,7 @@ export const pathKey = u => {
 // unpacked through pipeline(), not pipe(), so a timeout or dropped connection errors instead of hanging the unpacker.
 // Exported for tests.
 const UNPACK = { gzip: createGunzip, "x-gzip": createGunzip, deflate: createInflate, br: createBrotliDecompress };
-const pinnedFetch = (url, { headers, signal }, dns) =>
+export const pinnedFetch = (url, { headers, signal }, dns) =>
   new Promise((ok, ko) => {
     (url.startsWith("https:") ? httpsRequest : httpRequest)(
       url,
@@ -88,7 +88,7 @@ const pinnedFetch = (url, { headers, signal }, dns) =>
             new Response(
               [204, 205, 304].includes(res.statusCode)
                 ? null
-                : /** @type {ReadableStream} */ (Readable.toWeb(unpack ? res.pipe(unpack()) : res)),
+                : /** @type {ReadableStream} */ (Readable.toWeb(unpack ? pipeline(res, unpack(), () => {}) : res)),
               { status: res.statusCode, headers: h },
             ),
           );
