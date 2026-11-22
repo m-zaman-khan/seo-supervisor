@@ -382,6 +382,99 @@ function positional(args) {
 }
 const yes = a => a.some(x => x === "--yes" || x.startsWith("--yes="));
 const outsideOn = s => s?.outsideChecks === true || s?.outsideChecks?.on === true;
+// The approved checks, by the names SKILL.md stores in outsideChecks.approved. A legacy "outsideChecks": true means
+// the first list only.
+const FIRST_LIST = ["speed", "render", "lighthouse", "intent", "brand", "updates"];
+const approvedIn = s =>
+  s?.outsideChecks === true
+    ? FIRST_LIST
+    : Array.isArray(s?.outsideChecks?.approved)
+      ? s.outsideChecks.approved.map(String)
+      : [];
+/** A flag's value: --name value, --name=value, or "" when it's last; undefined when it isn't there. */
+const flagValue = (a, f) => {
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] === f) return a[i + 1] ?? "";
+    if (a[i].startsWith(`${f}=`)) return a[i].slice(f.length + 1);
+  }
+  return undefined;
+};
+const hostOf = u => {
+  try {
+    return new URL(u).hostname;
+  } catch {
+    return "";
+  }
+};
+// The crawler's flags that reach past the site being crawled, each with the check name SKILL.md asks a separate yes
+// for. --outside itself needs outsideChecks.on; --check-live only contacts the site's own --site-origin. A flag=value
+// entry needs that value.
+const CRAWL_OUTSIDE = [
+  [
+    "outbound-links",
+    "--outbound-links",
+    "This visits up to 100 other websites the pages link to, to find broken links. Those sites see the visits.",
+  ],
+  [
+    "hreflang-other-sites",
+    "--hreflang-other-sites",
+    "This visits up to 20 language versions of the pages on other websites, to see whether they link back.",
+  ],
+  [
+    "ai-bot-probe",
+    "--ai-bot-probe",
+    "This asks up to 3 pages again pretending to be AI search crawlers. A strict firewall may block this computer for a while.",
+  ],
+  ["desktop", "--desktop", "This sends the sample pages to Google PageSpeed again, for desktop."],
+  [
+    "render-all",
+    "--render=all",
+    "This renders every indexable page (up to 200) in a headless browser, where each page's own scripts run, analytics included.",
+  ],
+  [
+    "lighthouse",
+    "--lighthouse",
+    "This runs Lighthouse on the site's pages, where each page's own scripts run, analytics included.",
+  ],
+];
+const hasFlag = (a, f) => {
+  const [k, v] = f.split("="),
+    x = flagValue(a, k);
+  return v ? x === v : x !== undefined;
+};
+function crawlHit(args, settings) {
+  if (args.includes("--outside") && !outsideOn(settings))
+    return {
+      rule: "outside",
+      reason:
+        "This turns on outside checks: page addresses go to Google PageSpeed, and a headless browser runs the site's own scripts. seo-audit/settings.json doesn't record the owner's yes for them yet.",
+    };
+  const ok = approvedIn(settings),
+    off = CRAWL_OUTSIDE.find(([name, flag]) => hasFlag(args, flag) && !ok.includes(name));
+  if (off)
+    return {
+      rule: "outside",
+      reason: `${off[2]} It needs its own yes: seo-audit/settings.json's outsideChecks.approved doesn't list "${off[0]}" yet.`,
+    };
+  // A page picked to render needs its own yes each time when it's on another site. The test-only endpoints would
+  // receive the PageSpeed key.
+  const page = flagValue(args, "--render-page");
+  if (
+    page !== undefined &&
+    ![hostOf(flagValue(args, "--url")), hostOf(flagValue(args, "--site-origin"))].includes(hostOf(page))
+  )
+    return {
+      rule: "outside",
+      reason: `This renders ${page || "a page"} in a headless browser. It isn't on the site being crawled, so that other site sees the visit and its own scripts run.`,
+    };
+  const at = ["--psi-endpoint", "--crux-endpoint"].find(f => flagValue(args, f) !== undefined);
+  if (at)
+    return {
+      rule: "outside",
+      reason: `This sends the speed requests, with the PageSpeed key, to ${flagValue(args, at) || "another address"} instead of Google.`,
+    };
+  return null;
+}
 // What each script does once given --yes, worded for the prompt that asks.
 const OUTSIDE = {
   google: a =>
@@ -471,12 +564,8 @@ function bashHit(command, settings, cwd) {
           rule: "key",
           reason: `The key would be on the command line, where it stays in the shell's history and this conversation. In your own terminal, run ${KEY_HINT(setWords[0] || "<service>")} instead: it asks for the key and hides it as you type.`,
         };
-      if (script === "seo-crawl" && args.includes("--outside") && !outsideOn(settings))
-        return {
-          rule: "outside",
-          reason:
-            "This turns on outside checks: page addresses go to Google PageSpeed, and a headless browser runs the site's own scripts. seo-audit/settings.json doesn't record the owner's yes for them yet.",
-        };
+      const crawl = script === "seo-crawl" && crawlHit(args, settings);
+      if (crawl) return crawl;
       const why = OUTSIDE[script]?.(args);
       if (why) return { rule: "outside", reason: why };
       continue;
