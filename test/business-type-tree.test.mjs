@@ -241,16 +241,18 @@ test("the local business check reads a HairSalon and a MedicalClinic as local bu
   );
 });
 
-test("a Bakery home page has business schema, and its own rating is flagged; another business's isn't", async () => {
-  const BAKERY = {
-    "@type": "Bakery",
-    "@id": `${ORIGIN}/#org`,
-    name: "Crumb Bakery",
-    telephone: "0113 496 0000",
-    address: { "@type": "PostalAddress", streetAddress: "12 Mill Lane", addressLocality: "Leeds" },
-  };
-  const RATING = { "@type": "AggregateRating", ratingValue: 4.8, ratingCount: 120 };
-  const r = await crawlSite({
+// One crawl for the tests below. The home page's Bakery gives a phone the page doesn't show (0113 496 0999).
+const BAKERY = {
+  "@type": "Bakery",
+  "@id": `${ORIGIN}/#org`,
+  name: "Crumb Bakery",
+  telephone: "0113 496 0999",
+  address: { "@type": "PostalAddress", streetAddress: "12 Mill Lane", addressLocality: "Leeds" },
+};
+const RATING = { "@type": "AggregateRating", ratingValue: 4.8, ratingCount: 120 };
+let crawled;
+const bakeryCrawl = () =>
+  (crawled ??= crawlSite({
     "/": page(
       "Crumb Bakery in Leeds",
       ld(
@@ -274,7 +276,22 @@ test("a Bakery home page has business schema, and its own rating is flagged; ano
         itemReviewed: { "@id": `${ORIGIN}/#org` },
       }),
     ),
-  });
+  }));
+
+// Passes once crawl/page.mjs's ORG_RE uses lib/business.mjs; then drop `todo`.
+test(
+  "the address check (LOCAL-05) runs for a Bakery",
+  { todo: "needs the crawl/page.mjs change in schema.md" },
+  async () => {
+    const f = findingOf(await bakeryCrawl(), "nap-not-shown");
+    assert.deepEqual(Object.fromEntries((f?.evidence || []).map(e => [new URL(e.url).pathname, e.detail])), {
+      "/": "phone “0113 496 0999” isn't shown on this page or the home page",
+    });
+  },
+);
+
+test("a Bakery home page has business schema, and its own rating is flagged; another business's isn't", async () => {
+  const r = await bakeryCrawl();
   assert.equal(r.stats.htmlPages, 3, "every page was read");
   assert.ok(!findingOf(r, "org-missing"), "a Bakery is a business, so the home page has business schema");
   const f = findingOf(r, "rating-self-serving");
