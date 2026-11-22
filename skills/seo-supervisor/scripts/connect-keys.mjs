@@ -34,49 +34,15 @@ import { openai } from "./keys/openai.mjs";
 import { googleplaces } from "./keys/googleplaces.mjs";
 import { bing, fetchBing, BATCH, submitBing } from "./keys/bing.mjs";
 import { openpagerank, ahrefs, moz, MOZ_MAX, fetchAuthority } from "./keys/authority.mjs";
+import { ROWS, periodFor, splits, once, addVisits, tooMany } from "./keys/visits.mjs";
+import { matomo, MATOMO_SPLITS, MATOMO_DAILY, matomoUrl, fetchMatomo, testMatomo } from "./keys/matomo.mjs";
 
 export { Fail, Refused, domainOf, submitBing };
 export const SERVICES = {
   bing,
   openpagerank,
   ahrefs,
-  // Matomo and PostHog also need an address and an ID (`fields`), saved with the key: { url, siteId, key }.
-  matomo: {
-    name: "Matomo",
-    env: "MATOMO_TOKEN_AUTH",
-    adds: "visits from search engines to each page, from your Matomo",
-    where: "Administration (the gear icon) → Personal → Security → Auth tokens",
-    fields: [
-      {
-        id: "url",
-        flag: "url",
-        env: "MATOMO_URL",
-        ask: "Your Matomo address (the one you open Matomo at, like https://analytics.example.com)",
-        check: s => address(s, "The Matomo address"),
-      },
-      {
-        id: "siteId",
-        flag: "site-id",
-        env: "MATOMO_SITE_ID",
-        ask: "The site ID (a number, like 1)",
-        check: s => idOf(s, "site ID", "in Matomo under Administration → Websites → Manage, in the ID column"),
-      },
-    ],
-    about: k => `site ID ${k.siteId} at ${k.url}`,
-    guide: [
-      "Matomo adds the visits that came from search engines to each page, from your own Matomo (self-hosted or Matomo Cloud). You need three things: your Matomo address, the site ID and a token.",
-      "1. Sign in to Matomo. Its address is the one in your browser's address bar, like https://analytics.example.com or https://example.matomo.cloud.",
-      "2. The site ID: open Administration (the gear icon) → Websites → Manage. It's the number in the ID column next to your site.",
-      '3. The token: open Administration → Personal → Security, scroll to Auth tokens and click Create new token. Confirm your password, write "SEO Supervisor" as the description, tick "Only allow secure requests" if it\'s offered, and create it. Copy the token straight away: Matomo shows it only once.',
-      "   The token reads whatever your Matomo user can, so a user with view access to this one site is enough.",
-      `4. In your own terminal run: ${setLine("matomo")}`,
-      "   It asks for the address and the site ID (shown as you type), then the token. Paste the token and press Enter. It isn't shown, so it stays out of chats and your command history.",
-      "If fetch says the segment hasn't been created, your Matomo only reports on saved segments. Above any report, open the segment menu → Add new segment, choose Channel Type, Is, search, and save it with its reports pre-processed. Matomo fills it in within a few hours; then fetch again.",
-      "To check the connection first: node connect-keys.mjs test matomo --yes (it shows your Matomo's version).",
-      // https://matomo.org/faq/troubleshooting/faq_50/
-      "Matomo's numbers won't match Google Analytics exactly. Matomo doesn't sample data, and Google Analytics can. A visitor who accepts one tool in the consent banner but not the other is counted by only one. And the two tools spot bots and count visits in their own ways. Compare the trends, not the totals.",
-    ],
-  },
+  matomo,
   posthog: {
     name: "PostHog",
     env: "POSTHOG_PERSONAL_API_KEY",
@@ -169,7 +135,6 @@ const USAGE = `usage: node connect-keys.mjs set bing|openpagerank|ahrefs|matomo|
        node connect-keys.mjs fetch --site https://www.example.com [--competitors a.com,b.com] [--days 90] [--out seo-audit/keys.json] [--yes]
             [--topics "topic one, topic two"] [--youtube-channel @handle] [--bing-pages /a,/b] [--bing-sister https://sister.example]
        node connect-keys.mjs submit-bing --site https://www.example.com (--urls changed.txt | --from-diff seo-audit/seo-diff.json) [--yes]`;
-const ROWS = 25000; // the most pages read from Matomo or PostHog, as google.mjs reads from Google Analytics
 const serviceOf = id =>
   Object.hasOwn(SERVICES, id)
     ? id
@@ -334,38 +299,6 @@ const mask = k => (k.length > 8 ? "…" + k.slice(-4) : "…");
 export const call = (id, url, init) => request(id, SERVICES[id], url, init);
 
 // ---------- Matomo and PostHog: visits from search engines by landing page ----------
-// The same days google.mjs reads Google Analytics for, ending 3 days ago, so the numbers line up.
-const periodFor = days => ({ from: day(Date.now() - (days + 2) * 864e5), to: day(Date.now() - 3 * 864e5) });
-// Matomo: visits from a search engine (segment referrerType==search) by entry page, most first. Only token_auth goes
-// in the POST body; the other parameters aren't secret. The splits cover the whole site ID: the same visits by
-// device type and country, every visit by channel (no segment), and search visits by engine. With period=day,
-// VisitsSummary.get gives search visits per date, [] for a day with none.
-// https://developer.matomo.org/api-reference/reporting-api-legacy
-const MATOMO_SPLITS = {
-  byDevice: "DevicesDetection.getType",
-  byCountry: "UserCountry.getCountry",
-  byChannel: "Referrers.getReferrerType",
-  byEngine: "Referrers.getSearchEngines",
-};
-const MATOMO_ALL = "Referrers.getReferrerType",
-  MATOMO_DAILY = "VisitsSummary.get";
-const matomoUrl = (k, p, method = "Actions.getEntryPageUrls") =>
-  `${k.url}index.php?${new URLSearchParams(
-    /** @type {any} */ ({
-      module: "API",
-      method,
-      idSite: k.siteId,
-      period: method === MATOMO_DAILY ? "day" : "range",
-      date: `${p.from},${p.to}`,
-      ...(method === MATOMO_ALL ? {} : { segment: "referrerType==search" }),
-      ...(method === "Actions.getEntryPageUrls"
-        ? { flat: 1, filter_limit: ROWS, filter_sort_column: "entry_nb_visits", filter_sort_order: "desc" }
-        : method === MATOMO_DAILY
-          ? {}
-          : { filter_limit: 10, filter_sort_column: "nb_visits", filter_sort_order: "desc" }),
-      format: "JSON",
-    }),
-  )}`;
 // PostHog: sessions it files as Organic Search (a search engine as referrer or utm_source, paid search left out, as
 // in GA4), by entry page. The site's host is matched here, not sent.
 // Without $channel_type, the fallback counts sessions referred by a search engine. These LIKE patterns can count a
@@ -420,106 +353,6 @@ async function posthogRead(k, query) {
     throw new Refused(refusal("posthog", SERVICES.posthog, 200, null, null, new URL(k.host).host));
   return b.results;
 }
-// [name, visits] pairs to { name: { visits } } for the top 10; a pair without a name or visits is dropped.
-const top10 = pairs => {
-  const m = new Map();
-  for (const [k, v] of pairs) if (typeof k === "string" && k && Number(v) > 0) m.set(k, (m.get(k) || 0) + Number(v));
-  return Object.fromEntries(
-    [...m]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([k, visits]) => [k, { visits }]),
-  );
-};
-const SPLIT_NAME = {
-  byDevice: "visits from search engines by device",
-  byCountry: "visits from search engines by country",
-  byChannel: "visits by channel",
-  byEngine: "visits from search engines by search engine",
-  byReferrer: "visits by referrer",
-  daily: "visits from search engines per day",
-};
-// A split that fails is noted; the visits by landing page stay. once: one read that isn't a top 10 (the daily trend).
-async function splits(name, fields, read, notes) {
-  const out = {};
-  for (const [field, what] of Object.entries(fields)) {
-    try {
-      out[field] = top10(await read(what, field));
-    } catch (e) {
-      if (!(e instanceof Refused)) throw e;
-      notes.push(`${name}'s ${SPLIT_NAME[field]} weren't read: ${e.message}`);
-    }
-  }
-  return out;
-}
-async function once(name, field, fn, notes) {
-  try {
-    return { [field]: await fn() };
-  } catch (e) {
-    if (!(e instanceof Refused)) throw e;
-    notes.push(`${name}'s ${SPLIT_NAME[field]} weren't read: ${e.message}`);
-    return {};
-  }
-}
-// One page's http/https, www/apex and tracking-parameter variants add up, by path as GA4's landing page is.
-const addVisits = (map, path, n) => {
-  map[path] = { visits: (map[path]?.visits || 0) + n };
-};
-const tooMany = name =>
-  `${name} has ${ROWS.toLocaleString("en-US")} or more pages with visits from search engines for this period; only the top ${ROWS.toLocaleString("en-US")} were read.`;
-
-async function fetchMatomo(k, site, period, notes) {
-  const want = bare(new URL(site).hostname),
-    traffic = {};
-  // list: a report's rows; otherwise one object (the daily trend's dates).
-  const read = async (method, list = true) => {
-    const rows = await call("matomo", matomoUrl(k, period, method), {
-      ...POST,
-      body: new URLSearchParams({ token_auth: k.key }),
-    });
-    if (list ? !Array.isArray(rows) : !rows || typeof rows !== "object" || rows.result === "error")
-      throw new Refused(refusal("matomo", SERVICES.matomo, 200, rows, null, new URL(k.url).host));
-    return rows;
-  };
-  const rows = await read();
-  // Rows without a URL (Matomo's "Others") and other sites tracked in the same Matomo are left out.
-  for (const r of rows) {
-    let x;
-    try {
-      x = new URL(r?.url);
-    } catch {
-      continue;
-    }
-    const n = Number(r.entry_nb_visits) || 0;
-    if (n > 0 && bare(x.hostname) === want) addVisits(traffic, x.pathname, n);
-  }
-  if (rows.length >= ROWS) notes.push(tooMany("Matomo"));
-  // Countries by code, upper case as PostHog's; "xx" is Matomo's Unknown, not a country.
-  const name = (r, field) =>
-    field !== "byCountry" ? r?.label : r?.code !== "xx" && typeof r?.code === "string" ? r.code.toUpperCase() : null;
-  return {
-    period,
-    traffic,
-    ...(await splits(
-      "Matomo",
-      MATOMO_SPLITS,
-      async (method, field) => (await read(method)).map(r => [name(r, field), r?.nb_visits]),
-      notes,
-    )),
-    ...(await once(
-      "Matomo",
-      "daily",
-      async () =>
-        Object.fromEntries(
-          Object.entries(await read(MATOMO_DAILY, false))
-            .filter(([d]) => isDay(d))
-            .map(([d, v]) => [d, Number(v?.nb_visits) || 0]),
-        ),
-      notes,
-    )),
-  };
-}
-
 async function fetchPosthog(k, site, period, notes) {
   const want = bare(new URL(site).hostname),
     traffic = {},
@@ -575,17 +408,7 @@ async function fetchPosthog(k, site, period, notes) {
   return { period, organicBy: fallback ? "referrer" : "channel", traffic, ...split, ...daily, ...check };
 }
 
-// Connection tests (test matomo|posthog --yes). API.getMatomoVersion answers { value: "5.x" } to a valid token.
-async function testMatomo(k) {
-  const b = await call(
-    "matomo",
-    `${k.url}index.php?${new URLSearchParams({ module: "API", method: "API.getMatomoVersion", format: "JSON" })}`,
-    { ...POST, body: new URLSearchParams({ token_auth: k.key }) },
-  );
-  if (typeof b?.value !== "string")
-    throw new Refused(refusal("matomo", SERVICES.matomo, 200, b, null, new URL(k.url).host));
-  return `Matomo ${b.value} at ${k.url} accepted the token.`;
-}
+// The connection test (test posthog --yes): the project's pageviews in the last 7 days.
 async function testPosthog(k) {
   const n = Number((await posthogRead(k, POSTHOG_TEST))[0]?.[0]) || 0,
     who = `PostHog project ${k.projectId} at ${k.host} accepted the key`;
