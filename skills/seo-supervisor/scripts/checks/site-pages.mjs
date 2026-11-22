@@ -75,6 +75,9 @@ export function checkPages(site) {
     if (p.status !== 200 || p.chain.length > 1)
       add("sitemap-bad-status", e.loc, p.chain.length > 1 ? `redirects to ${p.finalUrl}` : `status ${p.status}`);
     else if (p.html && p.noindex && !IGNORE_NOINDEX) add("noindex-in-sitemap", e.loc);
+    // Another host, path or query makes the canonical another URL; a #fragment alone doesn't.
+    else if (p.html && canonicalFor(p) && clean(toCrawl(canonicalFor(p))) !== clean(p.finalUrl))
+      add("sitemap-noncanonical", e.loc, `canonical → ${canonicalFor(p)}`);
     if (google && !allowedBy(google, new URL(u).pathname)) add("sitemap-url-disallowed", e.loc);
   }
   const titleMap = new Map(),
