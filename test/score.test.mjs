@@ -27,7 +27,7 @@ test("a site with no SEO work gets blockers for its missing basics and scores un
     assert.ok(f, `${rule} is a blocker`);
     assert.equal(f.count, 4, `${rule} counts every page`);
   }
-  for (const key of ["title-missing", "title-short", "title-dup", "h1-count", "canonical-missing"])
+  for (const key of ["title-missing", "title-short", "title-dup", "h1-missing", "canonical-missing"])
     assert.ok(!report.findings.some(f => f.check === key), `${key} is replaced by the site-wide finding`);
   const html = join(tmp(), "report.html");
   await node([join(SCRIPTS, "render-report.mjs"), out, "--out", html, "--no-md"]);

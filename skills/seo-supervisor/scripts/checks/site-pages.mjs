@@ -265,7 +265,8 @@ export function checkPages(site) {
         shareImages.set(c, { src: src.href, page: u });
     }
     if (sitewide.h1.has(p)) add("h1-missing-sitewide", u);
-    else if (p.h1Count !== 1) add("h1-count", u, `${p.h1Count} H1s`);
+    else if (p.h1Count === 0) add("h1-missing", u);
+    else if (p.h1Count > 1) add("h1-multiple", u, `${p.h1Count} H1s`);
     const skips = [];
     let prev = null;
     for (const h of p.headings) {

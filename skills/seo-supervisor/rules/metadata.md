@@ -1,7 +1,7 @@
 # Metadata (META)
 
 ### META-01 · Every indexable page has a unique title of a sensible length · high
-- **Check:** crawler `title-missing`, `title-long` (over 60 characters), `title-short` (flagged under 20 characters; aim for about 30–60), `title-dup`, `title-multiple`. The short-title flag stays at 20 so that short, honest titles (a product name, a brand and one word) aren't flagged; between 20 and 30 is a judgement call, not a finding.
+- **Check:** crawler `title-missing`, `title-long` (low, over 60 characters: Google sets "no limit on how long a `<title>` element can be" and cuts the title link to fit, so 60 is our own rough line for where the end may not show), `title-short` (flagged under 20 characters; aim for about 30–60), `title-dup`, `title-multiple`. The short-title flag stays at 20 so that short, honest titles (a product name, a brand and one word) aren't flagged; between 20 and 30 is a judgement call, not a finding.
 - **Width, not characters:** Google cuts a title link "as needed, typically to fit the device width" ("Influencing title links"), so both lengths are counted in Latin-letter widths. A Chinese, Japanese or Korean character counts as two (they're full-width), and a Thai or accent mark that sits on its letter counts as none. A 25-character Chinese title is as wide as 50 Latin letters. This rough count is our own, not Google's. The crawler and `content-scan.mjs` both count this way.
 - **Pass:** unique, about 30–60 characters (some projects allow 65), main keyword first, brand once at the end.
 - **Fix:** a title pattern per page type in the profile, e.g. tool pages: "DMARC Checker - Free DMARC Record Lookup | Brand". Where pages compete for one phrase, give that phrase to one page and retitle the others (CONTENT-04).

@@ -1,12 +1,14 @@
 # Headings and content (CONTENT)
 
-### CONTENT-01 · Exactly one H1 per page · high
-- **Check:** crawler `h1-count`.
+### CONTENT-01 · Exactly one H1 per page · low (blocker when it's missing site-wide)
+- **Check:** crawler `h1-missing` and `h1-multiple`, both low (a single `h1-count` finding in 1.x).
 - **Pass:** one H1 that states the page's main topic. Logos, card titles and modal titles are not H1s.
+- **Why low:** Google's SEO Starter Guide says there's "no magical, ideal amount of headings" a page should have (checked 22 Nov 2026), so a second H1 isn't a Search problem. One clear H1 is still the goal: visitors read it to check they're in the right place, and Google reads headings, the H1 among them, when it writes a page's title link ("Influencing title links").
 - **Site-wide:** when the H1 is missing on at least 80% of indexable pages (and at least 3), the crawler reports one `*-sitewide` finding as a **blocker**, not one high per page. Keep it a blocker: it's the usual sign of a site with no SEO work.
 
-### CONTENT-02 · Heading levels are never skipped · medium
+### CONTENT-02 · Heading levels are never skipped · low
 - **Check:** crawler `heading-skip`. Footer and sidebar headings count too.
+- **Why low:** headings in order matter to screen readers, which use them to move around a page. Google Search doesn't mind headings out of order (SEO Starter Guide, checked 22 Nov 2026).
 - **Number-only headings:** crawler `heading-only-number` (low): a heading that is only a number ("250+", "01", "99%"), years aside. WCAG 2.2 (SC 2.4.6) asks headings to describe their section; put the words in the heading, or style the number as text.
 - **Fix:** nest H2 → H3 in order and style with CSS. Card titles inside an H2 section use H3 or non-heading text. Each FAQ question is an H3 under the FAQ H2. A full outline is in `examples/snippets.md`.
 
@@ -23,8 +25,8 @@
 - **Pass:** each page has its own intro, specifics and FAQs. FAQ questions aren't reused across pages. Pages that can't be made unique are merged or noindexed.
 - **Fix:** add per-item content fields and a build check (shingle similarity over 0.5 on intros fails; any repeated FAQ question fails). Don't publish a page until its unique fields are filled.
 
-### CONTENT-05 · Indexable pages have substance · medium
-- **Check:** crawler `thin-page`, which flags pages under 150 words as a page to look at, not a word target. A short page that fully does its job (a contact page, a calculator, a product with a clear spec) is fine; say so and close the finding rather than adding filler. Chinese, Japanese, Thai, Lao, Khmer and Burmese text is counted in words with Intl.Segmenter, so this check and `near-duplicate` work there too.
+### CONTENT-05 · Indexable pages have substance · low
+- **Check:** crawler `thin-page` (low), which flags pages under 150 words as a page to look at, not a word target. Google says the length of the content alone doesn't matter for ranking: there's no word count target, minimum or maximum (SEO Starter Guide, checked 22 Nov 2026). 150 words is our own line for a second look. A short page that fully does its job (a contact page, a calculator, a product with a clear spec) is fine; say so and close the finding rather than adding filler. Chinese, Japanese, Thai, Lao, Khmer and Burmese text is counted in words with Intl.Segmenter, so this check and `near-duplicate` work there too.
 - **Fix:** add useful, specific content; merge the page into a stronger one; or noindex it until it grows (browse pages: under 3 items).
 
 ### CONTENT-06 · Answer first, in the searcher's words · medium

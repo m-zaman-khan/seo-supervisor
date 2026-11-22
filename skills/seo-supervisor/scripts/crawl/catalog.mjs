@@ -450,10 +450,10 @@ export const CHECKS = {
   ],
   "title-long": [
     "META-01",
-    "medium",
+    "low",
     n => `${n} title(s) are longer than 60 characters`,
-    "Long titles get cut off in results, often losing the brand or the key phrase.",
-    "Keep titles under about 60 characters, main keyword first.",
+    "Google sets no length limit on titles, but it cuts the title link in results to fit the screen, so the end of a long title (often the brand or the key phrase) may not show. 60 characters is our own rough line.",
+    "Put the main keyword first and the brand last, so a cut title still makes sense. Shorten it to about 60 characters if the end matters.",
   ],
   "title-short": [
     "META-01",
@@ -567,18 +567,11 @@ export const CHECKS = {
     "Google needs a square favicon and recommends one larger than 48 × 48 px. It lists BMP, GIF, ICO, PNG, JPEG, PPM and TIFF as the formats it supports, so an SVG or WebP icon on its own may not show, and a 16 or 32 px icon looks blurred beside results.",
     'Add a square PNG of at least 48 × 48 px (192 × 192 works everywhere), for example `<link rel="icon" href="/icon-192.png" sizes="192x192">`, next to any SVG icon.',
   ],
-  "h1-count": [
-    "CONTENT-01",
-    "high",
-    n => `${n} page(s) don't have exactly one H1`,
-    "The H1 states the page's topic. None leaves it unclear; several dilute it.",
-    "Give every page one H1 matching its main topic. Logos and card titles are not H1s.",
-  ],
   "heading-skip": [
     "CONTENT-02",
-    "medium",
+    "low",
     n => `${n} page(s) skip heading levels`,
-    "Skipped levels break the outline search engines and screen readers use.",
+    "Screen readers use heading levels to move around a page, so a skipped level can confuse the people who use them. Google Search doesn't mind headings out of order.",
     "Nest headings in order (H1 → H2 → H3). Style with CSS, not heading levels.",
   ],
   "near-duplicate": [
@@ -625,10 +618,10 @@ export const CHECKS = {
   ],
   "thin-page": [
     "CONTENT-05",
-    "medium",
+    "low",
     n => `${n} indexable page(s) have fewer than 150 words`,
-    "Thin pages rarely rank and can lower the site's overall quality signals.",
-    "Add useful, specific content, merge the page into a stronger one, or noindex it until it grows.",
+    "A short page is worth a look, not a problem in itself: Google says there's no word count target, minimum or maximum. 150 words is our own line for a second look. A contact page or a calculator can do its job in few words.",
+    "If the page does its job, close this finding. If it doesn't, add useful, specific content, merge it into a stronger page, or noindex it until it grows.",
   ],
   "img-alt": [
     "CONTENT-08",
@@ -1155,3 +1148,24 @@ CHECKS["markdown-differs"] = [
   "AI agents that ask for Markdown read this version instead of the page. Markdown made from the page as it's served (Cloudflare's Markdown for Agents works this way) says the same thing, so a big difference usually means a Markdown copy written by hand that has fallen behind the page. Agents then quote old or missing facts.",
   "Make the Markdown from the page itself, when the page is built or served, so the two can't drift apart. If it's written by hand on purpose, update it every time the page changes.",
 ];
+// Heading order and count don't matter to Search, only to screen readers, but an H1 can feed the title link.
+// https://developers.google.com/search/docs/fundamentals/seo-starter-guide
+// https://developers.google.com/search/docs/appearance/title-link
+Object.assign(CHECKS, {
+  "h1-missing": [
+    "CONTENT-01",
+    "low",
+    n => `${n} page(s) have no H1`,
+    "The H1 is the page's main heading. Visitors read it to check they're in the right place, and Google reads headings, the H1 among them, when it writes a page's title link in results.",
+    "Give the page one H1 that names its topic, usually close to its title. Logos and card titles are not H1s.",
+  ],
+  "h1-multiple": [
+    "CONTENT-01",
+    "low",
+    n => `${n} page(s) have more than one H1`,
+    "Google says there's no ideal number of headings, so this isn't a Search problem. It can blur which heading is the page's main title, for visitors and for Google when it writes the title link.",
+    "Keep one H1 for the page's topic, and make logos, card titles and section titles H2s or plain text.",
+  ],
+});
+// Content check ids split in two, old -> new, kept for ID_ALIASES.
+export const CONTENT_RENAMED = { "h1-count": ["h1-missing", "h1-multiple"] };
