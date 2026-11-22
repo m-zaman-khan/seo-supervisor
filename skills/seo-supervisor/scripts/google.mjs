@@ -131,16 +131,63 @@ export async function fetchGoogle({
 
   // www and apex count as one host; other subdomains of a domain property are left out.
   const pathOf = u => pagePath(u, h);
-  const metrics = r => ({
-    clicks: r.clicks,
-    impressions: r.impressions,
-    ctr: Math.round(r.ctr * 10000) / 10000,
-    position: Math.round(r.position * 10) / 10,
-  });
-  const ci = r => ({ clicks: r.clicks, impressions: r.impressions });
   const sa = body =>
     g.call(`${scBase}/searchAnalytics/query`, { startDate, endDate, type: "web", dimensions: [], ...body });
   const rowsFor = (dimensions, dates) => readRows(sa, dimensions, dates, pageSize, notes);
+  // Shared by the sections below. They run in order, and later ones read what earlier ones returned.
+  const c = { g, E, who, notes, attempt, origin, h, prop, scBase, startDate, endDate, pathOf, sa, rowsFor };
+
+  const { traffic, urls, pageQueries, queries, pagesRead, queriesRead } = await readPerformance(c);
+  const siteTotals = await readSiteTotals(c, queries, queriesRead);
+  const { startDate: prevStart, endDate: prevEnd } = periodBefore(days);
+  const trafficChange = await readTrafficChange(c, days, traffic, pagesRead, prevStart, prevEnd);
+  const newQueries = await readNewQueries(c, days, queries, queriesRead, prevStart, prevEnd);
+  const searchTypes = await readSearchTypes(c);
+  const { byDevice, byCountry } = await readDeviceAndCountry(c);
+  const brandSplit = await readBrandSplit(c);
+  const inspection = await inspectPages(c, crawl, inspect, traffic, urls);
+  const sitemaps = await readSitemaps(c);
+  const { analytics, gaProp, gaRead } = await readAnalytics(c, scope, ga4Property);
+  const analyticsDetail = await readAnalyticsDetail(c, gaProp, gaRead);
+  const findings = googleFindings(notes, inspection, sitemaps, traffic, pageQueries, urls);
+  const anomalies = anomalyNotes(notes, trafficChange, searchTypes, startDate, endDate, prevStart);
+
+  return {
+    source: "google",
+    site: origin.origin,
+    properties: { searchConsole: prop, analytics: gaProp },
+    period,
+    traffic,
+    queries,
+    positions: positionShares(queries),
+    siteTotals,
+    pageQueries,
+    trafficChange,
+    newQueries,
+    searchTypes,
+    byDevice,
+    byCountry,
+    brandSplit,
+    inspection,
+    sitemaps,
+    analytics,
+    analyticsDetail,
+    anomalies,
+    findings,
+    notes,
+  };
+}
+const metrics = r => ({
+  clicks: r.clicks,
+  impressions: r.impressions,
+  ctr: Math.round(r.ctr * 10000) / 10000,
+  position: Math.round(r.position * 10) / 10,
+});
+const ci = r => ({ clicks: r.clicks, impressions: r.impressions });
+const total = (m, k) => Object.values(m).reduce((s, x) => s + x[k], 0);
+
+// Fatal on failure: without these there's nothing to report.
+async function readPerformance({ attempt, prop, rowsFor, pathOf }) {
   const traffic = {},
     urls = {},
     pageQueries = {},
@@ -174,10 +221,13 @@ export async function fetchGoogle({
     },
     true,
   );
+  return { traffic, urls, pageQueries, queries, pagesRead, queriesRead };
+}
 
-  // A query with no dimensions gives the totals Search Console's chart shows, including the clicks of anonymized
-  // queries that query rows leave out. `complete` is null when the queries weren't read.
-  // https://developers.google.com/search/blog/2022/10/performance-data-deep-dive
+// A query with no dimensions gives the totals Search Console's chart shows, including the clicks of anonymized queries
+// that query rows leave out. `complete` is null when the queries weren't read.
+// https://developers.google.com/search/blog/2022/10/performance-data-deep-dive
+async function readSiteTotals({ attempt, prop, sa }, queries, queriesRead) {
   let siteTotals = null;
   await attempt(`the site totals for ${prop} in Search Console`, SC_API, async () => {
     const t = (await sa({})).rows?.[0];
@@ -185,12 +235,20 @@ export async function fetchGoogle({
     const queryClicks = queries.reduce((s, q) => s + q.clicks, 0);
     siteTotals = { ...metrics(t), queryClicks, complete: queriesRead ? queryClicks >= t.clicks : null };
   });
+  return siteTotals;
+}
 
-  // The period before has the same length. A drop is at least 20 clicks and 30% lost: below 20 a small page's
-  // weekly swing looks like a drop, and a big page loses 20 to noise.
+// A drop is at least 20 clicks and 30% lost: below 20 a small page's weekly swing looks like a drop, and a big page
+// loses 20 to noise.
+async function readTrafficChange(
+  { attempt, notes, prop, startDate, endDate, rowsFor, pathOf },
+  days,
+  traffic,
+  pagesRead,
+  prevStart,
+  prevEnd,
+) {
   let trafficChange = null;
-  const total = (m, k) => Object.values(m).reduce((s, x) => s + x[k], 0),
-    { startDate: prevStart, endDate: prevEnd } = periodBefore(days);
   if (2 * days + 2 > 482)
     notes.push(
       "Search Console keeps 16 months of data, so a period longer than 240 days has no full period before it to compare with; the change in search clicks and the new searches were left out.",
@@ -228,10 +286,12 @@ export async function fetchGoogle({
         drops,
       };
     });
+  return trafficChange;
+}
 
-  // Queries with no row in the period before. Rows stop at 25,000 and leave out rare (anonymized) queries, so a
-  // search listed may have had a few impressions before.
-  // https://developers.google.com/webmaster-tools/v1/searchanalytics/query
+// Queries with no row in the period before. Rows stop at 25,000 and leave out rare (anonymized) queries, so a search
+// listed may have had a few impressions before. https://developers.google.com/webmaster-tools/v1/searchanalytics/query
+async function readNewQueries({ attempt, notes, prop, rowsFor }, days, queries, queriesRead, prevStart, prevEnd) {
   let newQueries = null;
   if (2 * days + 2 <= 482 && queriesRead)
     await attempt(`the searches for ${prop} in Search Console for the period before`, SC_API, async () => {
@@ -246,9 +306,12 @@ export async function fetchGoogle({
           "Only the period before's top 25,000 searches could be read, so some of the new searches may have been searched then too.",
         );
     });
+  return newQueries;
+}
 
-  // Only the page dimension, which every type allows: Discover and Google News have no queries. Totals are the
-  // property's, other subdomains included.
+// Only the page dimension, which every type allows: Discover and Google News have no queries. Totals are the
+// property's, other subdomains included.
+async function readSearchTypes({ attempt, sa, pathOf }) {
   const searchTypes = {};
   // webMultimodal is Google Lens, Circle to Search and image uploads.
   await attempt("the image, video, news, Discover and Lens results in Search Console", SC_API, async () => {
@@ -267,8 +330,11 @@ export async function fetchGoogle({
       searchTypes[type] = { ...ci(t), pages };
     }
   });
+  return searchTypes;
+}
 
-  // Country keys are ISO 3166 alpha-3, lower case.
+// Country keys are ISO 3166 alpha-3, lower case.
+async function readDeviceAndCountry({ attempt, sa }) {
   const byDevice = {},
     byCountry = {};
   await attempt("search by device and country in Search Console", SC_API, async () => {
@@ -278,10 +344,13 @@ export async function fetchGoogle({
       .slice(0, 10))
       byCountry[r.keys[0]] = ci(r);
   });
+  return { byDevice, byCountry };
+}
 
-  // brandedClassification has data from 21 Feb 2026, only for top-level properties with enough searches; others get
-  // no rows. It can't be combined with a query filter.
-  // https://developers.google.com/search/blog/2026/11/search-analytics-api-update
+// brandedClassification has data from 21 Feb 2026, only for top-level properties with enough searches; others get no
+// rows. It can't be combined with a query filter.
+// https://developers.google.com/search/blog/2026/11/search-analytics-api-update
+async function readBrandSplit({ attempt, notes, sa }) {
   let brandSplit = null;
   await attempt("the brand and non-brand split in Search Console", SC_API, async () => {
     const rows = (await sa({ dimensions: ["brandedClassification"] })).rows || [],
@@ -296,12 +365,15 @@ export async function fetchGoogle({
         "Search Console labels brand searches only for top-level properties with enough searches (data from 21 Feb 2026), and this property isn't eligible, so there's no brand and non-brand split.",
       );
   });
+  return brandSplit;
+}
 
-  // inspect replaces the default sample: the home page, up to 10 crawled pages (shallowest, most linked), then top
-  // pages by clicks, 20 in all. The crawl may be of a local build, so only its paths are used.
-  // Google allows 2,000 inspections a day per property and 600 a minute; 200 stays under the minute's limit and
-  // leaves most of the day's.
-  const INSPECT_MAX = 200;
+// Google allows 2,000 inspections a day per property and 600 a minute; 200 stays under the minute's limit and leaves
+// most of the day's.
+const INSPECT_MAX = 200;
+// Default sample: the home page, up to 10 crawled pages (shallowest, most linked), then top pages by clicks, 20 in all.
+// The crawl may be of a local build, so only its paths are used.
+async function inspectPages({ g, E, who, notes, origin, prop }, crawl, inspect, traffic, urls) {
   const pathOnly = u => {
     try {
       const x = new URL(u);
@@ -406,7 +478,10 @@ export async function fetchGoogle({
     notes.push(
       `URL Inspection couldn't read ${failed.length} of ${toInspect.length} pages, so they're left out: ${failed.slice(0, 5).join(", ")}${failed.length > 5 ? ` and ${failed.length - 5} more` : ""}.`,
     );
+  return inspection;
+}
 
+async function readSitemaps({ g, attempt, notes, prop, scBase }) {
   const sitemaps = [];
   await attempt("the sitemaps in Search Console", SC_API, async () => {
     for (const x of (await g.call(`${scBase}/sitemaps`)).sitemap || [])
@@ -423,8 +498,11 @@ export async function fetchGoogle({
         `No sitemap is submitted in Search Console for ${prop}. Submit one under Indexing → Sitemaps so Google finds new and changed pages sooner.`,
       );
   });
+  return sitemaps;
+}
 
-  // GA4: --ga4-property, else the one property whose web stream is this site (even when it's the only one).
+// GA4: --ga4-property, else the one property whose web stream is this site (even when it's the only one).
+async function readAnalytics({ g, E, attempt, notes, h, startDate, endDate }, scope, ga4Property) {
   const analytics = {};
   let gaProp = ga4Property ? String(ga4Property).replace(/^properties\//, "") : null,
     gaRead = false;
@@ -497,9 +575,11 @@ export async function fetchGoogle({
         gaRead = true;
       });
   }
-  // Only after the landing pages were read: a refusal or a used-up quota there would only repeat here.
-  // GA4's default channel group files ChatGPT, Gemini, Copilot and the like under "AI Assistant".
-  // https://support.google.com/analytics/answer/9756891
+  return { analytics, gaProp, gaRead };
+}
+
+// Runs only after the landing pages were read: a refusal or a used-up quota there would only repeat here.
+async function readAnalyticsDetail({ g, E, attempt, startDate, endDate }, gaProp, gaRead) {
   let analyticsDetail = null;
   if (gaRead)
     await attempt(
@@ -556,8 +636,12 @@ export async function fetchGoogle({
         };
       },
     );
+  return analyticsDetail;
+}
 
-  // ---------- findings ----------
+// ---------- findings ----------
+// These stay in this file: lib/score.mjs knownChecks() reads check names from scripts/ and scripts/checks/ only.
+function googleFindings(notes, inspection, sitemaps, traffic, pageQueries, urls) {
   const own = [];
   const finding = (check, rule, severity, category, title, why, fix, evidence) => {
     if (!evidence.length) return;
@@ -652,12 +736,14 @@ export async function fetchGoogle({
     "Open each page in Search Console's URL Inspection, or Google's Rich Results Test, to see where the error is. Fix the markup in the template, then click Request indexing.",
     rich,
   );
-  const findings = [...gscFindings(traffic, pageQueries, urls), ...own].map((f, i) => ({
+  return [...gscFindings(traffic, pageQueries, urls), ...own].map((f, i) => ({
     ...f,
     id: "G-" + String(i + 1).padStart(3, "0"),
   }));
+}
 
-  // Google's documented logging problems in this period or the one it's compared with (Discover's only for Discover).
+// Google's documented logging problems in this period or the one it's compared with (Discover's only for Discover).
+function anomalyNotes(notes, trafficChange, searchTypes, startDate, endDate, prevStart) {
   const anomalies = [
     ...anomaliesIn(trafficChange ? prevStart : startDate, endDate),
     ...(searchTypes.discover ? anomaliesIn(startDate, endDate, "discover") : []),
@@ -666,31 +752,7 @@ export async function fetchGoogle({
     notes.push(
       `Google's "Data anomalies in Search Console" page says that ${a.from === a.to ? `on ${a.from}` : `from ${a.from} to ${a.to}`} ${a.what}. This overlaps the period read${trafficChange && !a.type ? " or the one it's compared with" : ""}, so a change in those numbers may not be real: ${a.url}`,
     );
-
-  return {
-    source: "google",
-    site: origin.origin,
-    properties: { searchConsole: prop, analytics: gaProp },
-    period,
-    traffic,
-    queries,
-    positions: positionShares(queries),
-    siteTotals,
-    pageQueries,
-    trafficChange,
-    newQueries,
-    searchTypes,
-    byDevice,
-    byCountry,
-    brandSplit,
-    inspection,
-    sitemaps,
-    analytics,
-    analyticsDetail,
-    anomalies,
-    findings,
-    notes,
-  };
+  return anomalies;
 }
 
 // ---------- connect ----------
