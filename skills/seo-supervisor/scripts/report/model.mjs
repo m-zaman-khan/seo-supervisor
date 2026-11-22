@@ -13,8 +13,15 @@ export const needsYou = f => f.fixBy === "owner" && isOpen(f);
 export function buildModel(raw, dir) {
   const isCrawl = raw.tool === "seo-supervisor-crawler";
   const isScan = raw.tool === "seo-supervisor-content-scan";
+  const host = () => {
+    try {
+      return new URL(raw.siteOrigin).host;
+    } catch {
+      return String(raw.siteOrigin || "Website");
+    }
+  };
   const site = raw.site || {
-    name: isCrawl ? new URL(raw.siteOrigin).host : isScan ? `Content: ${basename(String(raw.source))}` : "Website",
+    name: isCrawl ? host() : isScan ? `Content: ${basename(String(raw.source))}` : "Website",
     url: raw.siteOrigin || "",
   };
   const run = { ...(raw.run || {}) };

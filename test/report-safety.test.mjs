@@ -122,6 +122,29 @@ test("each failed Lighthouse audit is listed once, and odd runs in the file are 
   assert.match(html, /passed 40 audits, failed 2/, "the speed details still count every failed audit");
 });
 
+test("one bad URL in the audit file can't stop the report, and the Markdown's title escapes the site name", () => {
+  const audit = {
+    site: { name: "Shop [x](javascript:alert(1)) <b>*", url: "https://s.example" },
+    findings: [],
+    passed: [{ rule: "R-1", category: "Other" }],
+    labSpeed: [null, { url: "not a url", lcp: 3100, tbt: 250 }],
+    speed: { lcpBreakdown: { source: "lab", url: "http://[bad", ttfb: 2400, loadDelay: 100 } },
+    lighthouse: [{ url: "::nope::", scores: { performance: 50 } }],
+  };
+  const { html, md } = rend(audit);
+  assert.match(html, /Lab speed, slow mobile \(indicative\): LCP 3\.1 s · TBT 250 ms on not a url/);
+  assert.match(html, /LCP breakdown \(lab test, http:\/\/\[bad\): most of the time goes on the server&#39;s response/);
+  assert.match(html, /Lighthouse \(mobile, ::nope::\): Performance 50/);
+  assert.match(md ?? "", /^# SEO report: Shop \\\[x\\\]\(javascript:alert\(1\)\) \\<b\\>\\\*$/m);
+  const crawl = rend({
+    tool: "seo-supervisor-crawler",
+    siteOrigin: "no origin",
+    crawledAt: "2026-11-20T02:00:00Z",
+    findings: [],
+  });
+  assert.match(crawl.html, /<h1>no origin<\/h1>/, "a crawl file with a bad origin is named by it");
+});
+
 test("the page's styles have no dead .as.b3-t,.as.b4-t rule", () => {
   const { html } = rend(KITCHEN);
   assert.doesNotMatch(html, /\.as\.b[34]-t/);

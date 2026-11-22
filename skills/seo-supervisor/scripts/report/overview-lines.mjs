@@ -1,7 +1,7 @@
 // @ts-check
 // One-line summaries of the outside checks for the topic tabs' "at a glance" panels; each is "" without its data.
 import { fmtCwv, passes, band } from "../checks/speed.mjs";
-import { esc, fmtDate, obj } from "./format.mjs";
+import { esc, fmtDate, notePath, obj } from "./format.mjs";
 
 // LCP's four parts (speed.lcpBreakdown, in ms), each with its fix.
 export const LCP_PART = {
@@ -65,25 +65,27 @@ export function overviewLines({ raw, lighthouse }) {
     (raw.authority || []).some(x => x.ahrefsDR != null)
       ? raw.attribution || { text: "Domain Rating by Ahrefs", url: "https://ahrefs.com/" }
       : null;
+  // notePath never throws: a URL it can't read shows as written, so one bad URL can't stop the report.
+  const pageName = (u, home = "home page") => (notePath(u) === "/" ? home : notePath(u));
   // The crawler's throttled phone load: the home page, else the first page.
   function labSpeedText() {
-    const l = (raw.labSpeed || []).filter(x => x.lcp != null),
-      x = l.find(x => new URL(x.url).pathname === "/") || l[0];
+    const l = (Array.isArray(raw.labSpeed) ? raw.labSpeed : []).filter(x => obj(x) && x.lcp != null),
+      x = l.find(x => notePath(x.url) === "/") || l[0];
     return x
-      ? `Lab speed, slow mobile (indicative): ${fmtCwv(x)} · TBT ${Math.round(x.tbt || 0)} ms on ${new URL(x.url).pathname === "/" ? "the home page" : new URL(x.url).pathname}`
+      ? `Lab speed, slow mobile (indicative): ${fmtCwv(x)} · TBT ${Math.round(x.tbt || 0)} ms on ${pageName(x.url, "the home page")}`
       : "";
   }
   function lcpText() {
-    const b = raw.speed?.lcpBreakdown;
+    const b = obj(raw.speed?.lcpBreakdown);
     if (!b) return "";
     const [k] = Object.keys(LCP_PART).sort((x, y) => (b[y] || 0) - (b[x] || 0)),
-      path = b.source === "lab" && new URL(b.url).pathname;
-    return `LCP breakdown (${path ? `lab test, ${path === "/" ? "home page" : path}` : "real visitors"}): most of the time goes on ${LCP_PART[k][0]} (${(b[k] / 1000).toFixed(1)} s). ${LCP_PART[k][1]}`;
+      path = notePath(b.url);
+    return `LCP breakdown (${b.source === "lab" ? `lab test${path ? `, ${pageName(b.url)}` : ""}` : "real visitors"}): most of the time goes on ${LCP_PART[k][0]} (${(b[k] / 1000).toFixed(1)} s). ${LCP_PART[k][1]}`;
   }
   // More than the default 5 pages (--lighthouse all) adds the three lowest performance scores.
   function lighthouseText() {
     const l = lighthouse,
-      x = l.find(x => new URL(x.url).pathname === "/") || l[0],
+      x = l.find(x => notePath(x.url) === "/") || l[0],
       s = x?.scores || {};
     const parts = [
       ["Performance", s.performance],
@@ -98,11 +100,11 @@ export function overviewLines({ raw, lighthouse }) {
     const slowest = scored.length
       ? `. Lowest performance of ${scored.length} pages: ${scored
           .slice(0, 3)
-          .map(y => `${new URL(y.url).pathname} ${y.scores.performance}`)
+          .map(y => `${notePath(y.url)} ${y.scores.performance}`)
           .join(" · ")}`
       : "";
     return parts.length
-      ? `Lighthouse (mobile, ${new URL(x.url).pathname === "/" ? "home page" : new URL(x.url).pathname}): ${parts.map(([k, v]) => `${k} ${v}`).join(" · ")}${slowest}`
+      ? `Lighthouse (mobile, ${pageName(x.url)}): ${parts.map(([k, v]) => `${k} ${v}`).join(" · ")}${slowest}`
       : "";
   }
   // Names and dates only: the line never says an update caused anything.

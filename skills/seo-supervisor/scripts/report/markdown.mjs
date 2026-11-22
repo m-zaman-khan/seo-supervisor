@@ -4,7 +4,7 @@
 import { SEV, bandOf } from "../lib/score.mjs";
 import { recheckOf } from "../lib/recheck.mjs";
 import { planMarkdown } from "../report-plan.mjs";
-import { SEV_LABEL, STATUS_LABEL, fmtDate, plural } from "./format.mjs";
+import { SEV_LABEL, STATUS_LABEL, fmtDate, noteMd, plural } from "./format.mjs";
 import { needsYou } from "./model.mjs";
 import { effortOf } from "./findings.mjs";
 import { SCORE_HOW } from "./overview.mjs";
@@ -86,7 +86,7 @@ export function markdown(
               .join(""),
       )
       .join("");
-  L.push(`# SEO report: ${site.name}`, "");
+  L.push(`# SEO report: ${noteMd(site.name)}`, "");
   L.push(
     [
       site.url,
