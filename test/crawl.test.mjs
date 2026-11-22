@@ -410,7 +410,8 @@ suite("crawler", { concurrency: 4 }, () => {
     assert.ok(evidenceOf(r, "sitemap-bad-status")["/about/"], "the text sitemap's URLs are read");
     // No sitemap listed anywhere, and the guessed /sitemap.xml is the site's HTML page: that's a missing sitemap.
     assert.ok(!guessed.findings.some(f => f.check === "sitemap-invalid"));
-    assert.match(evidenceOf(guessed, "sitemap-missing")["/sitemap.xml"] || "", /HTML page/);
+    // A one-page site, fully crawled from its home page: the low sitemap-missing-small.
+    assert.match(evidenceOf(guessed, "sitemap-missing-small")["/sitemap.xml"] || "", /HTML page/);
   });
 
   test("a sitemap file over 50,000 URLs or 50 MB uncompressed is flagged, and read no further than 50 MB", async () => {
@@ -593,7 +594,7 @@ suite("crawler", { concurrency: 4 }, () => {
     assert.equal(evidenceOf(down, "robots-server-error")["/robots.txt"], "status 503");
     assert.equal(evidenceOf(busy, "robots-server-error")["/robots.txt"], "status 429");
     const m = missing.findings.find(f => f.check === "robots-missing");
-    assert.deepEqual([m?.rule, m?.severity], ["MAP-05", "medium"]);
+    assert.deepEqual([m?.rule, m?.severity], ["MAP-05", "low"]); // low: Google reads a 404 as no rules
     assert.ok(
       !missing.findings.some(f => f.check === "robots-server-error") && missing.passed.some(p => p.rule === "CRAWL-01"),
     );
@@ -615,7 +616,7 @@ suite("crawler", { concurrency: 4 }, () => {
     ]);
     assert.ok(!found.passed.some(p => p.rule === "MAP-01"), "half of MAP-01 is the robots.txt reference");
     assert.match(found.notChecked.find(n => n.rule === "MAP-01")?.reason || "", /robots\.txt answered status 503/);
-    assert.ok(none.findings.some(f => f.check === "sitemap-missing"));
+    assert.ok(none.findings.some(f => /^sitemap-missing(-small)?$/.test(f.check))); // -small on this one-page site
     assert.ok(
       !none.notChecked.some(n => n.rule === "MAP-01"),
       "a missing sitemap fails MAP-01 whatever robots.txt says",
