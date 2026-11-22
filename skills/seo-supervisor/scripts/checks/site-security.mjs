@@ -19,18 +19,6 @@ export function cookiesAndPolicies(site) {
       const problems = cookieProblems(c, { https: p.finalUrl.startsWith("https:") });
       if (problems.length) add("cookie-flags", p.finalUrl, `“${name}”: ${problems.join(", ")}`);
     }
-  // A header browsers ignore is hsts-invalid and nothing else, so its max-age isn't judged.
-  // https://www.rfc-editor.org/rfc/rfc6797#section-8.1
-  const stsHeader = home?.headers?.get("strict-transport-security") || "",
-    maxAge = hstsRead(stsHeader)?.invalid ? null : /max-age\s*=\s*"?(\d+)/i.exec(stsHeader)?.[1];
-  if (maxAge != null && +maxAge < 31536000) {
-    const d = Math.round(+maxAge / 86400);
-    add(
-      "hsts-short",
-      home.finalUrl,
-      `max-age=${maxAge} (${+maxAge < 86400 ? "under a day" : `${d} day${d === 1 ? "" : "s"}`})`,
-    );
-  }
   const POLICIES = new Set([
     "no-referrer",
     "no-referrer-when-downgrade",
@@ -73,6 +61,15 @@ export function securityHeaders(site) {
     // A header browsers ignore is hsts-invalid and nothing else. https://www.rfc-editor.org/rfc/rfc6797#section-8.1
     if (s?.invalid) add("hsts-invalid", at, `${s.invalid}, so browsers ignore the whole header: ${sts}`);
     else if (s) {
+      // A year is the preload list's minimum. https://hstspreload.org
+      if (s.maxAge < 31536000) {
+        const d = Math.round(s.maxAge / 86400);
+        add(
+          "hsts-short",
+          at,
+          `max-age=${s.maxAge} (${s.maxAge < 86400 ? "under a day" : `${d} day${d === 1 ? "" : "s"}`})`,
+        );
+      }
       if (!s.includeSubDomains) add("hsts-no-subdomains", at, sts);
       extra.hstsPreload = { ready: !s.missing.length, missing: s.missing };
     }

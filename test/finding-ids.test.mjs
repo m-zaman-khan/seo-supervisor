@@ -10,6 +10,8 @@ import { ID_ALIASES, RULES, currentId } from "../skills/seo-supervisor/scripts/c
 import { applyChecks, findingsOf, knownChecks } from "../skills/seo-supervisor/scripts/lib/score.mjs";
 import { foundOn, quote } from "../skills/seo-supervisor/scripts/lib/findings.mjs";
 import { localData } from "../skills/seo-supervisor/scripts/checks/site-content.mjs";
+import { securityHeaders } from "../skills/seo-supervisor/scripts/checks/site-security.mjs";
+import { CHECKS as TLS_CHECKS } from "../skills/seo-supervisor/scripts/checks/tls.mjs";
 import { diffCrawls, timeline } from "../skills/seo-supervisor/scripts/seo-diff.mjs";
 
 // A rename for the test only, taken out again after each test that adds it.
@@ -217,6 +219,50 @@ test("a broken link, a link to a redirect and a link to a missing #part name the
   assert.deepEqual(ev("link-fragment-missing"), [
     { url: home, detail: `links to ${home}a/#missing, but that page has no such part` },
   ]);
+});
+
+// ---------- HSTS ----------
+test("the home page's HSTS header is read once, by hstsRead, for its max-age, subdomains and preload", () => {
+  const read = header => {
+    const found = [],
+      extra = {};
+    securityHeaders({
+      htmlPages: [],
+      home: {
+        finalUrl: "https://a.example/",
+        headers: new Headers({ "strict-transport-security": header, "permissions-policy": "x=()" }),
+      },
+      add: (k, u, d) => found.push([k, d]),
+      extra,
+      startOrigin: "https://a.example",
+      expectOrigin: "https://a.example",
+    });
+    return { found: found.filter(([k]) => k.startsWith("hsts")), extra };
+  };
+  assert.deepEqual(read('max-age="86400"; includeSubDomains').found, [["hsts-short", "max-age=86400 (1 day)"]]);
+  assert.deepEqual(read("max-age=600").found, [
+    ["hsts-short", "max-age=600 (under a day)"],
+    ["hsts-no-subdomains", "max-age=600"],
+  ]);
+  assert.deepEqual(
+    read("max-age=600; includeSubDomains, max-age=99999999").found,
+    [["hsts-short", "max-age=600 (under a day)"]],
+    "browsers use the first header only",
+  );
+  assert.deepEqual(
+    read("max-age=600; max-age=700").found.map(([k]) => k),
+    ["hsts-invalid"],
+    "a header browsers ignore isn't judged on its max-age too",
+  );
+  assert.deepEqual(read("max-age=63072000; includeSubDomains; preload"), {
+    found: [],
+    extra: { hstsPreload: { ready: true, missing: [] } },
+  });
+});
+
+test("a missing HSTS header is no-hsts whether the live check read it or the crawl did, and says nothing about a live site", () => {
+  assert.deepEqual(TLS_CHECKS["no-hsts"].slice(0, 2), ["TRUST-01", "low"]);
+  assert.equal(TLS_CHECKS["no-hsts"][2](1), "The site sends no Strict-Transport-Security header");
 });
 
 // ---------- "Found on" ----------

@@ -87,10 +87,11 @@ export const CHECKS = {
     "A temporary redirect tells search engines the old address may come back, so they can keep the http:// or other-host address in results and pass less signal to the real one.",
     "Make the redirect permanent: a 301 or 308 at the server or CDN.",
   ],
+  // One id for a missing header, from this live check or, without --check-live, from the crawled https home page.
   "no-hsts": [
     "TRUST-01",
     "low",
-    () => "The live site sends no Strict-Transport-Security header",
+    () => "The site sends no Strict-Transport-Security header",
     "Without HSTS, browsers can still make a first plain-HTTP request that can be intercepted.",
     "Send `Strict-Transport-Security: max-age=31536000; includeSubDomains` from the server or CDN.",
   ],
