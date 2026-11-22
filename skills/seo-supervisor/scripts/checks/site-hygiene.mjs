@@ -80,6 +80,7 @@ export async function hygieneChecks(site, UA) {
       bytes = r.over ? JS_CAPS.each : Buffer.byteLength(r.body);
     spent += bytes;
     return {
+      status: r.status,
       bytes,
       over: r.over,
       keys: r.over ? [] : [...new Set(secretsIn(r.body).map(k => `${k.label} (${k.shown})`))],
@@ -97,6 +98,8 @@ export async function hygieneChecks(site, UA) {
     const cap = Math.min(JS_CAPS.each, JS_CAPS.all - jsBytes),
       r = got[i],
       over = r.over || r.bytes > cap;
+
+    if (r.status >= 400) add("own-file-broken", from.sort()[0], `script ${src} → ${r.status}`);
     jsBytes += over ? cap : r.bytes;
     if (over) {
       jsUnread++;

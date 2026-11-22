@@ -44,6 +44,11 @@ export async function checkAssets(site, { images, shareImages }) {
   const icons = home?.html
     ? [...new Set([...declared.map(d => clean(toCrawl(d))).filter(onSite), START_ORIGIN + "/favicon.ico"])].slice(0, 5)
     : [];
+  // Stylesheets only: site-hygiene.mjs reads scripts whole for secret keys and reports their errors the same way.
+  const cssUse = new Map();
+  for (const p of htmlPages)
+    if (indexable(p)) for (const s of p.stylesheets || []) if (!cssUse.has(s)) cssUse.set(s, p.finalUrl);
+  const ownCss = [...cssUse].slice(0, 50);
   // One pool fetches every file below, schema images included. firstBytes keeps each answer, so the loops below
   // make no new requests and a file several checks use is fetched once.
   await pool(
@@ -53,12 +58,22 @@ export async function checkAssets(site, { images, shareImages }) {
         ...shareList.map(([c]) => c),
         ...productList.map(([c]) => c),
         ...icons,
+        ...ownCss.map(([s]) => s),
         ...schemaImageUrls(site).list.map(([c]) => c),
       ]),
     ],
     CONC,
     u => firstBytes(u),
   );
+  // A file that redirects off the site isn't followed or judged. Sources: own-file-broken in crawl/catalog.mjs.
+  for (const [kind, list] of [
+    ["image", imageList],
+    ["stylesheet", ownCss],
+  ])
+    for (const [src, page] of list) {
+      const r = await firstBytes(src);
+      if (r && r.status >= 400) add("own-file-broken", page, `${kind} ${src} → ${r.status}`);
+    }
   const imageRows = [];
   const imageInfo = new Map(); // caching, CDN and creator data per weighed image
   let weighed = 0; // PERF-08 counts as checked only when at least one image could be weighed

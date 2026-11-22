@@ -1,6 +1,6 @@
 // @ts-check
 // The crawl queue. seo-crawl.mjs runs it twice: the start page first, then the sitemap's URLs and every link found.
-import { FILE_EXT } from "../lib/html.mjs";
+import { FILE_EXT, tagsOf } from "../lib/html.mjs";
 import { PAGE_MAX, clean, urlOr } from "./fetch.mjs";
 import { agentRule, analyze, productImages } from "./page.mjs";
 import { challengeHeaders } from "../checks/bots.mjs";
@@ -63,6 +63,20 @@ export function createCrawler({
     seen.add(c);
     queue.push(c);
   }
+  // Own-origin stylesheets, for checks/assets.mjs.
+  const ownStylesheets = (html, base) => [
+    ...new Set(
+      tagsOf(html.replace(/<!--[\s\S]*?-->/g, " "), "link")
+        .filter(
+          l => l.href && /(^|\s)stylesheet(\s|$)/i.test(l.rel || "") && !/(^|\s)alternate(\s|$)/i.test(l.rel || ""),
+        )
+        .map(l => {
+          const x = urlOr(l.href.trim(), base);
+          return x && /^https?:$/.test(x.protocol) ? clean(toCrawl(x.href)) : null;
+        })
+        .filter(c => c && new URL(c).origin === START_ORIGIN),
+    ),
+  ];
   async function crawlOne(u) {
     const r = await follow(u);
     // A bot challenge isn't the page, so it stays out of the records and is never reported as broken; seo-crawl.mjs
@@ -101,7 +115,11 @@ export function createCrawler({
         );
         return;
       }
-      Object.assign(rec, a, { html: true, productImages: productImages(r.body) });
+      Object.assign(rec, a, {
+        html: true,
+        productImages: productImages(r.body),
+        stylesheets: ownStylesheets(r.body, a.base),
+      });
       rec.links = [];
       rec.mainLinks = new Set(a.mainHrefs.map(h => clean(h, a.base)).filter(Boolean));
       for (const l of a.anchors) {

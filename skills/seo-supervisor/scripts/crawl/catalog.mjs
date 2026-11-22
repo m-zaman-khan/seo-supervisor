@@ -1144,6 +1144,17 @@ Object.assign(CHECKS, PAGE_CHECKS);
 RULES["CONTENT-11"] ??= ["Nothing breaks Google's spam policies", "Headings & content"]; // never passed: see NOT_CRAWLABLE
 Object.assign(CHECKS, CRAWL_CHECKS);
 Object.assign(CHECKS, HYGIENE_CHECKS);
+// Raised by checks/assets.mjs. Error pages aren't indexed, images included, and Google indexes the page as rendered
+// with its scripts and stylesheets. Medium is a local choice.
+// https://developers.google.com/search/docs/appearance/google-images
+// https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics
+CHECKS["own-file-broken"] = [
+  "CRAWL-07",
+  "medium",
+  n => `${n} of the site's own images, scripts or stylesheets answer with an error (4xx/5xx)`,
+  "A page that loads a missing script or stylesheet looks and works differently from what you built, for visitors and for Google, which renders pages with their scripts and styles and indexes the result. A missing image shows as a broken icon and can't appear in image search, since Google doesn't index error answers.",
+  "Restore each file at its address, or change the pages to the file's new address (a hashed build file often moves on every deploy), and remove references to files you dropped.",
+];
 RULES["LAUNCH-04"] ??= ["Measure what visitors do", "Launch & monitoring"]; // only failed here; passing needs a look at the analytics setup
 // Sitemap, soft-404 and old-URL checks. Severities are local choices, in line with their siblings.
 Object.assign(CHECKS, {
