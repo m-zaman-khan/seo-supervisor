@@ -457,6 +457,38 @@
       "id": "C-017"
     },
     {
+      "check": "own-file-broken",
+      "rule": "CRAWL-07",
+      "severity": "medium",
+      "category": "Crawling & indexing",
+      "title": "4 of the site's own images, scripts or stylesheets answer with an error (4xx/5xx)",
+      "what": "4 cases, for example `http://127.0.0.1:<port>/tools/ssl-checker/` (image `http://127.0.0.1:<port>/a.png` → 404).",
+      "why": "A page that loads a missing script or stylesheet looks and works differently from what you built, for visitors and for Google, which renders pages with their scripts and styles and indexes the result. A missing image shows as a broken icon and can't appear in image search, since Google doesn't index error answers.",
+      "fix": "Restore each file at its address, or change the pages to the file's new address (a hashed build file often moves on every deploy), and remove references to files you dropped.",
+      "count": 4,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "image http://127.0.0.1:<port>/a.png → 404"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "image http://127.0.0.1:<port>/b.png → 404"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/legacy/",
+          "detail": "image http://127.0.0.1:<port>/big.png → 404"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/spa/",
+          "detail": "script http://127.0.0.1:<port>/bundle.js → 404"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-018"
+    },
+    {
       "check": "og-image-broken",
       "rule": "META-04",
       "severity": "medium",
@@ -482,7 +514,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-018"
+      "id": "C-019"
     },
     {
       "check": "desc-missing",
@@ -501,7 +533,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-019"
+      "id": "C-020"
     },
     {
       "check": "meta-refresh",
@@ -521,7 +553,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-020"
+      "id": "C-021"
     },
     {
       "check": "product-aggregate-offer",
@@ -541,7 +573,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-021"
+      "id": "C-022"
     },
     {
       "check": "hreflang-invalid-code",
@@ -561,7 +593,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-022"
+      "id": "C-023"
     },
     {
       "check": "favicon-missing",
@@ -581,7 +613,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-023"
+      "id": "C-024"
     },
     {
       "check": "untranslated-copy",
@@ -601,7 +633,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-024"
+      "id": "C-025"
     },
     {
       "check": "schema-image-broken",
@@ -621,7 +653,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-025"
+      "id": "C-026"
     },
     {
       "check": "no-large-preview",
@@ -670,7 +702,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-026"
+      "id": "C-027"
     },
     {
       "check": "twitter-card-missing",
@@ -707,7 +739,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-027"
+      "id": "C-028"
     },
     {
       "check": "desc-mismatch",
@@ -751,7 +783,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-028"
+      "id": "C-029"
     },
     {
       "check": "og-image-no-size",
@@ -785,7 +817,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-029"
+      "id": "C-030"
     },
     {
       "check": "thin-page",
@@ -825,7 +857,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-030"
+      "id": "C-031"
     },
     {
       "check": "jsonld-none",
@@ -859,7 +891,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-031"
+      "id": "C-032"
     },
     {
       "check": "sec-headers",
@@ -895,7 +927,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-032"
+      "id": "C-033"
     },
     {
       "check": "desc-length",
@@ -931,7 +963,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-033"
+      "id": "C-034"
     },
     {
       "check": "og-missing",
@@ -963,7 +995,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-034"
+      "id": "C-035"
     },
     {
       "check": "title-long",
@@ -987,7 +1019,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-035"
+      "id": "C-036"
     },
     {
       "check": "sitemap-not-in-robots",
@@ -1006,7 +1038,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-036"
+      "id": "C-037"
     },
     {
       "check": "content-signal-invalid",
@@ -1026,7 +1058,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-037"
+      "id": "C-038"
     },
     {
       "check": "llms-structure",
@@ -1046,7 +1078,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-038"
+      "id": "C-039"
     },
     {
       "check": "security-txt",
@@ -1066,7 +1098,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-039"
+      "id": "C-040"
     },
     {
       "check": "href-hash",
@@ -1086,7 +1118,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-040"
+      "id": "C-041"
     },
     {
       "check": "generic-anchor",
@@ -1106,7 +1138,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-041"
+      "id": "C-042"
     },
     {
       "check": "title-short",
@@ -1126,7 +1158,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-042"
+      "id": "C-043"
     },
     {
       "check": "noindex-review",
@@ -1145,7 +1177,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-043"
+      "id": "C-044"
     },
     {
       "check": "h1-multiple",
@@ -1165,7 +1197,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-044"
+      "id": "C-045"
     },
     {
       "check": "heading-skip",
@@ -1185,7 +1217,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-045"
+      "id": "C-046"
     },
     {
       "check": "img-alt",
@@ -1205,7 +1237,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-046"
+      "id": "C-047"
     },
     {
       "check": "img-dimensions",
@@ -1225,7 +1257,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-047"
+      "id": "C-048"
     },
     {
       "check": "lazy-lcp",
@@ -1245,7 +1277,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-048"
+      "id": "C-049"
     },
     {
       "check": "og-url-mismatch",
@@ -1265,7 +1297,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-049"
+      "id": "C-050"
     },
     {
       "check": "deprecated-schema",
@@ -1285,7 +1317,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-050"
+      "id": "C-051"
     },
     {
       "check": "product-no-shipping",
@@ -1305,7 +1337,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-051"
+      "id": "C-052"
     },
     {
       "check": "product-no-returns",
@@ -1325,7 +1357,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-052"
+      "id": "C-053"
     },
     {
       "check": "hreflang-no-xdefault",
@@ -1344,7 +1376,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-053"
+      "id": "C-054"
     },
     {
       "check": "no-speculation-rules",
@@ -1364,7 +1396,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-054"
+      "id": "C-055"
     },
     {
       "check": "link-to-redirect",
@@ -1384,7 +1416,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-055"
+      "id": "C-056"
     },
     {
       "check": "img-no-srcset",
@@ -1404,7 +1436,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-056"
+      "id": "C-057"
     },
     {
       "check": "hreflang-missing-version",
@@ -1424,7 +1456,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-057"
+      "id": "C-058"
     },
     {
       "check": "sitemap-missing-small",
@@ -1444,7 +1476,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-058"
+      "id": "C-059"
     },
     {
       "check": "head-tags-late",
@@ -1464,7 +1496,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-059"
+      "id": "C-060"
     }
   ],
   "passed": [

@@ -85,12 +85,12 @@ export async function probeSite({
   let mdHome = null;
   const isMd = /^text\/markdown/i.test(md.ct);
   if (isMd) evalRules("AI-05");
-  const vary = (md.headers.get("vary") || "")
+  const vary = (md.headers?.get("vary") || "")
     .toLowerCase()
     .split(",")
     .map(v => v.trim()); // Accept-Encoding isn't Accept
   if (isMd && !vary.includes("accept") && !vary.includes("*"))
-    add("markdown-no-vary", START.href, `Vary: ${md.headers.get("vary") || "(none)"}`);
+    add("markdown-no-vary", START.href, `Vary: ${md.headers?.get("vary") || "(none)"}`);
   if (md.status === 200 && isMd && !md.over) mdHome = md.body;
   if (sectxt.status !== 200 || /<html/i.test(sectxt.body || ""))
     add(
