@@ -167,7 +167,7 @@ export async function fetchGoogle({
   const newQueries = await readNewQueries(c, days, queries, queriesRead, prevStart, prevEnd);
   const searchTypes = await readSearchTypes(c);
   const { byDevice, byCountry } = await readDeviceAndCountry(c);
-  const brandSplit = await readBrandSplit(c);
+  const brandSplit = await readBrandSplit(c, days, prevStart, prevEnd);
   const inspection = await inspectPages(c, crawl, inspect, traffic, urls);
   const sitemaps = await readSitemaps(c);
   const { analytics, gaProp, gaRead } = await readAnalytics(c, scope, ga4Property);
@@ -263,6 +263,7 @@ async function readSiteTotals({ attempt, prop, sa }, queries, queriesRead) {
 
 // A drop is at least 20 clicks and 30% lost: below 20 a small page's weekly swing looks like a drop, and a big page
 // loses 20 to noise.
+const dropped = (before, after) => before - after >= 20 && after <= before * 0.7;
 async function readTrafficChange(
   { attempt, notes, prop, startDate, endDate, rowsFor, pathOf },
   days,
@@ -290,7 +291,7 @@ async function readTrafficChange(
       }
       const drops = Object.entries(before)
         .map(([path, b]) => ({ path, before: b.clicks, after: traffic[path]?.clicks || 0 }))
-        .filter(d => d.before - d.after >= 20 && d.after <= d.before * 0.7)
+        .filter(d => dropped(d.before, d.after))
         .sort((a, b) => b.before - b.after - (a.before - a.after))
         .slice(0, 10);
       trafficChange = {
@@ -373,19 +374,43 @@ async function readDeviceAndCountry({ attempt, sa }) {
 // brandedClassification has data from 21 Feb 2026, only for top-level properties with enough searches; others get no
 // rows. It can't be combined with a query filter.
 // https://developers.google.com/search/blog/2026/11/search-analytics-api-update
-async function readBrandSplit({ attempt, notes, sa }) {
+// The period before is compared only when fully labelled, so a non-brand fall hidden by brand growth is noted.
+const BRAND_FROM = "2026-02-21";
+async function readBrandSplit({ attempt, notes, sa }, days, prevStart, prevEnd) {
   let brandSplit = null;
   await attempt("the brand and non-brand split in Search Console", SC_API, async () => {
-    const rows = (await sa({ dimensions: ["brandedClassification"] })).rows || [],
-      side = k => rows.find(r => r.keys?.[0] === k);
-    if (side("BRANDED") || side("NON_BRANDED"))
-      brandSplit = {
-        branded: ci(side("BRANDED") || { clicks: 0, impressions: 0 }),
-        nonBranded: ci(side("NON_BRANDED") || { clicks: 0, impressions: 0 }),
-      };
-    else
-      notes.push(
+    const split = async (dates = {}) => {
+      const rows = (await sa({ ...dates, dimensions: ["brandedClassification"] })).rows || [],
+        side = k => rows.find(r => r.keys?.[0] === k);
+      return side("BRANDED") || side("NON_BRANDED")
+        ? {
+            branded: ci(side("BRANDED") || { clicks: 0, impressions: 0 }),
+            nonBranded: ci(side("NON_BRANDED") || { clicks: 0, impressions: 0 }),
+          }
+        : null;
+    };
+    brandSplit = await split();
+    if (!brandSplit)
+      return void notes.push(
         "Search Console labels brand searches only for top-level properties with enough searches (data from 21 Feb 2026), and this property isn't eligible, so there's no brand and non-brand split.",
+      );
+    if (2 * days + 2 > 482) return; // no full period before: readTrafficChange's note says so
+    if (prevStart < BRAND_FROM)
+      return void notes.push(
+        `Search Console labels brand searches from 21 Feb 2026, and the period before starts on ${prevStart}, so the brand and non-brand split isn't compared with the period before.`,
+      );
+    const was = await split({ startDate: prevStart, endDate: prevEnd });
+    if (!was) return;
+    brandSplit.previous = { from: prevStart, to: prevEnd, ...was };
+    const [b0, b1, n0, n1] = [
+      was.branded.clicks,
+      brandSplit.branded.clicks,
+      was.nonBranded.clicks,
+      brandSplit.nonBranded.clicks,
+    ];
+    if (dropped(n0, n1))
+      notes.push(
+        `Searches other than your brand fell from ${n0} to ${n1} clicks (-${Math.round(100 * (1 - n1 / n0))}%) compared with the period before (${prevStart} to ${prevEnd})${b1 > b0 ? `, while brand searches grew from ${b0} to ${b1}, so the site's total hides the fall` : ""}.`,
       );
   });
   return brandSplit;

@@ -1159,11 +1159,14 @@ test("fetch: Google's own brand vs non-brand split, and Google Lens and Circle t
   store(home);
   try {
     const r = await fetchWith(g, home, { ga4Property: "222" });
+    const { previous, ...now } = r.brandSplit;
     assert.deepEqual(
-      r.brandSplit,
+      now,
       { branded: { clicks: 80, impressions: 1200 }, nonBranded: { clicks: 75, impressions: 5000 } },
       "an unknown label is left out",
     );
+    // The period before is read too (this fake answers the same rows for it).
+    assert.deepEqual(previous, { from: daysAgo(182), to: daysAgo(93), ...now });
     assert.deepEqual(r.searchTypes.webMultimodal, {
       clicks: 6,
       impressions: 400,
