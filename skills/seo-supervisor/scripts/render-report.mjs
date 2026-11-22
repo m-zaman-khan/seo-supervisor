@@ -48,7 +48,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     googleUpdatesText,
     desktopSpeedText,
   } = overviewLines(m);
-  const { linked, linksHtml, linksMd, moreLinks, linkIdeasHtml, linkIdeasMd, linkedOnce, linkStrength } = linkPanels(m);
+  const { linked, linksHtml, linksMd, moreLinks, linkIdeas, queryGaps, linkedOnce, linkStrength } = linkPanels(m);
   const {
     trafficFor,
     trafficOf,
@@ -113,7 +113,8 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     drawn(posts),
     drawn(timeline),
     drawn(pageScores),
-    [linkIdeasHtml, linkIdeasMd],
+    drawn(linkIdeas),
+    drawn(queryGaps),
     drawn(changeCheck),
     drawn(linkedOnce),
     drawn(appsPdfs),

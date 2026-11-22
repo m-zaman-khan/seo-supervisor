@@ -300,50 +300,41 @@ export function linkPanels({ raw }) {
   // Google uses links for relevance and to find pages; the query-gap idea is from Chen and Koudas, a preprint.
   // https://developers.google.com/search/docs/crawling-indexing/links-crawlable
   // https://arxiv.org/abs/2610.15033
-  const ideaGroups = (code, text) =>
-    /** @type {[string, string, string, string[][]][]} */ ([
-      [
-        "linkideas",
-        "Internal link ideas",
-        "Pages that mention a search another page shows for in Google, but don't link to that page. A link from them, in a sentence about the search, helps people and Google find the page that answers it. From Search Console and the crawl. Information only: none of this changes the score.",
-        ideaRows("linkIdeas", "from").map(i => [
-          code(i.page),
-          `${text(`gets ${plural(i.impressions, "impression")} for “${i.query}”. Pages that mention it but don't link to it:`)} ${i.from.map(code).join(", ")}`,
-        ]),
+  const ideaPanel = (cls, title, intro, rows) =>
+    rows.length && {
+      cls,
+      title,
+      blocks: [
+        { p: intro },
+        { rows, cap: 10 },
+        rows.length > 10 && {
+          page: [`${num(rows.length - 10)} more in `, { code: "seo-audit/keyword-ideas.md" }, "."],
+        },
       ],
-      [
-        "querygaps",
-        "Searches a page doesn't mention",
-        "Searches a page shows for in Google whose words its title, H1 and main text don't use. A page can't answer a search well if it never mentions it, and a 2026 study of AI answers (Chen and Koudas, a preprint, not yet peer reviewed) found that pages whose title and paragraphs match the questions people ask get cited more. Add the words only where they fit the page. Information only: none of this changes the score.",
-        ideaRows("queryGaps", "missing").map(i => [
-          code(i.page),
-          text(
-            `shows for “${i.query}” (${plural(i.impressions, "impression")}), but doesn't use: ${i.missing.join(", ")}.`,
-          ),
-        ]),
-      ],
-    ]).filter(([, , , rows]) => rows.length);
-  const linkIdeasHtml = () =>
-    ideaGroups(s => `<code>${esc(s)}</code>`, esc)
-      .map(
-        ([cls, title, intro, rows]) =>
-          `\n    <details class="how ${cls}"><summary>${esc(title)}</summary><p>${esc(intro)}</p><ul class="lim">${rows
-            .slice(0, 10)
-            .map(([k, v]) => `<li><b>${k}</b><span>${v}</span></li>`)
-            .join(
-              "",
-            )}</ul>${rows.length > 10 ? `<p>${num(rows.length - 10)} more in <code>seo-audit/keyword-ideas.md</code>.</p>` : ""}</details>`,
-      )
-      .join("");
-  const linkIdeasMd = () =>
-    ideaGroups(noteCode, noteMd).flatMap(([, title, intro, rows]) => [
-      `## ${title}`,
-      "",
-      intro,
-      "",
-      ...rows.map(([k, v]) => `- ${k} ${v}`),
-      "",
-    ]);
+    };
+  const linkIdeas = () =>
+    ideaPanel(
+      "linkideas",
+      "Internal link ideas",
+      "Pages that mention a search another page shows for in Google, but don't link to that page. A link from them, in a sentence about the search, helps people and Google find the page that answers it. From Search Console and the crawl. Information only: none of this changes the score.",
+      ideaRows("linkIdeas", "from").map(i => [
+        { code: i.page },
+        [
+          `gets ${plural(i.impressions, "impression")} for “${i.query}”. Pages that mention it but don't link to it: `,
+          i.from.map((p, n) => [n ? ", " : "", { code: p }]),
+        ],
+      ]),
+    );
+  const queryGaps = () =>
+    ideaPanel(
+      "querygaps",
+      "Searches a page doesn't mention",
+      "Searches a page shows for in Google whose words its title, H1 and main text don't use. A page can't answer a search well if it never mentions it, and a 2026 study of AI answers (Chen and Koudas, a preprint, not yet peer reviewed) found that pages whose title and paragraphs match the questions people ask get cited more. Add the words only where they fit the page. Information only: none of this changes the score.",
+      ideaRows("queryGaps", "missing").map(i => [
+        { code: i.page },
+        `shows for “${i.query}” (${plural(i.impressions, "impression")}), but doesn't use: ${i.missing.join(", ")}.`,
+      ]),
+    );
   // Indexable pages with exactly one internal link in: the first 20, capped when the crawl stopped at --max. Paths are
   // escaped.
   const linkedOnce = (o =>
@@ -413,14 +404,5 @@ export function linkPanels({ raw }) {
         { rows: strength.weak.map(x => [{ code: x.u }, weakTail(x)]) },
       ],
     };
-  return {
-    linked,
-    linksHtml,
-    linksMd,
-    moreLinks,
-    linkIdeasHtml,
-    linkIdeasMd,
-    linkedOnce: linkedOncePanel,
-    linkStrength,
-  };
+  return { linked, linksHtml, linksMd, moreLinks, linkIdeas, queryGaps, linkedOnce: linkedOncePanel, linkStrength };
 }
