@@ -780,7 +780,8 @@ checkCoverage(site, {
             })();
           if (r.status === 404 || r.status === 410)
             for (const f of from) add("hreflang-bad-target", f.url, `${f.lang} → ${target} (status ${r.status})`);
-          else if (!there) away.push(`${target} (${r.error || `status ${r.status}`})`);
+          else if (!there)
+            away.push(`${quote(target)} (${r.error || `status ${r.status}`})`); // quoted: the target is site text
           else
             for (const f of from)
               if (!linksBack(there.hreflang, r.finalUrl, f.url, toCrawl))

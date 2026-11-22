@@ -4,6 +4,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { containerArgs } from "../lib/cdp.mjs";
+import { quote } from "../lib/findings.mjs";
 import { redact } from "../lib/redact.mjs";
 import { addressCheck, compareRendered, gateOf, guardTab, openSession } from "./render.mjs";
 
@@ -998,8 +999,8 @@ export async function checkPages(
               p => evaluate(p, `(${landed})(${JSON.stringify(dm.target)})`),
             );
           } catch (e) {
-            M.notes.push(`Couldn't test a jump to #${dm.target} on ${url} (${why(e)}).`);
-          }
+            M.notes.push(`Couldn't test a jump to ${quote(`#${dm.target}`)} on ${url} (${why(e)}).`);
+          } // the jump link is page text
         rec.errors = [...errors].slice(0, 10);
         M.pages.push(rec);
         if (addsText(rec.words.html, rec.words.rendered))

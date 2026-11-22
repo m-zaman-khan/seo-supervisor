@@ -2,6 +2,7 @@
 // Sitemap reading for the crawler, and the findings on the files and their entries.
 import { attrs, decode, tagsOf } from "../lib/html.mjs";
 import { clean } from "../crawl/fetch.mjs";
+import { quote } from "../lib/findings.mjs";
 import { pool } from "../crawl/queue.mjs";
 
 const SITEMAP_URLS = 50000; // the protocol's limit per file: Google reads no further
@@ -371,10 +372,11 @@ export function checkSitemapEntries(
     return !d || new Date(Date.UTC(y, m - 1, d)).getUTCDate() === d;
   };
   const validLastmod = s => W3C_DATE.test(s) && realDay(s);
+  // File URLs are site text (robots.txt's Sitemap: lines, an index's <loc>), so the notes quote and shorten them.
   for (const f of sm.files)
     if (f.retired)
       notes.push(
-        `${f.url} uses image or video sitemap tags Google has retired: ${f.retired.join(", ")}. Google has ignored them since August 2022, so they do no harm, but they can go when the sitemap code is next touched.`,
+        `${quote(f.url)} uses image or video sitemap tags Google has retired: ${f.retired.join(", ")}. Google has ignored them since August 2022, so they do no harm, but they can go when the sitemap code is next touched.`,
       );
   const bySitemap = new Map();
   for (const e of sm.entries) (bySitemap.get(e.sitemap) || bySitemap.set(e.sitemap, []).get(e.sitemap)).push(e);
@@ -424,7 +426,7 @@ export function checkSitemapEntries(
     const hinted = es.filter(e => e.hints).length;
     if (hinted)
       notes.push(
-        `${file}: ${hinted} of ${es.length} entries use <priority> or <changefreq>. Google and Bing ignore both, so they can go when the sitemap code is next touched; an accurate lastmod is the signal that counts.`,
+        `${quote(file)}: ${hinted} of ${es.length} entries use <priority> or <changefreq>. Google and Bing ignore both, so they can go when the sitemap code is next touched; an accurate lastmod is the signal that counts.`,
       );
     // A news sitemap, per Google's rules: the required tags, a full W3C date, articles from the last two days (a day
     // of slack for time zones and date-only values), and at most 1,000 of them.
