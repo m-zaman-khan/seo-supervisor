@@ -534,6 +534,16 @@ test("a one-URL check of a deep page (--max 1) doesn't judge it as the home page
     assert.ok(!r.findings.some(f => f.check === id), id);
 });
 
+test("on a local crawl with --site-origin, a full link to the public site joins the crawl and the link graph", async () => {
+  const r = await crawlSite({
+    "/": page("Boiler repairs in Leeds", `<a href="${ORIGIN}/a/">Servicing</a>`),
+    "/a/": page("Boiler servicing", `<a href="/">Home</a>`),
+  });
+  const a = r.pages.find(p => pathOf(p.url) === "/a/");
+  assert.ok(a, JSON.stringify(r.pages.map(p => p.url)));
+  assert.equal(a.linksIn, 1);
+});
+
 test("Cloudflare's own /cdn-cgi/ addresses aren't crawled as pages", async () => {
   const asked = [];
   const before = req => {

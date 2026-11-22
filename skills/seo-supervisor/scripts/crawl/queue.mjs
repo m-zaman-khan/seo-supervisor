@@ -121,10 +121,17 @@ export function createCrawler({
         stylesheets: ownStylesheets(r.body, a.base),
       });
       rec.links = [];
-      rec.mainLinks = new Set(a.mainHrefs.map(h => clean(h, a.base)).filter(Boolean));
+      // On a local crawl with --site-origin, an absolute link to the public origin means the crawled page.
+      rec.mainLinks = new Set(
+        a.mainHrefs
+          .map(h => clean(h, a.base))
+          .filter(Boolean)
+          .map(toCrawl),
+      );
       for (const l of a.anchors) {
         if (!l.href || /^(mailto|tel|javascript|sms):/i.test(l.href)) continue;
-        const c = clean(l.href, a.base);
+        const raw = clean(l.href, a.base),
+          c = raw && toCrawl(raw);
         if (!c) continue;
         if (new URL(c).origin !== START_ORIGIN) continue;
         rec.links.push({ url: c, text: l.text });
