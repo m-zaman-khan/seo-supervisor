@@ -1513,6 +1513,12 @@
     "nonBranded": {
       "clicks": 900,
       "impressions": 44000
+    },
+    "previous": {
+      "from": "2026-05-22",
+      "to": "2026-08-19",
+      "branded": { "clicks": 60, "impressions": 1000 },
+      "nonBranded": { "clicks": 1200, "impressions": 50000 }
     }
   },
   "anomalies": [
@@ -3936,6 +3942,51 @@
       "Two spots were checked again after a timeout."
     ]
   },
+  "queries": [
+    { "query": "combi boiler cost", "clicks": 310, "impressions": 9100, "ctr": 0.0341, "position": 4.2 },
+    { "query": "emergency plumber <zurich>", "clicks": 220, "impressions": 4800, "ctr": 0.0458, "position": 2.1 },
+    { "query": "boiler service near me", "clicks": 40, "impressions": 6200, "ctr": 0.0065, "position": 11.3 }
+  ],
+  "inspection": [
+    { "url": "https://www.example.com/", "verdict": "PASS", "coverageState": "Submitted and indexed", "lastCrawlTime": "2026-11-18T06:12:00Z", "googleCanonical": "https://www.example.com/", "userCanonical": "https://www.example.com/" },
+    { "url": "https://www.example.com/boilers/combi/", "verdict": "NEUTRAL", "coverageState": "Crawled - currently not indexed", "lastCrawlTime": "2026-11-02T10:00:00Z" },
+    { "url": "https://www.example.com/plumber-zurich/", "verdict": "PASS", "coverageState": "Submitted and indexed", "lastCrawlTime": "2026-11-15T09:30:00Z", "googleCanonical": "https://www.example.com/zurich/", "userCanonical": "https://www.example.com/plumber-zurich/" }
+  ],
+  "logScan": {
+    "source": "server-logs",
+    "since": null,
+    "period": { "from": "2026-10-21T00:02:11.000Z", "to": "2026-11-19T23:58:40.000Z" },
+    "stats": { "files": 2, "lines": 184200, "parsed": 184100, "unparsed": 100, "beforeSince": 0, "undated": 0 },
+    "bots": {
+      "Googlebot": { "vendor": "Google", "group": "search", "purpose": "Google Search", "requests": 9200, "paths": 1180, "status": { "2xx": 8900, "3xx": 200, "4xx": 90, "5xx": 10 }, "ipCheck": { "verified": 9150, "other": 50, "unknown": 0 } },
+      "GPTBot": { "vendor": "OpenAI", "group": "ai-training", "purpose": "Training", "requests": 1400, "paths": 600, "status": { "2xx": 1400, "3xx": 0, "4xx": 0, "5xx": 0 } },
+      "OAI-SearchBot": { "vendor": "OpenAI", "group": "ai-search", "purpose": "ChatGPT search", "requests": 310, "paths": 140, "status": { "2xx": 300, "3xx": 10, "4xx": 0, "5xx": 0 } }
+    },
+    "aiReferrals": { "chatgpt.com": { "visits": 84, "topPages": [{ "path": "/boilers/combi/", "visits": 40 }, { "path": "/", "visits": 22 }] }, "perplexity.ai": { "visits": 9, "topPages": [{ "path": "/faq/", "visits": 9 }] } },
+    "googleReferrals": { "visits": 2310, "topPages": [{ "path": "/", "visits": 900 }, { "path": "/boilers/", "visits": 610 }] },
+    "repeated404s": [{ "path": "/old-offers/", "requests": 46, "bots": ["Googlebot", "bingbot"] }],
+    "notes": [],
+    "findings": []
+  },
+  "keywordIdeas": {
+    "tool": "seo-supervisor-keyword-ideas",
+    "period": "Last 3 months",
+    "brand": "Example Plumbing",
+    "almostThere": [{ "phrase": "boiler service near me", "source": "Search Console", "evidence": { "impressions": 6200, "clicks": 40, "position": 11.3, "page": "/boilers/service/" }, "use": "Improve /boilers/service/ for this query." }],
+    "gaps": [{ "phrase": "heat pump grants", "source": "Search Console", "evidence": { "impressions": 900, "clicks": 2, "position": 24, "page": "/" }, "use": "No page's title or H1 is about this." }],
+    "questions": [{ "phrase": "how long does a boiler last", "source": "Search Console", "evidence": { "impressions": 450, "clicks": 9, "position": 7.1, "page": "/boilers/" }, "use": "Answer it in an FAQ." }],
+    "extra": [],
+    "linkIdeas": null,
+    "queryGaps": null,
+    "notes": []
+  },
+  "pages": [
+    { "url": "https://www.example.com/", "schema": ["Organization", "WebSite"], "schemaOther": [] },
+    { "url": "https://www.example.com/boilers/combi/", "schema": ["Product", "BreadcrumbList"], "schemaOther": [] },
+    { "url": "https://www.example.com/boilers/system/", "schema": ["BreadcrumbList", "Product"], "schemaOther": [] },
+    { "url": "https://www.example.com/plumber-zurich/", "schema": ["Plumber"], "schemaOther": ["BreadcrumbList"] },
+    { "url": "https://www.example.com/contact/", "schema": [], "schemaOther": [] }
+  ],
   "plan": {
     "status": "approved",
     "approvedOn": "2026-11-18",

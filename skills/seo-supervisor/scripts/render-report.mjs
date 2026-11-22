@@ -11,6 +11,7 @@ import { Fail, runMain } from "./lib/cli.mjs";
 import { parseArgs } from "./lib/args.mjs";
 import { SEV_LABEL } from "./report/format.mjs";
 import { buildModel } from "./report/model.mjs";
+import { loadSources } from "./report/sources.mjs";
 import { overviewLines } from "./report/overview-lines.mjs";
 import { searchTraffic } from "./report/traffic.mjs";
 import { diffParts } from "./report/diff.mjs";
@@ -35,7 +36,8 @@ import { drawn } from "./report/panel.mjs";
  * @returns {{ html: string, md: string | null, receipt: string[] }} receipt: the lines printed before "Wrote:"
  */
 export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
-  const m = { raw, mdFile, ...buildModel(raw, dir) };
+  const { raw: full, notShown } = loadSources(raw, dir),
+    m = { raw: full, mdFile, notShown, ...buildModel(full, dir) }; // adds the result files beside the audit
   const plan = raw.plan && typeof raw.plan === "object" ? raw.plan : null;
   // Each module builds its parts from the model; what one needs from another is passed in by name.
   const {
