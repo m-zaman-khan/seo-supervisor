@@ -6,12 +6,13 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, resolve, basename } from "node:path";
 import { planStats, planHtml, planMarkdown, PLAN_CSS } from "./report-plan.mjs";
-import { fmtCwv, passes, band } from "./checks/speed.mjs";
+import { band } from "./checks/speed.mjs";
 import { VERSION } from "./update-check.mjs";
 import { SEV, isOpen, score, bandOf, OWN_SCORE } from "./lib/score.mjs";
 import { recheckOf, RECHECK_NOTE } from "./lib/recheck.mjs";
 import { isMain } from "./lib/is-main.mjs";
 import { buildModel, needsYou } from "./report/model.mjs";
+import { overviewLines, LCP_PART } from "./report/overview-lines.mjs";
 import { searchTraffic, visitsOf, isoDates, byPath } from "./report/traffic.mjs";
 import {
   SEV_LABEL,
@@ -143,128 +144,16 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
         ${who ? `<p class="u-s">${who}</p>` : ""}
       </div>`;
   }
-  // Origin field data, else the first page's, each metric with its band.
-  function speedText() {
-    const s = raw.speed;
-    if (!s || (!(s.samples || []).length && !s.trend)) return "";
-    const v = (s.samples || []).find(x => x.origin)?.origin || (s.samples || []).find(x => x.field)?.field;
-    const now = (s.samples || []).length
-      ? v
-        ? `${bandedCwv(v)}, ${passes(v) ? "passes" : "fails"} Core Web Vitals`
-        : "not enough visits for field data yet"
-      : "";
-    const l = s.trend?.lcp,
-      trend = l
-        ? `over ${s.trend.weeks} weeks: LCP ${(l[0] / 1000).toFixed(1)} → ${(l[1] / 1000).toFixed(1)} s (${l[1] < l[0] * 0.95 ? "better" : l[1] > l[0] * 1.05 ? "worse" : "steady"})`
-        : "";
-    return `Real-user speed (${s.strategy || "mobile"}): ${[now, trend].filter(Boolean).join(" · ")}`;
-  }
-  // Ahrefs' licence requires its credit beside the numbers.
-  function authorityText() {
-    const a = Array.isArray(raw.authority) ? raw.authority : [];
-    const scores = x =>
-      [
-        x.openPageRank != null && `Open PageRank ${Number(x.openPageRank).toFixed(1)}`,
-        x.ahrefsDR != null && `Domain Rating ${Number(x.ahrefsDR).toFixed(0)}`,
-      ]
-        .filter(Boolean)
-        .join(" · ");
-    const [site, ...rivals] = a,
-      parts = a.length
-        ? [scores(site), ...rivals.filter(r => scores(r)).map(r => `${r.domain}: ${scores(r)}`)].filter(Boolean)
-        : [];
-    return parts.length ? `Authority: ${parts.join("; ")}` : "";
-  }
-  // The credit goes wherever a Domain Rating shows, whether or not the file carries the attribution.
-  const ahrefsCredit = () =>
-    (raw.authority || []).some(x => x.ahrefsDR != null)
-      ? raw.attribution || { text: "Domain Rating by Ahrefs", url: "https://ahrefs.com/" }
-      : null;
-  // The crawler's throttled phone load: the home page, else the first page.
-  function labSpeedText() {
-    const l = (raw.labSpeed || []).filter(x => x.lcp != null),
-      x = l.find(x => new URL(x.url).pathname === "/") || l[0];
-    return x
-      ? `Lab speed, slow mobile (indicative): ${fmtCwv(x)} · TBT ${Math.round(x.tbt || 0)} ms on ${new URL(x.url).pathname === "/" ? "the home page" : new URL(x.url).pathname}`
-      : "";
-  }
-  // LCP's four parts (speed.lcpBreakdown, in ms), each with its fix.
-  const LCP_PART = {
-    ttfb: ["the server's response", "Cache pages, serve them from a CDN or use a faster server."],
-    loadDelay: [
-      "the wait before the main image starts loading",
-      'Preload the hero image, give it fetchpriority="high" and don\'t lazy-load it.',
-    ],
-    loadDuration: ["downloading the main image", "Make it smaller and serve it in a modern format (WebP or AVIF)."],
-    renderDelay: [
-      "drawing it on screen",
-      "Cut render-blocking CSS and JavaScript, and build the page on the server rather than in the browser.",
-    ],
-  };
-  function lcpText() {
-    const b = raw.speed?.lcpBreakdown;
-    if (!b) return "";
-    const [k] = Object.keys(LCP_PART).sort((x, y) => (b[y] || 0) - (b[x] || 0)),
-      path = b.source === "lab" && new URL(b.url).pathname;
-    return `LCP breakdown (${path ? `lab test, ${path === "/" ? "home page" : path}` : "real visitors"}): most of the time goes on ${LCP_PART[k][0]} (${(b[k] / 1000).toFixed(1)} s). ${LCP_PART[k][1]}`;
-  }
-  // More than the default 5 pages (--lighthouse all) adds the three lowest performance scores.
-  function lighthouseText() {
-    const l = raw.lighthouse || [],
-      x = l.find(x => new URL(x.url).pathname === "/") || l[0],
-      s = x?.scores || {};
-    const parts = [
-      ["Performance", s.performance],
-      ["SEO", s.seo],
-      ["Accessibility", s.accessibility],
-      ["Best practices", s.bestPractices],
-    ].filter(([, v]) => v != null);
-    const scored =
-      l.length > 5
-        ? l.filter(y => y.scores?.performance != null).sort((a, b) => a.scores.performance - b.scores.performance)
-        : [];
-    const slowest = scored.length
-      ? `. Lowest performance of ${scored.length} pages: ${scored
-          .slice(0, 3)
-          .map(y => `${new URL(y.url).pathname} ${y.scores.performance}`)
-          .join(" · ")}`
-      : "";
-    return parts.length
-      ? `Lighthouse (mobile, ${new URL(x.url).pathname === "/" ? "home page" : new URL(x.url).pathname}): ${parts.map(([k, v]) => `${k} ${v}`).join(" · ")}${slowest}`
-      : "";
-  }
-  // Names and dates only: the line never says an update caused anything.
-  function googleUpdatesText(html = false) {
-    const g = obj(raw.googleUpdates),
-      isDay = s => /^\d{4}-\d{2}-\d{2}$/.test(s);
-    if (!g || !Array.isArray(g.updates)) return "";
-    const day = (d, year) =>
-      new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", {
-        day: "numeric",
-        month: "short",
-        ...(year && { year: "numeric" }),
-        timeZone: "UTC",
-      });
-    const span = (a, b) =>
-      !isDay(b)
-        ? `${day(a)}, still rolling out`
-        : a === b
-          ? day(a)
-          : a.slice(0, 7) === b.slice(0, 7)
-            ? `${+a.slice(8)}–${day(b)}`
-            : `${day(a)} – ${day(b)}`;
-    const text = html ? esc : s => String(s).replace(/[\\`*_[\]<>]/g, "\\$&"); // feed text: escaped for HTML or Markdown
-    const name = u =>
-      html && /^https?:\/\//i.test(u.url) ? `<a href="${esc(u.url)}" rel="noopener">${esc(u.name)}</a>` : text(u.name);
-    const list = g.updates
-      .filter(u => obj(u) && u.name && isDay(u.start))
-      .map(u => `${name(u)} (${span(u.start, u.end)})`);
-    const none =
-      isDay(g.from) && isDay(g.to)
-        ? `none were announced between ${day(g.from, g.from.slice(0, 4) !== g.to.slice(0, 4))} and ${day(g.to, true)}`
-        : "none were announced";
-    return `Google ranking updates in this period: ${list.length ? list.join(" · ") : none}${g.note ? `. ${text(g.note)}` : ""}`;
-  }
+  const {
+    speedText,
+    authorityText,
+    ahrefsCredit,
+    labSpeedText,
+    lcpText,
+    lighthouseText,
+    googleUpdatesText,
+    desktopSpeedText,
+  } = overviewLines(m);
 
   // ---------- breadth panels: an empty one adds nothing to the output ----------
   // Score views: trust signals, Local SEO, Content quality.
@@ -594,30 +483,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
           "",
         ]
       : [];
-
-  // The desktop line (--desktop): origin field data, else the first page's, plus the desktop trend. bandedCwv gives
-  // LCP, INP and CLS, each with Google's good / needs improvement / poor band.
-  function bandedCwv(v) {
-    return [
-      `LCP ${(v.lcp / 1000).toFixed(1)} s (${band("lcp", v.lcp)})`,
-      v.inp != null && `INP ${Math.round(v.inp)} ms (${band("inp", v.inp)})`,
-      v.cls != null && `CLS ${Math.round(v.cls * 100) / 100} (${band("cls", v.cls)})`,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-  }
-  function desktopSpeedText() {
-    const s = raw.speed?.desktop,
-      samples = s?.samples || [];
-    if (!s || (!samples.length && !s.trend)) return "";
-    const v = samples.find(x => x.origin)?.origin || samples.find(x => x.field)?.field;
-    const now = !samples.length ? "" : !v ? "not enough visits for field data yet" : bandedCwv(v);
-    const l = s.trend?.lcp,
-      trend = l
-        ? `over ${s.trend.weeks} weeks: LCP ${(l[0] / 1000).toFixed(1)} → ${(l[1] / 1000).toFixed(1)} s (${l[1] < l[0] * 0.95 ? "better" : l[1] > l[0] * 1.05 ? "worse" : "steady"})`
-        : "";
-    return `Real-user speed (desktop): ${[now, trend].filter(Boolean).join(" · ")}`;
-  }
 
   // Images ranked by what converting or resizing them would save, top 15. Crawled text is escaped.
   const imageRows = (Array.isArray(raw.images) ? raw.images : [])
