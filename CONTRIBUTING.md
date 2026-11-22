@@ -8,9 +8,10 @@ Thanks for helping. The most valuable contributions are rule updates when search
 git clone https://github.com/m-zaman-khan/seo-supervisor
 cd seo-supervisor
 npm test            # Node 22+, no dependencies to install
+npm run test:browser   # the tests that launch Chrome or Edge (slow; Chrome must be installed)
 ```
 
-The tests crawl a small fixture site (`test/fixture-site/`) that has one planted problem per checked rule. They also scan sample content, render the report and run the installer in a temporary home folder.
+The tests crawl a small fixture site (`test/fixture-site/`) that has one planted problem per checked rule. They also scan sample content, render the report and run the installer in a temporary home folder. `npm test` runs offline: `test/offline.mjs` refuses any connection or DNS lookup off this machine and any browser start, and fails the run if one is tried. After a change that alters output on purpose, rewrite the golden snapshots with `node test/golden/update.mjs` and check the diff. `node test/bench/run.mjs` times a 500-page crawl.
 
 ## Where things live
 
@@ -35,4 +36,4 @@ Run `npm run demo` afterwards. It refreshes `docs/index.html` (the live demo) an
 ## Pull requests
 
 - Keep each one focused, and add a line to `CHANGELOG.md`.
-- `npm test` must pass. CI runs it on Node 22, 24 and 26.
+- `npm test` must pass (CI runs it on Node 22, 24 and 26). Run `npm run test:browser` when you change Chrome code.

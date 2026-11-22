@@ -299,6 +299,9 @@ Deeper checks, optional real-world data and search intent. Everything still work
 - Setup and fix offer each connection once; a skip is listed under Limits and never changes the score. Keys are typed at a hidden prompt in the owner's own terminal, never in chat; Google sign-in prints its link for agents (`--print-url`, `~/.seo-supervisor/pending-signin.txt`). Search Console findings flag only pages Google really excluded; pages Google doesn't know yet are notes.
 - **Fewer false findings:** the log scan needs 5 server errors and 1% before a finding, and repeated 404s become findings only for pages the site links to; sitemap priority/changefreq tags are a note; IndexNow refuses a key file that redirects to another host.
 - **Off-site presence for AI answers:** with outside checks on, the agent looks the brand up on Wikipedia, Reddit, YouTube, LinkedIn and directories, and reports gaps as owner decisions.
+- **Faster, offline tests.** `npm test` never starts Chrome and never contacts the internet. An offline guard (`test/offline.mjs`) refuses any outside connection, DNS lookup or browser start, and fails the run if one is tried. A 2-minute test timeout stops a stuck test. The Chrome tests run separately with `npm run test:browser`. The fast suite takes about 40 s.
+- **Fixed:** closing Chrome no longer keeps the crawler or the report running for 5 s after its work is done.
+- **Golden outputs** for the fixture crawls and a report that fills every panel (`node test/golden/update.mjs`), and a crawler benchmark (`node test/bench/run.mjs`).
 - The schema checker's vocabulary comes from Schema.org (CC BY-SA 3.0); see `NOTICE`.
 
 ## 1.2.0 (2026-11-18)

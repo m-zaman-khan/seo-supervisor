@@ -363,7 +363,7 @@ Your logins, keys and settings in `~/.seo-supervisor/` and your reports in `seo-
 
 ## Contributing
 
-Search changes every month, so rule updates with a primary source are the most useful contribution. See [CONTRIBUTING.md](CONTRIBUTING.md). Run the tests with `npm test`.
+Search changes every month, so rule updates with a primary source are the most useful contribution. See [CONTRIBUTING.md](CONTRIBUTING.md). Run the tests with `npm test` (offline, about 40 s), and the Chrome tests with `npm run test:browser`.
 
 ## License
 
