@@ -106,10 +106,13 @@ export function createCrawler({
         const x = c && urlOr(c, a.base);
         if (x) enqueue(toCrawl(x.href), r.finalUrl);
       }
-    } else if (r.over)
+    } else if (r.over) {
+      // seo-crawl.mjs still flags it as over Googlebot's 2 MB
+      rec.over = true;
       notes.push(
         `${r.finalUrl} is over ${PAGE_MAX / 1048576} MB (once unpacked), our own limit for one page, so it wasn't read or checked.`,
       );
+    }
   }
   async function runQueue() {
     await new Promise(done => {

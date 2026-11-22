@@ -14,7 +14,7 @@ import { loopback } from "./lib/net.mjs";
 import { redact, hideSecrets } from "./lib/redact.mjs";
 import { createFindings } from "./lib/findings.mjs";
 import { RULES, CHECKS } from "./crawl/catalog.mjs";
-import { clean, createFetcher, isLocal, isPublic, mapOrigin, urlOr } from "./crawl/fetch.mjs";
+import { PAGE_MAX, clean, createFetcher, isLocal, isPublic, mapOrigin, urlOr } from "./crawl/fetch.mjs";
 import { createCrawler } from "./crawl/queue.mjs";
 import { checkRobots, versionedNote, aiBotAccess, aiRobotRules } from "./checks/robots.mjs";
 import { SITEMAP_KEEP, findSitemaps, checkSitemapFiles, checkSitemapEntries } from "./checks/sitemap.mjs";
@@ -260,7 +260,10 @@ const smSet = checkSitemapEntries(sm, firstSm, {
   crawler: { seen, queue },
 });
 await crawler.run();
-const { fetched, capped } = crawler;
+const { fetched, capped } = crawler; // final from here: the queue runs no more
+// A page over the read limit (crawl/queue.mjs) isn't read, but it's surely past Googlebot's 2 MB too (REND-08).
+for (const p of pages.values())
+  if (p.over) add("html-over-2mb", p.finalUrl, `over ${PAGE_MAX / 1048576} MB once unpacked, so it wasn't read`);
 
 // Soft 404, llms.txt, Markdown, security.txt and the home page's security headers.
 const mdHome = await probeSite({

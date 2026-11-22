@@ -195,6 +195,14 @@ test("a page that never ends and a gzip bomb (1 GB of spaces) are read up to 10 
       r.notes.some(n => n.includes(p) && /over 10 MB/.test(n)),
       `${p}: ${r.notes.join("\n")}`,
     );
+  // Unread, but surely past Googlebot's 2 MB (REND-08).
+  assert.deepEqual(
+    r.findings
+      .find(f => f.check === "html-over-2mb")
+      ?.evidence.map(e => pathOf(e.url))
+      .sort(),
+    ["/bomb/", "/endless/"],
+  );
   const mb = Number(readFileSync(rss, "utf8")) / 1024;
   t.diagnostic(`peak memory ${Math.round(mb)} MB`);
   assert.ok(mb < 400, `peak memory ${Math.round(mb)} MB`);
@@ -418,4 +426,51 @@ test("the crawler reads its options with the shared parser: =values work, a stra
     assert.doesNotMatch(x.stderr, /\n\s+at /, "no stack trace");
     assert.equal(x.hits, 0);
   }
+});
+
+test("pages that answer with a bot challenge (Cloudflare, AWS WAF) aren't read as pages, nor reported as broken: a note says they weren't checked", async () => {
+  const challenge =
+    "<!doctype html><html><head><title>Just a moment...</title></head><body><p>Checking your browser</p></body></html>";
+  const before = (req, res) => {
+    const p = pathOf(req.url);
+    if (p === "/a/")
+      return !!res.writeHead(403, { "Content-Type": "text/html", "cf-mitigated": "challenge" }).end(challenge);
+    if (p === "/b/")
+      return !!res.writeHead(202, { "Content-Type": "text/html", "x-amzn-waf-action": "challenge" }).end(challenge);
+    if (p === "/c/")
+      return !!res.writeHead(405, { "Content-Type": "text/html", "x-amzn-waf-action": "captcha" }).end(challenge);
+    return false;
+  };
+  const r = await crawlSite(
+    { "/": page("Boiler repairs in Leeds", links("/a/", "/b/", "/c/", "/d/")), "/d/": page("Leak detection") },
+    { before },
+  );
+  assert.deepEqual(r.pages.map(p => pathOf(p.url)).sort(), ["/", "/d/"], "a challenge isn't a page");
+  assert.deepEqual(r.errors, [], "nor a broken page");
+  assert.ok(
+    !r.findings.some(f => f.evidence.some(e => /\/(a|b|c)\/$/.test(e.url) || /\/(a|b|c)\//.test(e.detail || ""))),
+    JSON.stringify(r.findings.map(f => [f.check, f.evidence])),
+  );
+  const note = r.notes.find(n => /bot challenge/.test(n)) ?? "";
+  assert.match(note, /^3 page\(s\) answered with a bot challenge/, r.notes.join("\n"));
+});
+
+test("Cloudflare's own /cdn-cgi/ addresses aren't crawled as pages", async () => {
+  const asked = [];
+  const before = req => {
+    asked.push(pathOf(req.url));
+    return false;
+  };
+  const r = await crawlSite(
+    {
+      "/": page("Boiler repairs in Leeds", links("/cdn-cgi/l/email-protection#a1b2c3", "/d/")),
+      "/d/": page("Leak detection"),
+    },
+    { before },
+  );
+  assert.ok(!asked.some(p => p.startsWith("/cdn-cgi/")), asked.join(" "));
+  assert.ok(
+    !r.findings.some(f => f.evidence.some(e => /cdn-cgi/.test(e.url + (e.detail || "")))),
+    JSON.stringify(r.findings.map(f => [f.check, f.evidence])),
+  );
 });
