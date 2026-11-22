@@ -103,3 +103,71 @@ test("an off-site gzip answer whose connection drops halfway gives a failed requ
     site.close();
   }
 });
+
+// File reads (firstBytes) wait and ask again on 429 or 503, as page reads do.
+test("a file that answers 429 is asked once more after the slow-down; one still busy after that comes back as busy", async () => {
+  const hits = new Map();
+  const site = await listen((req, res) => {
+    const p = pathOf(req.url),
+      n = (hits.get(p) || 0) + 1;
+    hits.set(p, n);
+    if (p === "/once.png" && n === 1) return res.writeHead(429, { "Retry-After": "1" }).end("slow down");
+    if (p === "/busy.png") return res.writeHead(503, { "Retry-After": "1" }).end("busy");
+    res.writeHead(200, { "Content-Type": "image/png", "Content-Length": PNG.length }).end(PNG);
+  });
+  try {
+    const { firstBytes, slow } = createFetcher({ startOrigin: site.origin, ua: "test", toCrawl: u => u });
+    const once = await firstBytes(site.origin + "/once.png"),
+      busy = await firstBytes(site.origin + "/busy.png");
+    assert.equal(once?.status, 200, JSON.stringify(once));
+    assert.equal(once.bytes.length, PNG.length);
+    assert.equal(busy?.status, 503);
+    assert.deepEqual([hits.get("/once.png"), hits.get("/busy.png")], [2, 2], "each asked twice, no more");
+    assert.equal(slow.busy, 2, "both answers slowed the crawl down");
+    assert.ok(slow.ms > 0);
+  } finally {
+    site.close();
+  }
+});
+
+test("an image or stylesheet that's rate-limited isn't reported as broken; one still busy gets a couldn't-check note", async () => {
+  const hits = new Map();
+  const before = (req, res) => {
+    const p = pathOf(req.url),
+      n = (hits.get(p) || 0) + 1;
+    hits.set(p, n);
+    if (p === "/once.css" && n === 1)
+      return !!res.writeHead(429, { "Retry-After": "1", "Content-Type": "text/plain" }).end("slow down");
+    if (p === "/busy.png")
+      return !!res.writeHead(503, { "Retry-After": "1", "Content-Type": "text/plain" }).end("busy");
+    if (p === "/gone.png") return !!res.writeHead(404, { "Content-Type": "text/plain" }).end("not found");
+    return false;
+  };
+  const { r } = await crawlSite(
+    {
+      "/": page(
+        "Boiler repairs in Leeds",
+        '<img src="/busy.png" alt="A boiler" width="16" height="16"><img src="/gone.png" alt="A pump" width="16" height="16">',
+        '<link rel="stylesheet" href="/once.css">',
+      ),
+    },
+    {
+      before,
+      files: { "/once.css": { type: "text/css", body: "body{}" } },
+    },
+  );
+  const broken = r.findings.find(f => f.check === "own-file-broken");
+  assert.deepEqual(
+    broken?.evidence.map(e => e.detail.replace(/http:\/\/127\.0\.0\.1:\d+/, "")),
+    ["image /gone.png → 404"],
+    "only the missing file is broken",
+  );
+  assert.ok(
+    r.notes.some(n => /busy\.png/.test(n) && /429 or 503/.test(n) && /wasn't checked/.test(n)),
+    r.notes.join("\n"),
+  );
+  assert.ok(
+    r.notes.some(n => /^The crawler slowed down/.test(n)),
+    r.notes.join("\n"),
+  );
+});

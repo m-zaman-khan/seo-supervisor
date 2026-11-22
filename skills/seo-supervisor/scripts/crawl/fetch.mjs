@@ -139,6 +139,10 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl, dns 
   // pauses at 2 minutes in all.
   // https://developers.google.com/search/docs/crawling-indexing/http-network-errors
   const slow = brake();
+  const slowDown = res => {
+    slow.busy++;
+    slow.pause(Math.min(retryAfter(res.headers.get("retry-after")) ?? 2000, 30000));
+  };
   // manual: false goes through follow(), so each hop passes the guard. text is the content-type pattern of 2xx bodies
   // to read (true: HTML, XML, plain text). A body over max comes back empty and marked `over`, and an unread body is
   // drained only up to PAGE_MAX, so no endless answer can fill memory.
@@ -167,8 +171,7 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl, dns 
         if ((res.status === 429 || (res.status === 503 && own)) && !waited) {
           waited = true;
           attempt--;
-          slow.busy++;
-          slow.pause(Math.min(retryAfter(res.headers.get("retry-after")) ?? 2000, 30000));
+          slowDown(res);
           await bodyUpTo(res, PAGE_MAX).catch(() => {});
           continue;
         }
@@ -234,6 +237,7 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl, dns 
   };
   async function readStart(url, max) {
     try {
+      let waited = false;
       for (let hop = 0; hop < 5; hop++) {
         if (slow.until > Date.now()) await sleep(slow.until - Date.now());
         const r = await fetch(url, {
@@ -241,6 +245,13 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl, dns 
           headers: { "user-agent": UA, range: `bytes=0-${max - 1}`, accept: "image/avif,image/webp,image/*,*/*;q=0.8" },
           signal: AbortSignal.timeout(15000),
         });
+        if ((r.status === 429 || r.status === 503) && !waited) {
+          waited = true;
+          hop--;
+          slowDown(r);
+          await r.body?.cancel();
+          continue;
+        }
         const loc = r.headers.get("location");
         if (r.status >= 300 && r.status < 400 && loc) {
           await r.body?.cancel();

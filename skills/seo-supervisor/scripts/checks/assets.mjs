@@ -11,6 +11,9 @@ import { altProblem, cdnOf, uncached } from "./media.mjs";
 import { medianScores } from "./lighthouse.mjs";
 import { estSaving } from "../images.mjs";
 import { SUPERSEDED } from "./schema.mjs";
+
+// Still 429 or 503 after firstBytes' retry means rate-limited, not broken, so the broken-file checks skip it.
+const busy = r => r?.status === 429 || r?.status === 503;
 // images and shareImages come from checkPages in site-pages.mjs.
 export async function checkAssets(site, { images, shareImages }) {
   const {
@@ -55,20 +58,22 @@ export async function checkAssets(site, { images, shareImages }) {
   const ownCss = [...cssUse].slice(0, 50);
   // One pool fetches every file below, schema images included. firstBytes keeps each answer, so the loops below
   // make no new requests and a file several checks use is fetched once.
-  await pool(
-    [
-      ...new Set([
-        ...imageList.map(([s]) => s),
-        ...shareList.map(([c]) => c),
-        ...productList.map(([c]) => c),
-        ...icons,
-        ...ownCss.map(([s]) => s),
-        ...schemaImageUrls(site).list.map(([c]) => c),
-      ]),
-    ],
-    CONC,
-    u => firstBytes(u),
-  );
+  const files = [
+    ...new Set([
+      ...imageList.map(([s]) => s),
+      ...shareList.map(([c]) => c),
+      ...productList.map(([c]) => c),
+      ...icons,
+      ...ownCss.map(([s]) => s),
+      ...schemaImageUrls(site).list.map(([c]) => c),
+    ]),
+  ];
+  const answers = await pool(files, CONC, u => firstBytes(u)),
+    busyFiles = files.filter((u, i) => busy(answers[i]));
+  if (busyFiles.length)
+    notes.push(
+      `${busyFiles.length} file(s) on the site (images, stylesheets or icons) still answered 429 or 503 (too many requests, or server busy) after the crawler paused and asked again, e.g. ${quote(busyFiles[0])}, so whether they load wasn't checked.`,
+    );
   // A file that redirects off the site isn't followed or judged. Sources: own-file-broken in crawl/catalog.mjs.
   for (const [kind, list] of [
     ["image", imageList],
@@ -76,7 +81,7 @@ export async function checkAssets(site, { images, shareImages }) {
   ])
     for (const [src, page] of list) {
       const r = await firstBytes(src);
-      if (r && r.status >= 400) add("own-file-broken", page, `${kind} ${src} → ${r.status}`);
+      if (r && r.status >= 400 && !busy(r)) add("own-file-broken", page, `${kind} ${src} → ${r.status}`);
     }
   const imageRows = [];
   const imageInfo = new Map(); // caching, CDN and creator data per weighed image
@@ -115,6 +120,7 @@ export async function checkAssets(site, { images, shareImages }) {
       shareAway++;
       continue;
     } // redirects off the crawled site, so not fetched
+    if (busy(r)) continue;
     if (r.status !== 200 && r.status !== 206) {
       add("og-image-broken", page, `${src} → ${r.status || `no response (${r.error})`}`);
       continue;
@@ -265,6 +271,7 @@ export async function schemaImages(site) {
     const r = await firstBytes(crawlSrc);
     if (!r)
       away.add(src); // redirects off the crawled site, so not followed
+    else if (busy(r)) continue;
     else if (r.status !== 200 && r.status !== 206)
       add("schema-image-broken", page, `${src} → ${r.status || `no response (${r.error})`}`);
     else if (/html/i.test(r.type)) add("schema-image-broken", page, `${src} → an HTML page, not an image`);
