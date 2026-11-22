@@ -75,7 +75,7 @@ export function score(rules) {
 export function knownChecks(dir = new URL("..", import.meta.url)) {
   const ids = new Set(),
     files = [];
-  for (const d of [dir, new URL("checks/", dir)])
+  for (const d of [dir, new URL("checks/", dir), new URL("crawl/", dir)])
     try {
       files.push(
         ...readdirSync(d)
