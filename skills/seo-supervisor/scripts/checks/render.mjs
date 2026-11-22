@@ -500,6 +500,18 @@ export function compareRendered(rawHtml, renderedHtml) {
 // An H1 only JavaScript adds is render-adds-content's, with the JSON-LD, words and link count.
 export const changesHead = x => ["title", "canonical", "robots"].includes(x.field);
 export const changesText = x => x.field === "description" || (x.field === "h1" && !!x.raw);
+// A page the crawler already reported as client-rendered gets no render-adds-content, so it has one REND-01 finding.
+// render-adds-text skips those pages too, as checkMore gets no raw word count for them.
+export function renderFindings(url, rawHtml, renderedHtml, { add, clientRendered = false }) {
+  const d = compareRendered(rawHtml, renderedHtml),
+    say = x => `${x.field}: “${x.raw ?? "none"}” → “${x.rendered ?? "none"}”`;
+  const head = d.filter(changesHead),
+    text = d.filter(changesText),
+    body = d.filter(x => !head.includes(x) && !text.includes(x));
+  if (head.length) add("render-changes-head", url, head.map(say).join("; "));
+  if (text.length) add("render-changes-text", url, text.map(say).join("; "));
+  if (body.length && !clientRendered) add("render-adds-content", url, body.map(say).join("; "));
+}
 
 // A login screen or paywall where the page should be, or null; never filled in or clicked through. A login needs the
 // title or H1 to say so, so a login box in the header doesn't count. tp-modal and tp-backdrop are Piano's paywall.

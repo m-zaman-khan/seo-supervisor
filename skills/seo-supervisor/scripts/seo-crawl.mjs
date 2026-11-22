@@ -51,7 +51,7 @@ import {
   CRUX_HISTORY_ENDPOINT,
   labLcpBreakdown,
 } from "./checks/speed.mjs";
-import { findBrowser, renderPage, compareRendered, changesHead, changesText, renderAll } from "./checks/render.mjs";
+import { findBrowser, renderPage, renderFindings, renderAll } from "./checks/render.mjs";
 import { checkVisual, checkMore } from "./checks/visual.mjs";
 import { checkLighthouse, findLighthouse, ALL_CAP } from "./checks/lighthouse.mjs";
 import { trustSignals } from "./checks/trust.mjs";
@@ -471,14 +471,7 @@ if (browser) {
         continue;
       }
       rendered++;
-      const d = compareRendered(rawRes.body, dom),
-        say = x => `${x.field}: “${x.raw ?? "none"}” → “${x.rendered ?? "none"}”`;
-      const head = d.filter(changesHead),
-        text = d.filter(changesText),
-        body = d.filter(x => !head.includes(x) && !text.includes(x));
-      if (head.length) add("render-changes-head", u, head.map(say).join("; "));
-      if (text.length) add("render-changes-text", u, text.map(say).join("; "));
-      if (body.length) add("render-adds-content", u, body.map(say).join("; "));
+      renderFindings(u, rawRes.body, dom, { add, clientRendered: !!byPage.get(u)?.clientOnly });
     } catch (e) {
       renderFailure ||= String(e.message).split("\n")[0].slice(0, 120);
     }

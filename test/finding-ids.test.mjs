@@ -12,6 +12,7 @@ import { foundOn, quote } from "../skills/seo-supervisor/scripts/lib/findings.mj
 import { localData } from "../skills/seo-supervisor/scripts/checks/site-content.mjs";
 import { securityHeaders } from "../skills/seo-supervisor/scripts/checks/site-security.mjs";
 import { CHECKS as TLS_CHECKS } from "../skills/seo-supervisor/scripts/checks/tls.mjs";
+import { renderFindings } from "../skills/seo-supervisor/scripts/checks/render.mjs";
 import { diffCrawls, timeline } from "../skills/seo-supervisor/scripts/seo-diff.mjs";
 
 // A rename for the test only, taken out again after each test that adds it.
@@ -263,6 +264,30 @@ test("the home page's HSTS header is read once, by hstsRead, for its max-age, su
 test("a missing HSTS header is no-hsts whether the live check read it or the crawl did, and says nothing about a live site", () => {
   assert.deepEqual(TLS_CHECKS["no-hsts"].slice(0, 2), ["TRUST-01", "low"]);
   assert.equal(TLS_CHECKS["no-hsts"][2](1), "The site sends no Strict-Transport-Security header");
+});
+
+// ---------- REND-01 ----------
+test("a page already reported client-rendered gets no render-adds-content; another page does", () => {
+  const raw = "<html><head><title>Plans</title></head><body><div id=root></div></body></html>";
+  const dom =
+    '<html><head><title>Plans</title><script type="application/ld+json">{"@type":"Product"}</script></head><body><h1>Plans and prices</h1></body></html>';
+  const run = clientRendered => {
+    const found = [];
+    renderFindings("https://a.example/plans/", raw, dom, { add: (k, u, d) => found.push([k, u, d]), clientRendered });
+    return found;
+  };
+  assert.deepEqual(run(true), []);
+  assert.deepEqual(
+    run(false).map(([k]) => k),
+    ["render-adds-content"],
+  );
+  assert.match(run(false)[0][2], /^h1: “none” → “Plans and prices”; jsonld-count/);
+  const head = [];
+  renderFindings("https://a.example/", "<title>A</title>", "<title>B</title>", {
+    add: k => head.push(k),
+    clientRendered: true,
+  });
+  assert.deepEqual(head, ["render-changes-head"], "what JavaScript changes in the head is still reported");
 });
 
 // ---------- "Found on" ----------
