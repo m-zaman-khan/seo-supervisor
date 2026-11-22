@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ROOT, SKILL, tmp } from "./helpers.mjs";
+import { ROOT, SKILL, node, tmp } from "./helpers.mjs";
 import { render } from "../skills/seo-supervisor/scripts/render-report.mjs";
 import { summaryOf } from "../skills/seo-supervisor/scripts/dashboard.mjs";
 import { SCORE_HOW } from "../skills/seo-supervisor/scripts/report/overview.mjs";
@@ -336,6 +336,31 @@ test("the dashboard reads the report's one score summary and shared helpers, so 
       Number(r.receipt.find(l => /^Fixing the/.test(l))?.match(/raises it to (\d+)/)?.[1] ?? NaN) || null,
     );
     assert.ok(r.receipt.some(l => l.startsWith(`Open: ${d.open} (${d.blockers} blocker, ${d.high} high,`)));
+  }
+});
+
+const RENDER = join(SKILL, "scripts", "render-report.mjs");
+// The command's exit code and output, whether it fails or not.
+const cli = args =>
+  node([RENDER, ...args]).then(
+    r => ({ code: 0, ...r }),
+    e => ({ code: e.code, stdout: e.stdout, stderr: e.stderr }),
+  );
+
+test("a missing, unreadable or wrong input file is one plain line and exit 2, never a stack trace", async () => {
+  const dir = tmp();
+  writeFileSync(join(dir, "bad.json"), "{ not json");
+  writeFileSync(join(dir, "list.json"), "[]");
+  for (const [args, re] of [
+    [[join(dir, "nope.json")], /^render-report: can't open .*nope\.json \(it isn't there\)\.$/],
+    [[join(dir, "bad.json")], /^render-report: .*bad\.json isn't valid JSON \(/],
+    [[join(dir, "list.json")], /^render-report: .*list\.json isn't an audit/],
+    [[], /^Usage: node render-report\.mjs </],
+  ]) {
+    const r = await cli(args);
+    assert.equal(r.code, 2, `${args}: exit 2`);
+    assert.match(r.stderr.trim(), re);
+    assert.equal(r.stderr.trim().split("\n").length, 1, "one line");
   }
 });
 

@@ -7,6 +7,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve, basename } from "node:path";
 import { SEV, bandOf } from "./lib/score.mjs";
 import { isMain } from "./lib/is-main.mjs";
+import { Fail, runMain } from "./lib/cli.mjs";
 import { SEV_LABEL } from "./report/format.mjs";
 import { buildModel } from "./report/model.mjs";
 import { overviewLines } from "./report/overview-lines.mjs";
@@ -271,22 +272,27 @@ async function printPdf(htmlPath, pdf) {
   }
 }
 
-if (isMain(import.meta.url)) {
-  const argv = process.argv.slice(2);
+// Exits 0 when written, 1 when only the PDF failed, 2 on a usage error or an input that's missing or isn't JSON.
+const USAGE =
+  "Usage: node render-report.mjs <audit.json|seo-crawl.json|content-scan.json> [--out report.html] [--md report.md] [--no-md] [--pdf]";
+async function main(argv) {
   const inPath = argv.find(a => !a.startsWith("--"));
-  if (!inPath) {
-    console.error(
-      "Usage: node render-report.mjs <audit.json|seo-crawl.json|content-scan.json> [--out report.html] [--md report.md] [--no-md] [--pdf]",
-    );
-    process.exit(2);
-  }
+  if (!inPath) throw new Fail(USAGE);
   const opt = k => {
     const i = argv.indexOf(k);
     return i >= 0 ? argv[i + 1] : null;
   };
   const outPath = resolve(opt("--out") || inPath.replace(/\.json$/i, "") + ".html");
   const mdPath = argv.includes("--no-md") ? null : resolve(opt("--md") || outPath.replace(/\.html?$/i, "") + ".md");
-  const raw = JSON.parse(readFileSync(inPath, "utf8"));
+  const text = readFileSync(inPath, "utf8");
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch (e) {
+    throw new Fail(`render-report: ${inPath} isn't valid JSON (${e.message}).`);
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw))
+    throw new Fail(`render-report: ${inPath} isn't an audit: it should hold one JSON object (report-format.md).`);
   const { html, md, receipt } = render(raw, {
     dir: dirname(resolve(inPath)),
     mdFile: mdPath ? basename(mdPath) : null,
@@ -308,6 +314,8 @@ if (isMain(import.meta.url)) {
   );
   if (pdfError) {
     console.error(`render-report: ${pdfError}`);
-    process.exitCode = 1;
+    return 1;
   }
 }
+
+if (isMain(import.meta.url)) await runMain(() => main(process.argv.slice(2)));
