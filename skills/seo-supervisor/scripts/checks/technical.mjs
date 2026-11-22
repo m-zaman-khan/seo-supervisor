@@ -104,8 +104,8 @@ export const CHECKS = {
     "TRUST-01",
     "low",
     () => "HSTS lasts less than a year",
-    "The `Strict-Transport-Security` header's `max-age` is under 31,536,000 seconds (one year), the minimum hstspreload.org asks for. Browsers forget the HTTPS-only rule sooner, so a returning visitor's first request can go over plain HTTP again.",
-    "Raise it to `max-age=31536000` or more (`63072000`, two years, is common) once HTTPS works on every page and subdomain.",
+    "The `Strict-Transport-Security` header's `max-age` is under 31,536,000 seconds (one year: this skill's own line, the HSTS preload list's minimum). Browsers forget the HTTPS-only rule sooner, so a returning visitor's first request can go over plain HTTP again.",
+    "Once HTTPS works on every page and subdomain, raise it to `max-age=31536000` or more (`63072000`, two years, is common). hstspreload.org advises getting there in stages (5 minutes, a week, a month), checking for broken pages at each one. Joining the preload list itself is optional, and hstspreload.org doesn't recommend it.",
   ],
   // https://www.w3.org/TR/referrer-policy/#referrer-policy-unsafe-url
   "referrer-unsafe": [
@@ -133,7 +133,7 @@ export const CHECKS = {
     "TRUST-01",
     "low",
     () => "HSTS doesn't cover subdomains (no includeSubDomains)",
-    "Without `includeSubDomains`, a subdomain such as `shop.` or an old `mail.` can still be opened over plain HTTP, where a cookie set for the whole domain can be read or changed. The HSTS preload list (hstspreload.org) also requires it.",
+    "Without `includeSubDomains`, a subdomain such as `shop.` or an old `mail.` can still be opened over plain HTTP, where a cookie set for the whole domain can be read or changed. hstspreload.org's HSTS advice includes it at every step.",
     "Check that every subdomain works over HTTPS first (the directive switches HTTP off for all of them), then add `includeSubDomains`: `Strict-Transport-Security: max-age=31536000; includeSubDomains`.",
   ],
 };

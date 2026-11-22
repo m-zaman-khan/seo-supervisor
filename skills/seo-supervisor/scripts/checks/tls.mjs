@@ -93,7 +93,7 @@ export const CHECKS = {
     "low",
     () => "The site sends no Strict-Transport-Security header",
     "Without HSTS, browsers can still make a first plain-HTTP request that can be intercepted.",
-    "Send `Strict-Transport-Security: max-age=31536000; includeSubDomains` from the server or CDN.",
+    "Send `Strict-Transport-Security: max-age=31536000; includeSubDomains` from the server or CDN, once every subdomain works over HTTPS. hstspreload.org advises getting there in stages (`max-age=300`, then a week, then a month), checking for broken pages at each one.",
   ],
   "tls-old-versions": [
     "TRUST-01",
