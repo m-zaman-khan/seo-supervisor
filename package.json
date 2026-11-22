@@ -10,6 +10,8 @@
     "bin/",
     "skills/",
     "commands/",
+    "hooks/",
+    "agents/",
     ".claude-plugin/",
     "CHANGELOG.md",
     "NOTICE"

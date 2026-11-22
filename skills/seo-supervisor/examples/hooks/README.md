@@ -2,6 +2,8 @@
 
 These run `scripts/schema-check.mjs` for you: after an agent edits a page, before a commit, or in CI. Nothing is installed by default. Copy the ones you want.
 
+The Claude Code plugin already runs this check after each edit (its `hooks/hooks.json`), next to the guard, so plugin users need none of these for Claude Code. `claude-code-settings.json` is for a Claude Code install without the plugin.
+
 Each one stays silent when the JSON-LD passes and only looks at `.html`, `.htm`, `.jsonld` and `.json` files that contain JSON-LD. Errors are unknown types or properties, wrong value shapes and missing Google-required properties. Warnings are never shown here; run the checker by hand to see them.
 
 The paths assume a project install (`npx seo-supervisor --scope project`): `.claude/skills/seo-supervisor/` for Claude Code, `.agents/skills/seo-supervisor/` for the other agents. For a user install, point them at the copy in your home folder. The pre-commit hook and CI only see a project install that's committed.

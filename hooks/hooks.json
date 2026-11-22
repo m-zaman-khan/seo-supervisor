@@ -1,0 +1,86 @@
+{
+  "description": "SEO Supervisor: asks the owner before risky SEO actions, stops API keys pasted in chat, checks structured data after edits, and suggests /seo-review when SEO files changed.",
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [
+        { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 }
+      ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Bash", "hooks": [
+        { "type": "command", "if": "Bash(*--yes*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Bash(*--allow-remote*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Bash(*--outside*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Bash(*--verify-ips*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Bash(*connect-keys*set*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Bash(rm *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Bash(git rm *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Bash(git mv *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Bash(mv *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Bash(del *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 }
+      ] },
+      { "matcher": "PowerShell", "hooks": [
+        { "type": "command", "if": "PowerShell(*--yes*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "PowerShell(*--allow-remote*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "PowerShell(*--outside*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "PowerShell(*--verify-ips*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "PowerShell(*connect-keys*set*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "PowerShell(Remove-Item *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "PowerShell(Move-Item *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "PowerShell(git rm *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "PowerShell(git mv *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 }
+      ] },
+      { "matcher": "Edit|Write|MultiEdit", "hooks": [
+        { "type": "command", "if": "Edit(**/*.html)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.htm)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.php)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.erb)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.liquid)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.njk)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.hbs)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.vue)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.svelte)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.astro)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.jsx)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.tsx)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.js)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.mjs)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.cjs)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.ts)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.mts)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.md)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.mdx)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/robots.txt)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/sitemap*.xml)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/_redirects)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/_headers)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/.htaccess)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/vercel.json)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/netlify.toml)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/firebase.json)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/staticwebapp.config.json)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/web.config)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/Caddyfile)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/*.conf)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/routes.rb)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Edit(**/urls.py)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 }
+      ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Edit|Write|MultiEdit", "hooks": [
+        { "type": "command", "if": "Edit(**/*.html)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/schema-check.mjs", "--hook"], "timeout": 30 },
+        { "type": "command", "if": "Edit(**/*.htm)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/schema-check.mjs", "--hook"], "timeout": 30 },
+        { "type": "command", "if": "Edit(**/*.jsonld)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/schema-check.mjs", "--hook"], "timeout": 30 },
+        { "type": "command", "if": "Edit(**/*.json)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/schema-check.mjs", "--hook"], "timeout": 30 }
+      ] },
+      { "matcher": "Agent|Skill", "hooks": [
+        { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 }
+      ] }
+    ],
+    "Stop": [
+      { "hooks": [
+        { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 }
+      ] }
+    ]
+  }
+}

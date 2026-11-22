@@ -10,5 +10,18 @@
   "homepage": "https://github.com/m-zaman-khan/seo-supervisor#readme",
   "repository": "https://github.com/m-zaman-khan/seo-supervisor",
   "license": "MIT",
-  "keywords": ["seo", "technical-seo", "seo-audit", "crawler", "structured-data", "core-web-vitals", "ai-search", "nextjs"]
+  "keywords": ["seo", "technical-seo", "seo-audit", "crawler", "structured-data", "core-web-vitals", "ai-search", "nextjs"],
+  "userConfig": {
+    "site_url": {
+      "type": "string",
+      "title": "Site address",
+      "description": "Your live site's address, like https://www.example.com. Audits use it when you don't name a site. Leave it empty to have it found from the project."
+    },
+    "guard_mode": {
+      "type": "string",
+      "title": "Guard",
+      "description": "What happens before a risky SEO action, such as a noindex, a robots.txt or redirect change, a removed page or a script that contacts an outside service: ask (pause and ask you, the default), block (stop it, so the AI asks you in chat) or off.",
+      "default": "ask"
+    }
+  }
 }
