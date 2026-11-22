@@ -22,7 +22,7 @@ export function actions({ raw, open, decisions }) {
     );
   const order = list => list.sort((a, b) => SEV.indexOf(a.sev) - SEV.indexOf(b.sev) || b.clicks - a.clicks);
   const item = f => ({ id: f.id, title: f.title, sev: f.severity, f, clicks: clicks(f) });
-  const mine = f => isOwnersCall(f, decisions);
+  const mine = f => isOwnersCall(f, decisions) && f.status !== "wont-fix"; // a won't-fix is decided: in neither list
   const code = order(open.filter(f => !mine(f) && f.status !== "wont-fix").map(item)),
     serious = code.filter(x => x.sev === "blocker" || x.sev === "high");
   const own = open.filter(mine),
