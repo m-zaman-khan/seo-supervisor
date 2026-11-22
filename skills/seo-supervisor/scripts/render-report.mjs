@@ -13,6 +13,7 @@ import { recheckOf, RECHECK_NOTE } from "./lib/recheck.mjs";
 import { isMain } from "./lib/is-main.mjs";
 import { buildModel, needsYou } from "./report/model.mjs";
 import { overviewLines, LCP_PART } from "./report/overview-lines.mjs";
+import { aiPanels } from "./report/panels/ai.mjs";
 import { linkPanels } from "./report/panels/links.mjs";
 import { searchTraffic, visitsOf, isoDates, byPath } from "./report/traffic.mjs";
 import {
@@ -85,6 +86,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   const bing = obj(raw.bing),
     matomo = obj(raw.matomo),
     posthog = obj(raw.posthog);
+  const { agentsHtml, agentsMd, aiCrawlersHtml, aiCrawlersMd, aiAnswersHtml, aiAnswersMd } = aiPanels(m);
   const {
     linked,
     linksHtml,
@@ -282,42 +284,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
 
   // AI agents and writing notes, from the crawler. Crawled text (tool names, sentences, URLs) is escaped for HTML and
   // Markdown.
-  const AGENT_FILE = {
-    "/.well-known/api-catalog": "API catalog (RFC 9727)",
-    "/.well-known/agent-card.json": "A2A agent card",
-    "/.well-known/oauth-protected-resource": "OAuth protected resource (RFC 9728)",
-    "/.well-known/oauth-authorization-server": "OAuth authorization server (RFC 8414)",
-  };
-  const agentRows = (() => {
-    const a = obj(raw.agents),
-      strs = x => (Array.isArray(x) ? x.filter(s => typeof s === "string" && s) : []);
-    if (!a) return [];
-    return [
-      ...(Array.isArray(a.pages) ? a.pages.filter(p => obj(p) && strs(p.tools).length) : []).map(p => [
-        notePath(p.url),
-        `WebMCP tools: ${strs(p.tools).join(", ")}`,
-      ]),
-      typeof a.ucp === "string" && a.ucp && ["/.well-known/ucp", `UCP shop profile, version ${a.ucp}`],
-      ...strs(a.wellKnown).map(f => [f, AGENT_FILE[f] || "agent file"]),
-    ].filter(Boolean);
-  })();
-  const AGENTS_INTRO =
-    "What the site offers AI agents, listed for information: none of it is a finding or changes the score. WebMCP is a Chrome experiment that lets a page offer tools to AI agents, and its API is still changing; only inline scripts and forms were read. UCP is the open standard behind checkout in Google's AI Mode and Gemini.";
-  const agentsHtml = () =>
-    agentRows.length
-      ? `\n    <details class="how agents"><summary>AI agents</summary><p>${esc(AGENTS_INTRO)}</p><ul class="lim">${agentRows.map(([where, what]) => `<li><b><code>${esc(where)}</code></b><span>${esc(what)}</span></li>`).join("")}</ul></details>`
-      : "";
-  const agentsMd = () =>
-    agentRows.length
-      ? [
-          "## AI agents",
-          "",
-          AGENTS_INTRO,
-          "",
-          ...agentRows.map(([where, what]) => `- ${noteCode(where)} ${noteMd(what)}`),
-          "",
-        ]
-      : [];
   const writingNotes = (Array.isArray(raw.writingNotes) ? raw.writingNotes : []).filter(
     n => obj(n) && typeof n.url === "string",
   );
@@ -500,105 +466,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
         ]
       : [];
   };
-
-  // From the crawler: each AI crawler robots.txt allows or blocks (`aiBots`), pages without landmarks (`landmarks`) and
-  // Lighthouse's experimental Agentic browsing checks (`lighthouse[].agentic`). Text is escaped.
-  const AI_KIND = { search: "AI search", training: "Training", user: "Fetches for a user", other: "Other" };
-  const AI_STATUS = {
-    allowed: "Allowed",
-    blocked: "Blocked",
-    "blocked-by-star": "Blocked by `User-agent: *`",
-    "blocked-by-googlebot": "Blocked by the Googlebot group (Apple follows it when Applebot isn't named)",
-  };
-  // The shared AI-training opt-out; an unknown value shows nothing.
-  const TRAINING = {
-    "not-set": "not in robots.txt. A `User-agent: *` group doesn't cover it",
-    blocked: "set: it refuses AI training for the whole site",
-    partly: "set for some paths only",
-    allowed: "set, and it allows AI training",
-  };
-  const trainingLine = () =>
-    Object.hasOwn(TRAINING, raw.trainingOptOut)
-      ? `Shared AI-training opt-out (\`User-agent: __usage_ai-training\`, an IETF draft): ${TRAINING[raw.trainingOptOut]}. Anthropic honours it since 30 Oct 2026, and Bing from 1 Feb 2027; Google plans to in 2027.`
-      : "";
-  const bots = (Array.isArray(raw.aiBots) ? raw.aiBots : []).filter(
-    b => obj(b) && typeof b.bot === "string" && Object.hasOwn(AI_STATUS, b.robots),
-  );
-  const bare = (l =>
-    l && [l.checked, l.count].every(isCount) && Array.isArray(l.pages)
-      ? { ...l, pages: l.pages.filter(p => obj(p) && typeof p.url === "string" && Array.isArray(p.missing)) }
-      : null)(obj(raw.landmarks));
-  const agenticRows = (Array.isArray(raw.lighthouse) ? raw.lighthouse : [])
-    .filter(
-      x => obj(x) && typeof x.url === "string" && obj(x.agentic) && [x.agentic.passed, x.agentic.total].every(isCount),
-    )
-    .map(x => ({
-      path: notePath(x.url),
-      passed: x.agentic.passed,
-      total: x.agentic.total,
-      failed: (Array.isArray(x.agentic.failed) ? x.agentic.failed : []).filter(
-        f => obj(f) && typeof f.title === "string",
-      ),
-    }));
-  const AI_INTRO =
-    "Information only: none of this changes the score. The table shows whether robots.txt lets each AI crawler in, by its own group or, when it has none, by the User-agent: * group. Fetchers for a user get a page a person asked for, and some vendors say robots.txt may not apply to them.";
-  const AGENTIC_INTRO =
-    "Lighthouse's Agentic browsing checks (experimental; Lighthouse 13.3 or later with Chrome 150 or later): whether AI agents can read and use the page. There's no 0–100 score, only the checks passed.";
-  const aiBotStatus = b => AI_STATUS[b.robots] + (b.mayIgnore ? " (may ignore robots.txt)" : "");
-  const landmarkLine = () =>
-    `${num(bare.count)} of ${num(bare.checked)} pages lack one or more landmarks (main, nav, header, footer), which screen readers and AI agents use to find their way around a page (AI-05).`;
-  const agenticRow = a =>
-    `${num(a.passed)} of ${num(a.total)} checks passed${a.failed.length ? `; failing: ${a.failed.map(f => f.title).join("; ")}` : ""}`;
-  const aiCrawlersOn = () => bots.length || bare || agenticRows.length || trainingLine() || aiPrefsOn();
-  const aiCrawlersHtml = () =>
-    aiCrawlersOn()
-      ? `\n    <details class="how aibots"><summary>AI crawlers and agents</summary>` +
-        (bots.length
-          ? `<p>${esc(AI_INTRO)}</p><div class="tablewrap"><table><thead><tr><th scope="col">Crawler</th><th scope="col">Vendor</th><th scope="col">Kind</th><th scope="col">robots.txt</th></tr></thead><tbody>${bots.map(b => `<tr><td><code>${esc(b.bot)}</code></td><td>${esc(b.vendor)}</td><td>${esc(AI_KIND[b.kind] || b.kind)}</td><td>${inl(aiBotStatus(b))}</td></tr>`).join("")}</tbody></table></div>`
-          : "") +
-        (trainingLine() ? `<p>${inl(trainingLine())}</p>` : "") +
-        aiPartsHtml() +
-        (bare
-          ? `<p>${esc(landmarkLine())}</p><ul class="lim">${bare.pages.map(p => `<li><b><code>${esc(notePath(p.url))}</code></b><span>no ${esc(p.missing.join(", "))}</span></li>`).join("")}</ul>`
-          : "") +
-        (agenticRows.length
-          ? `<p>${esc(AGENTIC_INTRO)}</p><ul class="lim">${agenticRows.map(a => `<li><b><code>${esc(a.path)}</code></b><span>${esc(agenticRow(a))}</span></li>`).join("")}</ul>`
-          : "") +
-        `</details>`
-      : "";
-  const aiCrawlersMd = () =>
-    aiCrawlersOn()
-      ? [
-          "## AI crawlers and agents",
-          "",
-          ...(bots.length
-            ? [
-                AI_INTRO,
-                "",
-                "| Crawler | Vendor | Kind | robots.txt |",
-                "| --- | --- | --- | --- |",
-                ...bots.map(
-                  b =>
-                    `| ${cellMd(noteMd(b.bot))} | ${cellMd(noteMd(b.vendor))} | ${cellMd(noteMd(AI_KIND[b.kind] || b.kind))} | ${cellMd(aiBotStatus(b))} |`,
-                ),
-                "",
-              ]
-            : []),
-          ...(trainingLine() ? [trainingLine(), ""] : []),
-          ...aiPartsMd(),
-          ...(bare
-            ? [
-                landmarkLine(),
-                "",
-                ...bare.pages.map(p => `- ${noteCode(notePath(p.url))} no ${noteMd(p.missing.join(", "))}`),
-                "",
-              ]
-            : []),
-          ...(agenticRows.length
-            ? [AGENTIC_INTRO, "", ...agenticRows.map(a => `- ${noteCode(a.path)} ${noteMd(agenticRow(a))}`), ""]
-            : []),
-        ]
-      : [];
 
   // How many Products give each recommended merchant listing field. Numbers only, so nothing crawled is shown.
   const fields = obj(raw.productFields),
@@ -1280,55 +1147,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
         ]
       : [];
 
-  // Shown inside the "AI crawlers and agents" panel above: Brave's Googlebot fallback, Cloudflare's Bot Preference Sync
-  // block (`botPreferenceSync`), aipref Content-Usage lines as written (`contentUsage`) and pages that answered the AI
-  // probe with a 402 (`aiBotPaid`), as Cloudflare's pay per crawl does. Crawled text is escaped.
-  // https://search.brave.com/help/brave-search-crawler
-  // https://blog.cloudflare.com/bot-preference-sync/
-  const usage = (Array.isArray(raw.contentUsage) ? raw.contentUsage : [])
-    .filter(u => obj(u) && typeof u.rule === "string")
-    .slice(0, 20);
-  const paid = (Array.isArray(raw.aiBotPaid) ? raw.aiBotPaid : [])
-    .filter(p => obj(p) && typeof p.url === "string" && typeof p.bot === "string")
-    .slice(0, 20);
-  const sync = raw.botPreferenceSync === true;
-  const BRAVE_LINE =
-    "Brave Search's crawler has no user agent of its own, so robots.txt can't name it, and it won't crawl a page Googlebot can't. Brave says robots.txt doesn't keep a page out of its results: a `noindex` robots meta tag does.";
-  const SYNC_LINE =
-    "This robots.txt has a block that Cloudflare adds, marked `# BEGIN Cloudflare Bot Preference Sync`. Cloudflare's Bot Preference Sync (announced 21 Aug 2026) writes the AI crawler choices made in Cloudflare's dashboard into the live robots.txt, in front of the site's own lines. So the robots.txt the site serves can differ from the one in the code: change those crawlers in Cloudflare's dashboard, as editing the file in the code won't change that block.";
-  const USAGE_INTRO =
-    "Content-Usage lines in robots.txt, shown as written. They come from the IETF's AI preferences drafts (August and September 2026), which aren't final, so the crawl doesn't judge them.";
-  const PAID_INTRO =
-    "Asked as an AI search crawler, these pages answered 402 Payment Required: the site asks crawlers to pay for the page. Cloudflare's pay per crawl answers this way, with the price in a crawler-price header. That's paid access, not a refusal, so it isn't a finding.";
-  const paidRow = p => `${p.bot}${typeof p.price === "string" ? ` · crawler-price: ${p.price}` : ""}`;
-  const aiPrefsOn = () => usage.length || paid.length || sync;
-  const aiPartsHtml = () =>
-    (bots.length ? `<p>${inl(BRAVE_LINE)}</p>` : "") +
-    (sync ? `<p>${inl(SYNC_LINE)}</p>` : "") +
-    (usage.length
-      ? `<p>${esc(USAGE_INTRO)}</p><ul class="lim">${usage.map(u => `<li><b>${typeof u.agents === "string" ? `<code>User-agent: ${esc(u.agents)}</code>` : "No group (above the first User-agent line)"}</b><span><code>Content-Usage: ${esc(u.rule)}</code></span></li>`).join("")}</ul>`
-      : "") +
-    (paid.length
-      ? `<p>${esc(PAID_INTRO)}</p><ul class="lim">${paid.map(p => `<li><b><code>${esc(notePath(p.url))}</code></b><span>${esc(paidRow(p))}</span></li>`).join("")}</ul>`
-      : "");
-  const aiPartsMd = () => [
-    ...(bots.length ? [BRAVE_LINE, ""] : []),
-    ...(sync ? [SYNC_LINE, ""] : []),
-    ...(usage.length
-      ? [
-          USAGE_INTRO,
-          "",
-          ...usage.map(
-            u =>
-              `- ${typeof u.agents === "string" ? noteCode(`User-agent: ${u.agents}`) : "No group (above the first User-agent line)"}: ${noteCode(`Content-Usage: ${u.rule}`)}`,
-          ),
-          "",
-        ]
-      : []),
-    ...(paid.length
-      ? [PAID_INTRO, "", ...paid.map(p => `- ${noteCode(notePath(p.url))} ${noteMd(paidRow(p))}`), ""]
-      : []),
-  ];
   // changeCheck, from change-check.mjs: one clicks line, never offered as a cause. Numbers are validated; the callers
   // escape text.
   const changeLine = () => {
@@ -1525,89 +1343,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
         ]
       : []),
   ];
-  // aiAnswers comes from ai-answers.json: per engine, how many sampled answers cited the site and each rival. It's a
-  // count from a small sample, so never a score or a finding. Questions, rivals, pages and errors are user or provider
-  // text, so they're escaped.
-  const aiAnswerData = (a => {
-    const cnt = x => (Number.isInteger(x) && x >= 0 ? x : null),
-      strs = x => (Array.isArray(x) ? x.filter(s => typeof s === "string") : []);
-    const counts = m => Object.entries(obj(m) || {}).filter(([, v]) => cnt(v) !== null);
-    const engines = Object.values(obj(a?.engines) || {})
-      .map(obj)
-      .filter(
-        e =>
-          e &&
-          typeof e.name === "string" &&
-          cnt(e.answers) !== null &&
-          cnt(e.cited) !== null &&
-          (e.answers > 0 || typeof e.error === "string"),
-      );
-    return engines.length
-      ? {
-          date: /^\d{4}-\d{2}-\d{2}$/.test(a.date) ? a.date : "an unknown date",
-          questions: strs(a.questions).length,
-          repeat: cnt(a.repeat) || 1,
-          engines: engines.map(e => ({
-            ...e,
-            rivals: counts(e.rivals),
-            pages: counts(e.pages),
-            never: strs(e.neverCited),
-          })),
-        }
-      : null;
-  })(obj(raw.aiAnswers));
-  const AI_ANSWERS_INTRO =
-    "Whether AI answer engines cited your site when they answered the questions you chose, asked through each provider's API with your own keys. These answers can differ from what people see in the ChatGPT or Perplexity apps, which add personal settings and location, and answers change from day to day. So this is a sample to compare over time, not a ranking. Information only: it doesn't change the score.";
-  const aiName = e => `${e.name}${typeof e.model === "string" ? ` (${e.model})` : ""}`;
-  const aiHead = e =>
-    `your site was cited in ${e.cited} of ${plural(e.answers, "answer")} (a sample: ${plural(aiAnswerData.questions, "question")}, asked ${aiAnswerData.repeat === 1 ? "once" : `${aiAnswerData.repeat} times`} each, on ${aiAnswerData.date}).`;
-  const aiStop = e =>
-    typeof e.error === "string" ? `${e.name} stopped after ${plural(e.answers, "answer")}: ${e.error}` : "";
-  const aiCited = n => `cited in ${plural(n, "answer")}`;
-  const aiLists = e =>
-    [
-      ["Rivals", e.rivals.map(([d, n]) => [d, `cited in ${n} of ${plural(e.answers, "answer")}`])],
-      ["Your pages cited", e.pages.map(([p, n]) => [p, aiCited(n)])],
-      ["Questions whose answers never cited your site", e.never.map(q => [q, ""])],
-    ].filter(([, rows]) => rows.length);
-  const answersHtml = () =>
-    aiAnswerData
-      ? `\n    <details class="how aianswers"><summary>AI answer check</summary><p>${esc(AI_ANSWERS_INTRO)}</p>${aiAnswerData.engines
-          .map(
-            e =>
-              `<p><b>${esc(aiName(e))}</b>: ${esc(aiHead(e))}${aiStop(e) ? ` ${esc(aiStop(e))}` : ""}</p>${aiLists(e)
-                .map(
-                  ([t, rows]) =>
-                    `<p>${esc(t)}:</p><ul class="lim">${rows.map(([k, v]) => `<li><b>${t === "Your pages cited" ? `<code>${esc(k)}</code>` : esc(k)}</b>${v ? `<span>${esc(v)}</span>` : ""}</li>`).join("")}</ul>`,
-                )
-                .join("")}`,
-          )
-          .join("")}</details>`
-      : "";
-  const answersMd = () =>
-    aiAnswerData
-      ? [
-          "## AI answer check",
-          "",
-          noteMd(AI_ANSWERS_INTRO),
-          "",
-          ...aiAnswerData.engines.flatMap(e => [
-            `### ${noteMd(e.name)}`,
-            "",
-            noteMd(`${aiName(e)}: ${aiHead(e)}`),
-            "",
-            ...(aiStop(e) ? [noteMd(aiStop(e)), ""] : []),
-            ...aiLists(e).flatMap(([t, rows]) => [
-              `${t}:`,
-              "",
-              ...rows.map(
-                ([k, v]) => `- ${t === "Your pages cited" ? noteCode(k) : noteMd(k)}${v ? ` ${noteMd(v)}` : ""}`,
-              ),
-              "",
-            ]),
-          ]),
-        ]
-      : [];
   // geoGrid comes from geo-grid.json. Google's terms forbid Places results on a non-Google map, so it's a plain grid
   // with north at the top, credited "Google Maps". Counts come from the cells, never the file's own totals, and the
   // label is written here, not read from the file.
@@ -1753,7 +1488,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
       dataHtml,
       flowHtml,
       linkStrengthHtml,
-      answersHtml,
+      aiAnswersHtml,
       gridHtml,
     ]
       .map(f => f())
@@ -1779,7 +1514,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
       dataMd,
       flowMd,
       linkStrengthMd,
-      answersMd,
+      aiAnswersMd,
       gridMd,
     ].flatMap(f => f());
 
