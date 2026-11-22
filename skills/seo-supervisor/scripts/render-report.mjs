@@ -13,6 +13,7 @@ import { recheckOf, RECHECK_NOTE } from "./lib/recheck.mjs";
 import { isMain } from "./lib/is-main.mjs";
 import { buildModel, needsYou } from "./report/model.mjs";
 import { overviewLines, LCP_PART } from "./report/overview-lines.mjs";
+import { linkPanels } from "./report/panels/links.mjs";
 import { searchTraffic, visitsOf, isoDates, byPath } from "./report/traffic.mjs";
 import {
   SEV_LABEL,
@@ -81,22 +82,22 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     verdict,
   } = m;
 
-  const traffic = obj(raw.traffic),
-    bing = obj(raw.bing),
+  const bing = obj(raw.bing),
     matomo = obj(raw.matomo),
     posthog = obj(raw.posthog);
-  const linked = Array.isArray(bing?.backlinks?.pages) ? bing.backlinks.pages.filter(obj) : [];
-  const topLinked = [...linked].sort((a, b) => (Number(b.count) || 0) - (Number(a.count) || 0)).slice(0, 10);
-  const linkSample = (Array.isArray(bing?.backlinks?.sample) ? bing.backlinks.sample.filter(obj) : []).slice(0, 5);
-  const bingLinks = topLinked.length || linkSample.length;
-  // backlinks.mjs: whether known links from other sites are still there. Third-party URLs, escaped where shown.
-  const linkCheck = obj(raw.backlinks),
-    checkedLinks = Number(linkCheck?.checked) || 0;
-  const goneLinks = Array.isArray(linkCheck?.gone) ? linkCheck.gone.filter(obj) : [];
-  const linkCheckLine = checkedLinks
-    ? `${num(Number(linkCheck.live) || 0)} of ${num(checkedLinks)} known ${checkedLinks === 1 ? "link is" : "links are"} still there; ${num(goneLinks.length)} gone; ${num(Array.isArray(linkCheck.unreachable) ? linkCheck.unreachable.filter(obj).length : 0)} couldn't be checked`
-    : "";
-  const linkCount = p => plural(Number(p.count) || 0, "link");
+  const {
+    linked,
+    linksHtml,
+    linksMd,
+    moreLinksHtml,
+    moreLinksMd,
+    linkIdeasHtml,
+    linkIdeasMd,
+    linkedOnceHtml,
+    linkedOnceMd,
+    linkStrengthHtml,
+    linkStrengthMd,
+  } = linkPanels(m);
   const {
     trafficFor,
     trafficOf,
@@ -257,134 +258,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     ];
   };
 
-  // Links from other sites and their change since the last audit, in one collapsed panel on the Overview (a section
-  // in the Markdown): links-import.mjs's summary of the Search Console exports, then backlinks.mjs's check and Bing's
-  // lists. Domains, URLs and counts come from other sites, so they're escaped where shown.
-  const scLinks = obj(raw.links),
-    scRows = (k, f) =>
-      Array.isArray(scLinks?.[k]) ? scLinks[k].filter(x => obj(x) && typeof x[f] === "string" && x[f]) : [];
-  const scSites = scRows("sites", "domain"),
-    scPages = scRows("pages", "url");
-  const scMix = (m =>
-    m && ["brand", "address", "generic", "other"].every(k => Number.isFinite(m[k]) && m[k] >= 0 && m[k] <= 1)
-      ? m
-      : null)(obj(raw.anchorMix));
-  const hasSc = !!(scSites.length || scPages.length || scMix),
-    linkSources = [hasSc && "Search Console", bingLinks && "Bing"].filter(Boolean).join(" and ");
-  // Search Console's tables export at most 1,000 rows, so 1,000 may be more.
-  // https://support.google.com/webmasters/answer/9049606
-  const scUpTo = n => (n >= 1000 ? "1,000 or more" : num(n));
-  const scLine = () => {
-    const parts = [
-      scSites.length && `${scUpTo(scSites.length)} site${scSites.length === 1 ? " links" : "s link"} to you`,
-      scPages.length && `${scUpTo(scPages.length)} of your pages ${scPages.length === 1 ? "has" : "have"} links`,
-    ].filter(Boolean);
-    return parts.length
-      ? `Search Console${Date.parse(scLinks.when) ? ` (export of ${fmtDate(scLinks.when)})` : ""}: ${parts.join(" · ")}`
-      : "";
-  };
-  const scPct = x => `${Math.round(x * 100)}%`;
-  const scMixLine = () =>
-    `Link text: your brand ${scPct(scMix.brand)} · web address ${scPct(scMix.address)} · generic, like “click here”, ${scPct(scMix.generic)} · other ${scPct(scMix.other)}.`;
-  const scInfoLine = () =>
-    `${scMix ? "A natural mix is mostly your brand, your web address and words that say what the page is about. " : ""}Information only: it doesn't change the score.`;
-  const scCount = x => (Number.isFinite(x.links) ? plural(x.links, "link") : "");
-  const scList = (list, f) =>
-    `<ul class="lim">${list
-      .slice(0, 5)
-      .map(x => `<li><b><code>${esc(x[f])}</code></b><span>${scCount(x)}</span></li>`)
-      .join("")}</ul>`;
-  // worthALook (links-import.mjs): standout links, each with why and what to look at.
-  const looks = (Array.isArray(raw.worthALook) ? raw.worthALook : [])
-    .filter(x => obj(x) && ["subject", "why", "look"].every(k => typeof x[k] === "string" && x[k]))
-    .slice(0, 10);
-  const lookEx = x => (Array.isArray(x.examples) ? x.examples.filter(e => typeof e === "string" && e).slice(0, 5) : []);
-  const LOOK_INTRO = "Worth a look: links that stand out. It isn't a score or a finding, and most turn out to be fine.";
-  const looksHtml = () =>
-    looks.length
-      ? `<p>${esc(LOOK_INTRO)}</p><ul class="lim">${looks
-          .map(
-            x =>
-              `<li><b>${esc(x.subject)}</b><span>${esc(x.why)} ${esc(x.look)}${
-                lookEx(x).length
-                  ? ` For example: ${lookEx(x)
-                      .map(e => `<code>${esc(e)}</code>`)
-                      .join(", ")}`
-                  : ""
-              }</span></li>`,
-          )
-          .join("")}</ul>`
-      : "";
-  const linksHtml = () =>
-    hasSc || bingLinks || linkCheckLine || looks.length
-      ? `
-    <details class="how links"><summary>Links from other sites${linkSources ? ` (${linkSources})` : ""}</summary>${scLine() ? `<p>${esc(scLine())}</p>` : ""}${scSites.length ? `<p>The sites with the most links to you:</p>${scList(scSites, "domain")}` : ""}${scPages.length ? `<p>Your most-linked pages in Search Console:</p>${scList(scPages, "url")}` : ""}${scMix ? `<p>${esc(scMixLine())}</p>` : ""}${hasSc ? `<p>${esc(scInfoLine())}</p>` : ""}${looksHtml()}${
-      linkCheckLine
-        ? `<p>${esc(linkCheckLine)}</p>${
-            goneLinks.length
-              ? `<ul class="lim">${goneLinks
-                  .slice(0, 10)
-                  .map(g => `<li><b><code>${esc(g.url)}</code></b><span>${esc(g.reason)}</span></li>`)
-                  .join("")}</ul>`
-              : ""
-          }`
-        : ""
-    }${topLinked.length ? `<p>${hasSc ? "Your most-linked pages in Bing:" : "The pages with the most links from other sites:"}</p><ul class="lim">${topLinked.map(p => `<li><b><code>${esc(p.url)}</code></b><span>${linkCount(p)}</span></li>`).join("")}</ul>` : ""}${linkSample.length ? `<p>${hasSc ? "Some of Bing's links to the home page:" : "Some of the links to the home page:"}</p><ul class="lim">${linkSample.map(s => `<li><b><code>${esc(s.url)}</code></b><span>${esc(s.anchorText || "")}</span></li>`).join("")}</ul>` : ""}</details>`
-      : "";
-  const linksMd = () => {
-    if (!(hasSc || bingLinks || linkCheckLine || looks.length)) return [];
-    // The same as markdown()'s mdCode and mdText: other sites' addresses as code, their text escaped.
-    const code = s => "`" + String(s ?? "").replace(/[`\r\n]/g, " ") + "`",
-      text = s =>
-        String(s ?? "")
-          .replace(/\s+/g, " ")
-          .replace(/[\\`*_[\]<>]/g, "\\$&");
-    const list = (l, f) => l.slice(0, 5).map(x => `- ${code(x[f])}${scCount(x) ? ` ${scCount(x)}` : ""}`);
-    return [
-      `## Links from other sites${linkSources ? ` (${linkSources})` : ""}`,
-      "",
-      ...(scLine() ? [scLine(), ""] : []),
-      ...(scSites.length ? ["The sites with the most links to you:", "", ...list(scSites, "domain"), ""] : []),
-      ...(scPages.length ? ["Your most-linked pages in Search Console:", "", ...list(scPages, "url"), ""] : []),
-      ...(scMix ? [scMixLine(), ""] : []),
-      ...(hasSc ? [scInfoLine(), ""] : []),
-      ...(looks.length
-        ? [
-            LOOK_INTRO,
-            "",
-            ...looks.map(
-              x =>
-                `- **${text(x.subject)}**: ${text(x.why)} ${text(x.look)}${lookEx(x).length ? ` For example: ${lookEx(x).map(code).join(", ")}` : ""}`,
-            ),
-            "",
-          ]
-        : []),
-      ...(linkCheckLine
-        ? [
-            linkCheckLine,
-            "",
-            ...goneLinks.slice(0, 10).map(g => `- ${code(g.url)} ${text(g.reason)}`),
-            ...(goneLinks.length ? [""] : []),
-          ]
-        : []),
-      ...(topLinked.length
-        ? [
-            hasSc ? "Your most-linked pages in Bing:" : "The pages with the most links from other sites:",
-            "",
-            ...topLinked.map(p => `- ${code(p.url)} ${linkCount(p)}`),
-            "",
-          ]
-        : []),
-      ...(linkSample.length
-        ? [
-            hasSc ? "Some of Bing's links to the home page:" : "Some of the links to the home page:",
-            "",
-            ...linkSample.map(s => `- ${code(s.url)}${s.anchorText ? ` ${text(s.anchorText)}` : ""}`),
-            "",
-          ]
-        : []),
-    ];
-  };
   // links-import.mjs computes links-dropped, as only it has both audits' links.json summaries.
   const LINKS_DROP = {
     sites: "Sites linking to you (Search Console)",
@@ -1165,152 +1038,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
       : [];
   };
 
-  // More about links, in one collapsed panel on the Overview (a section in the Markdown). Names, addresses and link
-  // text come from other sites, so each is escaped (code spans in the Markdown).
-  const asArray = (x, ok) => (Array.isArray(x) ? x.filter(ok) : []);
-  const asDay = x => typeof x === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x) && !isNaN(Date.parse(x));
-  const newItems = (n =>
-    n && isCount(n.count) && n.count > 0
-      ? { ...n, sites: asArray(n.sites, s => obj(s) && isText(s.domain)).slice(0, 5) }
-      : null)(obj(raw.newLinks));
-  const stale = (n => (n && asDay(n.newest) && asDay(n.asOf) ? n : null))(obj(raw.noNewLinks));
-  const unlinked = (u =>
-    u && isCount(u.count) && u.count > 0 && isCount(u.of) && u.of >= u.count
-      ? { ...u, urls: asArray(u.urls, isText).slice(0, 5) }
-      : null)(obj(raw.unlinkedPages));
-  const nfSites = asArray(linkCheck?.nofollowSites, s => obj(s) && isText(s.site) && isCount(s.pages)).slice(0, 10);
-  const foundItems = asArray(linkCheck?.found, f => obj(f) && isText(f.url) && Array.isArray(f.links))
-    .flatMap(f =>
-      asArray(f.links, l => obj(l) && isText(l.href))
-        .slice(0, 1)
-        .map(l => ({ url: f.url, ...l })),
-    )
-    .slice(0, 10);
-  const cc = (c =>
-    c && isText(obj(c.crawl)?.name)
-      ? {
-          name: c.crawl.name,
-          site: obj(c.site) && isCount(c.site.captures) ? c.site : null,
-          pages: asArray(c.linkingPages, p => obj(p) && isText(p.url) && isText(p.state)),
-          sites: asArray(c.linkingSites, isText),
-        }
-      : null)(obj(raw.commonCrawl));
-  // commoncrawl.mjs --rank: the domain's place in Common Crawl's web graph by harmonic centrality, or how far down it
-  // isn't.
-  const rankInfo = (r =>
-    r &&
-    isText(r.domain) &&
-    isText(r.release) &&
-    isCount(r.domains) &&
-    (r.found === true ? isCount(r.harmonicPos) : r.found === false && isCount(r.scanned))
-      ? r
-      : null)(obj(obj(raw.commonCrawl)?.rank));
-  const out = (o =>
-    o && obj(o.pages) && Object.keys(o.pages).length
-      ? {
-          pages: Object.values(o.pages).filter(isCount),
-          domains: Object.entries(obj(o.domains) || {}).filter(([k, v]) => isText(k) && isCount(v)),
-        }
-      : null)(obj(raw.linksToOtherSites));
-  const bingSample = Array.isArray(bing?.backlinks?.sample) ? bing.backlinks.sample.filter(obj).length : 0;
-  const extraLines = () => {
-    const L = []; // [text, list of [name, detail]]
-    if (newItems)
-      L.push([
-        `${plural(newItems.count, "new site")} ${newItems.count === 1 ? "links" : "link"} to you since the last export${Date.parse(newItems.since) ? ` (${fmtDate(newItems.since)})` : ""}, from Search Console's Top linking sites.${newItems.capped === true ? " Some may be older links: an export holds 1,000 sites at most, so they may have been past the cut before." : ""}`,
-        newItems.sites.map(s => [s.domain, isCount(s.links) ? plural(s.links, "link") : ""]),
-      ]);
-    if (stale)
-      L.push([
-        `No new links for 3 months or more: no link in Search Console's Latest links export was found after ${fmtDate(stale.newest)} (export of ${fmtDate(stale.asOf)}). New links usually come from new things worth linking to, like original data, a free tool, a guide or real news (LINK-10).`,
-        [],
-      ]);
-    if (unlinked)
-      L.push([
-        `${num(unlinked.count)} of your ${num(unlinked.of)} crawled pages have no links from other sites in Search Console's list. That's normal for most pages. For the ones that matter most, link to them from your pages that other sites do link to.`,
-        unlinked.urls.map(u => [notePath(u), ""]),
-      ]);
-    if (nfSites.length)
-      L.push([
-        "Sites whose links to you are all nofollow, sponsored or ugc, in the backlink check. Such links are allowed; Google says links marked this way “will generally not be followed”.",
-        nfSites.map(s => [s.site, plural(s.pages, "page")]),
-      ]);
-    if (foundItems.length)
-      L.push([
-        "Links the backlink check found, with the page each points at and its text:",
-        foundItems.map(f => [
-          f.url,
-          `→ ${f.href}${isText(f.text) ? ` “${f.text}”` : ""}${isText(f.rel) ? ` (${f.rel})` : ""}`,
-        ]),
-      ]);
-    if (cc) {
-      const s = cc.site,
-        linked = cc.pages.filter(p => p.state === "links").length,
-        absent = cc.pages.filter(p => p.state === "not-in-crawl").length;
-      if (s)
-        L.push([
-          s.captures
-            ? `Common Crawl (${cc.name}) holds ${s.capped === true ? "1,000 or more" : num(s.captures)} saved copies of your site's pages${s.home === true ? ", the home page among them" : ", but not the home page"}.`
-            : `Common Crawl (${cc.name}) holds none of your site's pages. If robots.txt blocks CCBot, its crawler, that's why.`,
-          [],
-        ]);
-      if (cc.pages.length)
-        L.push([
-          `${num(linked)} of ${num(cc.pages.length)} known linking pages link to you in Common Crawl's saved copies${absent ? `; ${num(absent)} ${absent === 1 ? "isn't" : "aren't"} in its newest crawl` : ""}. commoncrawl.mjs --rank adds your domain's rank in its web graph.`,
-          cc.sites.slice(0, 5).map(h => [h, ""]),
-        ]);
-    }
-    if (rankInfo)
-      L.push([
-        `Common Crawl's web graph (${rankInfo.release}): ${rankInfo.found ? `${rankInfo.domain} is #${num(rankInfo.harmonicPos)} of ${num(rankInfo.domains)} domains by how well linked it is (harmonic centrality)${isCount(rankInfo.pageRankPos) ? `, #${num(rankInfo.pageRankPos)} by PageRank` : ""}` : `${rankInfo.domain} isn't in the top ${num(rankInfo.scanned)} of ${num(rankInfo.domains)} domains${rankInfo.capped ? " (the read stopped there)" : ""}`}. Common Crawl's own number, not Google's, and information only.`,
-        [],
-      ]);
-    if (out) {
-      const n = out.pages.filter(c => c > 0).length,
-        top = [...out.domains].sort((a, b) => b[1] - a[1]).slice(0, 5);
-      L.push([
-        `${num(n)} of your ${num(out.pages.length)} crawled pages ${n === 1 ? "links" : "link"} to other sites, ${plural(out.domains.length, "site")} in all. Pages that make claims should link to their sources (CONTENT-10).`,
-        top.map(([d, c]) => [d, plural(c, "address", "addresses")]),
-      ]);
-    }
-    // How much of the link profile the free sources cover.
-    // https://support.google.com/webmasters/answer/9049606
-    const cover = [
-      hasSc &&
-        `Google says Search Console's Links report “isn't a comprehensive list of every link on your site”, and each of its tables stops at 1,000 rows${scSites.length >= 1000 ? " (Top linking sites reached it)" : ""}.`,
-      bingSample && `Bing's links here are a sample of ${plural(bingSample, "link")} to your home page.`,
-      checkedLinks && `The backlink check opened ${plural(checkedLinks, "known linking page")} (100 at most).`,
-      cc && "Common Crawl holds only the pages its monthly crawl reached.",
-    ].filter(Boolean);
-    if (cover.length)
-      L.push([`How much this covers: ${cover.join(" ")} Treat the numbers as a sample, not a full count.`, []]);
-    return L;
-  };
-  const LINKS_INTRO = "Information only: none of this changes the score.";
-  const backlinksHtml = () => {
-    const L = extraLines();
-    return L.length
-      ? `\n    <details class="how morelinks"><summary>More about links</summary><p>${esc(LINKS_INTRO)}</p>${L.map(([t, list]) => `<p>${esc(t)}</p>${list.length ? `<ul class="lim">${list.map(([k, v]) => `<li><b><code>${esc(k)}</code></b><span>${esc(v)}</span></li>`).join("")}</ul>` : ""}`).join("")}</details>`
-      : "";
-  };
-  const backlinksMd = () => {
-    const L = extraLines();
-    return L.length
-      ? [
-          "## More about links",
-          "",
-          LINKS_INTRO,
-          "",
-          ...L.flatMap(([t, list]) => [
-            noteMd(t),
-            "",
-            ...list.map(([k, v]) => `- ${noteCode(k)}${v ? ` ${noteMd(v)}` : ""}`),
-            ...(list.length ? [""] : []),
-          ]),
-        ]
-      : [];
-  };
-
   // Third-party text (registrars, video titles, referrers, paths) is escaped by the callers.
   const connLines = () => {
     const n = x => Number(x) || 0,
@@ -1602,66 +1329,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
       ? [PAID_INTRO, "", ...paid.map(p => `- ${noteCode(notePath(p.url))} ${noteMd(paidRow(p))}`), ""]
       : []),
   ];
-  // linkIdeas and queryGaps (keyword-ideas.mjs), copied into the audit as they are. Searches and paths are escaped. Up
-  // to 10 of each on the page, all of them (50 at most) in the Markdown.
-  const aiRows = (key, list) =>
-    (Array.isArray(raw[key]) ? raw[key] : []).filter(
-      i =>
-        obj(i) &&
-        typeof i.page === "string" &&
-        typeof i.query === "string" &&
-        Number.isFinite(i.impressions) &&
-        Array.isArray(i[list]) &&
-        i[list].length &&
-        i[list].every(s => typeof s === "string"),
-    );
-  // Google uses links for relevance and to find pages; the query-gap idea is from Chen and Koudas, a preprint.
-  // https://developers.google.com/search/docs/crawling-indexing/links-crawlable
-  // https://arxiv.org/abs/2610.15033
-  const aiGroups = (code, text) =>
-    /** @type {[string, string, string, string[][]][]} */ ([
-      [
-        "linkideas",
-        "Internal link ideas",
-        "Pages that mention a search another page shows for in Google, but don't link to that page. A link from them, in a sentence about the search, helps people and Google find the page that answers it. From Search Console and the crawl. Information only: none of this changes the score.",
-        aiRows("linkIdeas", "from").map(i => [
-          code(i.page),
-          `${text(`gets ${plural(i.impressions, "impression")} for “${i.query}”. Pages that mention it but don't link to it:`)} ${i.from.map(code).join(", ")}`,
-        ]),
-      ],
-      [
-        "querygaps",
-        "Searches a page doesn't mention",
-        "Searches a page shows for in Google whose words its title, H1 and main text don't use. A page can't answer a search well if it never mentions it, and a 2026 study of AI answers (Chen and Koudas, a preprint, not yet peer reviewed) found that pages whose title and paragraphs match the questions people ask get cited more. Add the words only where they fit the page. Information only: none of this changes the score.",
-        aiRows("queryGaps", "missing").map(i => [
-          code(i.page),
-          text(
-            `shows for “${i.query}” (${plural(i.impressions, "impression")}), but doesn't use: ${i.missing.join(", ")}.`,
-          ),
-        ]),
-      ],
-    ]).filter(([, , , rows]) => rows.length);
-  const linkIdeasHtml = () =>
-    aiGroups(s => `<code>${esc(s)}</code>`, esc)
-      .map(
-        ([cls, title, intro, rows]) =>
-          `\n    <details class="how ${cls}"><summary>${esc(title)}</summary><p>${esc(intro)}</p><ul class="lim">${rows
-            .slice(0, 10)
-            .map(([k, v]) => `<li><b>${k}</b><span>${v}</span></li>`)
-            .join(
-              "",
-            )}</ul>${rows.length > 10 ? `<p>${num(rows.length - 10)} more in <code>seo-audit/keyword-ideas.md</code>.</p>` : ""}</details>`,
-      )
-      .join("");
-  const linkIdeasMd = () =>
-    aiGroups(noteCode, noteMd).flatMap(([, title, intro, rows]) => [
-      `## ${title}`,
-      "",
-      intro,
-      "",
-      ...rows.map(([k, v]) => `- ${k} ${v}`),
-      "",
-    ]);
   // changeCheck, from change-check.mjs: one clicks line, never offered as a cause. Numbers are validated; the callers
   // escape text.
   const changeLine = () => {
@@ -1699,32 +1366,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     const l = changeLine();
     return l ? ["## Change check", "", noteMd(l), ""] : [];
   };
-  // Indexable pages with exactly one internal link in: the first 20, capped when the crawl stopped at --max. Paths are
-  // escaped.
-  const once = (o =>
-    o && isCount(o.count) && Array.isArray(o.pages)
-      ? {
-          ...o,
-          pages: o.pages.filter(p => obj(p) && typeof p.url === "string" && typeof p.from === "string").slice(0, 20),
-        }
-      : null)(obj(raw.linkedOnce));
-  const onceIntro = () =>
-    `${plural(once.count, "page")} that can be indexed ${once.count === 1 ? "has" : "have"} only one other page linking to ${once.count === 1 ? "it" : "them"}${once.count > once.pages.length ? `; the first ${num(once.pages.length)} are below` : ""}. A page linked from one place is easy to miss: visitors find it only if they open that one page, and crawlers, which find pages by following links, have a single way in, so the page is cut off if that link goes. A link from a hub or a related page helps both.${once.capped === true ? " The crawl stopped at --max, so links on pages it didn't read aren't counted." : ""} Information only: it doesn't change the score.`;
-  const crawlLinksHtml = () =>
-    once?.pages.length
-      ? `\n    <details class="how linkedonce"><summary>Pages with one incoming link</summary><p>${esc(onceIntro())}</p><ul class="lim">${once.pages.map(p => `<li><b><code>${esc(notePath(p.url))}</code></b><span>linked only from <code>${esc(notePath(p.from))}</code></span></li>`).join("")}</ul></details>`
-      : "";
-  const crawlLinksMd = () =>
-    once?.pages.length
-      ? [
-          "## Pages with one incoming link",
-          "",
-          noteMd(onceIntro()),
-          "",
-          ...once.pages.map(p => `- ${noteCode(notePath(p.url))} linked only from ${noteCode(notePath(p.from))}`),
-          "",
-        ]
-      : [];
   // App link files missing or broken on a site that promotes an app, and PDFs that several pages or the menu link to,
   // which Microsoft Advertising advised against for core information (8 Oct 2025). Crawled text is escaped.
   // https://developers.google.com/search/blog/2025/05/app-deep-links
@@ -1884,64 +1525,6 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
         ]
       : []),
   ];
-  // linkStrength is a local measure, 0–100: PageRank over the site's own links (sources in checks/link-strength.mjs).
-  // With Search Console traffic it also lists, of the 20 crawled pages with the most clicks, those in the bottom third
-  // of strength, a local rule. Paths are escaped.
-  const n0 = x => Number(x) || 0;
-  const ls = (s => {
-    const pages =
-      s && obj(s.pages)
-        ? Object.entries(s.pages)
-            .filter(([, v]) => Number.isInteger(v) && v >= 0 && v <= 100)
-            .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
-        : [];
-    if (!pages.length) return null;
-    const asc = pages.map(([, v]) => v).reverse(),
-      cut = asc[Math.ceil(asc.length / 3) - 1],
-      top = pages[0][1];
-    const weak = traffic
-      ? pages
-          .map(([u, v]) => ({ u, v, t: byPath(traffic, u) }))
-          .filter(x => x.t && (n0(x.t.clicks) || n0(x.t.impressions)))
-          .sort((a, b) => n0(b.t.clicks) - n0(a.t.clicks) || n0(b.t.impressions) - n0(a.t.impressions))
-          .slice(0, 20)
-          .filter(x => x.v <= cut && x.v < top)
-      : [];
-    return { pages, median: isCount(s.median) ? s.median : null, capped: s.capped === true, weak };
-  })(obj(raw.linkStrength));
-  const LS_LABEL =
-    "This is our own measure, computed with the PageRank formula (Brin and Page, 1998) on this site's own links. It's not Google's PageRank, which uses links from the whole web and isn't public.";
-  const lsIntro = () =>
-    `How much of the site's own linking reaches each page, from 0 to 100. ${LS_LABEL} A page gets more when more pages link to it, and more again when those pages are strong. 100 is the site's strongest page, and 0 means no more than a page nothing links to. The scale is logarithmic: the home page and a few others usually hold most of the strength, and on a straight scale nearly every other page would read close to 0. Here, twice the share of links is always the same number of extra points. It's relative to the ${plural(ls.pages.length, "page")} this crawl read that can be indexed${ls.median != null ? `; half of them have a strength of ${ls.median} or less` : ""}.${ls.capped ? " The crawl stopped at --max, so links on pages it didn't read aren't counted." : ""} Information only: it doesn't change the score.`;
-  const weakIntro = () =>
-    `Found in search, but little link strength: of the 20 crawled pages with the most Search Console clicks, then impressions${raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : ""}, these are in the bottom third of the site's strength (our own rule). People already find them in search, so they're worth more links from your own pages. Link to them from the strongest pages above, in a sentence about what they cover, and see Internal link ideas for pages that already mention their searches.`;
-  const weakTail = x =>
-    `strength ${x.v} · Search Console: ${num(n0(x.t.clicks))} clicks · ${num(n0(x.t.impressions))} impressions`;
-  const scoreHtml = () =>
-    ls
-      ? `\n    <details class="how linkstrength"><summary>Internal link strength</summary><p>${esc(lsIntro())}</p><ul class="lim">${ls.pages
-          .slice(0, 10)
-          .map(([u, v]) => `<li><b><code>${esc(u)}</code></b><span>strength ${v}</span></li>`)
-          .join("")}</ul>` +
-        (ls.weak.length
-          ? `<p>${esc(weakIntro())}</p><ul class="lim">${ls.weak.map(x => `<li><b><code>${esc(x.u)}</code></b><span>${esc(weakTail(x))}</span></li>`).join("")}</ul>`
-          : "") +
-        `</details>`
-      : "";
-  const scoreMd = () =>
-    ls
-      ? [
-          "## Internal link strength",
-          "",
-          noteMd(lsIntro()),
-          "",
-          ...ls.pages.slice(0, 10).map(([u, v]) => `- ${noteCode(u)} strength ${v}`),
-          "",
-          ...(ls.weak.length
-            ? [noteMd(weakIntro()), "", ...ls.weak.map(x => `- ${noteCode(x.u)} ${noteMd(weakTail(x))}`), ""]
-            : []),
-        ]
-      : [];
   // aiAnswers comes from ai-answers.json: per engine, how many sampled answers cited the site and each rival. It's a
   // count from a small sample, so never a score or a finding. Questions, rivals, pages and errors are user or provider
   // text, so they're escaped.
@@ -2159,17 +1742,17 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
       renderHtml,
       contentHtml,
       localHtml,
-      backlinksHtml,
+      moreLinksHtml,
       connHtml,
       diffMoreHtml,
       reportHtml,
       linkIdeasHtml,
       changeHtml,
-      crawlLinksHtml,
+      linkedOnceHtml,
       hygieneHtml,
       dataHtml,
       flowHtml,
-      scoreHtml,
+      linkStrengthHtml,
       answersHtml,
       gridHtml,
     ]
@@ -2185,17 +1768,17 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
       renderMd,
       contentMd,
       localMd,
-      backlinksMd,
+      moreLinksMd,
       connMd,
       diffMoreMd,
       reportMd,
       linkIdeasMd,
       changeMd,
-      crawlLinksMd,
+      linkedOnceMd,
       hygieneMd,
       dataMd,
       flowMd,
-      scoreMd,
+      linkStrengthMd,
       answersMd,
       gridMd,
     ].flatMap(f => f());
