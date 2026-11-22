@@ -5,7 +5,9 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
-import { proxyNote } from "./lib/proxy.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
+import { bodyUpTo } from "./lib/http.mjs";
 import { VERSION } from "./update-check.mjs";
 import { BUSINESS_TYPES } from "./checks/business-type.mjs";
 
@@ -90,14 +92,10 @@ async function call(url, init = {}) {
     redirect: "error",
     signal: AbortSignal.timeout(60000),
   });
-  const chunks = [];
-  let n = 0;
-  for await (const c of r.body ?? []) {
-    if ((n += c.length) > CAP) throw new Error("the answer is over 16 MB");
-    chunks.push(c);
-  }
+  const b = await bodyUpTo(r, CAP);
+  if (!b) throw new Error("the answer is over 16 MB");
   try {
-    return { status: r.status, body: JSON.parse(Buffer.concat(chunks).toString("utf8")) };
+    return { status: r.status, body: JSON.parse(b.toString("utf8")) };
   } catch {
     return { status: r.status, body: null };
   }
@@ -258,14 +256,12 @@ export async function lookupOsm({
   return { ...out, notes };
 }
 
-class Fail extends Error {}
 async function main(argv) {
-  const args = {};
-  for (let i = 0; i < argv.length; i++)
-    if (argv[i].startsWith("--")) {
-      const k = argv[i].slice(2);
-      args[k] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : true;
-    }
+  const args = parseArgs(argv, {
+    flags: ["crawl", "type", "near", "address", "radius", "out"],
+    booleans: ["yes"],
+    positionals: 0,
+  });
   const str = k => (typeof args[k] === "string" ? args[k].trim() : null);
   let crawl = null;
   if (str("crawl")) {
@@ -309,7 +305,7 @@ async function main(argv) {
     overpass = process.env.OSM_OVERPASS || OVERPASS;
   const geocodes = !!address && (!sab || (!near && !schemaGeo));
 
-  if (args.yes !== true) {
+  if (!args.yes) {
     const around = near
       ? `${near.lat}, ${near.lon} (--near)`
       : schemaGeo
@@ -331,10 +327,7 @@ async function main(argv) {
     );
     return 0;
   }
-  {
-    const n = proxyNote();
-    if (n) console.error("note: " + n);
-  }
+  warnProxy();
   const out = resolve(str("out") || "seo-audit/osm.json");
   let cached = null;
   try {
@@ -361,11 +354,4 @@ async function main(argv) {
   return 0;
 }
 
-// Exit by setting the code, not process.exit(): exiting while sockets close crashes Node on Windows.
-if (isMain(import.meta.url)) {
-  process.exitCode = await main(process.argv.slice(2)).then(null, e => {
-    if (!(e instanceof Fail)) throw e;
-    console.error(e.message);
-    return 2;
-  });
-}
+if (isMain(import.meta.url)) await runMain(() => main(process.argv.slice(2)));
