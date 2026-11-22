@@ -218,7 +218,8 @@ const LANDMARKS = { main: "main", nav: "navigation", header: "banner", footer: "
 // The bots in data/ai-bots.json: the one list behind the robots table, ai-bots-blocked, log-scan and the AI crawler
 // probe. Fields beyond name (the vendor's robots.txt token) and vendor:
 // - kind (robots table): search, training, user (fetches a page a person asked for) or other; mayIgnore: the vendor
-//   says robots.txt may not apply; alias: a second accepted name; fallback: the group it follows when unnamed.
+//   says robots.txt may not apply; alias: a second accepted name; fallback: the group it follows when unnamed;
+//   ownGroupOnly: it never follows `User-agent: *`.
 // - group and purpose (log-scan, for bots with their own user agent); ips: published IP lists; ipsAt: where the
 //   vendor publishes them in a form log-scan can't read; probeUa: the user agent --ai-bot-probe sends.
 // Each row follows the vendor's own page. Anthropic names three bots, so anthropic-ai and Claude-Web aren't rows, and
@@ -233,20 +234,20 @@ const LANDMARKS = { main: "main", nav: "navigation", header: "banner", footer: "
 // https://docs.mistral.ai/robots
 // https://duckduckgo.com/duckduckgo-help-pages/results/duckassistbot
 // https://developer.amazon.com/amazonbot
-// https://yandex.com/support/webmaster/en/yandex-ai
+// https://yandex.com/support/webmaster/en/robot-workings/check-yandex-robots
 // https://developers.facebook.com/docs/sharing/webmasters/web-crawlers
 // https://support.apple.com/en-us/119829
 // https://docs.cohere.com/docs/cohere-web-crawlers
-/** @type {{ name: string, vendor: string, kind?: string, mayIgnore?: boolean, alias?: string, fallback?: string, group?: string, purpose?: string, ips?: string[], ipsAt?: string, probeUa?: string }[]} */
+/** @type {{ name: string, vendor: string, kind?: string, mayIgnore?: boolean, alias?: string, fallback?: string, ownGroupOnly?: boolean, group?: string, purpose?: string, ips?: string[], ipsAt?: string, probeUa?: string }[]} */
 export const BOTS = JSON.parse(readFileSync(new URL("../data/ai-bots.json", import.meta.url), "utf8"));
 // The robots table's rows, in file order.
-/** @type {[string, string, string, boolean?, { alias?: string, fallback?: string }?][]} */
+/** @type {[string, string, string, boolean?, { alias?: string, fallback?: string, ownGroupOnly?: boolean }?][]} */
 export const AI_BOTS = BOTS.filter(b => b.kind).map(b => [
   b.name,
   b.vendor,
   b.kind,
   b.mayIgnore,
-  { alias: b.alias, fallback: b.fallback },
+  { alias: b.alias, fallback: b.fallback, ownGroupOnly: b.ownGroupOnly },
 ]);
 
 // Bing's AI rules from robots meta contents and X-Robots-Tag lines. A "<crawler>:" prefix holds for the rules after

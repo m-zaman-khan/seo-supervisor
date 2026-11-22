@@ -141,10 +141,10 @@ export function aiBotAccess({ robots, robotsRes, star }, { add, extra, startOrig
   if (robots) {
     // Applebot falls back to Googlebot's group when it isn't named (https://support.apple.com/en-us/119829), and
     // YandexAdditional reads only its own group, never `*`.
-    extra.aiBots = AI_BOTS.map(([bot, vendor, kind, mayIgnore, { alias, fallback } = {}]) => {
+    extra.aiBots = AI_BOTS.map(([bot, vendor, kind, mayIgnore, { alias, fallback, ownGroupOnly } = {}]) => {
       const own = ownGroup(robots, bot, alias),
         via = !own && fallback ? groupFor(robots, fallback) : null,
-        g = own || via || star;
+        g = own || via || (ownGroupOnly ? null : star);
       return {
         bot,
         vendor,

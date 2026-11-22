@@ -80,6 +80,18 @@ test("ai-bots-blocked names exactly the bots the table shows as blocked by their
   );
 });
 
+test("Meta's WebIndexer and ExternalAds crawlers are listed; YandexAdditional doesn't follow User-agent: *", () => {
+  const row = name => DATA.find(b => b.name === name);
+  assert.deepEqual([row("Meta-WebIndexer")?.kind, row("Meta-WebIndexer")?.group], ["search", "ai-search"]);
+  assert.deepEqual([row("Meta-ExternalAds")?.kind, row("Meta-ExternalAds")?.group], ["other", "other"]);
+  const { table, blocked } = readRobots("User-agent: *\nDisallow: /\n");
+  const bot = name => table.find(b => b.bot === name);
+  assert.equal(bot("YandexAdditionalBot").robots, "allowed", "Yandex: it reads only a group that names it");
+  assert.equal(bot("Meta-WebIndexer").robots, "blocked-by-star");
+  assert.equal(bot("Meta-ExternalAds").robots, "blocked-by-star");
+  assert.deepEqual(blocked, [], "a * block is robots-blocks-all, not this finding");
+});
+
 test("Anthropic's retired names are in no list and raise nothing", () => {
   assert.ok(!DATA.some(b => /^(anthropic-ai|claude-web)$/i.test(b.name)));
   assert.deepEqual(readRobots("User-agent: anthropic-ai\nUser-agent: Claude-Web\nDisallow: /\n").blocked, []);
