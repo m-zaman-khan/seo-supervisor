@@ -130,7 +130,7 @@ async function readSitemaps(urls, listed = true, { fetchSitemap, toCrawl }) {
     // time (32 KB takes hours); the value is trimmed afterwards instead.
     if (/<sitemapindex\b/i.test(body)) {
       if (parent) file.nestedIn = parent;
-      for (const m of body.matchAll(/<sitemap\b[\s\S]*?<loc>\s*([\s\S]*?)\s*<\/loc>/gi))
+      for (const m of body.matchAll(/<sitemap\b[\s\S]*?<loc>([\s\S]*?)<\/loc>/gi))
         queue.push([decode(m[1].trim()), true, u]);
       continue;
     }
@@ -168,12 +168,12 @@ async function readSitemaps(urls, listed = true, { fetchSitemap, toCrawl }) {
         break;
       }
       file.urls++;
-      const loc = (m[1].match(/<loc>\s*([\s\S]*?)\s*<\/loc>/i) || [])[1];
-      const lastmod = (m[1].match(/<lastmod>\s*([\s\S]*?)\s*<\/lastmod>/i) || [])[1];
+      const loc = (m[1].match(/<loc>([\s\S]*?)<\/loc>/i) || [])[1]?.trim();
+      const lastmod = (m[1].match(/<lastmod>([\s\S]*?)<\/lastmod>/i) || [])[1]?.trim();
       if (!loc) continue;
       const e = {
-        loc: decode(loc.trim()),
-        lastmod: lastmod ? lastmod.trim() : null,
+        loc: decode(loc),
+        lastmod: lastmod || null,
         sitemap: u,
         hints: /<(priority|changefreq)>/i.test(m[1]),
       };
