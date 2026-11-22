@@ -5,8 +5,8 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SCRIPTS, SKILL, node, tmp } from "./helpers.mjs";
-import { AI_BOTS, BOTS } from "../skills/seo-supervisor/scripts/checks/agents.mjs";
-import { aiBotAccess, checkRobots } from "../skills/seo-supervisor/scripts/checks/robots.mjs";
+import { AI_BOTS, BOTS, aiRobots } from "../skills/seo-supervisor/scripts/checks/agents.mjs";
+import { aiBotAccess, allowedBy, checkRobots } from "../skills/seo-supervisor/scripts/checks/robots.mjs";
 
 const DATA = JSON.parse(readFileSync(join(SCRIPTS, "data", "ai-bots.json"), "utf8"));
 
@@ -90,6 +90,12 @@ test("Meta's WebIndexer and ExternalAds crawlers are listed; YandexAdditional do
   assert.equal(bot("Meta-WebIndexer").robots, "blocked-by-star");
   assert.equal(bot("Meta-ExternalAds").robots, "blocked-by-star");
   assert.deepEqual(blocked, [], "a * block is robots-blocks-all, not this finding");
+  assert.ok(
+    aiRobots("User-agent: Meta-ExternalFetcher\nDisallow: /\n", allowedBy).conflicts.some(c =>
+      c.startsWith("Meta-WebIndexer, Meta's AI search crawler, is allowed"),
+    ),
+    "Meta's search crawler and its fetcher are a pair",
+  );
 });
 
 test("Anthropic's retired names are in no list and raise nothing", () => {
