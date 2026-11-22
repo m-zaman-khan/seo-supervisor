@@ -171,3 +171,71 @@ test("an image or stylesheet that's rate-limited isn't reported as broken; one s
     r.notes.join("\n"),
   );
 });
+
+test("a sitemap that answers 429 or 503 is asked once more after the slow-down", async () => {
+  const hits = new Map();
+  let origin = "";
+  const site = await listen((req, res) => {
+    const p = pathOf(req.url),
+      n = (hits.get(p) || 0) + 1;
+    hits.set(p, n);
+    if (n === 1) return res.writeHead(p === "/a.xml" ? 429 : 503, { "Retry-After": "1" }).end();
+    res.writeHead(200, { "Content-Type": "application/xml" }).end(urlset([`${origin}${p}-page/`]));
+  });
+  origin = site.origin;
+  try {
+    const { fetchSitemap, slow } = createFetcher({ startOrigin: site.origin, ua: "test", toCrawl: u => u });
+    const a = await fetchSitemap(site.origin + "/a.xml"),
+      b = await fetchSitemap(site.origin + "/b.xml");
+    assert.deepEqual([a.status, b.status], [200, 200], JSON.stringify([a, b]));
+    assert.match(a.body ?? "", /\/a\.xml-page\//);
+    assert.deepEqual([hits.get("/a.xml"), hits.get("/b.xml")], [2, 2]);
+    assert.equal(slow.busy, 2);
+  } finally {
+    site.close();
+  }
+});
+
+test("a crawl whose sitemap files are rate-limited still reads them and crawls the pages they list", async () => {
+  const hits = new Map();
+  let origin = "";
+  const before = (req, res) => {
+    const p = pathOf(req.url),
+      n = (hits.get(p) || 0) + 1;
+    hits.set(p, n);
+    if (p === "/index.xml")
+      return !!res
+        .writeHead(200, { "Content-Type": "application/xml" })
+        .end(
+          `<?xml version="1.0"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${[0, 1, 2].map(i => `<sitemap><loc>${origin}/sm-${i}.xml</loc></sitemap>`).join("")}</sitemapindex>`,
+        );
+    const m = /^\/sm-(\d)\.xml$/.exec(p);
+    if (!m) return false;
+    if (n === 1) return !!res.writeHead(429, { "Retry-After": "1" }).end();
+    return !!res.writeHead(200, { "Content-Type": "application/xml" }).end(urlset([`${origin}/only-${m[1]}/`]));
+  };
+  const dir = tmp(),
+    out = join(tmp(), "crawl.json");
+  for (const p of ["/", "/only-0/", "/only-1/", "/only-2/"]) {
+    mkdirSync(join(dir, p), { recursive: true });
+    writeFileSync(join(dir, p, "index.html"), page(`Boiler page ${p}`));
+  }
+  const site = await serve(dir, { before });
+  origin = site.url;
+  writeFileSync(join(dir, "robots.txt"), `User-agent: *\nAllow: /\nSitemap: ${origin}/index.xml\n`);
+  try {
+    await node([join(SCRIPTS, "seo-crawl.mjs"), "--url", origin + "/", "--out", out]);
+  } finally {
+    await site.close();
+  }
+  const r = JSON.parse(readFileSync(out, "utf8"));
+  assert.ok(
+    !r.findings.some(f => /^sitemap-(unreachable|missing)/.test(f.check)),
+    JSON.stringify(r.findings.filter(f => /sitemap/.test(f.check))),
+  );
+  for (const i of [0, 1, 2])
+    assert.ok(
+      r.pages.some(p => pathOf(p.url) === `/only-${i}/` && p.status === 200),
+      `/only-${i}/ was crawled from its sitemap`,
+    );
+});

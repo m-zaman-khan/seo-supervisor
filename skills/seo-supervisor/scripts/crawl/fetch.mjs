@@ -289,15 +289,24 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl, dns 
   // be compressed twice. Redirects are followed by hand, 5 at most, so each hop passes the guard.
   async function fetchSitemap(url, retry = true) {
     try {
-      let res;
+      let res,
+        waited = false;
       for (let hop = 0; ; hop++) {
         const why = await offLimits(url);
         if (why) return { status: 0, error: why };
+        if (slow.until > Date.now()) await sleep(slow.until - Date.now());
         res = await request(url, {
           redirect: "manual",
           headers: { "user-agent": UA, accept: "application/xml,text/xml;q=0.9,*/*;q=0.8" },
           signal: AbortSignal.timeout(60000),
         });
+        if ((res.status === 429 || (res.status === 503 && urlOr(url)?.origin === START_ORIGIN)) && !waited) {
+          waited = true;
+          hop--;
+          slowDown(res);
+          await res.body?.cancel();
+          continue;
+        }
         const loc = res.headers.get("location");
         if (res.status < 300 || res.status > 399 || !loc || hop === 5) break;
         await res.body?.cancel();
