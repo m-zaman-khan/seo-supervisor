@@ -77,55 +77,45 @@ export function aiPanels({ raw, lighthouse }) {
   const agenticRow = a =>
     `${num(a.passed)} of ${num(a.total)} checks passed${a.failed.length ? `; failing: ${a.failed.map(f => f.title).join("; ")}` : ""}`;
   const aiCrawlersOn = () => aiBots.length || noLandmarks || agentic.length || trainingLine() || aiExtrasOn();
-  const aiCrawlersHtml = () =>
-    aiCrawlersOn()
-      ? `\n    <details class="how aibots"><summary>AI crawlers and agents</summary>` +
-        (aiBots.length
-          ? `<p>${esc(AI_INTRO)}</p><div class="tablewrap"><table><thead><tr><th scope="col">Crawler</th><th scope="col">Vendor</th><th scope="col">Kind</th><th scope="col">robots.txt</th></tr></thead><tbody>${aiBots.map(b => `<tr><td><code>${esc(b.bot)}</code></td><td>${esc(b.vendor)}</td><td>${esc(AI_KIND[b.kind] || b.kind)}</td><td>${inl(aiBotStatus(b))}</td></tr>`).join("")}</tbody></table></div>`
-          : "") +
-        (trainingLine() ? `<p>${inl(trainingLine())}</p>` : "") +
-        aiExtrasHtml(aiBots) +
-        (noLandmarks
-          ? `<p>${esc(landmarkLine())}</p><ul class="lim">${noLandmarks.pages.map(p => `<li><b><code>${esc(notePath(p.url))}</code></b><span>no ${esc(p.missing.join(", "))}</span></li>`).join("")}</ul>`
-          : "") +
-        (agentic.length
-          ? `<p>${esc(AGENTIC_INTRO)}</p><ul class="lim">${agentic.map(a => `<li><b><code>${esc(a.path)}</code></b><span>${esc(agenticRow(a))}</span></li>`).join("")}</ul>`
-          : "") +
-        `</details>`
-      : "";
-  const aiCrawlersMd = () =>
-    aiCrawlersOn()
-      ? [
-          "## AI crawlers and agents",
-          "",
-          ...(aiBots.length
-            ? [
-                AI_INTRO,
-                "",
-                "| Crawler | Vendor | Kind | robots.txt |",
-                "| --- | --- | --- | --- |",
-                ...aiBots.map(
-                  b =>
-                    `| ${cellMd(noteMd(b.bot))} | ${cellMd(noteMd(b.vendor))} | ${cellMd(noteMd(AI_KIND[b.kind] || b.kind))} | ${cellMd(aiBotStatus(b))} |`,
-                ),
-                "",
-              ]
-            : []),
-          ...(trainingLine() ? [trainingLine(), ""] : []),
-          ...aiExtrasMd(aiBots),
-          ...(noLandmarks
-            ? [
-                landmarkLine(),
-                "",
-                ...noLandmarks.pages.map(p => `- ${noteCode(notePath(p.url))} no ${noteMd(p.missing.join(", "))}`),
-                "",
-              ]
-            : []),
-          ...(agentic.length
-            ? [AGENTIC_INTRO, "", ...agentic.map(a => `- ${noteCode(a.path)} ${noteMd(agenticRow(a))}`), ""]
-            : []),
-        ]
-      : [];
+  // Local sentences with `code` in them are { inl }. AI_INTRO's "User-agent: *" and the bot names go into the Markdown
+  // with the * unescaped, as it can't start emphasis there.
+  const aiCrawlers = () =>
+    aiCrawlersOn() && {
+      cls: "aibots",
+      title: "AI crawlers and agents",
+      blocks: [
+        aiBots.length && { p: { html: esc(AI_INTRO), md: AI_INTRO } },
+        aiBots.length && {
+          head: ["Crawler", "Vendor", "Kind", "robots.txt"],
+          align: ["---", "---", "---", "---"],
+          rows: aiBots.map(b => [
+            { html: `<code>${esc(b.bot)}</code>`, md: noteMd(b.bot) },
+            b.vendor,
+            AI_KIND[b.kind] || b.kind,
+            { inl: aiBotStatus(b) },
+          ]),
+        },
+        trainingLine() && { p: { inl: trainingLine() } },
+        aiBots.length && { p: { inl: BRAVE_LINE } },
+        botSync && { p: { inl: SYNC_LINE } },
+        contentUsage.length && { p: USAGE_INTRO },
+        {
+          rows: contentUsage.map(u => [
+            typeof u.agents === "string"
+              ? { code: `User-agent: ${u.agents}` }
+              : "No group (above the first User-agent line)",
+            { code: `Content-Usage: ${u.rule}` },
+            ": ",
+          ]),
+        },
+        paidPages.length && { p: PAID_INTRO },
+        { rows: paidPages.map(p => [{ code: notePath(p.url) }, paidRow(p)]) },
+        noLandmarks && { p: landmarkLine() },
+        noLandmarks && { rows: noLandmarks.pages.map(p => [{ code: notePath(p.url) }, `no ${p.missing.join(", ")}`]) },
+        agentic.length && { p: AGENTIC_INTRO },
+        { rows: agentic.map(a => [{ code: a.path }, agenticRow(a)]) },
+      ],
+    };
   // Shown inside the "AI crawlers and agents" panel. Brave falls back to Googlebot's rules, and aiBotPaid lists pages
   // that answered the AI probe with a 402, as Cloudflare's pay per crawl does. Crawled text is escaped.
   // https://search.brave.com/help/brave-search-crawler
@@ -149,33 +139,6 @@ export function aiPanels({ raw, lighthouse }) {
     "Asked as an AI search crawler, these pages answered 402 Payment Required: the site asks crawlers to pay for the page. Cloudflare's pay per crawl answers this way, with the price in a crawler-price header. That's paid access, not a refusal, so it isn't a finding.";
   const paidRow = p => `${p.bot}${typeof p.price === "string" ? ` · crawler-price: ${p.price}` : ""}`;
   const aiExtrasOn = () => contentUsage.length || paidPages.length || botSync;
-  const aiExtrasHtml = bots =>
-    (bots.length ? `<p>${inl(BRAVE_LINE)}</p>` : "") +
-    (botSync ? `<p>${inl(SYNC_LINE)}</p>` : "") +
-    (contentUsage.length
-      ? `<p>${esc(USAGE_INTRO)}</p><ul class="lim">${contentUsage.map(u => `<li><b>${typeof u.agents === "string" ? `<code>User-agent: ${esc(u.agents)}</code>` : "No group (above the first User-agent line)"}</b><span><code>Content-Usage: ${esc(u.rule)}</code></span></li>`).join("")}</ul>`
-      : "") +
-    (paidPages.length
-      ? `<p>${esc(PAID_INTRO)}</p><ul class="lim">${paidPages.map(p => `<li><b><code>${esc(notePath(p.url))}</code></b><span>${esc(paidRow(p))}</span></li>`).join("")}</ul>`
-      : "");
-  const aiExtrasMd = bots => [
-    ...(bots.length ? [BRAVE_LINE, ""] : []),
-    ...(botSync ? [SYNC_LINE, ""] : []),
-    ...(contentUsage.length
-      ? [
-          USAGE_INTRO,
-          "",
-          ...contentUsage.map(
-            u =>
-              `- ${typeof u.agents === "string" ? noteCode(`User-agent: ${u.agents}`) : "No group (above the first User-agent line)"}: ${noteCode(`Content-Usage: ${u.rule}`)}`,
-          ),
-          "",
-        ]
-      : []),
-    ...(paidPages.length
-      ? [PAID_INTRO, "", ...paidPages.map(p => `- ${noteCode(notePath(p.url))} ${noteMd(paidRow(p))}`), ""]
-      : []),
-  ];
   // aiAnswers comes from ai-answers.json: per engine, how many sampled answers cited the site and each rival. It's a
   // count from a small sample, so never a score or a finding. Questions, rivals, pages and errors are user or provider
   // text, so they're escaped.
@@ -261,5 +224,5 @@ export function aiPanels({ raw, lighthouse }) {
           ]),
         ]
       : [];
-  return { agents, aiCrawlersHtml, aiCrawlersMd, aiAnswersHtml, aiAnswersMd };
+  return { agents, aiCrawlers, aiAnswersHtml, aiAnswersMd };
 }

@@ -86,7 +86,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     settingRows,
     settingsSummary,
   } = sitePanels(m);
-  const { agents, aiCrawlersHtml, aiCrawlersMd, aiAnswersHtml, aiAnswersMd } = aiPanels(m);
+  const { agents, aiCrawlers, aiAnswersHtml, aiAnswersMd } = aiPanels(m);
   const { writing, productData, descriptions, appsPdfs, audienceHtml, audienceMd } = contentPanels(m);
   const { images, lighthouseDetailHtml, lighthouseDetailMd, speedDetails, a11yHtml, a11yMd } = speedPanels(m);
   const { local, geoGridHtml, geoGridMd } = localPanels(m);
@@ -102,7 +102,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     [lighthouseDetailHtml, lighthouseDetailMd],
     drawn(hstsPreload),
     drawn(crawlCoverage),
-    [aiCrawlersHtml, aiCrawlersMd],
+    drawn(aiCrawlers),
     drawn(productData),
     drawn(speedDetails),
     drawn(browser),
