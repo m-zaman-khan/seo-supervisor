@@ -102,7 +102,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     settingRows,
     settingsSummary,
   } = sitePanels(m);
-  const { agentsHtml, agentsMd, aiCrawlersHtml, aiCrawlersMd, aiAnswersHtml, aiAnswersMd } = aiPanels(m);
+  const { agents, aiCrawlersHtml, aiCrawlersMd, aiAnswersHtml, aiAnswersMd } = aiPanels(m);
   const {
     writingHtml,
     writingMd,
@@ -130,7 +130,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   // scores. Each is a [page, Markdown] pair: drawn() makes one from a panel's view model (report/panel.mjs).
   const panels = [
     [linksHtml, linksMd],
-    [agentsHtml, agentsMd],
+    drawn(agents),
     [writingHtml, writingMd],
     [audienceHtml, audienceMd],
     [imagesHtml, imagesMd],

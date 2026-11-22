@@ -25,21 +25,12 @@ export function aiPanels({ raw, lighthouse }) {
   })();
   const AGENTS_INTRO =
     "What the site offers AI agents, listed for information: none of it is a finding or changes the score. WebMCP is a Chrome experiment that lets a page offer tools to AI agents, and its API is still changing; only inline scripts and forms were read. UCP is the open standard behind checkout in Google's AI Mode and Gemini.";
-  const agentsHtml = () =>
-    agentRows.length
-      ? `\n    <details class="how agents"><summary>AI agents</summary><p>${esc(AGENTS_INTRO)}</p><ul class="lim">${agentRows.map(([where, what]) => `<li><b><code>${esc(where)}</code></b><span>${esc(what)}</span></li>`).join("")}</ul></details>`
-      : "";
-  const agentsMd = () =>
-    agentRows.length
-      ? [
-          "## AI agents",
-          "",
-          AGENTS_INTRO,
-          "",
-          ...agentRows.map(([where, what]) => `- ${noteCode(where)} ${noteMd(what)}`),
-          "",
-        ]
-      : [];
+  const agents = () =>
+    agentRows.length && {
+      cls: "agents",
+      title: "AI agents",
+      blocks: [{ p: AGENTS_INTRO }, { rows: agentRows.map(([where, what]) => [{ code: where }, what]) }],
+    };
 
   const AI_KIND = { search: "AI search", training: "Training", user: "Fetches for a user", other: "Other" };
   const AI_STATUS = {
@@ -270,5 +261,5 @@ export function aiPanels({ raw, lighthouse }) {
           ]),
         ]
       : [];
-  return { agentsHtml, agentsMd, aiCrawlersHtml, aiCrawlersMd, aiAnswersHtml, aiAnswersMd };
+  return { agents, aiCrawlersHtml, aiCrawlersMd, aiAnswersHtml, aiAnswersMd };
 }
