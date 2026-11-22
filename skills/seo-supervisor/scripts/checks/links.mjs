@@ -7,6 +7,7 @@ import { FILE_EXT } from "../lib/html.mjs";
 import { checkOutbound } from "./outbound.mjs";
 import { hasName } from "./crawl.mjs";
 import { pageRank, scale as strengthScale } from "./link-strength.mjs";
+import { quote } from "../lib/findings.mjs";
 
 // Returns inbound (final URL -> links to it, the pages list's linksIn) and sets each page's depth. A bad link's
 // evidence, here and for other sites below, is the page holding it, the one to fix; the detail names the target. Each
@@ -195,7 +196,7 @@ export async function outboundLinks(site, OUTBOUND) {
     extra.outboundLinks = { checked: Math.min(outbound.size, 100), ...r };
     if (r.unreachable.length)
       notes.push(
-        `${r.unreachable.length} link(s) to other sites couldn't be checked (the site turned the visit away, didn't answer, or isn't a public address), e.g. ${r.unreachable[0].url}: ${r.unreachable[0].reason}. They aren't counted as broken; outboundLinks in seo-crawl.json lists them.`,
+        `${r.unreachable.length} link(s) to other sites couldn't be checked (the site turned the visit away, didn't answer, or isn't a public address), e.g. ${quote(r.unreachable[0].url)}: ${r.unreachable[0].reason}. They aren't counted as broken; outboundLinks in seo-crawl.json lists them.`,
       );
     if (outbound.size > 100) notes.push(`Links to other sites: the first 100 of ${outbound.size} were checked.`);
   } else if (outbound.size)

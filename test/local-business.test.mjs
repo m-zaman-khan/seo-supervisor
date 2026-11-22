@@ -148,7 +148,7 @@ test("a service-area business's street address in the schema but on no page isn'
   );
   const [note, more] = localNotes(r);
   assert.equal(more, undefined);
-  assert.match(note, /“4 Home Lane”/);
+  assert.match(note, /"4 Home Lane"/); // quoted as site text
   assert.match(note, /LOCAL-06/);
   assert.match(note, /LOCAL-05/);
 });

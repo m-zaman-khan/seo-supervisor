@@ -1,6 +1,7 @@
 // @ts-check
 // robots.txt checks, and the AI crawler access the report shows. Parsing and matching live in lib/robots.mjs.
 import { AI_BOTS, signalPlacement, aiRobots } from "./agents.mjs";
+import { quote } from "../lib/findings.mjs";
 
 // A user-agent counts by its name up to the first character other than a letter, "_" or "-", so "GPTBot/1.1" is
 // GPTBot, as in Google's open-source parser and RFC 9309. versioned: the lines that carried more, for a note.
@@ -134,8 +135,14 @@ export function versionedNote(robots, notes) {
   if (robots?.versioned.length) {
     const v = robots.versioned[0],
       bare = /^[A-Za-z_-]+/.exec(v)[0];
+    const more = robots.versioned.length - 3;
     notes.push(
-      `robots.txt names ${robots.versioned.map(x => `\`User-agent: ${x}\``).join(", ")} with more than the crawler's name. Google reads only the name, up to the first character that isn't a letter, "_" or "-", so ${v} counts as ${bare}. RFC 9309 allows only those characters, so other crawlers may not match it: write the bare name, such as \`User-agent: ${bare}\`.`,
+      `robots.txt names ${robots.versioned
+        .slice(0, 3)
+        .map(x => `User-agent: ${quote(x)}`)
+        .join(
+          ", ",
+        )}${more > 0 ? ` and ${more} more` : ""} with more than the crawler's name. Google reads only the name, up to the first character that isn't a letter, "_" or "-", so ${quote(v)} counts as ${bare}. RFC 9309 allows only those characters, so other crawlers may not match it: write the bare name, such as \`User-agent: ${bare}\`.`,
     );
   }
 }

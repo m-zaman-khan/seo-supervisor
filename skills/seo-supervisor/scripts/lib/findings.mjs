@@ -80,6 +80,14 @@ export function numbered(list, prefix) {
   return list;
 }
 
+// Site text quoted in a note the agent reads on stdout: JSON-escaped in double quotes, so a line break or quote can't
+// pass as the tool's own words, and cut to 80 characters, so a hidden instruction can't come through whole. This
+// guards the agent's reading, not HTML; the report escapes notes itself.
+export const quote = (text, max = 80) => {
+  const c = [...String(text)];
+  return JSON.stringify(c.length > max ? c.slice(0, max - 1).join("") + "…" : c.join(""));
+};
+
 // A finding's `what`: "Found on <url> (<detail>)." for one case, "<n> cases, for example <url> (<detail>)." for more.
 // The evidence URL and each bare web address in the detail go in a code span, backticks written %60 so the span can't
 // end early, so the report shows them as code, never links. The rest is left to the report's own escaping.
