@@ -4,7 +4,8 @@ Can search engines reach the pages, and are they allowed to index the right ones
 
 ### CRAWL-01 · robots.txt lets search engines crawl the site · blocker
 - **Check:** crawler `robots-blocks-all`, `sitemap-url-disallowed`, and `robots-server-error` (high). That one fires when robots.txt answers 5xx, 429 or nothing: Google then stops crawling the whole site for 12 hours and uses its last copy for up to 30 days. Code: the robots file or route and its environment switch.
-- **Pass:** production allows `/` for `User-agent: *`, and no URL in the sitemap is disallowed.
+- **Which group counts:** the one Googlebot obeys: its own `User-agent: Googlebot` groups, combined, or `User-agent: *` when it has none. Google reads only the most specific group that names a crawler and never combines it with `*` (Google's robots.txt page, "Order of precedence for user agents", updated 23 Oct 2026). So a `User-agent: Googlebot` group with `Disallow: /` blocks Google even when `*` allows everything, and `*` blocking everything doesn't block a Googlebot that has its own group. `deploy-check.mjs` reads it the same way, and warns (not a blocker) when only `*` is blocked.
+- **Pass:** production allows `/` for the group Googlebot obeys, and no URL in the sitemap is disallowed by it.
 - **Fix:** allow crawling in production. Disallow only junk (see MAP-05). Use noindex, not `Disallow`, for pages that shouldn't rank: Google must crawl a page to see its noindex.
 
 ### CRAWL-02 · Pages meant to rank are not set to noindex · blocker
@@ -31,6 +32,7 @@ Can search engines reach the pages, and are they allowed to index the right ones
 
 ### CRAWL-05 · Correct status codes, and no soft 404s · high
 - **Check:** crawler `soft-404`, `server-error`. Code: not-found handling, retired-content handling, maintenance mode.
+- **Soft 404 probes:** a made-up URL at the root, and in each of the 10 largest top sections with pages below them (`/blog/<made-up>`), since a dynamic route can answer 200 for any slug. One that answers 200 is `soft-404` (high), or `soft-404-noindex` (low) when the page says noindex: Google accepts noindex on error pages where a real status code is impractical (JavaScript SEO basics, updated 4 Mar 2026). A crawled page meant to rank that answers 200 but whose title or H1 starts like an error page ("Page not found", "404", "No results found") is `soft-404-page` (high): Google shows a soft 404 for "an empty page or an error message" (HTTP status codes page, updated 4 Feb 2026). The phrases are English only, our own list.
 - **Pass:** 200 for live pages. 404 for unknown URLs. 410 for content removed for good. 301/308 for moved content. 503 with `Retry-After` during maintenance.
 - **Fix:** never return a 200 "not found" page, and never redirect unknown URLs to the home page.
 - **Check (logs):** `log-scan.mjs` `bot-errors`: a search crawler or AI answer bot got at least 5 server errors and at least 1% of its requests failed; high from 5% or 50 errors, otherwise medium. Planned-maintenance 503s with Retry-After are fine.
