@@ -7,7 +7,7 @@ import { Readable } from "node:stream";
 import { promisify } from "node:util";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import { guarded, isPublic, loopback } from "../lib/net.mjs";
-import { bodyUpTo } from "../lib/http.mjs";
+import { bodyUpTo, retryAfter } from "../lib/http.mjs";
 import { brake, sleep } from "../checks/crawl.mjs";
 
 export const TEMPORARY = new Set([302, 303, 307]); // redirects that tell search engines the old URL may come back
@@ -139,10 +139,6 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl, dns 
   // pauses at 2 minutes in all.
   // https://developers.google.com/search/docs/crawling-indexing/http-network-errors
   const slow = brake();
-  const retryAfter = v => {
-    const ms = /^\d+$/.test(v?.trim() || "") ? v * 1000 : Date.parse(v ?? "") - Date.now();
-    return Number.isFinite(ms) ? Math.min(Math.max(ms, 0), 30000) : 2000;
-  };
   // manual: false goes through follow(), so each hop passes the guard. text is the content-type pattern of 2xx bodies
   // to read (true: HTML, XML, plain text). A body over max comes back empty and marked `over`, and an unread body is
   // drained only up to PAGE_MAX, so no endless answer can fill memory.
@@ -172,7 +168,7 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl, dns 
           waited = true;
           attempt--;
           slow.busy++;
-          slow.pause(retryAfter(res.headers.get("retry-after")));
+          slow.pause(Math.min(retryAfter(res.headers.get("retry-after")) ?? 2000, 30000));
           await bodyUpTo(res, PAGE_MAX).catch(() => {});
           continue;
         }
