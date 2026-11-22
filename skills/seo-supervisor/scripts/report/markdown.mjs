@@ -7,7 +7,7 @@ import { planMarkdown } from "../report-plan.mjs";
 import { SEV_LABEL, STATUS_LABEL, fmtDate, plural } from "./format.mjs";
 import { needsYou } from "./model.mjs";
 import { effortOf } from "./findings.mjs";
-import { SCORE_IS_OURS } from "./overview.mjs";
+import { SCORE_HOW } from "./overview.mjs";
 
 /**
  * Follows the page's order (page.mjs), every finding with all its evidence, and ends with "How the score works",
@@ -225,11 +225,6 @@ export function markdown(
     for (const n of notes) L.push(`- ${n}`);
     L.push("");
   }
-  L.push(
-    "## How the score works",
-    "",
-    `Every checked rule is worth 10 points. A rule that passes, or whose findings are all fixed, earns 10. A rule with open findings earns by its worst one: low 8, medium or decision 6, high 3, blocker 0. The score is the share of points earned. Each open blocker caps it: one at 59, two at 49, three at 39. While a blocker is open, the panel also shows the score you reach once it is fixed. Area scores use the same rules within each area. ${SCORE_IS_OURS}`,
-    "",
-  );
+  L.push("## How the score works", "", SCORE_HOW, "");
   return L.join("\n");
 }

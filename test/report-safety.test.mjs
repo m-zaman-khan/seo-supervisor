@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { ROOT, SKILL, tmp } from "./helpers.mjs";
 import { render } from "../skills/seo-supervisor/scripts/render-report.mjs";
 import { summaryOf } from "../skills/seo-supervisor/scripts/dashboard.mjs";
+import { SCORE_HOW } from "../skills/seo-supervisor/scripts/report/overview.mjs";
 
 const KITCHEN = JSON.parse(readFileSync(join(ROOT, "test", "golden", "kitchen-sink.json"), "utf8"));
 const SAMPLE = JSON.parse(readFileSync(join(SKILL, "examples", "sample-audit.json"), "utf8"));
@@ -66,6 +67,13 @@ test("dates are the same day west and east of UTC, in the report and the dashboa
     );
     assert.equal(summaryOf(dir).date, "17 Nov 2026", `${tz}: the dashboard`);
   });
+});
+
+test('"How this score works" is written once: the page and the Markdown say the same words', () => {
+  const { html, md } = rend(SAMPLE);
+  assert.match(SCORE_HOW, /^Every checked rule is worth 10 points\..* not Google's: .*search engines don't use it\.$/);
+  assert.ok(html.includes(`<summary>How this score works</summary>\n        <p>${SCORE_HOW}</p>`));
+  assert.ok(md?.includes(`## How the score works\n\n${SCORE_HOW}\n`));
 });
 
 test("the page's styles have no dead .as.b3-t,.as.b4-t rule", () => {
