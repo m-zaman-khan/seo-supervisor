@@ -196,9 +196,10 @@ test("with --outside --desktop, PageSpeed is asked for desktop, and the report s
           out,
           ...extra,
         ],
-        { env: { ...process.env, CRUX_API_KEY: "test-key", PSI_API_KEY: "" } },
+        { env: { ...process.env, CHROME_PATH: process.execPath, CRUX_API_KEY: "test-key", PSI_API_KEY: "" } },
       );
     } finally {
+      // node stands in for Chrome
       await site.close();
     }
     return { ...JSON.parse(readFileSync(out, "utf8")), asked: psi.hits.splice(0), cruxAsked: crux.hits.splice(0) };

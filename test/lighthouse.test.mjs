@@ -370,9 +370,19 @@ async function crawl(extra, env, fixture = "fixture-zero") {
   const out = join(tmp(), "crawl.json");
   let stdout;
   try {
-    ({ stdout } = await node([join(SCRIPTS, "seo-crawl.mjs"), "--url", site.url, "--out", out, ...extra], {
-      env: { ...process.env, CHROME_PATH: process.execPath, PSI_API_KEY: "", CRUX_API_KEY: "", ...env },
-    }));
+    ({ stdout } = await node(
+      [
+        join(SCRIPTS, "seo-crawl.mjs"),
+        "--url",
+        site.url,
+        "--out",
+        out,
+        "--psi-endpoint",
+        "http://127.0.0.1:9/runPagespeed",
+        ...extra,
+      ],
+      { env: { ...process.env, CHROME_PATH: process.execPath, PSI_API_KEY: "", CRUX_API_KEY: "", ...env } },
+    ));
   } finally {
     await site.close();
   }

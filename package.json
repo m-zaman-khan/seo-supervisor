@@ -15,7 +15,8 @@
     "NOTICE"
   ],
   "scripts": {
-    "test": "node --test test/*.test.mjs",
+    "test": "node --import ./test/offline.mjs --test --test-timeout=120000 --test-force-exit test/*.test.mjs",
+    "test:browser": "node --test --test-timeout=120000 --test-force-exit test/browser/*.test.mjs",
     "demo": "node skills/seo-supervisor/scripts/render-report.mjs skills/seo-supervisor/examples/sample-audit.json --out docs/index.html --no-md && node skills/seo-supervisor/scripts/render-report.mjs skills/seo-supervisor/examples/sample-audit.json --out skills/seo-supervisor/examples/sample-report.html",
     "typecheck": "tsc -p tsconfig.json"
   },

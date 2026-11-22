@@ -8,7 +8,7 @@ import { inflateRawSync } from "node:zlib";
 import { ROOT, SKILL, SCRIPTS, node, tmp } from "./helpers.mjs";
 import { buildRules, normalise, score } from "../skills/seo-supervisor/scripts/lib/score.mjs";
 import { loginDir, settingsDir, toolsDir } from "../skills/seo-supervisor/scripts/lib/settings-dir.mjs";
-import { findBrowser } from "../skills/seo-supervisor/scripts/checks/render.mjs";
+// The --pdf test is in test/browser/report-pdf.test.mjs.
 
 const SAMPLE = join(SKILL, "examples", "sample-audit.json");
 const BIN = join(ROOT, "bin", "seo-supervisor.mjs");
@@ -152,20 +152,6 @@ test("an audit with no page in its evidence gets no Page scores panel", async ()
   assert.doesNotMatch(html, /class="how pagescores"/);
   assert.doesNotMatch(md, /## Page scores/);
 });
-
-const browser = findBrowser();
-test(
-  "--pdf prints the report to a PDF with the installed Chrome or Edge",
-  { skip: !browser && "no Chrome or Edge here", timeout: 180000 },
-  async () => {
-    const { dir, stdout } = await renderAudit(JSON.parse(readFileSync(SAMPLE, "utf8")), ["--pdf"]);
-    const pdf = join(dir, "seo-audit.pdf");
-    assert.ok(existsSync(pdf), stdout);
-    assert.equal(readFileSync(pdf).subarray(0, 5).toString(), "%PDF-");
-    assert.ok(statSync(pdf).size > 20000, "more than an empty page");
-    assert.match(stdout, /seo-audit\.pdf/);
-  },
-);
 
 // ---------- the dashboard ----------
 test("the dashboard lists several audits, lowest score first, as lines and as one offline HTML page", async () => {

@@ -4,7 +4,6 @@ import { createServer } from "node:http";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { serve } from "./serve.mjs";
-import { findBrowser } from "../skills/seo-supervisor/scripts/checks/render.mjs";
 import { labLcpBreakdown, labLcpParts } from "../skills/seo-supervisor/scripts/checks/speed.mjs";
 import { ROOT, SKILL, SCRIPTS, node, tmp } from "./helpers.mjs";
 
@@ -34,20 +33,24 @@ async function fakePsi({ quotaGone = false } = {}) {
     close: () => new Promise(ok => server.close(ok)),
   };
 }
+// node stands in for the browser (CHROME_PATH), so no real Chrome starts.
 async function crawl(extra) {
   const site = await serve(join(ROOT, "test", "fixture-zero"));
   const out = join(tmp(), "crawl.json");
   try {
-    await node([
-      join(SCRIPTS, "seo-crawl.mjs"),
-      "--url",
-      site.url,
-      "--site-origin",
-      "https://zero.example",
-      "--out",
-      out,
-      ...extra,
-    ]);
+    await node(
+      [
+        join(SCRIPTS, "seo-crawl.mjs"),
+        "--url",
+        site.url,
+        "--site-origin",
+        "https://zero.example",
+        "--out",
+        out,
+        ...extra,
+      ],
+      { env: { ...process.env, CHROME_PATH: process.execPath } },
+    );
   } finally {
     await site.close();
   }
@@ -73,12 +76,8 @@ test("with outside checks on, failing real-user Core Web Vitals become a finding
     assert.match(f.evidence[0].detail, /LCP 4\.1 s/);
     assert.ok(r.speed.samples.length === psi.hits.length);
     assert.ok(!r.notChecked.some(n => n.rule === "PERF-01"));
-    if (findBrowser())
-      assert.ok(
-        r.notes.some(n => /^Rendered \d+ of \d+ sample page/.test(n)),
-        "outside checks also render sample pages when Chrome is installed",
-      );
-    else assert.match(r.notChecked.find(n => n.rule === "REND-06")?.reason || "", /isn't installed/);
+    // Outside checks also try to render sample pages; the stand-in browser can't, and the reason says so.
+    assert.match(r.notChecked.find(n => n.rule === "REND-06")?.reason || "", /couldn't render/);
   } finally {
     await psi.close();
   }
@@ -213,7 +212,7 @@ test("with a CrUX key, the 25-week speed trend is fetched for the public origin;
             "--out",
             out,
           ],
-          { env: { ...process.env, CRUX_API_KEY: "", PSI_API_KEY: "", ...env } },
+          { env: { ...process.env, CHROME_PATH: process.execPath, CRUX_API_KEY: "", PSI_API_KEY: "", ...env } },
         );
       } finally {
         await site.close();
