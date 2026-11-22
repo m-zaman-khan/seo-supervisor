@@ -10,6 +10,7 @@ import { fileCrawl } from "./seo-diff.mjs";
 import { chromeProxyArgs } from "./lib/proxy.mjs";
 import { parseArgs } from "./lib/args.mjs";
 import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
+import { loopback } from "./lib/net.mjs";
 import { redact, hideSecrets } from "./lib/redact.mjs";
 import { createFindings } from "./lib/findings.mjs";
 import { RULES, CHECKS } from "./crawl/catalog.mjs";
@@ -135,7 +136,8 @@ const BANNED = typeof args.banned === "string" ? new RegExp(args.banned, "i") : 
 const VERIFY = typeof args.verify === "string" ? new RegExp(args.verify, "i") : null;
 const URL_LIST = typeof args.urls === "string" ? args.urls : null;
 const NEXT_MANIFEST = typeof args["next-manifest"] === "string" ? args["next-manifest"] : null;
-const CONC = Number(args.concurrency || 4);
+// Locally the server's own speed is the limit, so 8 at once; 4 against any other server.
+const CONC = Number(args.concurrency || (loopback(START.hostname) ? 8 : 4));
 const SLASH = ["always", "never"].includes(args["trailing-slash"]) ? args["trailing-slash"] : "auto";
 const BRAND = typeof args.brand === "string" ? args.brand : "";
 const INCLUDE_QUERY = !!args["include-query"];
