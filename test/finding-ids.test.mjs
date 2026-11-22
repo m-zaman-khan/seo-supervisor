@@ -2,10 +2,10 @@
 // How findings are stored, named and printed; old ids keep working through ID_ALIASES.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tmp } from "./helpers.mjs";
-import { ID_ALIASES, currentId } from "../skills/seo-supervisor/scripts/crawl/catalog.mjs";
+import { SKILL, tmp } from "./helpers.mjs";
+import { ID_ALIASES, RULES, currentId } from "../skills/seo-supervisor/scripts/crawl/catalog.mjs";
 import { applyChecks, findingsOf, knownChecks } from "../skills/seo-supervisor/scripts/lib/score.mjs";
 import { diffCrawls, timeline } from "../skills/seo-supervisor/scripts/seo-diff.mjs";
 
@@ -120,6 +120,19 @@ test(
     );
   }),
 );
+
+// ---------- rule titles ----------
+test("the crawler's rule titles are the rule docs' headings, word for word", () => {
+  const doc = new Map();
+  for (const dir of ["rules", "site-types"])
+    for (const f of readdirSync(join(SKILL, dir)))
+      for (const m of readFileSync(join(SKILL, dir, f), "utf8").matchAll(/^### ([A-Z]+-\d+) · (.+?) · /gm))
+        doc.set(m[1], m[2]);
+  const drift = Object.entries(RULES)
+    .filter(([id, [title]]) => doc.get(id) !== title)
+    .map(([id, [title]]) => `${id}: “${title}” vs “${doc.get(id)}”`);
+  assert.deepEqual(drift, []);
+});
 
 // ---------- knownChecks ----------
 test("knownChecks sees a check on the same line as its catalog's opening brace, and no product-problem codes", () => {
