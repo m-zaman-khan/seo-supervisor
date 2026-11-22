@@ -122,3 +122,25 @@ test("--help and -h print the script's usage and exit 0, before anything runs", 
     e => e.code === 2 && /unknown option --hepl/.test(e.stderr),
   );
 });
+
+test("the secret hider leaves crawled URLs and plain words alone, and still hides OpenAI and Anthropic style keys", () => {
+  for (const s of [
+    "https://shop.example/blog/sk-guide-internationalization1",
+    "https://shop.example/sk-abcdefghijklmnopqrstuvwxyz01/",
+    "sk-internationalization-guide-2026",
+  ])
+    assert.equal(hideSecrets(s), s);
+  for (const [s, want] of [
+    ["key sk-proj-abcdefghijklmnopqrstuvwxyz0123 used", "key [hidden] used"],
+    ["key sk-abcdefghijklmnopqrstuvwxyz01 used", "key [hidden] used"],
+    ["OPENAI_API_KEY=sk-admin-abcdefghijklmnopqrstuv", "OPENAI_API_KEY=[hidden]"],
+    ["token: sk-ant-api03-" + "A1b_".repeat(10) + "-xyzAA", "token: [hidden]"],
+  ])
+    assert.equal(hideSecrets(s), want, s);
+  assert.equal(redact("/home/bob says hi", { home: "/nobody" }), "~ says hi");
+  assert.equal(
+    redact("error: C:\\Users\\Some Body", { home: "/nobody" }),
+    "error: ~",
+    "a Windows profile folder at the end, space and all",
+  );
+});

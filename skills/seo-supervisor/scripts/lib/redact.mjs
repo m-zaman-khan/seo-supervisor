@@ -37,14 +37,15 @@ const TOKENS = [
   /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g,
   /\bphx_\w{16,}/g,
   /\bpplx-[A-Za-z0-9]{16,}/g,
-  /\bsk-[\w-]*?[A-Za-z0-9]{20}[\w-]*/g,
+  /(?<![\w/-])sk-(?:(?:proj|admin|ant-api03)-[\w-]{20,}|[A-Za-z0-9]{20,}(?![\w-]))/g,
 ];
 // A login in a web address (https://user:password@host): the user name and password go.
 const USERINFO = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/?#@"'<>]+@/gi;
-// A home folder's name ends at the next \ or /. One with spaces (C:\Users\Jane Doe\…) counts only up to 4 words,
-// and only when a separator, a quote or the end of the text follows.
+// A home folder's name ends at the next \ or /. One with spaces (C:\Users\Jane Doe\…, also written C:/Users/…)
+// counts only up to 4 words, and only when a separator, a quote or the end of the text follows.
+// Under /home/ the name is one word, so "/home/bob says hi" keeps "says hi".
 const HOMES =
-  /(?:\b[A-Za-z]:\\Users\\|\/Users\/|\/home\/)(?:[^\\/\s"':]+(?: [^\\/\s"':]+){1,3}(?=[\\/"'`]|$)|[^\\/\s"':]+)/g;
+  /(?:\b[A-Za-z]:\\Users\\|\/Users\/)(?:[^\\/\s"':]+(?: [^\\/\s"':]+){1,3}(?=[\\/"'`]|$)|[^\\/\s"':]+)|\/home\/[^\\/\s"':]+/g;
 // An address standing on its own, not a path segment such as logo@2x.png.
 const EMAIL = /(?<![^\s<("':=,;[])[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\b/gi;
 
