@@ -95,6 +95,49 @@ test("the guard turns the fixed pauses off and drops the owner's PageSpeed keys;
   assert.equal(JSON.parse(kept.stdout), "");
 });
 
+// A stand-in for Chrome on the DevTools pipe (fd 3 in, fd 4 out): it answers every command except Browser.close,
+// which it ignores, and exits 300 ms later. The script points launchChrome's spawn at it, so no browser starts.
+test("closing Chrome doesn't hold the process for the 5 s grace timer once the browser has exited", async () => {
+  const dir = tmp(),
+    fake = join(dir, "fake-chrome.mjs"),
+    script = join(dir, "open-close.mjs");
+  writeFileSync(
+    fake,
+    `import { Socket } from "node:net";
+const out = new Socket({ fd: 4, readable: false, writable: true });
+let buf = "";
+new Socket({ fd: 3, readable: true, writable: false }).setEncoding("utf8").on("data", d => {
+  buf += d;
+  for (let k; (k = buf.indexOf("\\0")) >= 0; buf = buf.slice(k + 1)) {
+    const m = JSON.parse(buf.slice(0, k));
+    if (m.method === "Browser.close") { setTimeout(() => process.exit(0), 300); continue; }
+    out.write(JSON.stringify({ id: m.id, result: { product: "Fake" } }) + "\\0");
+  }
+});`,
+  );
+  writeFileSync(
+    script,
+    `import cp from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
+const spawn = cp.spawn;
+cp.spawn = (file, args, opts) => spawn(process.execPath, [${JSON.stringify(fake)}, ...args], opts);
+syncBuiltinESMExports();
+const { launchChrome } = await import(${JSON.stringify(pathToFileURL(join(SCRIPTS, "lib", "cdp.mjs")).href)});
+const c = await launchChrome("fake-chrome");
+const t = Date.now();
+await c.close();
+console.log(Date.now() - t);`,
+  );
+  const t0 = Date.now();
+  const r = await new Promise(ok =>
+    execFile(process.execPath, [script], { timeout: 20000 }, (err, stdout, stderr) => ok({ err, stdout, stderr })),
+  );
+  const wall = Date.now() - t0;
+  assert.equal(r.err, null, r.stderr);
+  assert.ok(Number(r.stdout) >= 250, `close() waited for the browser to exit (${r.stdout.trim()} ms)`);
+  assert.ok(wall < 3000, `the script exited ${wall} ms after it started`);
+});
+
 test("the fixed waits are 0 ms with the switch on and as long as asked without it; PageSpeed's 429 retry uses them", async () => {
   const was = process.env.SEO_SUPERVISOR_NO_PAUSES,
     time = async (ms, fn = () => sleep(ms)) => {

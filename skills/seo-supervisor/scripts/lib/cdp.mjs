@@ -136,7 +136,15 @@ export async function launchChrome(browserPath, { headless = true, timeoutMs = 3
     });
   const close = async () => {
     if (!dead) await send("Browser.close").catch(() => {});
-    if ((await Promise.race([exited.then(() => true), new Promise(ok => setTimeout(ok, 5000, false))])) === false) {
+    let grace; // 5 s for the browser to exit by itself, then it's killed; cleared so a quick exit doesn't hold this process
+    const gone = await Promise.race([
+      exited.then(() => true),
+      new Promise(ok => {
+        grace = setTimeout(ok, 5000, false);
+      }),
+    ]);
+    clearTimeout(grace);
+    if (!gone) {
       kill();
       await exited;
     }
