@@ -151,3 +151,83 @@ test("wrappers, subshells, $( ), shell strings, variables and the bin's own subc
   ])
     assert.ok(fires("Bash", c) && fires("PowerShell", c.replace(/^sh -lc/, "bash -c")), `if fires: ${c}`);
 });
+
+test("an edit that turns the guard off or down, turns outside checks on or widens approved asks; Bash writes to it ask", async () => {
+  const f = "seo-audit/settings.json",
+    j = o => JSON.stringify(o, null, 2);
+  for (const [b, a] of [
+    [{}, { guard: "off" }],
+    [{ guard: "block" }, { guard: "ask" }],
+    [{ guard: "block" }, {}],
+    [{ guard: "ask" }, { guard: "off" }],
+    [{}, { outsideChecks: { on: true } }],
+    [{ outsideChecks: { on: false } }, { outsideChecks: true }],
+    [
+      { outsideChecks: { on: true, approved: ["speed"] } },
+      { outsideChecks: { on: true, approved: ["speed", "outbound-links"] } },
+    ],
+    [{ outsideChecks: true }, { outsideChecks: { on: true, approved: ["speed", "desktop"] } }],
+  ])
+    asks(edit(f, j(b), j(a)), "settings");
+  asks(edit("clients/acme/seo-audit/settings.json", j({ guard: "block" }), j({ guard: "off" })), "settings");
+  asks(edit(f, j({ guard: "block" }), "{ not json"), "settings");
+  // Near-misses: raising the guard, narrowing approved, the old true written out as its list, other settings.
+  for (const [b, a] of [
+    [{ guard: "off" }, { guard: "ask" }],
+    [{ guard: "ask" }, { guard: "block" }],
+    [
+      { outsideChecks: { on: true, approved: ["speed", "render"] } },
+      { outsideChecks: { on: true, approved: ["speed"] } },
+    ],
+    [
+      { outsideChecks: true },
+      { outsideChecks: { on: true, approved: ["speed", "render", "lighthouse", "intent", "brand", "updates"] } },
+    ],
+    [{ checks: { off: [] } }, { checks: { off: ["META-01"] } }],
+    [{}, { outsideChecks: { on: false } }],
+  ])
+    allows(edit(f, j(b), j(a)));
+  allows(edit("app/settings.json", "{}", j({ guard: "off" })));
+  // Claude Code's Write reaches the guard, and the if list starts it for that file only.
+  const p = tmp();
+  mkdirSync(join(p, "seo-audit"));
+  const w = await run(
+    "claude-code",
+    {
+      hook_event_name: "PreToolUse",
+      session_id: "gaps",
+      cwd: p,
+      tool_name: "Write",
+      tool_input: { file_path: join(p, f), content: '{"guard":"off"}' },
+    },
+    { env: {} },
+  );
+  assert.equal(JSON.parse(w.stdout).hookSpecificOutput.permissionDecision, "ask");
+  assert.ok(fires("Edit", "seo-audit/settings.json") && fires("Edit", "clients/acme/seo-audit/settings.json"));
+  assert.ok(!fires("Edit", "package.json") && !fires("Edit", "app/settings.json"));
+  // Writes from the shell.
+  for (const c of [
+    `echo '{"guard":"off"}' > seo-audit/settings.json`,
+    `echo '{}' >seo-audit/settings.json`,
+    "jq . x.json | tee seo-audit/settings.json",
+    `Set-Content -Path seo-audit\\settings.json -Value '{"guard":"off"}'`,
+    `'{"guard":"off"}' | Out-File seo-audit/settings.json`,
+    "cp other.json seo-audit/settings.json",
+    "sed -i s/ask/off/ seo-audit/settings.json",
+  ]) {
+    asks(bash(c), "settings");
+    assert.ok(fires("Bash", c) || fires("PowerShell", c), `if fires: ${c}`);
+  }
+  for (const c of [
+    "cat seo-audit/settings.json",
+    "jq .guard seo-audit/settings.json",
+    "cp seo-audit/settings.json /tmp/backup.json",
+    "Get-Content seo-audit/settings.json",
+  ])
+    allows(bash(c));
+  // Removing a file that sets block lowers the guard to ask.
+  writeFileSync(join(p, f), j({ guard: "block" }));
+  assert.equal(checkAction(bash("rm seo-audit/settings.json"), { cwd: p }).rule, "settings");
+  writeFileSync(join(p, f), j({ guard: "ask" }));
+  assert.equal(checkAction(bash("rm seo-audit/settings.json"), { cwd: p }).decision, "allow");
+});

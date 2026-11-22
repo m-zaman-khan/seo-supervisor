@@ -8,6 +8,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { fileURLToPath } from "node:url";
 import { hideSecrets } from "../lib/redact.mjs";
 import { allowedBy, groupFor, groupOf, parseRobots } from "../lib/robots.mjs";
+import { modeOf } from "./mode.mjs";
 
 const ALLOW = Object.freeze({ decision: "allow" });
 const SCRIPTS = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -216,12 +217,65 @@ function robotsHit(file, before, after, added, removed) {
   };
 }
 
+// seo-audit/settings.json, in any folder, holds the guard's mode and the user's yes for outside checks. An edit asks
+// when the guard ends up lower (off < ask < block; missing or unknown is ask), outside checks turn on, or approved
+// gains a check. Text that isn't JSON counts as {}, as the guard reads it.
+const isGuardSettings = f => /(^|\/)seo-audit\/settings\.json$/i.test(posix(f));
+const LEVEL = { off: 0, ask: 1, block: 2 };
+const parsed = t => {
+  try {
+    const v = JSON.parse(t);
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+};
+const OWNER_ONLY =
+  "Only the owner should change this: the file holds the guard's mode and their yes for outside checks.";
+function settingsHit(file, before, after, cwd) {
+  const b = parsed(before),
+    a = parsed(after),
+    was = modeOf(b.guard),
+    now = modeOf(a.guard),
+    added = approvedIn(a).filter(n => !approvedIn(b).includes(n));
+  const what =
+    LEVEL[now] < LEVEL[was]
+      ? `sets the guard from ${was} to ${now}`
+      : outsideOn(a) && !outsideOn(b)
+        ? "turns outside checks on"
+        : added.length
+          ? `adds ${list(added)} to the outside checks the owner approved`
+          : "";
+  return what ? { rule: "settings", reason: `This ${what} in ${rel(file, cwd)}. ${OWNER_ONLY}` } : null;
+}
+// From the shell, where the new text can't be seen: a > redirect to it; tee, Set-Content, Out-File, Add-Content,
+// New-Item or sed -i on it; or a copy or move onto it.
+const WRITERS = new Set(["tee", "set-content", "sc", "add-content", "ac", "out-file", "new-item", "ni"]),
+  COPY = new Set(["cp", "copy", "copy-item", "cpi"]);
+function settingsWrite(words, cmd) {
+  if (
+    words.some(
+      (w, i) =>
+        isGuardSettings(w.slice(w.lastIndexOf(">") + 1)) && (w.includes(">") || /^\d*>>?$/.test(words[i - 1] ?? "")),
+    )
+  )
+    return true;
+  if (WRITERS.has(cmd) || (cmd === "sed" && words.some(w => /^(-i|--in-place)/.test(w))))
+    return words.slice(1).some(isGuardSettings);
+  if (COPY.has(cmd) || MOVE.has(cmd)) {
+    const p = positional(words.slice(1));
+    return isGuardSettings(p.dest ?? p.out.at(-1) ?? "");
+  }
+  return false;
+}
+
 function editHit(action, cwd) {
   if (typeof action.file !== "string" || !action.file) return null;
   const file = action.file,
     before = String(action.before ?? "").replace(/\r\n/g, "\n"),
     after = String(action.after ?? "").replace(/\r\n/g, "\n");
   if (before === after) return null;
+  if (isGuardSettings(file)) return settingsHit(file, before, after, cwd);
   // Only robots, config and redirect files need the line diff; a page's edit is read whole.
   const name = basename(posix(file)),
     n = nameOf(file),
@@ -288,6 +342,18 @@ function folderHasPage(dir, cwd) {
 function deleteHit(file, cwd) {
   if (!file) return null;
   const name = basename(posix(file));
+  if (isGuardSettings(file)) {
+    let s = {};
+    try {
+      s = parsed(readFileSync(resolve(cwd, file), "utf8"));
+    } catch {}
+    return modeOf(s.guard) === "block"
+      ? {
+          rule: "settings",
+          reason: `This removes ${rel(resolve(cwd, file), cwd)}, which sets the guard to block, so the guard would go back to asking. ${OWNER_ONLY}`,
+        }
+      : null;
+  }
   if (isRobotsFile(file))
     return { rule: "robots", reason: `This removes ${name}, and with it every crawl rule and its Sitemap line.` };
   if (isRedirectFile(file) && !isFrameworkConfig(file))
@@ -580,6 +646,11 @@ function bashHit(command, settings, cwd, dir = cwd, depth = 0) {
       if (hit) return hit;
       continue;
     }
+    if (settingsWrite(words, cmd))
+      return {
+        rule: "settings",
+        reason: `This writes seo-audit/settings.json from the shell, where the guard can't see what changes. ${OWNER_ONLY}`,
+      };
     // The skill's scripts by file name, run by node, bun or deno or directly. The bin's subcommands (seo-supervisor
     // issues, npx seo-supervisor@1.2.0 issues, node bin/seo-supervisor.mjs issues) run the script of that name.
     let script = null,

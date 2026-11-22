@@ -16,17 +16,22 @@ export function projectSettings(cwd = process.cwd(), env = process.env) {
   return {};
 }
 
+/** One mode value as the guard reads it; an empty or unknown one is ask. @returns {"ask"|"block"|"off"} */
+export const modeOf = v => {
+  const m = String(v ?? "")
+    .trim()
+    .toLowerCase();
+  return MODES.has(m) ? /** @type {"ask"|"block"|"off"} */ (m) : "ask";
+};
+
 // Claude Code exports the plugin's guard_mode setting to hooks as CLAUDE_PLUGIN_OPTION_GUARD_MODE; other agents use
 // SEO_SUPERVISOR_GUARD or settings.json. Empty values are skipped.
 // https://code.claude.com/docs/en/plugins-reference
 /** @returns {"ask"|"block"|"off"} */
 export function guardMode(env = process.env, cwd = process.cwd()) {
-  const v = [env.CLAUDE_PLUGIN_OPTION_GUARD_MODE, env.SEO_SUPERVISOR_GUARD, projectSettings(cwd, env).guard]
-    .map(x =>
-      String(x ?? "")
-        .trim()
-        .toLowerCase(),
-    )
-    .find(Boolean);
-  return MODES.has(v) ? /** @type {"ask"|"block"|"off"} */ (v) : "ask";
+  return modeOf(
+    [env.CLAUDE_PLUGIN_OPTION_GUARD_MODE, env.SEO_SUPERVISOR_GUARD, projectSettings(cwd, env).guard].find(x =>
+      String(x ?? "").trim(),
+    ),
+  );
 }
