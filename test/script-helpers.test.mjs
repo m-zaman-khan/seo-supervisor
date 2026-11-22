@@ -260,9 +260,15 @@ test("redact hides URL logins, token fragments, more key formats and Slack webho
     ["key sk-abcdefghijklmnopqrstuvwxyz01 used", "key [hidden] used"],
     ["pplx-1234567890abcdef", "[hidden]"],
     ["phx_abcdefghijklmnopqrstuvwxyz", "[hidden]"],
-    ["sk_live_51Habcdefghij and rk_live_51Habcdefghij", "[hidden] and [hidden]"],
-    ["ghp_abcdefghijklmnopqrstuvwxyz0123456789 github_pat_11ABC_def", "[hidden] [hidden]"],
-    ["xoxb-111-222-abcDEF and xoxe.xoxp-1-abc and xapp-1-A0-123-abc", "[hidden] and xoxe.[hidden] and [hidden]"],
+    ["sk_live_51HabcdefghijKLMNOPqrst and rk_live_51HabcdefghijKLMNOPqrst", "[hidden] and [hidden]"],
+    [
+      "ghp_abcdefghijklmnopqrstuvwxyz0123456789 github_pat_11ABCDEFG0abcdefghijklmnopqrstuvwxyz_0123456789",
+      "[hidden] [hidden]",
+    ],
+    [
+      "xoxb-1111-2222-abcDEFghijKLmn and xoxe.xoxp-1-abcdefghijKLMNOPQRST and xapp-1-A0123-4567890-abcdef",
+      "[hidden] and xoxe.[hidden] and [hidden]",
+    ],
     ["AKIAIOSFODNN7EXAMPLE / ASIAIOSFODNN7EXAMPLE", "[hidden] / [hidden]"],
     [
       "posted to https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX",
@@ -281,6 +287,11 @@ test("redact hides URL logins, token fragments, more key formats and Slack webho
     "user@example.com",
   ])
     assert.equal(hideSecrets(s), s);
+  // The short form the secret-key check shows on purpose stays readable.
+  assert.equal(
+    hideSecrets("a Stripe live secret key (sk_live_51Hq…); a GitHub token (ghp_R8f2…); xoxb-1234…"),
+    "a Stripe live secret key (sk_live_51Hq…); a GitHub token (ghp_R8f2…); xoxb-1234…",
+  );
   // Another user's home folder, with a space in its name (the current user's own is matched whole).
   const other = { home: "C:\\Users\\Someone" };
   assert.equal(redact("open 'C:\\Users\\Sam Lee\\site\\a.json' failed", other), "open '~\\site\\a.json' failed");
