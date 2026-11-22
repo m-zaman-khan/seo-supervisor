@@ -79,6 +79,19 @@ export function checkCoverage(
     findings.delete("sitemap-missing");
     for (const e of f.evidence) add("sitemap-missing-small", e.url, e.detail);
   }
+  // A 200 page that shows an error message is a soft 404 to Google.
+  // https://developers.google.com/search/docs/crawling-indexing/http-network-errors
+  // English only, matched at the start so "How to fix a 404 error" isn't one; other languages need their own.
+  const ERROR_PAGE =
+    /^(?:error\s*)?(?:404|410)\b|^(?:oops\W*)?(?:page |post |product |article )?not found\b|^(?:sorry\W*)?(?:this |that |the )?page (?:does not|doesn't|cannot be|can't be|could not be|couldn't be|was not|wasn't) (?:exist|found)|^no (?:results|products|posts|items|articles) (?:were )?found\b|^nothing (?:was )?found\b/i;
+  for (const p of htmlPages) {
+    if (p.status !== 200 || !indexable(p)) continue;
+    const said = [
+      ["title", p.title],
+      ["H1", p.headings?.find(h => h.level === 1)?.text],
+    ].find(([, t]) => t && ERROR_PAGE.test(t.trim()));
+    if (said) add("soft-404-page", p.finalUrl, `${said[0]} “${said[1].slice(0, 80)}”`);
+  }
   for (const p of htmlPages)
     if (!p.clientOnly && p.badUrls?.length)
       add("url-malformed", p.finalUrl, `${p.badUrls.length} address(es): ${p.badUrls.slice(0, 5).join(", ")}`);

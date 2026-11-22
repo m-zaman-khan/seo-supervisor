@@ -1,6 +1,13 @@
 // @ts-check
 // Probes run after the crawl: soft 404, llms.txt, Markdown negotiation, security.txt and security headers.
 import { isLocal } from "../crawl/fetch.mjs";
+import { tagsOf } from "../lib/html.mjs";
+
+const noindexed = r =>
+  /\b(noindex|none)\b/i.test(r.headers?.get?.("x-robots-tag") || "") ||
+  tagsOf(r.body || "", "meta").some(
+    m => /^(robots|googlebot)$/i.test(m.name || "") && /\b(noindex|none)\b/i.test(m.content || ""),
+  );
 
 // Returns the start page's Markdown, or null, for site-hygiene.mjs markdownCheck. checkLive is --check-live, which
 // reads HSTS on the live origin itself; pages (the crawl's records) give the top sections to probe.
@@ -16,15 +23,35 @@ export async function probeSite({
   notes,
   follow,
   get,
+  pages = new Map(),
 }) {
   evalRules("CRAWL-05", "URL-02", "TRUST-01", "TRUST-02");
-  const probe = await follow(`${START_ORIGIN}/seo-supervisor-404-probe-${Date.now().toString(36)}`);
-  if (probe.status === 200)
+  // A made-up URL at the root and in up to 10 top sections (local cap), largest first, since a dynamic route
+  // (/blog/[slug]) can answer 200 for any slug. Once the root answers 200 the sections would only repeat it. A 200 with
+  // noindex is low: Google accepts noindex on error pages where a real status is impractical.
+  // https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics
+  const id = Date.now().toString(36),
+    sections = new Map();
+  for (const p of pages.values()) {
+    const s = p.html && p.finalUrl && new URL(p.finalUrl).pathname.split("/").filter(Boolean);
+    if (s?.length > 1) sections.set(s[0], (sections.get(s[0]) || 0) + 1);
+  }
+  for (const path of [
+    "",
+    ...[...sections]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([s]) => `/${s}`),
+  ]) {
+    const probe = await follow(`${START_ORIGIN}${path}/seo-supervisor-404-probe-${id}`);
+    if (probe.status !== 200) continue;
     add(
-      "soft-404",
+      noindexed(probe) ? "soft-404-noindex" : "soft-404",
       probe.chain[0].url,
       probe.chain.length > 1 ? `redirected to ${probe.finalUrl} (200)` : "returned 200",
     );
+    if (!path) break;
+  }
   // A missing llms.txt is only low and never a ranking fix: Google says it neither harms nor helps rankings. An HTML
   // page there counts as missing.
   evalRules("MAP-07");

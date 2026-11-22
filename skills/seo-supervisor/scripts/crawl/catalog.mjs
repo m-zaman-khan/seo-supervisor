@@ -1171,6 +1171,20 @@ Object.assign(CHECKS, {
     "robots.txt or a sitemap index names these sitemap files, but they answer an error instead of the file, so search engines can't read the URLs in them. An old `Sitemap:` line left behind after the sitemap moved usually does this.",
     "Point the `Sitemap:` line and the sitemap index at the sitemap's current address, or serve the file there again, and check it answers 200 with the XML.",
   ],
+  "soft-404-noindex": [
+    "CRAWL-05",
+    "low",
+    () => "Unknown URLs answer 200 with a noindex",
+    "A made-up URL returned a page with status 200 that says noindex, so Google won't index it. Google accepts this for apps that route in the browser, where sending a real status code can be impractical. A real 404 is still the plainer answer where the server can send one.",
+    "Where the server or framework can, return a 404 status for unknown paths (and 410 for removed content). In an app that routes in the browser, keep the noindex, or send the browser to a URL that answers 404.",
+  ],
+  "soft-404-page": [
+    "CRAWL-05",
+    "high",
+    n => `${n} page(s) answer 200 but read like an error page`,
+    "These pages return status 200, but their title or main heading says “not found”, “404” or “no results”. Google treats a page like that as a soft 404 and leaves it out of search, and the links to it lead visitors to a dead end.",
+    "If the page is gone, return a 404 or 410 status and remove the links to it. If it's a real page, give it a real title and heading and its content. An empty category or search page that shows “no results” should be noindex, or not linked, until it has items.",
+  ],
   "sitemap-empty": [
     "MAP-01",
     "medium",
