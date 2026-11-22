@@ -11,7 +11,8 @@ import { renderArgs } from "../skills/seo-supervisor/scripts/checks/render.mjs";
 import { runLighthouse } from "../skills/seo-supervisor/scripts/checks/lighthouse.mjs";
 import { shotArgs } from "../skills/seo-supervisor/scripts/og-card.mjs";
 import { clsOf } from "../skills/seo-supervisor/scripts/checks/visual.mjs";
-import { SCRIPTS, tmp } from "./helpers.mjs";
+import { checkSpeed, speedTrend } from "../skills/seo-supervisor/scripts/checks/speed.mjs";
+import { ROOT, SCRIPTS, tmp } from "./helpers.mjs";
 
 const run = (file, args = []) =>
   new Promise(ok =>
@@ -101,6 +102,26 @@ test("lab CLS is the largest session window (shifts under 1 s apart, 5 s at most
     ),
     0.4,
     "the largest window wins, wherever it is",
+  );
+});
+
+test("the PageSpeed and CrUX keys go in the X-Goog-Api-Key header, never in the address", async () => {
+  const PSI = readFileSync(join(ROOT, "test", "fixtures", "psi-pass.json"), "utf8"),
+    sent = [];
+  const fetchFn = async (url, opts = {}) => {
+    sent.push({ url, key: new Headers(opts.headers).get("x-goog-api-key") });
+    return new Response(/runPagespeed/.test(url) ? PSI : "{}");
+  };
+  await checkSpeed(["https://example.com/"], /** @type {any} */ ({ add: () => {}, fetchFn, key: "psi-key" }));
+  await checkSpeed(["https://example.com/"], /** @type {any} */ ({ add: () => {}, fetchFn }));
+  await speedTrend("https://example.com", { key: "crux-key", fetchFn });
+  assert.deepEqual(
+    sent.map(s => [s.key, /[?&]key=/.test(s.url)]),
+    [
+      ["psi-key", false],
+      [null, false],
+      ["crux-key", false],
+    ],
   );
 });
 

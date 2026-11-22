@@ -1,3 +1,4 @@
+// @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -146,7 +147,7 @@ async function fakeCrux() {
     req
       .on("data", c => (body += c))
       .on("end", () => {
-        hits.push({ url: req.url, body: JSON.parse(body || "{}") });
+        hits.push({ url: req.url, key: req.headers["x-goog-api-key"], body: JSON.parse(body || "{}") });
         const series = (a, b) => Array.from({ length: 25 }, (_, i) => a + ((b - a) * i) / 24);
         const date = d => ({ year: 2026, month: 5 + Math.floor(d / 28), day: 1 + (d % 28) });
         res.writeHead(200, { "Content-Type": "application/json" }).end(
@@ -234,7 +235,9 @@ test("with a CrUX key, the 25-week speed trend is fetched for the public origin;
       1,
       "the LCP parts come in the same request as the trend",
     );
-    assert.match(crux.hits[0].url, /key=test-key/);
+    // The key goes in the X-Goog-Api-Key header, never in the address.
+    assert.equal(crux.hits[0].key, "test-key");
+    assert.doesNotMatch(crux.hits[0].url, /key=/);
     assert.equal(crux.hits[0].body.origin, "https://zero.example");
     assert.ok(crux.hits[0].body.metrics.includes("largest_contentful_paint_image_resource_load_delay"));
     assert.deepEqual(

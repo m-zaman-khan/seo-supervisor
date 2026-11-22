@@ -14,6 +14,10 @@ export const CHECKS = {
 };
 
 export const PSI_ENDPOINT = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
+// The key goes in the X-Goog-Api-Key header, not ?key=, where it would end up in logs and proxies. Every Google API
+// accepts the header, though PageSpeed's and CrUX's docs show ?key=.
+// https://cloud.google.com/docs/authentication/api-keys-use
+const keyed = key => (key ? { "X-Goog-Api-Key": key } : {});
 export const CRUX_HISTORY_ENDPOINT = "https://chromeuxreport.googleapis.com/v1/records:queryHistoryRecord";
 
 // The four parts of an image LCP as CrUX names them, in the order they happen.
@@ -33,11 +37,9 @@ export async function speedTrend(
   target,
   { key, endpoint = CRUX_HISTORY_ENDPOINT, fetchFn = fetch, formFactor = "PHONE", page = false },
 ) {
-  const q = new URL(endpoint);
-  q.searchParams.set("key", key);
-  const r = await fetchFn(q.href, {
+  const r = await fetchFn(new URL(endpoint).href, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...keyed(key) },
     body: JSON.stringify({
       [page ? "url" : "origin"]: target,
       formFactor,
@@ -202,14 +204,15 @@ export async function checkSpeed(urls, { add, endpoint = PSI_ENDPOINT, key, fetc
   for (const url of urls) {
     if (limited) break;
     const q = new URL(endpoint);
+    // Performance only. PageSpeed has no agentic browsing category; lighthouse.mjs runs that one locally.
+    // https://developers.google.com/speed/docs/insights/rest/v5/pagespeedapi/runpagespeed
     q.searchParams.set("url", url);
     q.searchParams.set("strategy", strategy);
     q.searchParams.set("category", "performance");
-    if (key) q.searchParams.set("key", key);
     let data = null;
     for (let attempt = 0; attempt < 2 && !data; attempt++) {
       try {
-        const r = await fetchFn(q.href, { signal: AbortSignal.timeout(90000) });
+        const r = await fetchFn(q.href, { headers: keyed(key), signal: AbortSignal.timeout(90000) });
         if (r.status === 429 && attempt === 0) {
           await sleep(5000);
           continue;
