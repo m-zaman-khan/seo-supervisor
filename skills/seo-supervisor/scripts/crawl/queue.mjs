@@ -3,6 +3,7 @@
 import { FILE_EXT } from "../lib/html.mjs";
 import { PAGE_MAX, clean, urlOr } from "./fetch.mjs";
 import { agentRule, analyze, productImages } from "./page.mjs";
+import { challengeHeaders } from "../checks/bots.mjs";
 
 /** Runs fn over items, at most conc at once, so the checks' own requests keep to --concurrency. Results come back in
  * item order, so findings don't depend on which answer came first.
@@ -43,7 +44,8 @@ export function createCrawler({
 }) {
   const pages = new Map(); // requested crawl URL -> record
   const queue = [];
-  const seen = new Set();
+  const seen = new Set(),
+    challenges = []; // challenges: the URLs a bot challenge answered
   let fetched = 0,
     capped = false;
   function enqueue(u, from) {
@@ -63,6 +65,12 @@ export function createCrawler({
   }
   async function crawlOne(u) {
     const r = await follow(u);
+    // A bot challenge isn't the page, so it stays out of the records and is never reported as broken; seo-crawl.mjs
+    // notes it as not checked.
+    if (challengeHeaders(r)) {
+      challenges.push(r.finalUrl);
+      return;
+    }
     const rec = {
       url: u,
       status: r.status,
@@ -142,6 +150,7 @@ export function createCrawler({
     pages,
     queue,
     seen,
+    challenges,
     enqueue,
     run: runQueue,
     get fetched() {

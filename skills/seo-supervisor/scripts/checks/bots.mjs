@@ -21,13 +21,15 @@ export const readPage = (r, page) => {
 };
 const noindex = p => p.robots.includes("noindex"),
   canonOf = p => p.canonical ?? "none";
-// A bot challenge: Cloudflare sets cf-mitigated and loads its challenge platform, AWS WAF sets x-amzn-waf-action.
+// A bot challenge by its headers alone, for the main crawl (crawl/queue.mjs): Cloudflare sets cf-mitigated on every
+// challenge page, AWS WAF sets x-amzn-waf-action. The challenge-platform script isn't proof on its own there, since
+// Cloudflare's JavaScript detections load it on ordinary pages too.
 // https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/
 // https://docs.aws.amazon.com/waf/latest/developerguide/waf-captcha-and-challenge-actions.html
-const challenged = r =>
+export const challengeHeaders = r =>
   /^challenge$/i.test(r.headers.get("cf-mitigated") || "") ||
-  /^(challenge|captcha)$/i.test(r.headers.get("x-amzn-waf-action") || "") ||
-  /\/cdn-cgi\/challenge-platform\//.test(r.body || "");
+  /^(challenge|captcha)$/i.test(r.headers.get("x-amzn-waf-action") || "");
+const challenged = r => challengeHeaders(r) || /\/cdn-cgi\/challenge-platform\//.test(r.body || "");
 // A 429 or 5xx is asked once more a second later, so a rate limit or flaky backend hitting one side isn't judged.
 const busy = r => r.status === 429 || r.status >= 500;
 

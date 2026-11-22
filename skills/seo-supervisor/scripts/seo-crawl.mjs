@@ -272,6 +272,11 @@ const { fetched, capped } = crawler; // final from here: the queue runs no more
 // A page over the read limit (crawl/queue.mjs) isn't read, but it's surely past Googlebot's 2 MB too (REND-08).
 for (const p of pages.values())
   if (p.over) add("html-over-2mb", p.finalUrl, `over ${PAGE_MAX / 1048576} MB once unpacked, so it wasn't read`);
+// Pages a bot challenge answered instead (crawl/queue.mjs): not checked, and not reported as broken either.
+if (crawler.challenges.length)
+  notes.push(
+    `${crawler.challenges.length} page(s) answered with a bot challenge (from Cloudflare or AWS WAF) instead of the page, e.g. ${crawler.challenges[0]}, so they weren't checked. Let the crawler through (allow this machine's address, or the user agent ${UA}) or crawl a staging copy, then run it again.`,
+  );
 
 // Soft 404, llms.txt, Markdown, security.txt and the home page's security headers.
 const mdHome = await probeSite({
