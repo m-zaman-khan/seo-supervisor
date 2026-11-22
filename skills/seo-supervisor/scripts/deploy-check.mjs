@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 // @ts-check
 // Fast post-deploy check for CI: exits 1 on anything that keeps search engines out, 2 on bad usage.
-import { promisify } from "node:util";
 import { lookup as dnsLookup } from "node:dns";
 import { isMain } from "./lib/is-main.mjs";
 import { parseArgs } from "./lib/args.mjs";
 import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
-import { guarded, isPublic } from "./checks/outbound.mjs";
+import { isPublic, pinnedGet } from "./lib/net.mjs";
 import { tlsCert } from "./checks/tls.mjs";
 import { VERSION } from "./update-check.mjs";
 import { anomaliesIn, anomalyNote, searchConsole } from "./google/search-console.mjs";
@@ -18,19 +17,24 @@ const UA = "seo-supervisor-deploy-check/" + VERSION,
 // Redirects are followed by hand, 5 at most. Off the site's origin the address must be public, and pinnedGet connects
 // only to the address it checked, so a name can't pass the check and then resolve elsewhere (DNS rebinding).
 async function load(url, origin, { fetchFn, lookup }) {
-  const hops = [];
+  let hops = 0;
   try {
-    for (let i = 0; i <= 5; i++) {
+    for (; hops <= 5; hops++) {
       if (new URL(url).origin !== origin) {
         if (!isPublic(url))
           return { error: `${new URL(url).host} isn't a public address, so it wasn't visited`, url, hops };
-        const bad = await /** @type {(host: string, opts: { all: boolean }) => Promise<unknown>} */ (
-          promisify(guarded(lookup))
-        )(new URL(url).hostname, { all: true }).then(
-          () => null,
-          e => (e.code === "ENOTPUBLIC" ? e.message : null),
-        );
-        if (bad) return { error: bad, url, hops };
+        let asked = 0;
+        const got = await pinnedGet(url, {
+          headers: { "user-agent": UA },
+          dns: lookup,
+          timeout: TIMEOUT,
+          hops: 5 - hops,
+          allow: u => (asked++, isPublic(u)),
+          read: (r, u) => ({ res: asResponse(r), url: u }),
+        });
+        return got.reason
+          ? { error: got.reason.replace(/^couldn't connect \((\w+)\)$/, (m, c) => (WHY[c] ? why(c) : m)), url, hops }
+          : { ...got, hops: hops + asked - 1 };
       }
       const res = await fetchFn(url, {
         redirect: "manual",
@@ -40,7 +44,6 @@ async function load(url, origin, { fetchFn, lookup }) {
       const loc = res.status >= 300 && res.status < 400 && res.headers.get("location");
       if (!loc) return { res, url, hops };
       await res.body?.cancel();
-      hops.push(res.status);
       url = new URL(loc, url).href;
     }
     return { error: "it redirects more than 5 times", url, hops };
@@ -55,6 +58,27 @@ async function load(url, origin, { fetchFn, lookup }) {
     };
   }
 }
+// pinnedGet's answer, shaped like the parts of a fetch() Response the checks read.
+const asResponse = r => ({
+  status: r.statusCode,
+  headers: {
+    get: k => {
+      const v = r.headers[k.toLowerCase()];
+      return v == null ? null : [v].flat().join(", ");
+    },
+  },
+  text: async () => {
+    let s = "";
+    r.setEncoding("utf8");
+    for await (const c of r) s += c;
+    return s;
+  },
+  body: {
+    cancel: async () => {
+      r.destroy();
+    },
+  },
+});
 const WHY = {
   ECONNREFUSED: "the server refused the connection",
   ECONNRESET: "the connection was dropped",
@@ -160,9 +184,7 @@ export async function deployCheck(
         )
       : null,
   ]);
-  const via = home.hops.length
-    ? ` after ${home.hops.length === 1 ? "a redirect" : `${home.hops.length} redirects`} to ${home.url}`
-    : "";
+  const via = home.hops ? ` after ${home.hops === 1 ? "a redirect" : `${home.hops} redirects`} to ${home.url}` : "";
   const homeOk = home.res?.status === 200;
   if (home.error) put("home", "blocker", `The home page didn't answer: ${home.error}.`);
   else put("home", homeOk ? "ok" : "blocker", `The home page answers ${home.res.status}${via}.`);
