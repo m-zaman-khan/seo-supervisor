@@ -8,7 +8,10 @@ import { Readable } from "node:stream";
 import { createGunzip, gunzipSync } from "node:zlib";
 import { setTimeout as sleep } from "node:timers/promises";
 import { isMain } from "./lib/is-main.mjs";
-import { Fail, linkingPages, linksTo, pageNofollow } from "./backlinks.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
+import { bodyUpTo } from "./lib/http.mjs";
+import { linkingPages, linksTo, pageNofollow } from "./backlinks.mjs";
 
 const USAGE =
   'usage: node commoncrawl.mjs --site https://www.example.com [--keys seo-audit/keys.json] [--csv "Latest links.csv"] [--urls links.txt] [--rank [--rank-max-mb 500]] [--out seo-audit/commoncrawl.json] [--yes]';
@@ -33,13 +36,7 @@ async function get(url, cap, headers = {}) {
     redirect: "error",
     signal: AbortSignal.timeout(30000),
   });
-  const chunks = [];
-  let n = 0;
-  for await (const c of r.body ?? []) {
-    if ((n += c.length) > cap) break;
-    chunks.push(c);
-  }
-  return { status: r.status, body: n > cap ? null : Buffer.concat(chunks) };
+  return { status: r.status, body: await bodyUpTo(r, cap) };
 }
 const jsonLines = buf =>
   buf
@@ -361,12 +358,11 @@ export async function commonCrawl(site, pages, { collinfo = COLLINFO, data = DAT
 }
 
 async function main(argv) {
-  const args = {};
-  for (let i = 0; i < argv.length; i++)
-    if (argv[i].startsWith("--")) {
-      const k = argv[i].slice(2);
-      args[k] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : true;
-    }
+  const args = parseArgs(argv, {
+    flags: ["site", "keys", "csv", "urls", "rank-max-mb", "out"],
+    booleans: ["rank", "yes"],
+    positionals: 0,
+  });
   const str = k => (typeof args[k] === "string" ? args[k] : null);
   if (!str("site")) throw new Fail(USAGE);
   let site;
@@ -400,7 +396,7 @@ async function main(argv) {
       saved = r;
   } catch {}
 
-  if (args.yes !== true) {
+  if (!args.yes) {
     const most = CAP.list + CAP.site + n * (CAP.page + CAP.record);
     console.log(
       [
@@ -419,6 +415,7 @@ async function main(argv) {
     );
     return 0;
   }
+  warnProxy();
   const result = /** @type {{ commonCrawl: any, notes: string[] }} */ (await commonCrawl(site.href, pages));
   if (args.rank) {
     const rank = saved || (await domainRank(site.href, { capBytes: capMb * MB }));
@@ -445,10 +442,10 @@ async function main(argv) {
 }
 
 // The input files are read by backlinks.mjs; its errors are renamed to this script.
-if (isMain(import.meta.url)) {
-  process.exitCode = await main(process.argv.slice(2)).then(null, e => {
-    if (!(e instanceof Fail)) throw e;
-    console.error(e.message.replace(/^backlinks: /, "commoncrawl: "));
-    return 2;
-  });
-}
+if (isMain(import.meta.url))
+  await runMain(() =>
+    main(process.argv.slice(2)).catch(e => {
+      if (e instanceof Fail) e.message = e.message.replace(/^backlinks: /, "commoncrawl: ");
+      throw e;
+    }),
+  );

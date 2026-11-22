@@ -6,6 +6,8 @@ import { lookup } from "node:dns";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 import { parseCsv } from "./lib/csv.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
 import { isPublic, pinnedGet } from "./lib/net.mjs";
 
 const USAGE =
@@ -16,7 +18,6 @@ const UA = "seo-supervisor-backlinks",
   HOPS = 5,
   MB = 5,
   CAP = MB * 1024 * 1024;
-export class Fail extends Error {}
 const fail = msg => {
   throw new Fail("backlinks: " + msg);
 };
@@ -357,12 +358,7 @@ export const linkingPages = ({ keys, csv, urls }) => [
 ];
 
 async function main(argv) {
-  const args = {};
-  for (let i = 0; i < argv.length; i++)
-    if (argv[i].startsWith("--")) {
-      const k = argv[i].slice(2);
-      args[k] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : true;
-    }
+  const args = parseArgs(argv, { flags: ["site", "keys", "csv", "urls", "out"], booleans: ["yes"], positionals: 0 });
   const str = k => (typeof args[k] === "string" ? args[k] : null);
   if (!str("site") || !(str("keys") || str("csv") || str("urls"))) throw new Fail(USAGE);
   let site;
@@ -378,7 +374,8 @@ async function main(argv) {
     return 0;
   }
 
-  if (args.yes !== true) {
+  // Visiting other people's sites is an outside action, so it waits for --yes.
+  if (!args.yes) {
     const hosts = {},
       refused = list.filter(u => !isPublic(u));
     for (const u of list)
@@ -401,6 +398,7 @@ async function main(argv) {
     );
     return 0;
   }
+  warnProxy();
   const result = await checkBacklinks(list, site.href);
   const out = resolve(str("out") || "seo-audit/backlinks.json");
   mkdirSync(dirname(out), { recursive: true });
@@ -410,11 +408,4 @@ async function main(argv) {
   return 0;
 }
 
-// Exit by setting the code, not process.exit(): exiting while sockets close crashes Node on Windows.
-if (isMain(import.meta.url)) {
-  process.exitCode = await main(process.argv.slice(2)).then(null, e => {
-    if (!(e instanceof Fail)) throw e;
-    console.error(e.message);
-    return 2;
-  });
-}
+if (isMain(import.meta.url)) await runMain(() => main(process.argv.slice(2)));
