@@ -1,0 +1,96 @@
+// @ts-check
+// Read-only Search Console access with the saved sign-in. It loads only session.mjs, none of the sign-in flow
+// (browser, local server, prompts).
+import { SC, SCOPES, Fail, fail, session, whoOf, explain } from "./session.mjs";
+
+export { Fail };
+export const SC_API = { name: "Google Search Console API", where: "Search Console → Settings → Users and permissions" };
+// Logging problems Google lists, so a change they caused isn't read as real. type limits one to that search type.
+// Add new ones from the same page.
+const DISCOVER_LOSS = "Discover clicks and impressions were under-counted";
+const ANOMALIES = [
+  {
+    from: "2025-05-13",
+    to: "2026-04-27",
+    what: "impressions weren't counted accurately, so CTR and average position were off too (clicks weren't affected)",
+  },
+  { from: "2026-05-07", to: "2026-05-08", type: "discover", what: DISCOVER_LOSS },
+  { from: "2026-05-21", to: "2026-05-21", type: "discover", what: DISCOVER_LOSS },
+  { from: "2026-06-24", to: "2026-06-24", type: "discover", what: DISCOVER_LOSS },
+  { from: "2026-08-13", to: "2026-08-13", type: "discover", what: DISCOVER_LOSS },
+].map(a => ({ ...a, url: "https://support.google.com/webmasters/answer/6211453" }));
+export const anomaliesIn = (from, to, type) => ANOMALIES.filter(a => a.type === type && a.from <= to && a.to >= from);
+
+export const httpUrl = (u, what, eg) => {
+  let x;
+  try {
+    x = new URL(u);
+  } catch {}
+  if (!x || !/^https?:$/.test(x.protocol)) fail(`google: ${what}, like ${eg} (got ${u}).`);
+  return x;
+};
+
+// The property: a domain property covering the host, else the longest URL-prefix property the site sits under.
+export async function pickProperty(g, origin, who) {
+  let sites;
+  try {
+    sites = ((await g.call(`${g.E.searchConsole}/sites`)).siteEntry || []).filter(
+      x => x.permissionLevel !== "siteUnverifiedUser",
+    );
+  } catch (e) {
+    fail("google: " + explain(e, "the list of Search Console properties", SC_API, who));
+  }
+  const h = origin.hostname,
+    href = origin.origin + origin.pathname;
+  const prop = (
+    sites.find(
+      x => x.siteUrl.startsWith("sc-domain:") && (h === x.siteUrl.slice(10) || h.endsWith("." + x.siteUrl.slice(10))),
+    ) || sites.filter(x => href.startsWith(x.siteUrl)).sort((a, b) => b.siteUrl.length - a.siteUrl.length)[0]
+  )?.siteUrl;
+  if (!prop)
+    fail(
+      `google: ${origin.origin} isn't in the Search Console properties this account can see (${sites.map(x => x.siteUrl).join(", ") || "it can't see any"}). Add and verify the site in Search Console, or connect with the Google account that has it.`,
+    );
+  return prop;
+}
+// A Search Console address as a path on the site's host, else null. www and apex count as one host, as in gsc-import.
+// Tracking parameters are dropped so the row counts for the page itself; other parameters stay as written.
+export const bare = x => x.replace(/^www\./, "");
+export const pagePath = (u, host) => {
+  try {
+    const x = new URL(u);
+    return bare(x.hostname) === bare(host) ? x.pathname + x.search : null;
+  } catch {
+    return null;
+  }
+};
+// Fails early when Search Console access wasn't granted at sign-in.
+export function scSession(opts) {
+  const g = session(opts),
+    s = g.store(),
+    scope = s.scope || SCOPES.join(" ");
+  if (!scope.includes(SC))
+    fail(
+      "google: Search Console access wasn't granted when you signed in. Run node google.mjs connect again and leave the Search Console box ticked.",
+    );
+  return { g, scope, who: whoOf(s) };
+}
+// The site's property and a Search Analytics query on it for other scripts, with token renewal and plain errors.
+/** @param {{ site?: string, home?: string, endpoints?: any }} [opts] */
+export async function searchConsole({ site, home, endpoints } = {}) {
+  const origin = httpUrl(site, "--site must be the site's address", "https://www.example.com");
+  const { g, who } = scSession({ home, endpoints }),
+    prop = await pickProperty(g, origin, who);
+  return {
+    origin,
+    prop,
+    query: body => g.call(`${g.E.searchConsole}/sites/${encodeURIComponent(prop)}/searchAnalytics/query`, body),
+    explain: e => explain(e, `${prop} in Search Console`, SC_API, who),
+  };
+}
+
+// A domain property covers its subdomains; a URL-prefix property only addresses that start with it.
+export const inProperty = (prop, u) => {
+  const d = prop.startsWith("sc-domain:") && prop.slice(10);
+  return d ? u.hostname === d || u.hostname.endsWith("." + d) : u.href.startsWith(prop);
+};
