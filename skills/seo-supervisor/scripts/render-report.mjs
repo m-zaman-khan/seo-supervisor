@@ -88,7 +88,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   } = sitePanels(m);
   const { agents, aiCrawlers, aiAnswers } = aiPanels(m);
   const { writing, productData, descriptions, appsPdfs, audienceHtml, audienceMd } = contentPanels(m);
-  const { images, lighthouseDetailHtml, lighthouseDetailMd, speedDetails, a11yHtml, a11yMd } = speedPanels(m);
+  const { images, lighthouseDetail, speedDetails, a11yHtml, a11yMd } = speedPanels(m);
   const { local, geoGridHtml, geoGridMd } = localPanels(m);
   const { connections, changeCheck, newSearches } = connectionPanels(m);
   // The Overview's panels, in order: on the page after the score views and search lines, in the Markdown after the area
@@ -99,7 +99,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     drawn(writing),
     [audienceHtml, audienceMd],
     drawn(images),
-    [lighthouseDetailHtml, lighthouseDetailMd],
+    drawn(lighthouseDetail),
     drawn(hstsPreload),
     drawn(crawlCoverage),
     drawn(aiCrawlers),

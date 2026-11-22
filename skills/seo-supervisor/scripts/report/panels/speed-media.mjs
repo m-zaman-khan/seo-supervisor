@@ -3,6 +3,7 @@
 import { band } from "../../checks/speed.mjs";
 import { cellMd, esc, fmtDate, inl, noteCode, noteMd, notePath, num, obj, plural } from "../format.mjs";
 import { LCP_PART } from "../overview-lines.mjs";
+import { listedIn } from "../panel.mjs";
 
 export function speedPanels({ raw, mdFile, lighthouse }) {
   // Images ranked by what converting or resizing them would save, top 15. Crawled text is escaped.
@@ -41,36 +42,39 @@ export function speedPanels({ raw, mdFile, lighthouse }) {
     .filter(x => x.audits.length);
   const LH_INTRO =
     "Every audit each Lighthouse run failed, with the files or page elements it names (10 at most). The accessibility ones are under Lighthouse's accessibility checks. Information only: Lighthouse's lab results don't change the score.";
-  const lighthouseDetailHtml = () =>
-    lhRuns.length
-      ? `\n    <details class="how lhdetail"><summary>Lighthouse details</summary><p>${esc(LH_INTRO)}</p>${lhRuns
-          .slice(0, 10)
-          .map(
-            x =>
-              `<details><summary><code>${esc(x.path)}</code> · ${plural(x.audits.length, "failed audit")}</summary><ul class="lim">${x.audits.map(a => `<li><b>${inl(a.title)}</b><span>${esc(a.category || "")}${a.items.length ? ` · ${a.items.map(s => `<code>${esc(s)}</code>`).join(", ")}` : ""}</span></li>`).join("")}</ul></details>`,
-          )
-          .join(
-            "",
-          )}${lhRuns.length > 10 && mdFile ? `<p>All ${num(lhRuns.length)} pages are listed in <code>${esc(mdFile)}</code>.</p>` : ""}</details>`
-      : "";
-  const lighthouseDetailMd = () =>
-    lhRuns.length
-      ? [
-          "## Lighthouse details",
-          "",
-          LH_INTRO,
-          "",
-          ...lhRuns.flatMap(x => [
-            `### ${noteCode(x.path)}`,
-            "",
-            ...x.audits.map(
-              a =>
-                `- ${noteMd(a.title)}${a.category ? ` (${noteMd(a.category)})` : ""}${a.items.length ? `: ${a.items.map(noteCode).join(", ")}` : ""}`,
-            ),
-            "",
-          ]),
-        ]
-      : [];
+  // Lighthouse titles carry `code`: shown as code on the page, escaped in the Markdown.
+  const auditTitle = a => ({ html: inl(a.title), md: noteMd(a.title) });
+  const codesOf = a => ({
+    html: a.items.map(s => `<code>${esc(s)}</code>`).join(", "),
+    md: a.items.map(noteCode).join(", "),
+  });
+  // Each page a list of its own (### in the Markdown); the page shows the first 10 pages, the Markdown all.
+  const lighthouseDetail = () =>
+    lhRuns.length && {
+      cls: "lhdetail",
+      title: "Lighthouse details",
+      blocks: [
+        { p: LH_INTRO },
+        ...lhRuns.map((x, i) => ({
+          mdOnly: i >= 10,
+          sub: [{ code: x.path }, ` · ${plural(x.audits.length, "failed audit")}`],
+          heading: { code: x.path },
+          blocks: [
+            {
+              rows: x.audits.map(a => [
+                auditTitle(a),
+                {
+                  html: `${esc(a.category || "")}${a.items.length ? ` · ${codesOf(a).html}` : ""}`,
+                  md: `${a.category ? ` (${noteMd(a.category)})` : ""}${a.items.length ? `: ${codesOf(a).md}` : ""}`,
+                },
+                "",
+              ]),
+            },
+          ],
+        })),
+        lhRuns.length > 10 && listedIn(lhRuns.length, mdFile),
+      ],
+    };
 
   // Speed and image details, in one collapsed panel. Crawled and third-party text (paths, element labels, hosts,
   // versions) is escaped by the two callers.
@@ -260,5 +264,5 @@ export function speedPanels({ raw, mdFile, lighthouse }) {
           ]),
         ]
       : [];
-  return { images, lighthouseDetailHtml, lighthouseDetailMd, speedDetails, a11yHtml, a11yMd };
+  return { images, lighthouseDetail, speedDetails, a11yHtml, a11yMd };
 }

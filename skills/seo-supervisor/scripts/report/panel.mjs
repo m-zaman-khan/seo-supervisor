@@ -64,6 +64,7 @@ const capped = b => (b.cap ? b.rows.slice(0, b.cap) : b.rows);
 
 /** @param {Block} b @returns {string} */
 function blockHtml(b) {
+  if (b.mdOnly) return "";
   if ("quiet" in b) return `\n    <p class="quiet">${H(b.quiet)}</p>`;
   if ("p" in b || "page" in b) return `<p>${H(b.p ?? b.page)}</p>`;
   if ("head" in b)
