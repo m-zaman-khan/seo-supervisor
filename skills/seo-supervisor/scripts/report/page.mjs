@@ -61,12 +61,11 @@ export function pageHtml(
     ["findings", "Findings", findings.length],
     ["decisions", "Decisions", decisionCount],
     ...topics.map(([id, label]) => [id, label, null]),
+    ...(diff || panels.since ? [["diff", "Since last audit", diff ? (diff.regressions || []).length : null]] : []),
     ["changes", "Changes", fixed.length],
     ["passed", "Passed", passed.length + fixed.length],
     ["limits", "Limits", notChecked.length],
   ];
-  if (diff || panels.since)
-    tabs.splice(1, 0, ["diff", "Since last audit", diff ? (diff.regressions || []).length : null]);
   if (plan) tabs.splice(plan.status === "proposed" ? 0 : 1, 0, ["plan", "Plan", planStats(plan).rows]);
   const DEFAULT_TAB = tabs[0][0];
   const PANELS = {

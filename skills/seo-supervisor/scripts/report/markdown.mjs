@@ -70,6 +70,9 @@ export function markdown(
     ),
     "",
   );
+  if (raw.summary) L.push(mdSafe(raw.summary), "");
+  const proposed = plan?.status === "proposed";
+  if (plan && proposed) L.push(...planMarkdown(plan));
   if (overall) {
     L.push(`**SEO health score: ${overall.value}/100 (${bandOf(overall.value)[1]}).** ${verdict}.`, "");
     const delta = deltaOf(),
@@ -87,24 +90,8 @@ export function markdown(
     }
     if (delta && !delta.inUnlock) L.push(`${md(delta.html)}.`, "");
   }
-  if (raw.summary) L.push(mdSafe(raw.summary), "");
-  L.push(
-    `Open: ${open.length} (${SEV.map(s => `${countSev(s)} ${SEV_LABEL[s].toLowerCase()}`).join(", ")}) · Fixed: ${fixed.length} · Rules passing: ${overall ? `${overall.passing} of ${overall.rules}` : "n/a"}`,
-    "",
-  );
   const { fixFirst, needsYou: yours, yours: allYours, tasks } = actions(m);
   const { clicks, period, cwv, strategy } = keyNumbers(m);
-  if (overall) L.push(`${scopeText(m)} Limits of this audit, below.`, "");
-  if (clicks != null || cwv)
-    L.push(
-      [
-        clicks != null && `Clicks from Google: ${num(clicks)}${period ? ` (${noteMd(period)})` : ""}`,
-        cwv && `Core Web Vitals (real visitors, ${noteMd(strategy)}): ${cwv.toLowerCase()}`,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-      "",
-    );
   const item = x => `- ${x.id ? `**${noteMd(x.id)}** · ` : ""}${SEV_LABEL[x.sev]} · ${mdSafe(x.title)}`;
   if (fixFirst.length)
     L.push(
@@ -134,7 +121,22 @@ export function markdown(
       );
     L.push("");
   }
-  if (plan) L.push(...planMarkdown(plan));
+  if (overall) L.push(`${scopeText(m)} Limits of this audit, below.`, "");
+  L.push(
+    `Open: ${open.length} (${SEV.map(s => `${countSev(s)} ${SEV_LABEL[s].toLowerCase()}`).join(", ")}) · Fixed: ${fixed.length} · Rules passing: ${overall ? `${overall.passing} of ${overall.rules}` : "n/a"}`,
+    "",
+  );
+  if (clicks != null || cwv)
+    L.push(
+      [
+        clicks != null && `Clicks from Google: ${num(clicks)}${period ? ` (${noteMd(period)})` : ""}`,
+        cwv && `Core Web Vitals (real visitors, ${noteMd(strategy)}): ${cwv.toLowerCase()}`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      "",
+    );
+  if (plan && !proposed) L.push(...planMarkdown(plan));
   const options = d => [...(d.options || []).map(o => `- ${mdSafe(o)}`), ...((d.options || []).length ? [""] : [])];
   L.push("## Findings", "");
   for (const f of findings) {
@@ -195,14 +197,6 @@ export function markdown(
         "",
       );
   }
-  if (fixed.length) {
-    L.push("## What was changed", "");
-    for (const f of fixed)
-      L.push(
-        `- **${noteMd(f.id)}** ${mdSafe(f.title)}${f.fixed?.summary ? `: ${mdSafe(f.fixed.summary)}` : ""}${(f.fixed?.files || []).length ? ` (${files(f.fixed.files)})` : ""}${f.fixed?.verified ? `. Verified: ${mdSafe(f.fixed.verified)}` : ""}`,
-      );
-    L.push("");
-  }
   for (const [id, label] of topics)
     L.push(`## ${label}`, "", "Information only: nothing here changes the score.", "", ...panels(id));
   if (diff || tabs.since) L.push("## Since last audit", "");
@@ -221,6 +215,14 @@ export function markdown(
     L.push(...linksDroppedMd());
   }
   L.push(...panels("since"));
+  if (fixed.length) {
+    L.push("## What was changed", "");
+    for (const f of fixed)
+      L.push(
+        `- **${noteMd(f.id)}** ${mdSafe(f.title)}${f.fixed?.summary ? `: ${mdSafe(f.fixed.summary)}` : ""}${(f.fixed?.files || []).length ? ` (${files(f.fixed.files)})` : ""}${f.fixed?.verified ? `. Verified: ${mdSafe(f.fixed.verified)}` : ""}`,
+      );
+    L.push("");
+  }
   if (passed.length) {
     L.push("## Passed checks", "");
     for (const p of passed)
