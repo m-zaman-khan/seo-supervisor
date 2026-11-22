@@ -122,13 +122,9 @@ export function connectionPanels({ raw }) {
       : `inconclusive${isText(m.reason) ? `, ${m.reason}` : ""}`;
     return `Change check, ${isCount(changed) ? plural(changed, "page") : "the pages"} changed on ${when}${isCount(c.days) ? `, ${c.days} days before and after` : ""}: Google Search clicks ${what}. This shows what happened to the numbers, not why. Information only.`;
   };
-  const changeCheckHtml = () => {
+  const changeCheck = () => {
     const l = changeLine();
-    return l ? `\n    <p class="quiet">${esc(l)}</p>` : "";
-  };
-  const changeCheckMd = () => {
-    const l = changeLine();
-    return l ? ["## Change check", "", noteMd(l), ""] : [];
+    return l && { title: "Change check", blocks: [{ quiet: l }] };
   };
   // newQueries: searches with no row in the previous period, the first 10 as given (most impressions first). Search
   // text is third-party, escaped where shown.
@@ -148,5 +144,5 @@ export function connectionPanels({ raw }) {
     const l = newSearchLine();
     return l ? ["## New searches", "", noteMd(l), ""] : [];
   };
-  return { connectionsHtml, connectionsMd, changeCheckHtml, changeCheckMd, newSearchesHtml, newSearchesMd };
+  return { connectionsHtml, connectionsMd, changeCheck, newSearchesHtml, newSearchesMd };
 }
