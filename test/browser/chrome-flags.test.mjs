@@ -81,9 +81,13 @@ test(
         args: [...cdp.args, `--log-net-log=${log}`],
       });
       try {
-        const page = await chrome.newPage();
-        await page.send("Page.navigate", { url: `${site.url}/` });
-        await sleep(25000);
+        for (const end = Date.now() + 25000; Date.now() < end;) {
+          const page = await chrome.newPage();
+          await page.send("Page.bringToFront");
+          await page.send("Page.navigate", { url: `${site.url}/` });
+          await sleep(1500);
+          await page.close();
+        }
       } finally {
         await chrome.close();
       }

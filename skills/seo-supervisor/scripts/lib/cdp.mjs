@@ -2,7 +2,7 @@
 // Chrome or Edge over the DevTools protocol, with no dependencies. Each launch gets a throwaway profile, removed on
 // close; the browser is killed on any failure and when this process exits or gets SIGINT or SIGTERM.
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromeProxyArgs } from "./proxy.mjs";
@@ -45,10 +45,19 @@ export const CHROME_FLAGS = [
   "--disable-features=OptimizationHints,Translate,MediaRouter,NetworkTimeServiceQuerying,AutofillServerCommunication,SafeBrowsingHashPrefixRealTimeLookups,AimEnabled,PreconnectToSearch",
   "--enable-features=SkipListAccountsWithoutGaiaCookies",
 ];
+// A throwaway profile whose Local State turns metrics reporting off (pref names from Chromium's metrics_pref_names.h).
+// Where Chrome was installed with usage statistics on, a fresh profile otherwise uploads metrics
+// (clientservices.googleapis.com/uma/v2). Every launch site uses it.
+/** @param {string} dir */
+export function quietProfile(dir) {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "Local State"), JSON.stringify({ user_experience_metrics: { reporting_enabled: false } }));
+  return dir;
+}
 
 // args: extra Chrome flags, added after the standard ones (none by default).
 export async function launchChrome(browserPath, { headless = true, timeoutMs = 30000, args: extra = [] } = {}) {
-  const profile = mkdtempSync(join(tmpdir(), "seo-supervisor-cdp-"));
+  const profile = quietProfile(mkdtempSync(join(tmpdir(), "seo-supervisor-cdp-")));
   const args = [
     headless && "--headless=new",
     "--disable-gpu",

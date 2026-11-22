@@ -8,7 +8,7 @@ import { createServer, request as httpRequest } from "node:http";
 import { connect, isIP } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CHROME_FLAGS, containerArgs } from "../lib/cdp.mjs";
+import { CHROME_FLAGS, containerArgs, quietProfile } from "../lib/cdp.mjs";
 import { chromeProxyArgs } from "../lib/proxy.mjs";
 import { redact } from "../lib/redact.mjs";
 import { installedBrowser } from "../lib/settings-dir.mjs";
@@ -247,7 +247,7 @@ export async function startGuard(siteUrl, { dns = lookup, env = process.env } = 
  * @param {string} url
  * @param {{ timeoutMs?: number, dns?: typeof lookup }} [options] */
 export async function renderPage(browser, url, { timeoutMs = 20000, dns } = {}) {
-  const profile = mkdtempSync(join(tmpdir(), "seo-supervisor-render-"));
+  const profile = quietProfile(mkdtempSync(join(tmpdir(), "seo-supervisor-render-")));
   const guard = await startGuard(url, { dns });
   const args = renderArgs(profile, url, {}, guard?.args);
   try {

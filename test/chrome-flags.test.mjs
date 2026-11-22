@@ -14,12 +14,6 @@ import { clsOf } from "../skills/seo-supervisor/scripts/checks/visual.mjs";
 import { checkSpeed, speedTrend } from "../skills/seo-supervisor/scripts/checks/speed.mjs";
 import { ROOT, SCRIPTS, tmp } from "./helpers.mjs";
 
-const run = (file, args = []) =>
-  new Promise(ok =>
-    execFile(process.execPath, [file, ...args], { timeout: 20000 }, (err, stdout, stderr) =>
-      ok({ err, stdout, stderr }),
-    ),
-  );
 const hasAll = (args, what) => {
   for (const f of CHROME_FLAGS) assert.ok(args.includes(f), `${what}: ${f}`);
 };
@@ -125,30 +119,87 @@ test("the PageSpeed and CrUX keys go in the X-Goog-Api-Key header, never in the 
   );
 });
 
-test("H-01: all four launch sites pass the flags: launchChrome, the render, og-card and Lighthouse", async () => {
-  // The browser launchChrome spawns is a stand-in that records its command line.
-  const dir = tmp(),
-    fake = join(dir, "fake-chrome.mjs"),
-    script = join(dir, "launch.mjs");
-  writeFileSync(fake, FAKE_CHROME);
-  writeFileSync(
-    script,
-    `import cp from "node:child_process";
+// Loaded with --import: every start of "Chrome" is recorded with its command line and its profile's Local State at that
+// moment; launchChrome's spawn gets the stand-in above, and the one-shot execFile runs fail at once. No browser starts.
+const RECORDER = (log, fake) => `import cp from "node:child_process";
+import { appendFileSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { syncBuiltinESMExports } from "node:module";
+const note = (site, args) => { const dir = args.find(a => a.startsWith("--user-data-dir="))?.slice(16); let state = null; try { state = JSON.parse(readFileSync(join(dir, "Local State"), "utf8")); } catch {} appendFileSync(${JSON.stringify(log)}, JSON.stringify({ site, args, state }) + "\\n"); };
 const spawn = cp.spawn;
-let seen;
-cp.spawn = (file, args, opts) => { seen = args; return spawn(process.execPath, [${JSON.stringify(fake)}, ...args], opts); };
-syncBuiltinESMExports();
-const { launchChrome } = await import(${JSON.stringify(pathToFileURL(join(SCRIPTS, "lib", "cdp.mjs")).href)});
-const c = await launchChrome("fake-chrome");
-await c.close();
-console.log(JSON.stringify(seen));`,
-  );
-  const r = await run(script);
-  assert.equal(r.err, null, r.stderr);
-  hasAll(JSON.parse(r.stdout), "launchChrome");
+cp.spawn = (file, args, opts) => { note("spawn", args); return spawn(process.execPath, [${JSON.stringify(fake)}, ...args], opts); };
+cp.execFile = (file, args, opts, cb) => { note("execFile", args); process.nextTick(cb, new Error("not a browser"), "", ""); };
+syncBuiltinESMExports();`;
 
-  hasAll(renderArgs("/tmp/p", "https://example.com/", { platform: "darwin", env: {} }), "renderArgs");
+test("all four launch sites pass the flags and start Chrome with metrics reporting off: launchChrome, the render, og-card and Lighthouse", async () => {
+  const dir = tmp(),
+    log = join(dir, "starts.jsonl"),
+    pre = join(dir, "record.mjs"),
+    fake = join(dir, "fake-chrome.mjs"),
+    url = s => JSON.stringify(pathToFileURL(join(SCRIPTS, s)).href);
+  writeFileSync(fake, FAKE_CHROME);
+  writeFileSync(pre, RECORDER(log, fake));
+  const script = (name, body) => {
+    writeFileSync(join(dir, name), body);
+    return join(dir, name);
+  };
+  const guarded = (file, args = [], env = process.env) =>
+    new Promise(ok =>
+      execFile(
+        process.execPath,
+        ["--import", pathToFileURL(pre).href, file, ...args],
+        { timeout: 20000, env },
+        (err, stdout, stderr) => ok({ err, stderr }),
+      ),
+    );
+  let r = await guarded(
+    script(
+      "launch.mjs",
+      `const { launchChrome } = await import(${url("lib/cdp.mjs")}); const c = await launchChrome("fake-chrome"); await c.close();`,
+    ),
+  );
+  assert.equal(r.err, null, r.stderr);
+  await guarded(
+    script(
+      "render.mjs",
+      `const { renderPage } = await import(${url("checks/render.mjs")}); await renderPage("fake-chrome", "http://127.0.0.1:1/").catch(() => {});`,
+    ),
+  );
+  await guarded(join(SCRIPTS, "og-card.mjs"), ["--title", "Home", "--out", join(dir, "card.png")], {
+    ...process.env,
+    CHROME_PATH: process.execPath,
+  });
+  // Lighthouse: a stand-in CLI that records its arguments and the profile it was given, and writes an empty report.
+  const bin = join(dir, "fake-lighthouse.mjs");
+  writeFileSync(
+    bin,
+    `import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+const args = process.argv.slice(2), flags = args.find(a => a.startsWith("--chrome-flags=")).slice(15).split(" "), dir = flags.find(f => f.startsWith("--user-data-dir=")).slice(16).replace(/"/g, "");
+let state = null; try { state = JSON.parse(readFileSync(dir + "/Local State", "utf8")); } catch {}
+appendFileSync(${JSON.stringify(log)}, JSON.stringify({ site: "lighthouse", args: flags, state }) + "\\n");
+writeFileSync(args.find(a => a.startsWith("--output-path=")).slice(14), JSON.stringify({ categories: {}, audits: {} }));`,
+  );
+  await runLighthouse(bin, "http://127.0.0.1:1/", {
+    host: { platform: "darwin", env: { HTTPS_PROXY: "http://proxy.corp:8080" } },
+  });
+
+  const starts = readFileSync(log, "utf8")
+    .trim()
+    .split("\n")
+    .map(l => JSON.parse(l));
+  assert.deepEqual(
+    starts.map(s => s.site),
+    ["spawn", "execFile", "execFile", "lighthouse"],
+    "launchChrome, the render, og-card, Lighthouse",
+  );
+  for (const s of starts) {
+    hasAll(s.args, s.site);
+    assert.deepEqual(
+      s.state,
+      { user_experience_metrics: { reporting_enabled: false } },
+      `${s.site}: metrics reporting off in the profile`,
+    );
+  }
   hasAll(
     renderArgs("/tmp/p", "https://example.com/", { platform: "linux", uid: 0, env: {}, exists: () => false }, [
       "--proxy-server=http://127.0.0.1:9",
@@ -156,20 +207,4 @@ console.log(JSON.stringify(seen));`,
     "renderArgs behind the guard",
   );
   hasAll(shotArgs("/tmp/card.html", "/tmp/card.png", "/tmp/p"), "og-card");
-  // Lighthouse: a stand-in CLI that records its arguments and the profile it was given, and writes an empty report.
-  const bin = join(dir, "fake-lighthouse.mjs"),
-    log = join(dir, "lh.json");
-  writeFileSync(
-    bin,
-    `import { writeFileSync } from "node:fs";
-const args = process.argv.slice(2);
-writeFileSync(${JSON.stringify(log)}, JSON.stringify(args));
-writeFileSync(args.find(a => a.startsWith("--output-path=")).slice(14), JSON.stringify({ categories: {}, audits: {} }));`,
-  );
-  await runLighthouse(bin, "http://127.0.0.1:1/", {
-    host: { platform: "darwin", env: { HTTPS_PROXY: "http://proxy.corp:8080" } },
-  });
-  const flags =
-    /** @type {string[]} */ (JSON.parse(readFileSync(log, "utf8"))).find(a => a.startsWith("--chrome-flags=")) || "";
-  hasAll(flags.slice(15).split(" "), "Lighthouse --chrome-flags");
 });
