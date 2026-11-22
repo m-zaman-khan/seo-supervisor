@@ -32,6 +32,8 @@ const json = p => JSON.parse(readFileSync(p, "utf8").replace(/^﻿/, ""));
 
 // ---- running a hook command the way each agent does ----
 const WIN = process.platform === "win32";
+// The full matrix (every odd folder name, a teammate's clone) runs in npm run test:slow; npm test keeps one of each.
+const SLOW = !!process.env.SEO_TEST_SLOW;
 const HAS_SH = spawnSync("sh", ["-c", "exit 0"]).status === 0; // POSIX sh, or Git's sh on Windows (never WSL's bash)
 const SHELL = {
   sh: c => ["sh", ["-c", c], {}],
@@ -293,7 +295,7 @@ test("a home folder with letters outside ASCII gets the whole skill (Node 24's c
   assert.ok(existsSync(join(home, ".agents", "skills", "seo-supervisor", ".seo-supervisor-install.json")));
 });
 
-for (const name of ["D'Souza", "A&B", "x(1)", "D’Souza", "Sam Lee"]) {
+for (const name of SLOW ? ["D'Souza", "A&B", "x(1)", "D’Souza", "Sam Lee"] : ["D'Souza"]) {
   test(`every hook command quotes the guard's path for its shell: a home folder named ${name}`, async () => {
     // Copilot's preToolUse denies the tool when its hook fails, so a path that breaks the command line stops every tool
     // call; elsewhere the guard silently doesn't run.
@@ -332,7 +334,7 @@ test("a project install's guard runs when the agent starts in a subfolder, in ea
   }
   const clone = join(tmp(), "teammate's copy");
   cpSync(project, clone, { recursive: true });
-  for (const root of [project, clone]) {
+  for (const root of SLOW ? [project, clone] : [project]) {
     const from = join(root, "src", "app");
     runsEverywhere(hookCommands(root, "project"), from, { root });
     // Devin sets DEVIN_PROJECT_DIR to the project root. https://docs.devin.ai/cli/extensibility/hooks/overview
