@@ -11,7 +11,7 @@ import { readPage } from "../skills/seo-supervisor/scripts/checks/bots.mjs";
 import { trustFeatures } from "../skills/seo-supervisor/scripts/checks/trust.mjs";
 import { agentFeatures } from "../skills/seo-supervisor/scripts/checks/agents.mjs";
 import { hintsOf } from "../skills/seo-supervisor/scripts/checks/media.mjs";
-import { lateHead, ugcLinks } from "../skills/seo-supervisor/scripts/checks/page.mjs";
+import { identityDrift, lateHead, ugcLinks } from "../skills/seo-supervisor/scripts/checks/page.mjs";
 
 const ctx = {
   start: new URL("https://site.example/"),
@@ -259,4 +259,37 @@ test("a crawl: canonical-relative and canonical-multiple from the Link header, c
     "the header's canonical counts; the body's doesn't",
   );
   assert.equal(r.findings.find(f => f.check === "canonical-relative").rule, "URL-04");
+});
+
+// A JSON-LD @id is an IRI, so a relative one ("#organization") names a node of the page it's on.
+test("identityDrift: a relative @id resolves against the page URL", () => {
+  const o = (id, name) => ({ id, name }),
+    at = (url, id) => ({ url, org: [o(id, "Acme")], site: [] });
+  assert.deepEqual(
+    [
+      ...identityDrift([
+        at("https://s/", "https://s/#org"),
+        at("https://s/a/", "https://s/#org"),
+        at("https://s/b/", "#org"),
+      ]),
+    ],
+    [["https://s/b/", "Organization @id https://s/b/#org, where other pages use https://s/#org"]],
+    "#org on /b/ is another node",
+  );
+  assert.deepEqual(
+    [
+      ...identityDrift([
+        at("https://s/", "#org"),
+        at("https://s/a/", "https://s/#org"),
+        at("https://s/c/", "https://s/#org"),
+      ]),
+    ],
+    [],
+    "#org on the home page is https://s/#org",
+  );
+  assert.deepEqual(
+    [...identityDrift([at("https://s/", "#org"), at("https://s/a/", "#org"), at("https://s/b/", "#org")])],
+    [],
+    "every page its own node: no @id most pages share, nothing to compare",
+  );
 });

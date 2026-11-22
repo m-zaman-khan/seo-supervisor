@@ -59,7 +59,7 @@ export const CHECKS = {
     "SCHEMA-02",
     "low",
     n => `${n} page(s) describe the site's organization or website with a different @id or name`,
-    "Organization and WebSite structured data say who runs the site and what it's called. Each should be one node with the same `@id` and name on every page, so that every page points at the same organization and site. On these pages the node uses a different `@id` from the one most pages use, or the same `@id` with a different name, so the pages disagree about who runs the site.",
+    "Organization and WebSite structured data say who runs the site and what it's called. Each should be one node with the same `@id` and name on every page, so that every page points at the same organization and site. On these pages the node uses a different `@id` from the one most pages use, or the same `@id` with a different name, so the pages disagree about who runs the site. A relative `@id` such as `#organization` is read against the page it's on, so on `/about/` it names `/about/#organization`, another node from the home page's.",
     "Output the Organization and WebSite nodes from one place, such as the root layout, with fixed `@id`s (`https://your-site/#organization`, `https://your-site/#website`), and take their names from one setting.",
   ],
 };
@@ -186,13 +186,15 @@ const tally = list => {
   const [[top, n] = [], [, next] = []] = [...m].sort((a, b) => b[1] - a[1]);
   return n > (next ?? 0) ? [top, n] : [];
 };
-const idOf = id => {
+// A relative @id ("#organization") resolves against the page it's on, so it names a different node on each page.
+// https://www.w3.org/TR/json-ld11/#iris
+const idOf = (id, page) => {
   if (typeof id !== "string" || !id.trim()) return null;
-  try {
-    return new URL(id.trim()).href;
-  } catch {
-    return id.trim();
-  }
+  for (const base of [undefined, page])
+    try {
+      return new URL(id.trim(), base).href;
+    } catch {}
+  return id.trim();
 };
 const nameOf = s => (typeof s === "string" && s.trim() ? s.replace(/\s+/g, " ").trim() : null);
 // pages: [{ url, org: [{ id, name }], site: [{ id, name }] }]. The site's @id is the one most pages use, and its name
@@ -205,7 +207,7 @@ export function identityDrift(pages) {
     ["org", "Organization"],
     ["site", "WebSite"],
   ]) {
-    const nodes = pages.map(p => p[kind].map(x => ({ id: idOf(x.id), name: nameOf(x.name) })));
+    const nodes = pages.map(p => p[kind].map(x => ({ id: idOf(x.id, p.url), name: nameOf(x.name) })));
     const [id, onPages] = tally(nodes.flatMap(ns => [...new Set(ns.map(x => x.id).filter(Boolean))]));
     if (!id || onPages < 2) continue;
     const [name] = tally(nodes.flatMap(ns => [...new Set(ns.filter(x => x.id === id && x.name).map(x => x.name))]));
