@@ -1,3 +1,5 @@
+// @ts-check
+// The Chrome test is in test/browser/security.test.mjs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -15,7 +17,8 @@ import {
 } from "../skills/seo-supervisor/scripts/checks/technical.mjs";
 import { redact, hideSecrets } from "../skills/seo-supervisor/scripts/lib/redact.mjs";
 import { renderArgs, startGuard } from "../skills/seo-supervisor/scripts/checks/render.mjs";
-import { runLighthouse } from "../skills/seo-supervisor/scripts/checks/lighthouse.mjs"; // in Lighthouse's flags too
+import { runLighthouse } from "../skills/seo-supervisor/scripts/checks/lighthouse.mjs";
+import { CHROME_FLAGS } from "../skills/seo-supervisor/scripts/lib/cdp.mjs"; // in Lighthouse's flags too
 
 // ---------- redaction ----------
 
@@ -527,7 +530,7 @@ writeFileSync(args.find(a => a.startsWith("--output-path=")).slice(14), JSON.str
   const call = JSON.parse(readFileSync(log, "utf8")),
     flags = call.args.find(a => a.startsWith("--chrome-flags="));
   assert.match(
-    flags,
+    flags.replace(` ${CHROME_FLAGS.join(" ")}`, ""),
     /^--chrome-flags=--headless=new --proxy-server=http:\/\/127\.0\.0\.1:(\d+) --proxy-bypass-list=<-loopback>;127\.0\.0\.1:1 --force-webrtc-ip-handling-policy=disable_non_proxied_udp --user-data-dir="[^"]+"$/,
   );
   assert.equal(call.open, true, "the guard answers while Lighthouse runs");

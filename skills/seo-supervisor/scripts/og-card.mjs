@@ -9,6 +9,7 @@ import { dirname, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { isMain } from "./lib/is-main.mjs";
 import { findBrowser } from "./checks/render.mjs";
+import { CHROME_FLAGS } from "./lib/cdp.mjs";
 
 const W = 1200,
   H = 630;
@@ -89,25 +90,28 @@ class CardError extends Error {
   }
 }
 
+// Chrome's command line for one screenshot, with Chrome's own background traffic off (CHROME_FLAGS).
+export const shotArgs = (page, png, profile, extra = []) => [
+  "--headless=new",
+  "--disable-gpu",
+  "--hide-scrollbars",
+  "--force-device-scale-factor=1",
+  `--window-size=${W},${H}`,
+  "--no-first-run",
+  "--no-default-browser-check",
+  "--disable-extensions",
+  ...CHROME_FLAGS,
+  ...extra,
+  `--screenshot=${png}`,
+  `--user-data-dir=${profile}`,
+  pathToFileURL(page).href,
+];
+
 // One headless screenshot from a throwaway profile; resolves with the error (or null), never rejects.
 function shoot(browser, page, png, extra = []) {
   const profile = mkdtempSync(join(tmpdir(), "seo-supervisor-og-profile-"));
-  const args = [
-    "--headless=new",
-    "--disable-gpu",
-    "--hide-scrollbars",
-    "--force-device-scale-factor=1",
-    `--window-size=${W},${H}`,
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--disable-extensions",
-    ...extra,
-    `--screenshot=${png}`,
-    `--user-data-dir=${profile}`,
-    pathToFileURL(page).href,
-  ];
   return new Promise(ok =>
-    execFile(browser, args, { timeout: 30000 }, (err, stdout, stderr) => {
+    execFile(browser, shotArgs(page, png, profile, extra), { timeout: 30000 }, (err, stdout, stderr) => {
       try {
         rmSync(profile, { recursive: true, force: true });
       } catch {}

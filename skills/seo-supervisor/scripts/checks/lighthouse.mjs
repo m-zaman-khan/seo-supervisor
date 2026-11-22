@@ -7,7 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { labLcpParts, labLcpElement } from "./speed.mjs";
-import { containerArgs } from "../lib/cdp.mjs";
+import { CHROME_FLAGS, containerArgs } from "../lib/cdp.mjs";
 import { chromeProxyArgs } from "../lib/proxy.mjs";
 import { redact } from "../lib/redact.mjs";
 import { startGuard } from "./render.mjs";
@@ -167,6 +167,7 @@ export async function runLighthouse(bin, url, { chromePath, timeoutMs = 90000, h
   const guard = await startGuard(url, { env: host.env ?? process.env });
   const chromeFlags = [
     "--headless=new",
+    ...CHROME_FLAGS,
     ...containerArgs(host),
     ...(guard?.args || chromeProxyArgs(host.env)),
     `--user-data-dir="${join(dir, "profile")}"`,

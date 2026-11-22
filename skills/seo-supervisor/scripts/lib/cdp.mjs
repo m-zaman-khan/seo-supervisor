@@ -23,6 +23,28 @@ export function containerArgs({
   return platform === "linux" && inContainer ? ["--no-sandbox", "--disable-dev-shm-usage"] : [];
 }
 
+// Chrome's own background traffic, off: without these, headless Chrome contacts Google unasked. Every Chrome this skill
+// starts gets them (launchChrome, checks/render.mjs, og-card.mjs, checks/lighthouse.mjs). Names come from Chromium's
+// chrome_switches.h, command_line_switches.h and BASE_FEATURE lines. What each feature reached for behind a refusing
+// proxy (Chrome 157): OptimizationHints, Translate and MediaRouter (their services), NetworkTimeServiceQuerying
+// (clients2.google.com/time), AutofillServerCommunication (content-autofill.googleapis.com, for a page's forms),
+// SafeBrowsingHashPrefixRealTimeLookups (www.gstatic.com/ohttp_gateway), AimEnabled (www.google.com/async/folae) and
+// PreconnectToSearch (www.google.com); SkipListAccountsWithoutGaiaCookies skips accounts.google.com/ListAccounts.
+// Chrome reads only the last --disable-features, --enable-features and --host-resolver-rules, so a caller's own list
+// must include these.
+// update.googleapis.com resolves to ^NOTFOUND: Chrome 157 pings it on close after a page got real input, and no switch
+// or feature stops that (newer Chromium skips it headless). The guard's proxy sends that host here too
+// (startGuard in checks/render.mjs). No page loads anything from it.
+export const CHROME_FLAGS = [
+  "--disable-background-networking",
+  "--disable-component-update",
+  "--disable-sync",
+  "--disable-default-apps",
+  "--no-pings",
+  "--disable-domain-reliability",
+  "--disable-features=OptimizationHints,Translate,MediaRouter",
+];
+
 // args: extra Chrome flags, added after the standard ones (none by default).
 export async function launchChrome(browserPath, { headless = true, timeoutMs = 30000, args: extra = [] } = {}) {
   const profile = mkdtempSync(join(tmpdir(), "seo-supervisor-cdp-"));
@@ -34,6 +56,7 @@ export async function launchChrome(browserPath, { headless = true, timeoutMs = 3
     "--disable-extensions",
     "--hide-scrollbars",
     "--mute-audio",
+    ...CHROME_FLAGS,
     ...containerArgs(),
     ...chromeProxyArgs(),
     `--user-data-dir=${profile}`,

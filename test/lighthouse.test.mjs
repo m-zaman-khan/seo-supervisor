@@ -1,3 +1,4 @@
+// @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -5,6 +6,7 @@ import { join } from "node:path";
 import { serve } from "./serve.mjs";
 import { checkLighthouse, findLighthouse, runLighthouse } from "../skills/seo-supervisor/scripts/checks/lighthouse.mjs";
 import { ROOT, SKILL, SCRIPTS, node, tmp } from "./helpers.mjs";
+import { CHROME_FLAGS } from "../skills/seo-supervisor/scripts/lib/cdp.mjs";
 
 // Four category scores, the five metrics, and audits that pass, fail, weigh nothing or aren't scored.
 const ref = (id, weight) => ({ id, weight });
@@ -264,8 +266,9 @@ test("Lighthouse's Chrome gets the container and proxy flags through --chrome-fl
     host: { platform: "linux", uid: 0, env: { HTTP_PROXY: P, HTTPS_PROXY: P }, exists: () => false },
   });
   const flags = lh.calls()[0].args.find(a => a.startsWith("--chrome-flags="));
+  // Chrome's own background traffic is off too (CHROME_FLAGS, right after --headless=new).
   assert.match(
-    flags,
+    flags.replace(` ${CHROME_FLAGS.join(" ")}`, ""),
     /^--chrome-flags=--headless=new --no-sandbox --disable-dev-shm-usage --proxy-server=http:\/\/proxy\.corp:8080 --user-data-dir="[^"]+"$/,
   );
 });

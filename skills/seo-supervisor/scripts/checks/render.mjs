@@ -8,7 +8,7 @@ import { createServer, request as httpRequest } from "node:http";
 import { connect, isIP } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { containerArgs } from "../lib/cdp.mjs";
+import { CHROME_FLAGS, containerArgs } from "../lib/cdp.mjs";
 import { chromeProxyArgs } from "../lib/proxy.mjs";
 import { redact } from "../lib/redact.mjs";
 import { installedBrowser } from "../lib/settings-dir.mjs";
@@ -95,6 +95,7 @@ export const renderArgs = (profile, url, host = {}, guard = null) => [
   "--no-first-run",
   "--no-default-browser-check",
   "--disable-extensions",
+  ...CHROME_FLAGS,
   ...containerArgs(host),
   ...(guard || chromeProxyArgs(host.env)),
   `--user-data-dir=${profile}`,
