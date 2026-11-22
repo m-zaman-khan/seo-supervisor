@@ -51,14 +51,7 @@ const bingGet =
     request("bing", bing, `${base}/${method}?${new URLSearchParams({ ...params, apikey: key })}`).then(b => b?.d);
 // Bing's own URL for the site (its www and https), which every other Bing call takes as siteUrl.
 async function bingSite(get, site) {
-  const want = new URL(site).hostname,
-    hostOf = u => {
-      try {
-        return new URL(u).hostname;
-      } catch {
-        return "";
-      }
-    };
+  const want = new URL(site).hostname;
   const sites = (await get("GetUserSites")) || [];
   const match = sites.find(s => hostOf(s.Url) === want) || sites.find(s => bare(hostOf(s.Url)) === bare(want));
   if (!match)
@@ -154,12 +147,12 @@ export async function fetchBing(key, site, base, notes, { pages: chosen = [], si
   if (sister) {
     try {
       const sisterUrl = await bingSite(get, sister),
-        skip = new Set([bare(want), hostOf(sisterUrl)]);
+        skip = new Set([bare(want), bare(hostOf(sisterUrl))]);
       const hostsOf = async (url, list) => {
         const hosts = new Set();
         for (const p of list.slice(0, 5))
           for (const l of linksOf(await get("GetUrlLinks", { siteUrl: url, link: p.url, page: 0 }))) {
-            const h = hostOf(l.url);
+            const h = bare(hostOf(l.url));
             if (h && !skip.has(h)) hosts.add(h);
           }
         return hosts;

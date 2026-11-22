@@ -189,11 +189,12 @@ export const domainOf = s => {
 // The site's domain and the competitors', each once; a site with no domain name (localhost) is left out.
 export const domainsFor = (siteUrl, competitors) =>
   [domainOf(siteUrl), ...competitors.map(domainOf)].filter((d, i, all) => d && all.indexOf(d) === i);
+// The host as written, www kept ("" for a non-address). Use bare(hostOf(u)) where www and apex are one site.
 export const hostOf = u => {
   try {
-    return bare(new URL(u).hostname);
+    return new URL(u).hostname;
   } catch {
-    return null;
+    return "";
   }
 };
 export const day = ms => new Date(ms).toISOString().slice(0, 10);

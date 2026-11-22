@@ -82,7 +82,7 @@ export async function fetchClarity(key, base, site, notes) {
       n = Number(r[fieldOf(r, "totalSessionCount") ?? ""]);
     if (!u || !(n > 0)) continue;
     if (!p) {
-      others.add(hostOf(u) || u);
+      others.add(bare(hostOf(u)) || u);
       continue;
     }
     weight.set(u, n);
