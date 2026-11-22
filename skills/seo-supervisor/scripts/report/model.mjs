@@ -2,7 +2,7 @@
 // The report's model: the audit read once, with check settings applied and the score worked out.
 import { basename } from "node:path";
 import { SEV, EARN, isOpen, findingsOf, buildRules as rulesOf, score } from "../lib/score.mjs";
-import { plural } from "./format.mjs";
+import { plural, obj, isText } from "./format.mjs";
 
 export const needsYou = f => f.fixBy === "owner" && isOpen(f);
 
@@ -37,6 +37,18 @@ export function buildModel(raw, dir) {
   const passed = raw.passed || [];
   const notChecked = raw.notChecked || [];
   const notes = raw.notes || [];
+  // Lighthouse runs, validated once for every panel; each failed audit keeps up to 10 of the items it names.
+  const lighthouse = (Array.isArray(raw.lighthouse) ? raw.lighthouse : [])
+    .filter(x => obj(x) && isText(x.url))
+    .map(x => ({
+      ...x,
+      detail: (Array.isArray(x.detail) ? x.detail : [])
+        .filter(a => obj(a) && typeof a.title === "string")
+        .map(a => ({
+          ...a,
+          items: (Array.isArray(a.items) ? a.items : []).filter(s => typeof s === "string" && s).slice(0, 10),
+        })),
+    }));
   const decisions = [
     ...(raw.decisions || []).map(d => ({ ...d })),
     ...findings
@@ -144,6 +156,7 @@ export function buildModel(raw, dir) {
     passed,
     notChecked,
     notes,
+    lighthouse,
     decisions,
     open,
     fixed,

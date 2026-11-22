@@ -27,7 +27,7 @@ function bandedCwv(v) {
     .join(" · ");
 }
 
-export function overviewLines({ raw }) {
+export function overviewLines({ raw, lighthouse }) {
   // Origin field data, else the first page's.
   function speedText() {
     const s = raw.speed;
@@ -82,7 +82,7 @@ export function overviewLines({ raw }) {
   }
   // More than the default 5 pages (--lighthouse all) adds the three lowest performance scores.
   function lighthouseText() {
-    const l = raw.lighthouse || [],
+    const l = lighthouse,
       x = l.find(x => new URL(x.url).pathname === "/") || l[0],
       s = x?.scores || {};
     const parts = [

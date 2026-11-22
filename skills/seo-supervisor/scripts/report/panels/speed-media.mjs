@@ -4,7 +4,7 @@ import { band } from "../../checks/speed.mjs";
 import { cellMd, esc, fmtDate, inl, noteCode, noteMd, notePath, num, obj, plural } from "../format.mjs";
 import { LCP_PART } from "../overview-lines.mjs";
 
-export function speedPanels({ raw, mdFile }) {
+export function speedPanels({ raw, mdFile, lighthouse }) {
   // Images ranked by what converting or resizing them would save, top 15. Crawled text is escaped.
   const imageRows = (Array.isArray(raw.images) ? raw.images : [])
     .filter(i => obj(i) && typeof i.url === "string" && Number.isFinite(i.bytes) && i.estSaving > 0)
@@ -35,22 +35,14 @@ export function speedPanels({ raw, mdFile }) {
         ]
       : [];
 
-  // Each run's failed audits, each with up to 10 files or page elements. Titles come from Lighthouse (Markdown
-  // backticks included) and files from the site, so both are escaped.
-  const lhRuns = (Array.isArray(raw.lighthouse) ? raw.lighthouse : [])
-    .filter(x => obj(x) && typeof x.url === "string" && Array.isArray(x.detail))
-    .map(x => ({
-      path: notePath(x.url),
-      audits: x.detail
-        .filter(a => obj(a) && typeof a.title === "string")
-        .map(a => ({
-          ...a,
-          items: (Array.isArray(a.items) ? a.items : []).filter(s => typeof s === "string" && s).slice(0, 10),
-        })),
-    }))
+  // Every failed audit except accessibility ones, which the accessibility panel lists, so none shows twice. Titles come
+  // from Lighthouse (Markdown backticks included) and files from the site, so both are escaped.
+  const isA11y = a => a.category === "Accessibility";
+  const lhRuns = lighthouse
+    .map(x => ({ path: notePath(x.url), audits: x.detail.filter(a => !isA11y(a)) }))
     .filter(x => x.audits.length);
   const LH_INTRO =
-    "Every audit each Lighthouse run failed, with the files or page elements it names (10 at most). Information only: Lighthouse's lab results don't change the score.";
+    "Every audit each Lighthouse run failed, with the files or page elements it names (10 at most). The accessibility ones are under Lighthouse's accessibility checks. Information only: Lighthouse's lab results don't change the score.";
   const lighthouseDetailHtml = () =>
     lhRuns.length
       ? `\n    <details class="how lhdetail"><summary>Lighthouse details</summary><p>${esc(LH_INTRO)}</p>${lhRuns
@@ -169,11 +161,11 @@ export function speedPanels({ raw, mdFile }) {
         .map(([n, k]) => `${n} ${med[k]}`);
     if (medParts.length && Number.isInteger(med.pages))
       L.push(`Lighthouse medians across ${num(med.pages)} pages: ${medParts.join(" · ")}.`);
-    const runs = arr(raw.lighthouse).filter(x => str(x.url) && Number.isInteger(x.passed)),
+    const runs = lighthouse.filter(x => Number.isInteger(x.passed)),
       ver = runs.find(x => str(x.version))?.version;
     if (runs.length)
       L.push(
-        `Lighthouse${ver ? ` ${ver}` : ""}: ${mediaList(runs, x => `${notePath(x.url)} passed ${num(x.passed)} audits, failed ${num(Array.isArray(x.detail) ? x.detail.length : 0)}`)}.`,
+        `Lighthouse${ver ? ` ${ver}` : ""}: ${mediaList(runs, x => `${notePath(x.url)} passed ${num(x.passed)} audits, failed ${num(x.detail.length)}`)}.`,
       );
     const psiVer = samples.map(x => obj(x.lab)?.version).find(str);
     if (psiVer) L.push(`PageSpeed's lab runs used Lighthouse ${psiVer}.`);
@@ -234,17 +226,11 @@ export function speedPanels({ raw, mdFile }) {
   // lighthouse.mjs keeps each failed audit with its category title, "Accessibility" in the English runs it starts.
   // Accessibility audits are pass or fail, and some checks, such as trapped focus, need a manual review.
   // https://developer.chrome.com/docs/lighthouse/accessibility/scoring
-  const a11yRuns = (Array.isArray(raw.lighthouse) ? raw.lighthouse : [])
-    .filter(x => obj(x) && typeof x.url === "string" && Array.isArray(x.detail))
+  const a11yRuns = lighthouse
     .map(x => ({
       path: notePath(x.url),
       score: Number.isInteger(x.scores?.accessibility) ? x.scores.accessibility : null,
-      audits: x.detail
-        .filter(a => obj(a) && typeof a.title === "string" && a.category === "Accessibility")
-        .map(a => ({
-          title: a.title,
-          items: (Array.isArray(a.items) ? a.items : []).filter(s => typeof s === "string" && s).slice(0, 10),
-        })),
+      audits: x.detail.filter(isA11y),
     }))
     .filter(x => x.audits.length);
   const A11Y_INTRO =

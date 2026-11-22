@@ -2,7 +2,7 @@
 // The AI panels on the Search & AI tab: agent support, AI crawler access and the AI answer check.
 import { cellMd, esc, inl, noteCode, noteMd, notePath, num, obj, plural, isCount } from "../format.mjs";
 
-export function aiPanels({ raw }) {
+export function aiPanels({ raw, lighthouse }) {
   // AI agents (WebMCP tools, UCP, agent files), from the crawler.
   const AGENT_FILE = {
     "/.well-known/api-catalog": "API catalog (RFC 9727)",
@@ -66,10 +66,8 @@ export function aiPanels({ raw }) {
     l && [l.checked, l.count].every(isCount) && Array.isArray(l.pages)
       ? { ...l, pages: l.pages.filter(p => obj(p) && typeof p.url === "string" && Array.isArray(p.missing)) }
       : null)(obj(raw.landmarks));
-  const agentic = (Array.isArray(raw.lighthouse) ? raw.lighthouse : [])
-    .filter(
-      x => obj(x) && typeof x.url === "string" && obj(x.agentic) && [x.agentic.passed, x.agentic.total].every(isCount),
-    )
+  const agentic = lighthouse
+    .filter(x => obj(x.agentic) && [x.agentic.passed, x.agentic.total].every(isCount))
     .map(x => ({
       path: notePath(x.url),
       passed: x.agentic.passed,

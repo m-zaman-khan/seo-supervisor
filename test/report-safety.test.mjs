@@ -76,6 +76,52 @@ test('"How this score works" is written once: the page and the Markdown say the 
   assert.ok(md?.includes(`## How the score works\n\n${SCORE_HOW}\n`));
 });
 
+test("each failed Lighthouse audit is listed once, and odd runs in the file are skipped, not fatal", () => {
+  const audit = {
+    site: { name: "S", url: "https://s.example" },
+    findings: [],
+    passed: [{ rule: "R-1", category: "Other" }],
+    lighthouse: [
+      null,
+      "x",
+      { url: 5 },
+      { scores: {} },
+      {
+        url: "https://s.example/",
+        passed: 40,
+        scores: { performance: 70, accessibility: 81 },
+        detail: [
+          { title: "Image elements lack alt-zz", category: "Accessibility", items: ["img.hero"] },
+          { title: "Cut render-blocking-zz", category: "Performance", items: ["/app.css"] },
+          "junk",
+        ],
+      },
+      {
+        url: "https://s.example/about/",
+        detail: [{ title: "Buttons lack names-zz", category: "Accessibility", items: [] }],
+      },
+    ],
+  };
+  const { html, md } = rend(audit);
+  for (const t of ["Image elements lack alt-zz", "Buttons lack names-zz", "Cut render-blocking-zz"]) {
+    assert.equal(html.split(t).length - 1, 1, `${t}: once on the page`);
+    assert.equal((md ?? "").split(t).length - 1, 1, `${t}: once in the Markdown`);
+  }
+  const details = html.slice(
+    html.indexOf('class="how lhdetail"'),
+    html.indexOf('class="how', html.indexOf('class="how lhdetail"') + 1),
+  );
+  assert.match(details, /The accessibility ones are under Lighthouse(&#39;|')s accessibility checks/);
+  assert.doesNotMatch(
+    details,
+    /\/about\//,
+    "a page whose only failed audits are accessibility ones isn't in Lighthouse details",
+  );
+  assert.match(html, /<code>\/<\/code> · 1 failed audit</, "the count leaves the accessibility audit out");
+  assert.match(html, /Lighthouse \(mobile, home page\): Performance 70/);
+  assert.match(html, /passed 40 audits, failed 2/, "the speed details still count every failed audit");
+});
+
 test("the page's styles have no dead .as.b3-t,.as.b4-t rule", () => {
   const { html } = rend(KITCHEN);
   assert.doesNotMatch(html, /\.as\.b[34]-t/);
