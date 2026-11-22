@@ -7,10 +7,8 @@ import { applyChecks, knownChecks } from "../skills/seo-supervisor/scripts/lib/s
 
 test("every crawler check in crawl/catalog.mjs is a known check, so settings.json can turn it off without a warning", () => {
   const known = knownChecks();
-  // server-known-holes is declared on checks/technical.mjs's `SERVER_CHECK = {` line, which knownChecks()'s
-  // line-start pattern skips.
   assert.deepEqual(
-    Object.keys(CHECKS).filter(id => !known.has(id) && id !== "server-known-holes"),
+    Object.keys(CHECKS).filter(id => !known.has(id)),
     [],
     "crawler checks knownChecks() can't see",
   );

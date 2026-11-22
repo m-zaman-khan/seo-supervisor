@@ -20,7 +20,11 @@ import { CHECKS as HYGIENE_CHECKS } from "../checks/hygiene.mjs";
 // Old check ids -> current ones, so settings.json lists and findings filed before a rename (won't-fix ones too) keep
 // working.
 /** @type {Record<string, string>} */
-export const ID_ALIASES = {};
+export const ID_ALIASES = {
+  // Not renames: short ids that settings.json files may still use.
+  "image-missing": "product-image-missing",
+  "adult-unlabelled": "product-adult-unlabelled",
+};
 /** Follows ID_ALIASES through chained renames; an id with no alias comes back as it is. */
 export function currentId(id) {
   for (const seen = new Set(); Object.hasOwn(ID_ALIASES, id) && !seen.has(id);) {

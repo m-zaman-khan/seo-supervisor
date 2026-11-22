@@ -85,7 +85,7 @@ export function knownChecks(dir = new URL("..", import.meta.url)) {
       );
     } catch {}
   const re =
-    /^\s*"?([a-z0-9]+(?:-[a-z0-9]+)*)"?:\s*\[\s*"[A-Z]+-\d+",\s*"(?:blocker|high|medium|low|needs-decision)"|CHECKS\["([a-z0-9-]+)"\] = \[|\bcheck:\s*"([a-z0-9-]+)"|\bfinding\(\s*"([a-z0-9-]+)"/gm;
+    /(?:^|[{,])\s*"?([a-z0-9]+(?:-[a-z0-9]+)*)"?:\s*\[\s*"[A-Z]+-\d+",\s*"(?:blocker|high|medium|low|needs-decision)"|CHECKS\["([a-z0-9-]+)"\] = \[|\bcheck:\s*"([a-z0-9-]+)",\s*rule:\s*"|\bfinding\(\s*"([a-z0-9-]+)"/gm;
   for (const f of files) for (const m of readFileSync(f, "utf8").matchAll(re)) ids.add(m[1] || m[2] || m[3] || m[4]);
   return ids;
 }

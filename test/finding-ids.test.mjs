@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmp } from "./helpers.mjs";
 import { ID_ALIASES, currentId } from "../skills/seo-supervisor/scripts/crawl/catalog.mjs";
-import { findingsOf } from "../skills/seo-supervisor/scripts/lib/score.mjs";
+import { applyChecks, findingsOf, knownChecks } from "../skills/seo-supervisor/scripts/lib/score.mjs";
 import { diffCrawls, timeline } from "../skills/seo-supervisor/scripts/seo-diff.mjs";
 
 // A rename for the test only, taken out again after each test that adds it.
@@ -120,3 +120,43 @@ test(
     );
   }),
 );
+
+// ---------- knownChecks ----------
+test("knownChecks sees a check on the same line as its catalog's opening brace, and no product-problem codes", () => {
+  const known = knownChecks();
+  assert.ok(known.has("server-known-holes"), 'SERVER_CHECK = { "server-known-holes": … is on one line');
+  for (const id of [
+    "product-image-missing",
+    "product-adult-unlabelled",
+    "backlinks-gone",
+    "bing-crawl-issues",
+    "linked-page-broken",
+    "low-ctr",
+    "bot-errors",
+  ])
+    assert.ok(known.has(id), id);
+  for (const id of ["image-missing", "adult-unlabelled"])
+    assert.ok(!known.has(id), `${id} is a product problem's code; its finding is product-${id}`);
+  const r = applyChecks([{ check: "server-known-holes", rule: "TRUST-01", severity: "needs-decision" }], {
+    off: ["server-known-holes"],
+  });
+  assert.deepEqual([r.findings, r.warnings], [[], []]);
+});
+
+test("settings that named a product problem by its short code apply to its finding", () => {
+  const audit = {
+    findings: [
+      { ...F("F-001", "product-image-missing", "medium"), rule: "SHOP-05" },
+      { ...F("F-002", "product-adult-unlabelled", "medium"), rule: "SHOP-05" },
+    ],
+  };
+  const r = findingsOf(
+    audit,
+    auditDir({ checks: { off: ["image-missing"], severity: { "adult-unlabelled": "low" } } }),
+  );
+  assert.deepEqual(
+    r.findings.map(f => [f.id, f.severity]),
+    [["F-002", "low"]],
+  );
+  assert.equal(r.warnings.filter(w => /isn't a check/.test(w)).length, 0);
+});
