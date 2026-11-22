@@ -9,6 +9,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
 import { AGENTS, agentByKey, allTargets, detectAgents, targetsFor } from "./agents.mjs";
+import { installExtras, mkdirs, prune, readRecord, removeExtras, writeRecord } from "./extras.mjs";
 import { multiSelect, select } from "./prompt.mjs";
 import { browserFile, toolsDir } from "../skills/seo-supervisor/scripts/lib/settings-dir.mjs";
 
@@ -41,8 +42,12 @@ With no options it asks where to install and for which agents.
   --project         Same as --scope project
   --agents          Also install into the shared .agents folder (read by Codex, Cline, Zed, Warp and others), in the chosen scope
   --yes, -y        No questions: the agents it finds (Claude Code if none), user scope
-  --uninstall       Remove what this installer added, in the chosen scope (user by default)
-  --force           Replace a skill folder or command file that isn't SEO Supervisor's
+  --uninstall       Remove what this installer added, in the chosen scope (user by default): the skill, commands,
+                    subagents and guard hooks, and the folders it made for them. Your own hooks and files stay.
+  --no-guard        Don't add the guard hook (it stops, or asks you first, before risky steps such as submitting
+                    sitemaps, editing robots.txt or redirects, or a key pasted in chat). On by default for Codex,
+                    Cursor, GitHub Copilot, Devin and Cline; added to their hook files next to any hooks you have.
+  --force           Replace a skill folder, command or subagent file that isn't SEO Supervisor's
   --with-lighthouse Also install the optional Lighthouse add-on (about 170 MB, in the settings folder's tools: ~/.seo-supervisor/tools, or SEO_SUPERVISOR_HOME; not your project)
   --no-lighthouse   Don't ask about Lighthouse
   --with-image-tools Also install the optional image add-on, sharp (about 20 MB, in the settings folder's tools), which scripts/images.mjs uses to convert images to WebP and AVIF
@@ -83,6 +88,7 @@ for (let n = 0; n < argv.length; n++) {
     "--project": "project",
     "--agents": "agents",
     "--uninstall": "uninstall",
+    "--no-guard": "noGuard",
     "--force": "force",
     "--with-image-tools": "imageTools",
     "--with-browser": "browser",
@@ -142,18 +148,20 @@ if (opts.agent) {
 
 // ---- what this package owns ----
 const SRC_SKILL = join(ROOT, "skills", NAME);
-const SRC_COMMANDS = join(ROOT, "commands");
-const commandFiles = readdirSync(SRC_COMMANDS).filter(f => f.endsWith(".md"));
+// Every .md in commands/ and agents/, converted per agent by extras.mjs.
+const mdIn = dir =>
+  existsSync(dir)
+    ? readdirSync(dir)
+        .filter(f => f.endsWith(".md"))
+        .sort()
+    : [];
+const SRC = {
+  commands: mdIn(join(ROOT, "commands")).map(f => [f, readFileSync(join(ROOT, "commands", f), "utf8")]),
+  subagents: mdIn(join(ROOT, "agents")).map(f => readFileSync(join(ROOT, "agents", f), "utf8")),
+};
 const ownsSkill = dir => {
   try {
     return /^name:\s*seo-supervisor\s*$/m.test(readFileSync(join(dir, "SKILL.md"), "utf8"));
-  } catch {
-    return false;
-  }
-};
-const ownsCommand = file => {
-  try {
-    return readFileSync(file, "utf8").includes(NAME);
   } catch {
     return false;
   }
@@ -248,23 +256,24 @@ need Chrome or Edge may not run.`);
 // ---- uninstall ----
 if (opts.uninstall) {
   scope ||= "user";
+  const root = scope === "project" ? c.cwd : c.home,
+    created = [];
   let removed = 0;
   for (const t of allTargets(scope, c)) {
-    const dir = join(t.skills, NAME);
+    const dir = join(t.skills, NAME),
+      record = readRecord(dir);
+    created.push(...record);
+    for (const file of removeExtras(t, { src: SRC, created: record, root })) {
+      console.log(`removed  ${show(file)}`);
+      removed++;
+    }
     if (ownsSkill(dir)) {
       rmSync(dir, { recursive: true, force: true });
       console.log(`removed  ${show(dir)}`);
       removed++;
     }
-    for (const f of t.commands ? commandFiles : []) {
-      const file = join(t.commands, f);
-      if (ownsCommand(file)) {
-        rmSync(file);
-        console.log(`removed  ${show(file)}`);
-        removed++;
-      }
-    }
   }
+  prune(created, root); // folders the install made, once empty
   console.log(removed ? "\nSEO Supervisor uninstalled." : `\nNothing to remove in the ${scope} scope.`);
   if (existsSync(TOOLS))
     console.log(
@@ -326,34 +335,28 @@ try {
 let problems = 0;
 const names = [];
 if (interactive) console.log("");
+const root = scope === "project" ? c.cwd : c.home;
 for (const t of targetsFor(keys, scope, c)) {
   const dir = join(t.skills, NAME);
   if (existsSync(dir) && !ownsSkill(dir) && !opts.force) {
     console.error(`skipped  ${show(dir)}: it exists and isn't SEO Supervisor (use --force to replace it)`);
     problems++;
-  } else {
-    rmSync(dir, { recursive: true, force: true });
-    mkdirSync(t.skills, { recursive: true });
-    cpSync(SRC_SKILL, dir, { recursive: true });
-    console.log(`skill    ${show(dir)}  (${t.agents.join(", ")})`);
-    names.push(...t.agents);
+    continue; // its commands and hooks would point at a skill that isn't SEO Supervisor's
   }
-  if (!t.commands) continue;
-  mkdirSync(t.commands, { recursive: true });
-  const added = [];
-  for (const f of commandFiles) {
-    const file = join(t.commands, f);
-    if (existsSync(file) && !ownsCommand(file) && !opts.force) {
-      console.error(
-        `skipped  ${show(file)}: a different /${f.slice(0, -3)} command exists (use --force to replace it)`,
-      );
-      problems++;
-      continue;
-    }
-    cpSync(join(SRC_COMMANDS, f), file);
-    added.push("/" + f.slice(0, -3));
+  const created = readRecord(dir); // keeps what an earlier install made on the uninstall list
+  rmSync(dir, { recursive: true, force: true });
+  mkdirs(t.skills, created, root);
+  cpSync(SRC_SKILL, dir, { recursive: true });
+  console.log(`skill    ${show(dir)}  (${t.agents.join(", ")})`);
+  names.push(...t.agents);
+  const r = installExtras(t, { src: SRC, guard: !opts.noGuard, force: opts.force, scope, root, created, show });
+  for (const line of r.lines) console.log(line);
+  for (const p of r.problems) {
+    console.error(`skipped  ${p}`);
+    problems++;
   }
-  if (added.length) console.log(`commands ${added.join(" ")}  (${show(t.commands)})`);
+  prune(created, root); // a folder emptied by --no-guard
+  writeRecord(dir, created);
 }
 
 // ---- optional add-ons in TOOLS: a failure never fails the install, since the skill works without them ----
@@ -445,4 +448,7 @@ console.log(
     ? `In Claude Code run /seo-audit (or /seo-setup for a site with no SEO yet).${names.length > 1 ? ' In the other agents, ask: "audit the SEO of this site".' : ""}`
     : `Open your agent and ask: "audit the SEO of this site".`,
 );
+// Codex runs a new or changed hook only once it's trusted in /hooks. https://learn.chatgpt.com/docs/hooks
+if (!opts.noGuard && keys.some(k => agentByKey(k).key === "codex"))
+  console.log("Codex runs the guard hook once you trust it: type /hooks in Codex.");
 process.exit(problems ? 1 : 0);

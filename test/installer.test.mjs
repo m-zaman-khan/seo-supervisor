@@ -19,11 +19,15 @@ const ctx = (home, cwd = home) => ({ home, cwd, env: env(home) });
 test("every agent has a key, a name and both skill folders", () => {
   assert.ok(AGENTS.length >= 15);
   for (const a of AGENTS) assert.ok(a.key && a.name && a.user && a.project, a.key);
-  for (const key of ["claude-code", "codex", "cursor", "windsurf", "gemini-cli", "github-copilot", "opencode", "grok"])
+  for (const key of ["claude-code", "codex", "cursor", "devin", "gemini-cli", "github-copilot", "opencode", "grok"])
     assert.ok(
       AGENTS.some(a => a.key === key),
       key,
     );
+  assert.ok(
+    AGENTS.some(a => a.aliases?.includes("windsurf")),
+    "Windsurf's old key still works: it's Devin now",
+  );
 });
 
 test("agents are detected from their folders in the home directory", () => {
@@ -31,7 +35,7 @@ test("agents are detected from their folders in the home directory", () => {
   for (const d of [".cursor", ".codex", join(".config", "opencode")]) mkdirSync(join(home, d), { recursive: true });
   const found = detectAgents(ctx(home));
   for (const key of ["cursor", "codex", "opencode"]) assert.ok(found.includes(key), key);
-  assert.ok(!found.includes("windsurf") && !found.includes("claude-code"));
+  assert.ok(!found.includes("devin") && !found.includes("claude-code"));
   const codexHome = tmp();
   assert.ok(
     detectAgents({ ...ctx(tmp()), env: { ...env(tmp()), CODEX_HOME: codexHome } }).includes("codex"),
@@ -39,14 +43,16 @@ test("agents are detected from their folders in the home directory", () => {
   );
 });
 
-test("targets give each agent its own folder, share folders once, and send commands to Claude Code", () => {
+test("targets give each agent its own folder, share folders once, and list each agent's commands and hooks", () => {
   const home = tmp(),
     cwd = tmp();
   const project = targetsFor(["claude-code", "codex", "cursor"], "project", ctx(home, cwd));
   const shared = project.find(t => t.skills === join(cwd, ".agents", "skills"));
   assert.deepEqual(shared.agents, ["Codex", "Cursor"], "Codex and Cursor share .agents/skills in a project");
   const claude = project.find(t => t.skills === join(cwd, ".claude", "skills"));
-  assert.equal(claude.commands, join(cwd, ".claude", "commands"));
+  assert.deepEqual(claude.extras, [
+    { key: "claude-code", kind: "commands", path: join(cwd, ".claude", "commands"), format: "md" },
+  ]);
   assert.equal(project.length, 2);
 
   const user = targetsFor(["codex", "cursor"], "user", ctx(home, cwd));
@@ -55,8 +61,12 @@ test("targets give each agent its own folder, share folders once, and send comma
     [join(home, ".agents", "skills"), join(home, ".cursor", "skills")].sort(),
   );
   assert.ok(
-    user.every(t => !t.commands),
-    "only Claude Code gets slash commands",
+    user.every(t => !t.extras.some(x => x.kind === "commands")),
+    "Codex and Cursor turn skills into commands themselves",
+  );
+  assert.deepEqual(
+    user.flatMap(t => t.extras.filter(x => x.kind === "hooks").map(x => x.path)).sort(),
+    [join(home, ".codex", "hooks.json"), join(home, ".cursor", "hooks.json")].sort(),
   );
 });
 

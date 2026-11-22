@@ -1,9 +1,10 @@
 {
   "version": 1,
   "hooks": {
-    "afterFileEdit": [
+    "postToolUse": [
       {
-        "command": "node .agents/skills/seo-supervisor/scripts/schema-check.mjs --hook"
+        "matcher": "Write",
+        "command": "node .agents/skills/seo-supervisor/scripts/schema-check.mjs --hook cursor"
       }
     ]
   }
