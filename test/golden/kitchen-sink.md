@@ -1,6 +1,6 @@
-# SEO report: Example Plumbing & Heating "Kitchen Sink" <test> Zürich
+# SEO report: Example Plumbing & Heating "Kitchen Sink" \<test\> Zürich
 
-https://www.example.com · 1240 pages crawled · Next.js 16 (App Router) · local-business, services, ecommerce · 20 Nov 2026 · fix
+`https://www.example.com` · 1240 pages crawled · Next.js 16 (App Router) · local-business, services, ecommerce · 20 Nov 2026 · fix
 
 **SEO health score: 49/100 (Poor).** Not ready: 2 blockers to fix first.
 
@@ -220,67 +220,51 @@ A rough estimate of what WebP and resizing to 1,600 px wide would save: Google m
 
 ## Lighthouse details
 
-Every audit each Lighthouse run failed, with the files or page elements it names (10 at most). Information only: Lighthouse's lab results don't change the score.
+Every audit each Lighthouse run failed, with the files or page elements it names (10 at most). The accessibility ones are under Lighthouse's accessibility checks. Information only: Lighthouse's lab results don't change the score.
 
 ### `/`
 
-- Image elements do not have \`\[alt\]\` attributes (Accessibility): `<img src="/images/van-0.jpg">`, `img.gallery-thumb`
 - Efficiently encode images (Performance): `/images/hero.jpg`, `/images/boiler & pipes.png`
-- Background and foreground colors do not have a sufficient contrast ratio (Accessibility): `a.footer-link`, `p.small <muted>`
 
 ### `/boilers/`
 
-- Image elements do not have \`\[alt\]\` attributes (Accessibility): `<img src="/images/van-1.jpg">`, `img.gallery-thumb`
 - Efficiently encode images (Performance): `/images/hero.jpg`, `/images/boiler & pipes.png`
 
 ### `/boilers/combi/`
 
-- Image elements do not have \`\[alt\]\` attributes (Accessibility): `<img src="/images/van-2.jpg">`, `img.gallery-thumb`
 - Efficiently encode images (Performance): `/images/hero.jpg`, `/images/boiler & pipes.png`
 
 ### `/heat-pumps/`
 
-- Image elements do not have \`\[alt\]\` attributes (Accessibility): `<img src="/images/van-3.jpg">`, `img.gallery-thumb`
 - Efficiently encode images (Performance): `/images/hero.jpg`, `/images/boiler & pipes.png`
 
 ### `/blog/`
 
-- Image elements do not have \`\[alt\]\` attributes (Accessibility): `<img src="/images/van-4.jpg">`, `img.gallery-thumb`
 - Efficiently encode images (Performance): `/images/hero.jpg`, `/images/boiler & pipes.png`
 
 ### `/blog/boiler-sizes/`
 
-- Image elements do not have \`\[alt\]\` attributes (Accessibility): `<img src="/images/van-5.jpg">`, `img.gallery-thumb`
 - Efficiently encode images (Performance): `/images/hero.jpg`, `/images/boiler & pipes.png`
 
 ### `/contact/`
 
-- Image elements do not have \`\[alt\]\` attributes (Accessibility): `<img src="/images/van-6.jpg">`, `img.gallery-thumb`
 - Efficiently encode images (Performance): `/images/hero.jpg`, `/images/boiler & pipes.png`
 
 ### `/plumber-zurich/`
 
-- Image elements do not have \`\[alt\]\` attributes (Accessibility): `<img src="/images/van-7.jpg">`, `img.gallery-thumb`
 - Efficiently encode images (Performance): `/images/hero.jpg`, `/images/boiler & pipes.png`
 
 ### `/plumber-winterthur/`
 
-- Image elements do not have \`\[alt\]\` attributes (Accessibility): `<img src="/images/van-8.jpg">`, `img.gallery-thumb`
 - Efficiently encode images (Performance): `/images/hero.jpg`, `/images/boiler & pipes.png`
 
 ### `/shop/`
 
-- Image elements do not have \`\[alt\]\` attributes (Accessibility): `<img src="/images/van-9.jpg">`, `img.gallery-thumb`
 - Efficiently encode images (Performance): `/images/hero.jpg`, `/images/boiler & pipes.png`
 
 ### `/shop/thermostat-x2/`
 
-- Image elements do not have \`\[alt\]\` attributes (Accessibility): `<img src="/images/van-10.jpg">`, `img.gallery-thumb`
 - Efficiently encode images (Performance): `/images/hero.jpg`, `/images/boiler & pipes.png`
-
-### `/about/`
-
-- Image elements do not have \`\[alt\]\` attributes (Accessibility): `<img src="/images/van-11.jpg">`, `img.gallery-thumb`
 
 ## HSTS preload
 
@@ -810,7 +794,7 @@ Declined: /offers/: Keep the offers page?
 | Page | Type | Status | Target | Title | Description | H1 | Schema | Parent | Needs you |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | / | Home | Already right | plumber zürich | Plumber & Heating Engineer in Zürich \| Example Plumbing |  | Plumbing & heating in Zürich | Plumber, WebSite |  |  |
-| /boilers/ | Service hub | To build | boiler service zürich | Boilers \| Example Plumbing | Boiler service & repair <same day>. | Boilers | Service, BreadcrumbList | / | Your yes: Approve moving the boiler FAQ onto the hub |
+| /boilers/ | Service hub | To build | boiler service zürich | Boilers \| Example Plumbing | Boiler service & repair \<same day\>. | Boilers | Service, BreadcrumbList | / | Your yes: Approve moving the boiler FAQ onto the hub |
 | /pricing | Pricing page | To create | plumber prices zürich | Prices \| Example Plumbing |  | Prices | WebPage | / | Facts: Confirm the call-out price (draft: drafts/pricing.md) |
 | /heat-pumps/ | Service page | Built | heat pump installer | Heat Pumps \| Example Plumbing |  | Heat pumps | Service | / |  |
 | /offers/ | Offers | Already right |  |  |  |  |  | / |  |
@@ -920,8 +904,8 @@ The robots file blocks every AI crawler, including the search crawlers that deci
 
 ## What was changed
 
-- **F-006** The sitemap listed localhost URLs: sitemap.ts uses the same SITE_URL constant as the metadata helper. (`src/app/sitemap.ts`). Verified: re-crawl 20 Nov: all 1,240 URLs on https://www.example.com
-- **F-005** 52 canonicals pointed at the staging host: metadataBase now reads SITE_URL, which fails the build if missing; production env updated. (`src/lib/seo.ts`, `next.config.ts`). Verified: re-crawl 20 Nov: 0 canonicals on the wrong host
+- **F-006** The sitemap listed localhost URLs: sitemap.ts uses the same SITE\_URL constant as the metadata helper. (`src/app/sitemap.ts`). Verified: re-crawl 20 Nov: all 1,240 URLs on `https://www.example.com`
+- **F-005** 52 canonicals pointed at the staging host: metadataBase now reads SITE\_URL, which fails the build if missing; production env updated. (`src/lib/seo.ts`, `next.config.ts`). Verified: re-crawl 20 Nov: 0 canonicals on the wrong host
 
 ## Findings
 
@@ -999,7 +983,7 @@ Microsoft Clarity (the 3 days before 20 Nov 2026): 40 sessions · average scroll
 
 Status: Open · Area: Trust & security · Rule: TRUST-01 · Effort: under 30 minutes
 
-**What's wrong.** `Strict-Transport-Security: max-age=86400` on every page; the preload list asks for a year and \*\*includeSubDomains\*\*.
+**What's wrong.** `Strict-Transport-Security: max-age=86400` on every page; the preload list asks for a year and **includeSubDomains**.
 
 **Why it matters.** A short HSTS lifetime leaves visitors open to downgrade attacks between visits.
 
@@ -1150,7 +1134,7 @@ Status: Fixed · Area: Sitemaps & robots · Rule: MAP-02 · Cases: 1240
 
 **How to fix.** Build sitemap URLs from the production origin.
 
-**What was done.** sitemap.ts uses the same SITE_URL constant as the metadata helper. Files: `src/app/sitemap.ts`. Verified: re-crawl 20 Nov: all 1,240 URLs on https://www.example.com.
+**What was done.** sitemap.ts uses the same SITE\_URL constant as the metadata helper. Files: `src/app/sitemap.ts`. Verified: re-crawl 20 Nov: all 1,240 URLs on `https://www.example.com`.
 
 | Where | Detail |
 | --- | --- |
@@ -1168,7 +1152,7 @@ Status: Fixed · Area: URLs & canonicals · Rule: URL-04 · Cases: 52
 
 **How to fix.** Set the production origin in one place and use it for `metadataBase`.
 
-**What was done.** metadataBase now reads SITE_URL, which fails the build if missing; production env updated. Files: `src/lib/seo.ts`, `next.config.ts`. Verified: re-crawl 20 Nov: 0 canonicals on the wrong host.
+**What was done.** metadataBase now reads SITE\_URL, which fails the build if missing; production env updated. Files: `src/lib/seo.ts`, `next.config.ts`. Verified: re-crawl 20 Nov: 0 canonicals on the wrong host.
 
 Search Console: 0 clicks · 2,400 impressions (last 3 months) on `/heat-pumps/`
 
@@ -1182,7 +1166,7 @@ Search Console: 0 clicks · 2,400 impressions (last 3 months) on `/heat-pumps/`
 
 ## Passed checks
 
-- **REND-01** Content is in the server HTML, not only in JavaScript (src/app/[slug]/page.tsx is a server component)
+- **REND-01** Content is in the server HTML, not only in JavaScript (src/app/\[slug\]/page.tsx is a server component)
 - **REND-02** Collapsed content stays in the HTML
 - **CONTENT-02** Heading levels are not skipped
 - **CONTENT-05** No thin pages
@@ -1208,7 +1192,7 @@ Search Console: 0 clicks · 2,400 impressions (last 3 months) on `/heat-pumps/`
 - **Core Web Vitals for the town pages:** Too few Chrome visits for field data; the lab numbers are on the Overview.
 - **SHOP-05:** Merchant Center feed: no access to the account.
 - **CDN/WAF behaviour toward search & AI crawlers:** Can't be seen from a crawl; check after launch with **URL Inspection**.
-- Crawled https://www.example.com with `--outside --lighthouse all`, stopped at 1,240 pages (--max).
+- Crawled `https://www.example.com` with `--outside --lighthouse all`, stopped at 1,240 pages (--max).
 - F-010 is won't fix: the owner has no review system yet, so there are no real ratings to mark up (accepted in the SEO profile).
 - Matomo & PostHog numbers cover 22 Aug to 19 Nov 2026; Clarity's cover the 3 days before 20 Nov.
 

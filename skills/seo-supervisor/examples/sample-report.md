@@ -1,6 +1,6 @@
 # SEO report: Example Security (sample data)
 
-https://security.example · 214 pages crawled · Next.js 16 (App Router) · tools, content, services · 17 Nov 2026 · fix
+`https://security.example` · 214 pages crawled · Next.js 16 (App Router) · tools, content, services · 17 Nov 2026 · fix
 
 **SEO health score: 49/100 (Poor).** Not ready: 2 blockers to fix first.
 
@@ -103,8 +103,8 @@ The robots file blocks every AI crawler, including the search crawlers that deci
 
 ## What was changed
 
-- **F-004** The sitemap listed localhost URLs: sitemap.ts uses the same SITE_URL constant as the metadata helper. (`src/app/sitemap.ts`). Verified: re-crawl 17 Nov: all 214 URLs on https://security.example
-- **F-003** 52 canonicals pointed at the staging host: metadataBase now reads SITE_URL, which fails the build if missing; production env updated. (`src/lib/seo.ts`, `next.config.ts`). Verified: re-crawl 17 Nov: 0 canonicals on the wrong host
+- **F-004** The sitemap listed localhost URLs: sitemap.ts uses the same SITE\_URL constant as the metadata helper. (`src/app/sitemap.ts`). Verified: re-crawl 17 Nov: all 214 URLs on `https://security.example`
+- **F-003** 52 canonicals pointed at the staging host: metadataBase now reads SITE\_URL, which fails the build if missing; production env updated. (`src/lib/seo.ts`, `next.config.ts`). Verified: re-crawl 17 Nov: 0 canonicals on the wrong host
 
 ## Findings
 
@@ -238,7 +238,7 @@ Status: Fixed · Area: Sitemaps & robots · Rule: MAP-02 · Cases: 214
 
 **How to fix.** Build sitemap URLs from the production origin.
 
-**What was done.** sitemap.ts uses the same SITE_URL constant as the metadata helper. Files: `src/app/sitemap.ts`. Verified: re-crawl 17 Nov: all 214 URLs on https://security.example.
+**What was done.** sitemap.ts uses the same SITE\_URL constant as the metadata helper. Files: `src/app/sitemap.ts`. Verified: re-crawl 17 Nov: all 214 URLs on `https://security.example`.
 
 | Where | Detail |
 | --- | --- |
@@ -256,7 +256,7 @@ Status: Fixed · Area: URLs & canonicals · Rule: URL-04 · Cases: 52
 
 **How to fix.** Set the production origin in one place and use it for `metadataBase`.
 
-**What was done.** metadataBase now reads SITE_URL, which fails the build if missing; production env updated. Files: `src/lib/seo.ts`, `next.config.ts`. Verified: re-crawl 17 Nov: 0 canonicals on the wrong host.
+**What was done.** metadataBase now reads SITE\_URL, which fails the build if missing; production env updated. Files: `src/lib/seo.ts`, `next.config.ts`. Verified: re-crawl 17 Nov: 0 canonicals on the wrong host.
 
 Search Console: 960 clicks · 31,200 impressions (last 3 months) on `/tools/ssl-checker/`
 
@@ -268,7 +268,7 @@ Search Console: 960 clicks · 31,200 impressions (last 3 months) on `/tools/ssl-
 
 ## Passed checks
 
-- **REND-01** Content is in the server HTML, not only in JavaScript (src/app/tools/[slug]/page.tsx is a server component)
+- **REND-01** Content is in the server HTML, not only in JavaScript (src/app/tools/\[slug\]/page.tsx is a server component)
 - **REND-02** Collapsed content stays in the HTML
 - **CONTENT-01** Exactly one H1 per page
 - **CONTENT-02** Heading levels are not skipped
@@ -285,7 +285,7 @@ Search Console: 960 clicks · 31,200 impressions (last 3 months) on `/tools/ssl-
 
 - **Core Web Vitals field data:** The new build isn't live yet, so it has no real-user data. The speed line on the Overview is the current live site's; Lighthouse lab scores for the new build are in notes.
 - **CDN/WAF behaviour toward search and AI crawlers:** Can't be seen from a local crawl; check after launch with URL Inspection.
-- Crawled a production build on localhost:3123, mapped to https://security.example.
+- Crawled a production build on localhost:3123, mapped to `https://security.example`.
 - Lighthouse (mobile, lab): LCP 1.9 s, CLS 0.02, TBT 140 ms on the SSL checker.
 
 ## How the score works
