@@ -655,6 +655,8 @@ async function hook(mode) {
   const text = `schema-check found ${plural(errors.length, "structured data error")}. Fix them in the source that renders this JSON-LD:\n${errors.map(format).join("\n")}`;
   // Copilot and Cursor take the text as JSON context; other hosts show a hook's stderr on exit 2.
   if (mode === "copilot") console.log(JSON.stringify({ additionalContext: text }));
+  else if (mode === "cursor")
+    console.log(JSON.stringify({ additional_context: text })); // https://cursor.com/docs/hooks
   else {
     console.error(text);
     return 2;
@@ -664,10 +666,10 @@ async function hook(mode) {
 // Every word that isn't an option is a file, folder or URL to check; after --hook, copilot or cursor is its mode.
 async function main(argv) {
   const USAGE =
-    "usage: node schema-check.mjs <file|folder|url ...> [--json out.json] [--quiet] [--allow-remote]\n       node schema-check.mjs --hook [copilot]   (reads an agent hook payload on stdin)";
+    "usage: node schema-check.mjs <file|folder|url ...> [--json out.json] [--quiet] [--allow-remote]\n       node schema-check.mjs --hook [copilot|cursor]   (reads an agent hook payload on stdin)";
   const args = parseArgs(argv, { flags: ["json"], booleans: ["hook", "quiet", "allow-remote"], usage: USAGE }),
     inputs = args._;
-  if (args.hook) return hook(inputs[0] === "copilot" ? "copilot" : true);
+  if (args.hook) return hook(inputs[0] === "copilot" || inputs[0] === "cursor" ? inputs[0] : true);
   if (!inputs.length || args.json === true) throw new Fail(USAGE);
   const opts = { json: args.json, quiet: !!args.quiet, allowRemote: !!args["allow-remote"] };
   if (inputs.some(a => /^https?:\/\//i.test(a))) warnProxy(); // only URLs are fetched

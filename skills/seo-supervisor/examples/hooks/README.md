@@ -16,7 +16,7 @@ Hook formats checked against each vendor's docs on 19 Nov 2026.
 | --- | --- | --- |
 | `claude-code-settings.json` | Merge into `.claude/settings.json` ([hooks](https://code.claude.com/docs/en/hooks)). | `PostToolUse` on Edit, Write and MultiEdit; exit 2 sends the errors to Claude. |
 | `codex-hooks.json` | `.codex/hooks.json` ([hooks](https://learn.chatgpt.com/docs/hooks)), then trust it in `/hooks`. | `PostToolUse` on `apply_patch`; exit 2 sends the errors to Codex. |
-| `cursor-hooks.json` | `.cursor/hooks.json` ([hooks](https://cursor.com/docs/hooks)). | `afterFileEdit`; the errors appear in Cursor's Hooks output. Cursor doesn't pass this hook's output to the agent. |
+| `cursor-hooks.json` | `.cursor/hooks.json` ([hooks](https://cursor.com/docs/hooks)). | `postToolUse` on `Write`; the errors go back to the agent as `additional_context`. |
 | `copilot-hooks.json` | `.github/hooks/schema-check.json` ([CLI hooks reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference)). | `postToolUse` on `edit` and `create`; the errors go back to Copilot as `additionalContext`. |
 | `pre-commit` | `.git/hooks/pre-commit`, then `chmod +x` it. POSIX sh. | Lists the errors and stops the commit. It checks the files as they are on disk. |
 | `github-actions.yml` | `.github/workflows/structured-data.yml`. Set your build command and output folder. | Fails the job. |
