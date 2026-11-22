@@ -10,7 +10,7 @@ import { parseArgs } from "./lib/args.mjs";
 import { runMain, warnProxy } from "./lib/cli.mjs";
 import { privacyOf } from "./lib/settings-dir.mjs";
 import { changedPages } from "./seo-diff.mjs";
-import { Fail, Refused, fail, domainOf, domainsFor, num } from "./keys/http.mjs";
+import { Fail, Refused, fail, setLine, domainOf, domainsFor, num } from "./keys/http.mjs";
 import { SERVICES, serviceOf, call } from "./keys/services.mjs";
 import { keyFile, savedKeys, ask, setKey, removeKey, activeKeys, mask } from "./keys/store.mjs";
 import { fetchBing, BATCH, submitBing } from "./keys/bing.mjs";
@@ -200,6 +200,10 @@ async function main(argv) {
     const values = Object.fromEntries(fields.map(f => [f.id, str(f.flag)])),
       missing = fields.filter(f => !values[f.id]);
     let key = pos[1];
+    if (key != null)
+      console.error(
+        `connect-keys: note: a key typed on the command line stays in your shell's history. Next time, run ${setLine(id)} without the key and paste it at the hidden prompt.`,
+      );
     if (key == null || missing.length) {
       const got = await ask(id, missing, key == null);
       Object.assign(values, got.values);
