@@ -440,9 +440,10 @@ test("the guard proxy lets the site's own addresses through and refuses private 
     env: {},
   });
   try {
+    // update.googleapis.com skips the guard and is left to Chrome's rule that makes it unresolvable (CHROME_FLAGS).
     assert.deepEqual(g.args, [
       `--proxy-server=http://127.0.0.1:${g.port}`,
-      "--proxy-bypass-list=<-loopback>;127.0.0.1:5000",
+      "--proxy-bypass-list=<-loopback>;127.0.0.1:5000;update.googleapis.com",
       "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
     ]);
     assert.deepEqual(
@@ -530,8 +531,8 @@ writeFileSync(args.find(a => a.startsWith("--output-path=")).slice(14), JSON.str
   const call = JSON.parse(readFileSync(log, "utf8")),
     flags = call.args.find(a => a.startsWith("--chrome-flags="));
   assert.match(
-    flags.replace(` ${CHROME_FLAGS.join(" ")}`, ""),
-    /^--chrome-flags=--headless=new --proxy-server=http:\/\/127\.0\.0\.1:(\d+) --proxy-bypass-list=<-loopback>;127\.0\.0\.1:1 --force-webrtc-ip-handling-policy=disable_non_proxied_udp --user-data-dir="[^"]+"$/,
+    flags.replace(` ${CHROME_FLAGS.map(f => (f.includes(" ") ? f.replace("=", '="') + '"' : f)).join(" ")}`, ""),
+    /^--chrome-flags=--headless=new --proxy-server=http:\/\/127\.0\.0\.1:(\d+) --proxy-bypass-list=<-loopback>;127\.0\.0\.1:1;update\.googleapis\.com --force-webrtc-ip-handling-policy=disable_non_proxied_udp --user-data-dir="[^"]+"$/,
   );
   assert.equal(call.open, true, "the guard answers while Lighthouse runs");
   const port = flags.match(/127\.0\.0\.1:(\d+) /)[1];

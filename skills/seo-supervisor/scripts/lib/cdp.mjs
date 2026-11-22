@@ -44,6 +44,7 @@ export const CHROME_FLAGS = [
   "--disable-domain-reliability",
   "--disable-features=OptimizationHints,Translate,MediaRouter,NetworkTimeServiceQuerying,AutofillServerCommunication,SafeBrowsingHashPrefixRealTimeLookups,AimEnabled,PreconnectToSearch",
   "--enable-features=SkipListAccountsWithoutGaiaCookies",
+  "--host-resolver-rules=MAP update.googleapis.com ^NOTFOUND",
 ];
 // A throwaway profile whose Local State turns metrics reporting off (pref names from Chromium's metrics_pref_names.h).
 // Where Chrome was installed with usage statistics on, a fresh profile otherwise uploads metrics

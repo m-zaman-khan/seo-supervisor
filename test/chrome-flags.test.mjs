@@ -57,6 +57,10 @@ test("one list of Chrome flags turns Chrome's own background traffic off", () =>
   ])
     assert.ok(off[0].slice(19).split(",").includes(name), name);
   assert.deepEqual(on[0].slice(18).split(","), ["SkipListAccountsWithoutGaiaCookies"]);
+  assert.ok(
+    CHROME_FLAGS.includes("--host-resolver-rules=MAP update.googleapis.com ^NOTFOUND"),
+    "Chrome's active-use ping can't resolve",
+  );
 });
 
 test("lab CLS is the largest session window (shifts under 1 s apart, 5 s at most), not the sum", () => {
@@ -200,7 +204,8 @@ test("all four launch sites pass the flags and start Chrome with metrics reporti
   writeFileSync(
     bin,
     `import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
-const args = process.argv.slice(2), flags = args.find(a => a.startsWith("--chrome-flags=")).slice(15).split(" "), dir = flags.find(f => f.startsWith("--user-data-dir=")).slice(16).replace(/"/g, "");
+// Read as Lighthouse reads it: split at spaces outside quotes, quotes dropped.
+const args = process.argv.slice(2), flags = args.find(a => a.startsWith("--chrome-flags=")).slice(15).match(/--[^\\s=]+(?:="[^"]*"|=\\S*)?/g).map(f => f.replace(/="(.*)"$/, "=$1")), dir = flags.find(f => f.startsWith("--user-data-dir=")).slice(16);
 let state = null; try { state = JSON.parse(readFileSync(dir + "/Local State", "utf8")); } catch {}
 appendFileSync(${JSON.stringify(log)}, JSON.stringify({ site: "lighthouse", args: flags, state }) + "\\n");
 writeFileSync(args.find(a => a.startsWith("--output-path=")).slice(14), JSON.stringify({ categories: {}, audits: {} }));`,

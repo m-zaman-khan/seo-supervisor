@@ -7,8 +7,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { launchChrome } from "../../skills/seo-supervisor/scripts/lib/cdp.mjs";
-import { findBrowser, renderArgs } from "../../skills/seo-supervisor/scripts/checks/render.mjs";
+import { CHROME_FLAGS, launchChrome } from "../../skills/seo-supervisor/scripts/lib/cdp.mjs";
+import { findBrowser, renderArgs, startGuard } from "../../skills/seo-supervisor/scripts/checks/render.mjs";
 import { shotArgs } from "../../skills/seo-supervisor/scripts/og-card.mjs";
 import { serve } from "../serve.mjs";
 import { tmp } from "../helpers.mjs";
@@ -37,7 +37,8 @@ async function refusingProxy() {
   const port = /** @type {import("node:net").AddressInfo} */ (server.address()).port;
   return {
     hosts,
-    args: [`--proxy-server=http://127.0.0.1:${port}`, "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1"],
+    port,
+    args: [`--proxy-server=http://127.0.0.1:${port}`, "--host-resolver-rules=MAP * ^NOTFOUND, EXCLUDE 127.0.0.1"],
     close: () => {
       server.closeAllConnections();
       return new Promise(ok => server.close(() => ok(undefined)));
@@ -116,3 +117,29 @@ test(
     assert.deepEqual(found, { cdp: [], render: [], ogCard: [] });
   },
 );
+
+// Chrome 157's active-use ping (update.googleapis.com, sent on close after real input) fires only now and then, so
+// this checks how it's stopped: with the guard's proxy flags that host skips the proxy, and the resolver rule fails it.
+test("update.googleapis.com goes neither out nor through the guard's proxy", { skip, timeout: 60000 }, async () => {
+  // Checked first: without the rule, the direct request below would reach the real host.
+  assert.ok(CHROME_FLAGS.includes("--host-resolver-rules=MAP update.googleapis.com ^NOTFOUND"));
+  const proxy = await refusingProxy(),
+    guard = await startGuard("http://127.0.0.1:9/", { env: {} });
+  const bypass = guard?.args.find(a => a.startsWith("--proxy-bypass-list="));
+  await guard?.close();
+  assert.match(bypass || "", /;update\.googleapis\.com$/);
+  let nav;
+  const chrome = await launchChrome(/** @type {string} */ (browser), {
+    args: [`--proxy-server=http://127.0.0.1:${proxy.port}`, /** @type {string} */ (bypass)],
+  });
+  try {
+    nav = await (
+      await chrome.newPage()
+    ).send("Page.navigate", { url: "https://update.googleapis.com/service/update2/json" });
+  } finally {
+    await chrome.close();
+    await proxy.close();
+  }
+  assert.equal(nav.errorText, "net::ERR_NAME_NOT_RESOLVED");
+  assert.deepEqual([...proxy.hosts], [], "nothing went to the proxy");
+});

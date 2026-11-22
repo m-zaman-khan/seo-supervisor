@@ -165,9 +165,10 @@ export async function runLighthouse(bin, url, { chromePath, timeoutMs = 90000, h
     report = join(dir, "report.json");
   const [file, pre] = command(bin);
   const guard = await startGuard(url, { env: host.env ?? process.env });
+  // Lighthouse splits --chrome-flags at spaces, outside quotes: a value with a space (the resolver rule) is quoted.
   const chromeFlags = [
     "--headless=new",
-    ...CHROME_FLAGS,
+    ...CHROME_FLAGS.map(f => (f.includes(" ") ? f.replace("=", '="') + '"' : f)),
     ...containerArgs(host),
     ...(guard?.args || chromeProxyArgs(host.env)),
     `--user-data-dir="${quietProfile(join(dir, "profile"))}"`,

@@ -228,9 +228,12 @@ export async function startGuard(siteUrl, { dns = lookup, env = process.env } = 
   return {
     port,
     blocked,
+    // <-loopback> sends loopback and link-local (169.254.x.x) through the proxy too, and WebRTC may use UDP only
+    // through it. The site goes direct so its errors stay Chrome's; update.googleapis.com goes direct to CHROME_FLAGS'
+    // rule that makes it unresolvable. https://chromium.googlesource.com/chromium/src/+/HEAD/net/docs/proxy.md
     args: [
       `--proxy-server=http://127.0.0.1:${port}`,
-      `--proxy-bypass-list=<-loopback>;${new URL(siteUrl).host}`,
+      `--proxy-bypass-list=<-loopback>;${new URL(siteUrl).host};update.googleapis.com`,
       "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
     ],
     close: () => {
