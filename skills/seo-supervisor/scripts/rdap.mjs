@@ -5,7 +5,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
-import { proxyNote } from "./lib/proxy.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
 import { domainOf } from "./connect-keys.mjs";
 
 const BOOTSTRAP = "https://data.iana.org/rdap/dns.json";
@@ -114,51 +115,47 @@ export async function lookupDomains({ domains, bootstrap = BOOTSTRAP }) {
   return { domainAge, notes };
 }
 
-if (isMain(import.meta.url)) {
-  const args = {};
-  for (let i = 2; i < process.argv.length; i++) {
-    const k = process.argv[i].replace(/^--/, "");
-    args[k] = process.argv[i + 1] && !process.argv[i + 1].startsWith("--") ? process.argv[++i] : true;
-  }
+// --rivals is ai-answers.mjs's name for the same list.
+async function main(argv) {
+  const args = parseArgs(argv, {
+    flags: ["site", "competitors", "out"],
+    booleans: ["yes"],
+    aliases: { rivals: "competitors" },
+    positionals: 0,
+  });
   const str = k => (typeof args[k] === "string" ? args[k] : null);
-  const stop = msg => {
-    console.error(msg);
-    process.exitCode = 2;
-  };
   let site = null;
   try {
     site = /^https?:$/.test(new URL(str("site")).protocol) && domainOf(str("site"));
   } catch {}
   if (!site)
-    stop(
+    throw new Fail(
       `rdap: --site must be the site's address, like https://www.example.com (got ${args.site ?? "nothing"}).\nusage: node rdap.mjs --site https://www.example.com [--competitors a.com,b.com] [--out seo-audit/rdap.json] [--yes]`,
     );
-  else {
-    const listed = (str("competitors") || "")
-      .split(",")
-      .map(s => s.trim())
-      .filter(Boolean);
-    const skipped = listed
-      .filter(c => !domainOf(c))
-      .map(c => `Skipped competitor "${c}": it's not a domain name like rival.com.`);
-    const domains = [site, ...listed.map(domainOf)].filter((d, i, all) => d && all.indexOf(d) === i);
-    const bootstrap = process.env.RDAP_BOOTSTRAP || BOOTSTRAP;
-    if (args.yes !== true) {
-      console.log(
-        `rdap: dry run, nothing sent. With --yes it would read IANA's list of RDAP servers (${new URL(bootstrap).host}), then send ${domains.length} domain name(s) (${domains.join(", ")}) to each one's registry, to read when it was registered and with which registrar. No key is needed.${skipped.length ? "\n" + skipped.join("\n") : ""}\nThese go to outside services, so re-run with --yes once the owner agrees.`,
-      );
-    } else {
-      {
-        const n = proxyNote();
-        if (n) console.error("note: " + n);
-      }
-      const r = await lookupDomains({ domains, bootstrap });
-      r.notes.push(...skipped);
-      const out = resolve(str("out") || "seo-audit/rdap.json");
-      mkdirSync(dirname(out), { recursive: true });
-      writeFileSync(out, JSON.stringify({ source: "rdap", when: new Date().toISOString(), ...r }, null, 2));
-      for (const n of r.notes) console.log("note: " + n);
-      console.log(`rdap: registration dates for ${r.domainAge.length} of ${domains.length} domain(s) · wrote ${out}`);
-    }
+  const listed = (str("competitors") || "")
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean);
+  const skipped = listed
+    .filter(c => !domainOf(c))
+    .map(c => `Skipped competitor "${c}": it's not a domain name like rival.com.`);
+  const domains = [site, ...listed.map(domainOf)].filter((d, i, all) => d && all.indexOf(d) === i);
+  const bootstrap = process.env.RDAP_BOOTSTRAP || BOOTSTRAP; // the tests point it at a local fake
+  if (!args.yes) {
+    console.log(
+      `rdap: dry run, nothing sent. With --yes it would read IANA's list of RDAP servers (${new URL(bootstrap).host}), then send ${domains.length} domain name(s) (${domains.join(", ")}) to each one's registry, to read when it was registered and with which registrar. No key is needed.${skipped.length ? "\n" + skipped.join("\n") : ""}\nThese go to outside services, so re-run with --yes once the owner agrees.`,
+    );
+    return 0;
   }
+  warnProxy();
+  const r = await lookupDomains({ domains, bootstrap });
+  r.notes.push(...skipped);
+  const out = resolve(str("out") || "seo-audit/rdap.json");
+  mkdirSync(dirname(out), { recursive: true });
+  writeFileSync(out, JSON.stringify({ source: "rdap", when: new Date().toISOString(), ...r }, null, 2));
+  for (const n of r.notes) console.log("note: " + n);
+  console.log(`rdap: registration dates for ${r.domainAge.length} of ${domains.length} domain(s) · wrote ${out}`);
+  return 0;
 }
+
+if (isMain(import.meta.url)) await runMain(() => main(process.argv.slice(2)));
