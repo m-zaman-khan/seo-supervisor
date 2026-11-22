@@ -173,7 +173,7 @@ test("a stray yes never counts as --yes: submit-sitemap and the other commands s
 
 // ---------- Retry-After ----------
 test("Retry-After given as a date: a plain wait in seconds, and Google's retry waits for it, not 2 seconds", async () => {
-  const at = new Date(Math.ceil(Date.now() / 1000) * 1000 + 30000).toUTCString();
+  const at = new Date(Math.floor(Date.now() / 1000) * 1000 + 30000).toUTCString(); // 29 to 30 seconds from now
   const msg = refusal("bing", keys.SERVICES.bing, 429, null, at, "ssl.bing.com");
   assert.match(msg, /Wait 30 seconds and run again/);
   assert.doesNotMatch(msg, /GMT/);

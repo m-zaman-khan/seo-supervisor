@@ -2,6 +2,7 @@
 // Shared by connect-keys.mjs's services: errors, checks on typed addresses and IDs, one request with a plain refusal,
 // and helpers. Callers pass their SERVICES entry in, so service modules can use this without an import loop.
 import { Fail, Refused } from "../lib/cli.mjs";
+import { retryAfter } from "../lib/http.mjs";
 
 const UA = "seo-supervisor-connect-keys";
 // Fail is bad input (exit 2); Refused is a service saying no (noted, the rest still runs, exit 1). Re-exported so every
@@ -61,7 +62,7 @@ function addressed(id, s, status, body, host, moved) {
   return null;
 }
 // s: the service's entry in SERVICES. retry: the Retry-After header, in seconds or as a date (lib/http.mjs).
-export function refusal(id, s, status, body, retryAfter, host, moved) {
+export function refusal(id, s, status, body, retry, host, moved) {
   if (s.fields) {
     const m = addressed(id, s, status, body, host, moved);
     if (m) return m;
@@ -126,8 +127,9 @@ export function refusal(id, s, status, body, retryAfter, host, moved) {
     return `${s.name} didn't accept the key (${status === 401 ? 401 : "InvalidApiKey"}): it's mistyped, or it was deleted or replaced. Get the current key at ${s.where}, then run: ${setLine(id)}`;
   if (id === "openpagerank" && status === 403)
     return `Open PageRank refused the request (403): your IP address isn't the one registered for this key. Free keys only work from one registered IP address, so your internet connection or IP has probably changed. Update the IP in your Open PageRank dashboard (keywordseverywhere.com/openpagerank); it can change once a week.`;
+  const wait = Math.ceil((retryAfter(retry) ?? 0) / 1000);
   if (status === 429 || bing === "busy")
-    return `${s.name} says too many requests (${status === 429 ? 429 : "throttled"}): the key's limit is used up for now. ${retryAfter ? `Wait ${retryAfter} seconds` : "Wait a while"} and run again.`;
+    return `${s.name} says too many requests (${status === 429 ? 429 : "throttled"}): the key's limit is used up for now. ${wait ? `Wait ${wait} second${wait === 1 ? "" : "s"}` : "Wait a while"} and run again.`;
   if (bing === "site")
     return `Bing Webmaster Tools says this key's account can't see the site (NotAuthorized). Verify the site in Bing Webmaster Tools with the same account the key belongs to.`;
   if (bing === "blocked")

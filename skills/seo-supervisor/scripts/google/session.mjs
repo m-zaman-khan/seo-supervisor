@@ -6,6 +6,7 @@ import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "n
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { Fail, Refused } from "../lib/cli.mjs";
+import { retryAfter } from "../lib/http.mjs";
 import { loginDir } from "../lib/settings-dir.mjs";
 
 export const SC = "https://www.googleapis.com/auth/webmasters.readonly",
@@ -143,11 +144,11 @@ export function session({ home, endpoints } = {}) {
         await refresh();
         continue;
       }
+      // Retry-After in seconds or as a date (lib/http.mjs); 2 s when it's missing or unreadable, 30 s at most.
       if (r.status === 429 && !retried) {
         retried = true;
         await r.text();
-        const ra = Number(r.headers.get("retry-after") ?? 2);
-        await sleep(Math.min(isNaN(ra) ? 2 : ra, 30) * 1000);
+        await sleep(Math.min(retryAfter(r.headers.get("retry-after")) ?? 2000, 30000));
         continue;
       }
       const j = /** @type {any} */ (await r.json().catch(() => ({})));
