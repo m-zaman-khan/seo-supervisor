@@ -8,7 +8,7 @@ import { imageSize, imageMeta } from "../lib/image-size.mjs";
 import { altProblem, cdnOf, uncached } from "./media.mjs";
 import { medianScores } from "./lighthouse.mjs";
 import { estSaving } from "../images.mjs";
-import { SUPERSEDED } from "../schema-check.mjs";
+import { SUPERSEDED } from "./schema.mjs";
 // images and shareImages come from checkPages in site-pages.mjs.
 export async function checkAssets(site, { images, shareImages }) {
   const {

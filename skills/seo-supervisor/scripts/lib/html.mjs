@@ -137,8 +137,6 @@ export function deepHas(obj, pred, depth = 0) {
   if (pred(obj)) return true;
   return Object.values(obj).some(v => deepHas(v, pred, depth + 1));
 }
-export const ORG_RE =
-  /(Organization|Corporation|Business|Store|Service|Contractor|Agency|Electrician|Plumber|Locksmith|Dentist|Physician|Attorney|Restaurant|Hotel|AutoRepair|School|NGO)$/;
 export function ctx(text, re) {
   const m = re.exec(text);
   if (!m) return null;

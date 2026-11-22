@@ -3,7 +3,6 @@
 // the public origin can change mid-crawl.
 import {
   CLIENT_ROUTER,
-  ORG_RE,
   NOSPACE_RUN,
   attrs,
   capsOf,
@@ -28,7 +27,8 @@ import { insecureResources } from "../checks/technical.mjs";
 import { ugcLinks, backTrap, paywallLeak, lateHead } from "../checks/page.mjs";
 import { fragmentLinks } from "../checks/crawl.mjs";
 import { analyticsTwice, secretsIn, hiddenLinks, appPromo } from "../checks/hygiene.mjs";
-import { SUPERSEDED, placeholderIn, merchantProblems, sellsWithOffer, reviewEventProblems } from "../schema-check.mjs";
+import { SUPERSEDED, placeholderIn, merchantProblems, sellsWithOffer, reviewEventProblems } from "../checks/schema.mjs";
+import { isBusinessType, isLocalBusinessType } from "../lib/business.mjs";
 import { mainWords as pickMainWords } from "../keyword-ideas.mjs";
 import { lazySrc, hintsOf, domShape } from "../checks/media.mjs";
 import { obsoleteMore, keywordUse, isGuide, newestDate } from "../checks/content.mjs";
@@ -256,13 +256,7 @@ export function analyze(url, html, headers, xRobotsLines, site) {
   const nap = [
     ...new Map(
       nodes
-        .filter(n =>
-          typesOf(n).some(
-            t =>
-              ORG_RE.test(t) &&
-              !/(Organization|Corporation|NGO|School)$|^(OnlineStore|OnlineBusiness|Service)$/.test(t),
-          ),
-        )
+        .filter(n => typesOf(n).some(isLocalBusinessType))
         .flatMap(n => [
           ...[]
             .concat(n.telephone || [])
@@ -283,7 +277,7 @@ export function analyze(url, html, headers, xRobotsLines, site) {
     .filter(n => typesOf(n).includes("Product"))
     .map(n => {
       const offers = [].concat(n.offers || []).filter(o => o && typeof o === "object");
-      const orgHas = key => nodes.some(o => typesOf(o).some(t => ORG_RE.test(t)) && o[key]);
+      const orgHas = key => nodes.some(o => typesOf(o).some(isBusinessType) && o[key]);
       const prices = offers
         .map(o => o.price ?? o.lowPrice)
         .filter(v => v != null && !isNaN(parseFloat(v)))
@@ -576,7 +570,7 @@ export function analyze(url, html, headers, xRobotsLines, site) {
     // The element that ended Google's head early (an <img>, an <iframe>), when tags came after it.
     lateAt: late.length && !/^<(\/head|body)>$/.test(headStop.by) ? headStop.by : null,
     relCanon: canon.relative, // a canonical written without a scheme (canonical-relative, URL-04)
-    identity: { org: idNodes(t => ORG_RE.test(t) && t !== "Service"), site: idNodes(t => t === "WebSite") },
+    identity: { org: idNodes(isBusinessType), site: idNodes(t => t === "WebSite") },
   };
 
   // Fragment targets (every id, and <a name>) and the links that jump to one, for checks/crawl.mjs.

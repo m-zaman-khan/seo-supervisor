@@ -153,7 +153,7 @@
       "category": "URLs & canonicals",
       "title": "1 indexable page(s) have no canonical tag",
       "what": "Found on `http://127.0.0.1:<port>/about/`.",
-      "why": "Without a canonical, Google picks one itself among parameter, slash and tracking variants.",
+      "why": "Without a canonical, Google picks one itself among parameter, slash and tracking variants. A canonical in the `<body>`, or after an element that ended the head early, doesn't count: Google accepts it only in the `<head>`.",
       "fix": "Add a self-referencing absolute canonical to every indexable page through the shared metadata helper.",
       "count": 1,
       "evidence": [
@@ -1451,10 +1451,10 @@
       "rule": "REND-08",
       "severity": "low",
       "category": "Rendering",
-      "title": "1 page(s) send their title, description, canonical or robots tag after the <head>",
+      "title": "1 page(s) send their title, description, canonical, robots or hreflang tag after the <head> ends",
       "what": "Found on `http://127.0.0.1:<port>/snippetless/` (in the body: robots).",
-      "why": "These tags came after the page's `<head>` had ended, in the `<body>`. Google asks for the title, meta tags and canonical early in the HTML, because it reads only the first 2 MB of a page, and it accepts a canonical only inside the `<head>`, so one sent in the body works only if the page's JavaScript moves it there. Google does read a robots tag anywhere in the page. Next.js 15.2 and later send metadata late on purpose when it loads slowly (\"streamed metadata\"): browsers and Googlebot, which runs JavaScript, get it in the body, while the bots on Next.js's own list, such as Bingbot, Applebot and the link previews of X, Slack and Facebook, get it in the head. This crawler (user agent seo-supervisor-crawler) isn't on that list, so it saw what a browser gets.",
-      "fix": "Put these tags in the `<head>`. In Next.js, make `generateMetadata` fast (cache the data it reads), or list the bots that should get the head version in `htmlLimitedBots` in next.config; `/.*/` turns streaming off. Elsewhere, check the template, component or plugin that writes the tags into the body.",
+      "why": "These tags came after the page's `<head>` had ended. For Google the head also ends early, at the first element a head can't hold, such as an `<img>`, an `<iframe>` or a tracking pixel: Google then stops reading the head, so the tags after it count as being in the body. Google asks for the title, meta tags and canonical early in the HTML, because it reads only the first 2 MB of a page, and it accepts a canonical only inside the `<head>`, so one sent in the body works only if the page's JavaScript moves it there. Google does read a robots tag anywhere in the page. Next.js 15.2 and later send metadata late on purpose when it loads slowly (\"streamed metadata\"): browsers and Googlebot, which runs JavaScript, get it in the body, while the bots on Next.js's own list, such as Bingbot, Applebot and the link previews of X, Slack and Facebook, get it in the head. This crawler (user agent seo-supervisor-crawler) isn't on that list, so it saw what a browser gets.",
+      "fix": "Put these tags in the `<head>`, before any element that doesn't belong there (move an `<img>`, `<iframe>` or tracking pixel into the body). In Next.js, make `generateMetadata` fast (cache the data it reads), or list the bots that should get the head version in `htmlLimitedBots` in next.config; `/.*/` turns streaming off. Elsewhere, check the template, component or plugin that writes the tags into the body.",
       "count": 1,
       "evidence": [
         {

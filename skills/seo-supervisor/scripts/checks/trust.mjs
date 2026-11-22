@@ -3,6 +3,7 @@
 // says E-E-A-T isn't a ranking factor, so the view is a local check, not a Google score.
 // https://developers.google.com/search/docs/fundamentals/creating-helpful-content
 // HTML is read with regexes; page names and paths are matched in English and a few European languages.
+import { isBusinessType } from "../lib/business.mjs";
 import { attrs, jsonLdNodes, textOf } from "../lib/html.mjs";
 
 // a is the attribute text after the tag name.
@@ -38,11 +39,6 @@ const deepHas = (o, pred, depth = 0) =>
 // https://developers.google.com/search/docs/appearance/structured-data/article
 const ARTICLE = /(Article|BlogPosting)$/;
 const SHOP = /^(Product|ProductGroup|Offer|AggregateOffer)$/;
-// The crawler's ORG_RE without Service, which isn't an organization. A node with a logo counts too, so a LocalBusiness
-// subtype outside the list (HairSalon, Bakery) is still read.
-const ORG =
-  /(Organization|Corporation|Business|Store|Contractor|Agency|Electrician|Plumber|Locksmith|Dentist|Physician|Attorney|Restaurant|Hotel|AutoRepair|School|NGO)$/;
-const NOT_ORG = /^(Product|ProductGroup|Service|Brand|Person|WebSite|WebPage|Offer|ImageObject)$/;
 
 // Path segments (file extension dropped) and link texts that name each kind of page.
 const ABOUT_SEG =
@@ -192,7 +188,7 @@ export function trustFeatures(
   const mainText = textOf(main),
     stat = mainText.match(STAT);
   // Any Organization subtype counts, a HairSalon or Bakery too.
-  const org = nodes.filter(n => typesOf(n).some(t => ORG.test(t) || (n.logo && !NOT_ORG.test(t))));
+  const org = nodes.filter(n => typesOf(n).some(isBusinessType));
   const forms = [...body.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/gi)];
   return {
     about: [...to(ABOUT_SEG, ABOUT_TXT), ...(types.includes("AboutPage") ? [selfPath] : [])].slice(0, 3),
