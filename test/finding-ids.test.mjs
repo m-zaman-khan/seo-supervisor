@@ -281,12 +281,16 @@ test("a page already reported client-rendered gets no render-adds-content; anoth
     run(false).map(([k]) => k),
     ["render-adds-content"],
   );
-  assert.match(run(false)[0][2], /^h1: “none” → “Plans and prices”; jsonld-count/);
+  assert.match(run(false)[0][2], /^h1: “none” → “Plans and prices”; jsonld-types: “none” → “Product”/);
+  // A title changed by JavaScript is render-changes-text (Google allows it); a changed canonical is
+  // render-changes-head.
   const head = [];
-  renderFindings("https://a.example/", "<title>A</title>", "<title>B</title>", {
-    add: k => head.push(k),
-    clientRendered: true,
-  });
+  renderFindings(
+    "https://a.example/",
+    '<link rel="canonical" href="https://a.example/">',
+    '<link rel="canonical" href="https://a.example/b/">',
+    { add: k => head.push(k), clientRendered: true },
+  );
   assert.deepEqual(head, ["render-changes-head"], "what JavaScript changes in the head is still reported");
 });
 

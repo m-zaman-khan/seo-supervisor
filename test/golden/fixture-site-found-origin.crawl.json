@@ -1252,9 +1252,9 @@
       "rule": "PERF-03",
       "severity": "low",
       "category": "Performance",
-      "title": "1 page(s) lazy-load the first image",
+      "title": "1 page(s) lazy-load their main image",
       "what": "Found on `http://127.0.0.1:<port>/tools/ssl-checker/` (/a.png).",
-      "why": "If the first image is the largest element, lazy-loading it delays LCP. A lazy-loading script (an image whose real file is in `data-src` behind a placeholder) delays it even more, as the script has to run first.",
+      "why": "If the first image is the largest element, lazy-loading it delays LCP. A lazy-loading script (an image whose real file is in `data-src` behind a placeholder) delays it even more, as the script has to run first. On pages a PageSpeed or Lighthouse lab run loaded, Chrome's own LCP check decides instead: the image it found as the largest element, not the first one.",
       "fix": "Load the hero image eagerly with high priority (`priority` / `fetchpriority=\"high\"`). In a lazy-loading plugin (Perfmatters, EWWW, WP Rocket, LiteSpeed), exclude the first images or the hero.",
       "count": 1,
       "evidence": [
