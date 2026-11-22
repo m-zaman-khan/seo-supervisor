@@ -330,26 +330,21 @@ export function sitePanels({ raw, mdFile, site, areas, overall, open, buildRules
     ]
       .filter(Boolean)
       .join(" · ");
-  const checkSettingsHtml = () =>
-    settingRows().length || checkSettings.warnings.length
-      ? `\n    <details class="how checksettings"><summary>Check settings: ${esc(settingsSummary())}</summary><p>${esc(SETTINGS_INTRO)}</p><ul class="lim">${settingRows()
-          .map(([id, t]) => `<li><b><code>${esc(id)}</code></b><span>${esc(t)}</span></li>`)
-          .join(
-            "",
-          )}${checkSettings.warnings.map(w => `<li><b>Warning</b><span>${esc(w)}</span></li>`).join("")}</ul></details>`
-      : "";
-  const checkSettingsMd = () =>
-    settingRows().length || checkSettings.warnings.length
-      ? [
-          "## Check settings",
-          "",
-          SETTINGS_INTRO,
-          "",
-          ...settingRows().map(([id, t]) => `- ${noteCode(id)} ${noteMd(t)}`),
-          ...checkSettings.warnings.map(w => `- Warning: ${noteMd(w)}`),
-          "",
-        ]
-      : [];
+  const checkSettingsPanel = () =>
+    (settingRows().length || checkSettings.warnings.length) && {
+      cls: "checksettings",
+      title: "Check settings",
+      summary: `Check settings: ${settingsSummary()}`,
+      blocks: [
+        { p: SETTINGS_INTRO },
+        {
+          rows: [
+            ...settingRows().map(([id, t]) => [{ code: id }, t]),
+            ...checkSettings.warnings.map(w => ["Warning", w, ": "]),
+          ],
+        },
+      ],
+    };
   return {
     viewsHtml,
     viewsMd,
@@ -357,8 +352,7 @@ export function sitePanels({ raw, mdFile, site, areas, overall, open, buildRules
     crawlCoverage,
     browser,
     pageScores: pageScoresPanel,
-    checkSettingsHtml,
-    checkSettingsMd,
+    checkSettings: checkSettingsPanel,
     settingRows,
     settingsSummary,
   };

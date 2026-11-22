@@ -94,8 +94,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     crawlCoverage,
     browser,
     pageScores,
-    checkSettingsHtml,
-    checkSettingsMd,
+    checkSettings: checkSettingsPanel,
     settingRows,
     settingsSummary,
   } = sitePanels(m);
@@ -131,7 +130,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     [linkedOnceHtml, linkedOnceMd],
     [appsPdfsHtml, appsPdfsMd],
     drawn(newSearches),
-    [checkSettingsHtml, checkSettingsMd],
+    drawn(checkSettingsPanel),
     drawn(recheckNote),
     [a11yHtml, a11yMd],
     [linkStrengthHtml, linkStrengthMd],
