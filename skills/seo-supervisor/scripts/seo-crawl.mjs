@@ -909,7 +909,9 @@ const passed = [...evaluated]
   .sort()
   .map(r => ({ rule: r, title: RULES[r][0], category: RULES[r][1] }));
 if (capped) notes.push(`Crawl stopped at ${MAX} pages (--max). Some pages were not checked; raise --max.`);
-const noteList = notes.map(n => redact(n)); // every note, whichever check wrote it
+// Every note and every notChecked reason, whichever check wrote it and whenever, through one scrub.
+const scrubText = s => redact(maskKeys(String(s)));
+const noteList = notes.map(scrubText);
 const report = {
   tool: "seo-supervisor-crawler",
   version: VERSION,
@@ -943,7 +945,7 @@ const report = {
   notes: noteList,
   findings: out,
   passed,
-  notChecked,
+  notChecked: notChecked.map(n => ({ ...n, reason: scrubText(n.reason) })),
   ...extra,
   ...(speed ? { speed } : {}),
   ...(labSpeed ? { labSpeed } : {}),
