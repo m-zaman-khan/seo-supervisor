@@ -144,11 +144,31 @@ const FIELDS = `(() => {
   return { count: small.length, examples: small.slice(0, 3).map(x => \`“\${name(x.e)}” \${Math.round(x.size * 10) / 10} px\`) };
 })()`;
 // Installed before the page's scripts. Blocking time is each long task's part over 50 ms, as in Lighthouse's TBT.
-const OBSERVE = `window.__seoLab = { lcp: 0, cls: 0, tbt: 0 }; try {
+// Layout shifts without recent input are kept as [time, score] for clsOf.
+const OBSERVE = `window.__seoLab = { lcp: 0, shifts: [], tbt: 0 }; try {
   new PerformanceObserver(l => { for (const e of l.getEntries()) __seoLab.lcp = e.startTime; }).observe({ type: "largest-contentful-paint", buffered: true });
-  new PerformanceObserver(l => { for (const e of l.getEntries()) if (!e.hadRecentInput) __seoLab.cls += e.value; }).observe({ type: "layout-shift", buffered: true });
+  new PerformanceObserver(l => { for (const e of l.getEntries()) if (!e.hadRecentInput) __seoLab.shifts.push([e.startTime, e.value]); }).observe({ type: "layout-shift", buffered: true });
   new PerformanceObserver(l => { for (const e of l.getEntries()) __seoLab.tbt += Math.max(0, e.duration - 50); }).observe({ type: "longtask", buffered: true });
 } catch {}`;
+/** The largest session window (shifts under 1 s apart, 5 s at most), not the sum of every shift. Runs in the page too.
+ * https://web.dev/articles/cls
+ * @param {[number, number][]} shifts [time in ms, score], in time order */
+export function clsOf(shifts) {
+  let best = 0,
+    sum = 0,
+    first = 0,
+    last = -Infinity;
+  for (const [t, v] of shifts) {
+    if (t - last < 1000 && t - first < 5000) sum += v;
+    else {
+      sum = v;
+      first = t;
+    }
+    last = t;
+    best = Math.max(best, sum);
+  }
+  return best;
+}
 
 // A phone H1 with at least half the desktop H1's words is the same heading (a desktop-only word or two is fine).
 const seg = new Intl.Segmenter(undefined, { granularity: "word" });
@@ -390,7 +410,7 @@ export async function checkVisual(browser, urls, { add, screenshotDir, pageBudge
           chrome,
           url,
           { device: PHONE, userAgent: phoneUa, lab: true, settleMs: 500, deadline, checkAddress },
-          p => evaluate(p, "window.__seoLab"),
+          p => evaluate(p, `({ ...__seoLab, cls: (${clsOf})(__seoLab.shifts), shifts: null })`),
         );
         lab.push({
           url,

@@ -10,6 +10,7 @@ import { CHROME_FLAGS } from "../skills/seo-supervisor/scripts/lib/cdp.mjs";
 import { renderArgs } from "../skills/seo-supervisor/scripts/checks/render.mjs";
 import { runLighthouse } from "../skills/seo-supervisor/scripts/checks/lighthouse.mjs";
 import { shotArgs } from "../skills/seo-supervisor/scripts/og-card.mjs";
+import { clsOf } from "../skills/seo-supervisor/scripts/checks/visual.mjs";
 import { SCRIPTS, tmp } from "./helpers.mjs";
 
 const run = (file, args = []) =>
@@ -61,6 +62,46 @@ test("one list of Chrome flags turns Chrome's own background traffic off", () =>
   ])
     assert.ok(off[0].slice(19).split(",").includes(name), name);
   assert.deepEqual(on[0].slice(18).split(","), ["SkipListAccountsWithoutGaiaCookies"]);
+});
+
+test("lab CLS is the largest session window (shifts under 1 s apart, 5 s at most), not the sum", () => {
+  const r = x => Math.round(x * 1000) / 1000;
+  assert.equal(clsOf([]), 0);
+  assert.equal(
+    r(
+      clsOf([
+        [0, 0.1],
+        [500, 0.1],
+        [3000, 0.05],
+      ]),
+    ),
+    0.2,
+    "two windows, 0.2 and 0.05; the old sum was 0.25",
+  );
+  assert.equal(
+    clsOf([
+      [0, 0.1],
+      [1000, 0.1],
+    ]),
+    0.1,
+    "1 s apart starts a new window",
+  );
+  assert.equal(
+    r(clsOf([0, 900, 1800, 2700, 3600, 4500, 5400].map(t => [t, 0.01]))),
+    0.06,
+    "a window ends 5 s after its first shift",
+  );
+  assert.equal(
+    r(
+      clsOf([
+        [0, 0.02],
+        [2000, 0.3],
+        [2500, 0.1],
+      ]),
+    ),
+    0.4,
+    "the largest window wins, wherever it is",
+  );
 });
 
 test("H-01: all four launch sites pass the flags: launchChrome, the render, og-card and Lighthouse", async () => {
