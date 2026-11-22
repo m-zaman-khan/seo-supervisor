@@ -1,6 +1,6 @@
 // @ts-check
 // Panels from connected services: their reports, the change check and the new searches.
-import { esc, fmtDate, noteMd, num, obj, plural, isCount, isText } from "../format.mjs";
+import { fmtDate, num, obj, plural, isCount, isText } from "../format.mjs";
 import { isoDates } from "../traffic.mjs";
 
 export function connectionPanels({ raw }) {
@@ -87,15 +87,9 @@ export function connectionPanels({ raw }) {
         `Bing: ${plural(others.length, "site")} ${others.length === 1 ? "links" : "link"} to ${sisterHost} but not to this site: ${others.slice(0, 10).join(", ")}${others.length > 10 ? ` and ${others.length - 10} more` : ""}`,
     ].filter(Boolean);
   };
-  const connectionsHtml = () => {
+  const connections = () => {
     const l = connLines();
-    return l.length
-      ? `\n    <details class="how conn"><summary>From your connections</summary>${l.map(t => `\n    <p class="quiet">${esc(t)}</p>`).join("")}</details>`
-      : "";
-  };
-  const connectionsMd = () => {
-    const l = connLines();
-    return l.length ? ["## From your connections", "", ...l.flatMap(t => [noteMd(t), ""])] : [];
+    return l.length && { cls: "conn", title: "From your connections", blocks: l.map(t => ({ quiet: t })) };
   };
 
   // changeCheck, from change-check.mjs: one clicks line, never offered as a cause. Numbers are validated; the callers
@@ -140,5 +134,5 @@ export function connectionPanels({ raw }) {
     const l = newSearchLine();
     return l && { title: "New searches", blocks: [{ quiet: l }] };
   };
-  return { connectionsHtml, connectionsMd, changeCheck, newSearches };
+  return { connections, changeCheck, newSearches };
 }

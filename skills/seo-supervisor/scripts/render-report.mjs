@@ -123,7 +123,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     a11yMd,
   } = speedPanels(m);
   const { localHtml, localMd, geoGridHtml, geoGridMd } = localPanels(m);
-  const { connectionsHtml, connectionsMd, changeCheck, newSearches } = connectionPanels(m);
+  const { connections, changeCheck, newSearches } = connectionPanels(m);
   // The Overview's panels, in order: on the page after the score views and search lines, in the Markdown after the area
   // scores. Each is a [page, Markdown] pair: drawn() makes one from a panel's view model (report/panel.mjs).
   const panels = [
@@ -142,7 +142,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     [descriptionsHtml, descriptionsMd],
     [localHtml, localMd],
     [moreLinksHtml, moreLinksMd],
-    [connectionsHtml, connectionsMd],
+    drawn(connections),
     [timelineHtml, timelineMd],
     [pageScoresHtml, pageScoresMd],
     [linkIdeasHtml, linkIdeasMd],
