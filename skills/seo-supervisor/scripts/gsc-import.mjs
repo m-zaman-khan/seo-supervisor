@@ -6,6 +6,8 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSy
 import { dirname, join, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 import { parseCsv } from "./lib/csv.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain } from "./lib/cli.mjs";
 
 // http/https and www variants of a page add up; position is weighted by impressions.
 export function addTraffic(traffic, path, m) {
@@ -151,22 +153,21 @@ export function aiReport(rows, metric, host) {
   return { [metric]: sorted.reduce((s, [, v]) => s + v[metric], 0), pages: Object.fromEntries(sorted) };
 }
 
-if (isMain(import.meta.url)) {
-  const args = {};
-  for (let i = 2; i < process.argv.length; i++) {
-    const k = process.argv[i].replace(/^--/, "");
-    args[k] = process.argv[i + 1] && !process.argv[i + 1].startsWith("--") ? process.argv[++i] : true;
-  }
+// --site is the other scripts' name for --site-origin.
+function main(argv) {
+  const args = parseArgs(argv, {
+    flags: ["pages", "queries", "page-queries", "site-origin", "out", "ai-google", "ai-bing"],
+    aliases: { site: "site-origin" },
+    positionals: 0,
+  });
   const AI = [
     ["ai-google", "google", "impressions", "Search Console Generative AI performance", "then Impressions"],
     ["ai-bing", "bing", "citations", "Bing Webmaster Tools AI Performance", "and a Citations column"],
   ].filter(([flag]) => typeof args[flag] === "string");
-  if (typeof args.pages !== "string" && !AI.length) {
-    console.error(
+  if (typeof args.pages !== "string" && !AI.length)
+    throw new Fail(
       "usage: node gsc-import.mjs --pages Pages.csv [--queries Queries.csv] [--page-queries dir/] [--site-origin https://x] [--out seo-audit/gsc.json]\n       node gsc-import.mjs --ai-google Pages.csv [--ai-bing ai-pages.csv] [--site-origin https://x] [--out seo-audit/ai-reports.json]",
     );
-    process.exit(2);
-  }
   const OUT = resolve(
     typeof args.out === "string"
       ? args.out
@@ -174,18 +175,23 @@ if (isMain(import.meta.url)) {
         ? "seo-audit/gsc.json"
         : "seo-audit/ai-reports.json",
   );
-  const host =
-    typeof args["site-origin"] === "string" ? new URL(args["site-origin"]).hostname.replace(/^www\./, "") : null;
+  let host = null;
+  if (typeof args["site-origin"] === "string")
+    try {
+      host = new URL(args["site-origin"]).hostname.replace(/^www\./, "");
+    } catch {
+      throw new Fail(
+        `gsc-import: --site-origin must be the site's address, like https://www.example.com (got ${args["site-origin"]}).`,
+      );
+    }
   const aiReports = AI.length
     ? Object.fromEntries(
         AI.map(([flag, id, metric, what, cols]) => {
           const r = aiReport(parseCsv(readFileSync(args[flag], "utf8")), metric, host);
-          if (!r) {
-            console.error(
+          if (!r)
+            throw new Fail(
               `gsc-import: ${args[flag]} isn't a ${what} export of pages. Expected a column of page addresses ${cols}, as the report's download writes them.`,
             );
-            process.exit(2);
-          }
           return [id, r];
         }),
       )
@@ -198,7 +204,7 @@ if (isMain(import.meta.url)) {
         .map(r => Object.keys(r.pages).length)
         .join(" and ")} pages · wrote ${OUT}`,
     );
-    process.exit(0);
+    return 0;
   }
 
   // Search Console writes the dimension, Clicks, Impressions, CTR and Position in that order in every UI language,
@@ -221,10 +227,9 @@ if (isMain(import.meta.url)) {
   });
   const rowsOf = file => parseCsv(readFileSync(file, "utf8")).map(r => Object.values(r));
   const notExport = (file, what) => {
-    console.error(
+    throw new Fail(
       `gsc-import: ${file} isn't a Search Console ${what} export. Expected ${what === "Pages" ? "a URL" : "a query"}, then Clicks, Impressions, CTR and Position, comma-separated, as Search Console's "Export → Download CSV" writes them.`,
     );
-    process.exit(2);
   };
   const pathOf = u => {
     try {
@@ -286,4 +291,7 @@ if (isMain(import.meta.url)) {
   console.log(
     `gsc-import: ${Object.keys(traffic).length} pages, ${queries.length} queries, ${Object.keys(pageQueries).length} per-page exports, ${findings.length} findings · wrote ${OUT}`,
   );
+  return 0;
 }
+
+if (isMain(import.meta.url)) await runMain(() => main(process.argv.slice(2)));
