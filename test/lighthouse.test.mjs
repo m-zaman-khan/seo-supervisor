@@ -269,7 +269,7 @@ test("Lighthouse's Chrome gets the container and proxy flags through --chrome-fl
   // Chrome's own background traffic is off too (CHROME_FLAGS, right after --headless=new).
   assert.match(
     flags.replace(` ${CHROME_FLAGS.map(f => (f.includes(" ") ? f.replace("=", '="') + '"' : f)).join(" ")}`, ""),
-    /^--chrome-flags=--headless=new --no-sandbox --disable-dev-shm-usage --proxy-server=http:\/\/proxy\.corp:8080 --user-data-dir="[^"]+"$/,
+    /^--chrome-flags=--headless=new --no-sandbox --disable-dev-shm-usage --proxy-server=http:\/\/proxy\.corp:8080 --proxy-bypass-list=update\.googleapis\.com --user-data-dir="[^"]+"$/,
   );
 });
 

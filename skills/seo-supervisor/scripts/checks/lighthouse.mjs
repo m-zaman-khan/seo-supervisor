@@ -7,8 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { labLcpParts, labLcpElement } from "./speed.mjs";
-import { CHROME_FLAGS, containerArgs, quietProfile } from "../lib/cdp.mjs";
-import { chromeProxyArgs } from "../lib/proxy.mjs";
+import { CHROME_FLAGS, containerArgs, ownProxyArgs, quietProfile } from "../lib/cdp.mjs";
 import { redact } from "../lib/redact.mjs";
 import { startGuard } from "./render.mjs";
 import { toolsDir } from "../lib/settings-dir.mjs";
@@ -170,7 +169,7 @@ export async function runLighthouse(bin, url, { chromePath, timeoutMs = 90000, h
     "--headless=new",
     ...CHROME_FLAGS.map(f => (f.includes(" ") ? f.replace("=", '="') + '"' : f)),
     ...containerArgs(host),
-    ...(guard?.args || chromeProxyArgs(host.env)),
+    ...(guard?.args || ownProxyArgs(host.env)),
     `--user-data-dir="${quietProfile(join(dir, "profile"))}"`,
   ].join(" ");
   const args = [

@@ -46,6 +46,16 @@ export const CHROME_FLAGS = [
   "--enable-features=SkipListAccountsWithoutGaiaCookies",
   "--host-resolver-rules=MAP update.googleapis.com ^NOTFOUND",
 ];
+// The configured proxy's flags (chromeProxyArgs), with update.googleapis.com sent direct to the rule above so it
+// doesn't leave through that proxy either. The guard's flags do the same.
+export function ownProxyArgs(env = process.env) {
+  const args = chromeProxyArgs(env),
+    skip = "update.googleapis.com";
+  if (!args.length) return args;
+  return args.some(a => a.startsWith("--proxy-bypass-list="))
+    ? args.map(a => (a.startsWith("--proxy-bypass-list=") ? `${a};${skip}` : a))
+    : [...args, `--proxy-bypass-list=${skip}`];
+}
 // A throwaway profile whose Local State turns metrics reporting off (pref names from Chromium's metrics_pref_names.h).
 // Where Chrome was installed with usage statistics on, a fresh profile otherwise uploads metrics
 // (clientservices.googleapis.com/uma/v2). Every launch site uses it.
@@ -69,7 +79,7 @@ export async function launchChrome(browserPath, { headless = true, timeoutMs = 3
     "--mute-audio",
     ...CHROME_FLAGS,
     ...containerArgs(),
-    ...chromeProxyArgs(),
+    ...ownProxyArgs(),
     `--user-data-dir=${profile}`,
     "--remote-debugging-pipe",
     ...extra,

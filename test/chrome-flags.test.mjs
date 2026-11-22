@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { CHROME_FLAGS } from "../skills/seo-supervisor/scripts/lib/cdp.mjs";
+import { CHROME_FLAGS, ownProxyArgs } from "../skills/seo-supervisor/scripts/lib/cdp.mjs";
 import { findBrowser, renderArgs } from "../skills/seo-supervisor/scripts/checks/render.mjs";
 import { runLighthouse } from "../skills/seo-supervisor/scripts/checks/lighthouse.mjs";
 import { shotArgs } from "../skills/seo-supervisor/scripts/og-card.mjs";
@@ -61,6 +61,17 @@ test("one list of Chrome flags turns Chrome's own background traffic off", () =>
     CHROME_FLAGS.includes("--host-resolver-rules=MAP update.googleapis.com ^NOTFOUND"),
     "Chrome's active-use ping can't resolve",
   );
+  // That host also skips a user's own proxy, so the resolver rule applies to it.
+  const P = "http://proxy.corp:8080";
+  assert.deepEqual(ownProxyArgs({}), []);
+  assert.deepEqual(ownProxyArgs({ HTTPS_PROXY: P, HTTP_PROXY: P }), [
+    `--proxy-server=${P}`,
+    "--proxy-bypass-list=update.googleapis.com",
+  ]);
+  assert.deepEqual(ownProxyArgs({ HTTPS_PROXY: P, HTTP_PROXY: P, NO_PROXY: "localhost,.corp" }), [
+    `--proxy-server=${P}`,
+    "--proxy-bypass-list=localhost;.corp;update.googleapis.com",
+  ]);
 });
 
 test("lab CLS is the largest session window (shifts under 1 s apart, 5 s at most), not the sum", () => {
