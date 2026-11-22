@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { SKILL, tmp } from "./helpers.mjs";
 import { ID_ALIASES, RULES, currentId } from "../skills/seo-supervisor/scripts/crawl/catalog.mjs";
 import { applyChecks, findingsOf, knownChecks } from "../skills/seo-supervisor/scripts/lib/score.mjs";
+import { foundOn } from "../skills/seo-supervisor/scripts/lib/findings.mjs";
 import { diffCrawls, timeline } from "../skills/seo-supervisor/scripts/seo-diff.mjs";
 
 // A rename for the test only, taken out again after each test that adds it.
@@ -120,6 +121,39 @@ test(
     );
   }),
 );
+
+// ---------- "Found on" ----------
+test("foundOn writes one case or a count, with web addresses as code spans that can't be ended early", () => {
+  assert.equal(
+    foundOn(1, { url: "https://a.example/x", detail: "status 404" }),
+    "Found on `https://a.example/x` (status 404).",
+  );
+  assert.equal(
+    foundOn(3, {
+      url: "https://a.example/`x`[y](javascript:z)",
+      detail: "→ https://b.example/y, linked from https://a.example/z",
+    }),
+    "3 cases, for example `https://a.example/%60x%60[y](javascript:z)` (→ `https://b.example/y`, linked from `https://a.example/z`).",
+  );
+  assert.equal(foundOn(1, { url: "/blog/" }), "Found on `/blog/`.", "a path is code too; no detail, no brackets");
+  assert.equal(foundOn(2, {}), "2 cases, for example the site.");
+  assert.equal(
+    foundOn(1, { url: "https://a.example/", detail: "names `https://b.example/` already" }),
+    "Found on `https://a.example/` (names `https://b.example/` already).",
+    "a code span stays one",
+  );
+});
+
+test("every script builds its findings' what with foundOn, not a copy of it", () => {
+  const scripts = join(SKILL, "scripts"),
+    files = [];
+  for (const d of ["", "checks", "crawl", "keys", "google", "lib"])
+    for (const f of readdirSync(join(scripts, d))) if (f.endsWith(".mjs")) files.push(join(d, f));
+  assert.deepEqual(
+    files.filter(f => /cases, for example/.test(readFileSync(join(scripts, f), "utf8"))),
+    [join("lib", "findings.mjs")],
+  );
+});
 
 // ---------- rule titles ----------
 test("the crawler's rule titles are the rule docs' headings, word for word", () => {

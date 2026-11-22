@@ -17,6 +17,7 @@ import {
 import { isMain } from "./lib/is-main.mjs";
 import { parseArgs } from "./lib/args.mjs";
 import { Fail, runMain } from "./lib/cli.mjs";
+import { foundOn } from "./lib/findings.mjs";
 
 const FLAGS = [
   "in",
@@ -506,7 +507,7 @@ function main(argv) {
         severity,
         category: "Content data",
         title: title(f.count),
-        what: `${f.count === 1 ? "Found in" : "For example"} ${ex.url}${ex.detail ? ` (${ex.detail})` : ""}.`,
+        what: foundOn(f.count, ex),
         why,
         fix,
         count: f.count,

@@ -26,6 +26,7 @@ import {
 } from "./keys/posthog.mjs";
 import { CLARITY_DAYS, fetchClarity } from "./keys/clarity.mjs";
 import { YT_TOPICS, fetchYoutube } from "./keys/youtube.mjs";
+import { foundOn } from "./lib/findings.mjs";
 
 // Re-exported for the other scripts and the tests.
 export { Fail, Refused, domainOf, submitBing, SERVICES, call, keyFile, savedKeys, setKey, removeKey, activeKeys };
@@ -66,7 +67,7 @@ function crawlFinding(bing) {
       severity: "medium",
       category: "Crawling & indexing",
       title: `Bing reports crawl problems on ${evidence.length} URL(s)`,
-      what: `${evidence.length === 1 ? "Found on" : `${evidence.length} cases, for example`} ${ex.url} (${ex.detail}).`,
+      what: foundOn(evidence.length, ex),
       why: "Bing Webmaster Tools lists these URLs as failing when Bing crawled them. Pages that error, time out or are blocked can drop out of Bing, and out of AI answers built on Bing's index such as Copilot.",
       fix: "Open each URL. Fix pages that should work (server errors, timeouts, DNS), redirect or stop linking to pages that are gone, and unblock important pages in robots.txt. Bing's list takes a few days to clear after a fix.",
       count: evidence.length,

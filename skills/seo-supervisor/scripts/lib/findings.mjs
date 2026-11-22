@@ -22,3 +22,14 @@ export function createFindings(checks, scrub = s => s) {
   const evalRules = (...ids) => ids.forEach(r => evaluated.add(r));
   return { findings, add, evaluated, evalRules };
 }
+
+// A finding's `what`: "Found on <url> (<detail>)." for one case, "<n> cases, for example <url> (<detail>)." for more.
+// The evidence URL and each bare web address in the detail go in a code span, backticks written %60 so the span can't
+// end early, so the report shows them as code, never links. The rest is left to the report's own escaping.
+const codeSpan = u => "`" + String(u).replace(/`/g, "%60") + "`";
+const WEB_ADDRESS = /(?<!`)https?:\/\/[^\s<>"`]*[^\s<>"`.,;:!?)']/g;
+/** @param {number} count @param {{ url?: string, detail?: any }} [example] the first evidence item */
+export function foundOn(count, { url, detail } = {}) {
+  const more = detail != null && detail !== "" ? ` (${String(detail).replace(WEB_ADDRESS, codeSpan)})` : "";
+  return `${count === 1 ? "Found on" : `${count} cases, for example`} ${url ? codeSpan(url) : "the site"}${more}.`;
+}

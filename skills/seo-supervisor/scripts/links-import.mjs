@@ -9,6 +9,7 @@ import { isMain } from "./lib/is-main.mjs";
 import { parseCsv } from "./lib/csv.mjs";
 import { parseArgs } from "./lib/args.mjs";
 import { Fail, runMain } from "./lib/cli.mjs";
+import { foundOn } from "./lib/findings.mjs";
 
 const USAGE =
   'usage: node links-import.mjs --dir seo-audit/links --site https://www.example.com [--brand "Acme"] [--keys seo-audit/keys.json] [--previous <earlier links.json>] [--crawl seo-audit/seo-crawl.json] [--out seo-audit/links.json]';
@@ -446,7 +447,7 @@ function brokenLinked(linked, crawl, site) {
           severity: "medium",
           category: "URLs & canonicals",
           title: `${broken.length} page(s) other sites link to are broken or redirect to the home page`,
-          what: `${broken.length === 1 ? "Found on" : `${broken.length} cases, for example`} \`${broken[0].url.replace(/`/g, "%60")}\` (${broken[0].detail}).`,
+          what: foundOn(broken.length, broken[0]),
           why: "Other sites link to these pages, but they now return 404 or 410, redirect in a loop, or redirect to the home page, which Google may treat as a soft 404. Visitors who follow those links hit a dead end, and what the links brought the site is lost.",
           fix: "Redirect each one with a 301 to the closest live page: the page that replaced it, or its section, never just the home page. If the content is gone for good and nothing comes close, keep the 404 or 410 and ask the linking sites to update the link (Search Console's Links report lists them).",
           count: broken.length,

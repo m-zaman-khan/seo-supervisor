@@ -9,6 +9,7 @@ import { parseCsv } from "./lib/csv.mjs";
 import { parseArgs } from "./lib/args.mjs";
 import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
 import { isPublic, pinnedGet } from "./lib/net.mjs";
+import { foundOn } from "./lib/findings.mjs";
 
 const USAGE =
   "usage: node backlinks.mjs --site https://www.example.com (--keys seo-audit/keys.json | --csv links.csv | --urls links.txt) [--out seo-audit/backlinks.json] [--yes]";
@@ -229,10 +230,6 @@ const pick = urls => {
 };
 const capNote = extra => `${extra} more linking page(s) weren't checked: at most ${MAX} are visited per run.`;
 
-// URLs in the finding's text go in code spans, so in Markdown another site's address can't become a link with
-// misleading text.
-const code = s => s.replace(/https?:\/\/\S+/g, u => "`" + u.replace(/`/g, "%60") + "`");
-
 // Linking sites whose every live page holds its links back (rel or page-wide nofollow), most pages first.
 // https://developers.google.com/search/docs/crawling-indexing/qualify-outbound-links
 export function allNofollow(live) {
@@ -293,7 +290,7 @@ export async function checkBacklinks(urls, site, { allow = isPublic, timeout = 1
           severity: "low",
           category: "Launch & monitoring",
           title: `${gone.length} known link(s) from other sites are gone`,
-          what: `${gone.length === 1 ? "Found on" : `${gone.length} cases, for example`} ${code(gone[0].url)} (${code(gone[0].reason)}).`,
+          what: foundOn(gone.length, { url: gone[0].url, detail: gone[0].reason }),
           why: "Links from other sites help search engines find your pages and trust them. After a redesign or a move, links quietly break or get removed, and what they brought goes with them.",
           fix: "Open each page in a browser first to confirm the link is really gone. If the page still mentions you, ask the site to put the link back or update it. If the link pointed at a page of yours that moved or no longer works, redirect that old address to the closest live page with a 301, then ask the site to update the link.",
           count: gone.length,

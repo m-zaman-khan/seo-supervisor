@@ -11,6 +11,7 @@ import { promises as dns } from "node:dns";
 import { isMain } from "./lib/is-main.mjs";
 import { parseArgs } from "./lib/args.mjs";
 import { Fail, runMain } from "./lib/cli.mjs";
+import { foundOn } from "./lib/findings.mjs";
 
 // --site is the other scripts' name for --site-origin.
 async function main(argv) {
@@ -553,7 +554,7 @@ async function main(argv) {
       severity,
       category,
       title: title(count),
-      what: `${count === 1 ? "Found on" : `${count} cases, for example`} ${ex.url} (${ex.detail}).`,
+      what: foundOn(count, ex),
       why,
       fix,
       count,

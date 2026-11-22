@@ -12,6 +12,7 @@ import { loginDir } from "./lib/settings-dir.mjs";
 import { proxyNote } from "./lib/proxy.mjs";
 import { SHARED_CLIENT } from "./lib/google-client.mjs";
 import { addTraffic, gscFindings } from "./gsc-import.mjs";
+import { foundOn } from "./lib/findings.mjs";
 import {
   SC,
   GA,
@@ -651,7 +652,7 @@ function googleFindings(notes, inspection, sitemaps, traffic, pageQueries, urls)
       severity,
       category,
       title,
-      what: `${evidence.length === 1 ? "Found on" : `${evidence.length} cases, for example`} ${evidence[0].url} (${evidence[0].detail}).`,
+      what: foundOn(evidence.length, evidence[0]),
       why,
       fix,
       count: evidence.length,

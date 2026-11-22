@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import { fileCrawl } from "./seo-diff.mjs";
 import { proxyNote, chromeProxyArgs } from "./lib/proxy.mjs";
 import { redact, hideSecrets } from "./lib/redact.mjs";
-import { createFindings } from "./lib/findings.mjs";
+import { createFindings, foundOn } from "./lib/findings.mjs";
 import { RULES, CHECKS } from "./crawl/catalog.mjs";
 import { clean, createFetcher, isLocal, isPublic, mapOrigin, urlOr } from "./crawl/fetch.mjs";
 import { createCrawler } from "./crawl/queue.mjs";
@@ -905,8 +905,7 @@ const SEV = { blocker: 0, high: 1, "needs-decision": 2, medium: 3, low: 4 };
 const out = [];
 for (const [key, f] of findings) {
   const [rule, severity, title, why, fix] = CHECKS[key];
-  const ex = f.evidence[0] || {};
-  const what = `${f.count === 1 ? "Found on" : `${f.count} cases, for example`} ${ex.url || "the site"}${ex.detail ? ` (${ex.detail})` : ""}.`;
+  const what = foundOn(f.count, f.evidence[0]);
   out.push({
     check: key,
     rule,

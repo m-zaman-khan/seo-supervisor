@@ -407,7 +407,7 @@ test("Bing: matches the site, then reads traffic, queries, links and crawl issue
       [f.id, f.check, f.rule, f.severity, f.status, f.source, f.count],
       ["K-001", "bing-crawl-issues", "CRAWL-05", "medium", "open", "bing-webmaster", 1],
     );
-    assert.match(f.what, /\/broken \(.*server error.*500/);
+    assert.match(f.what, /\/broken` \(.*server error.*500/);
     assert.ok(f.why && f.fix && f.category);
     assert.ok(o.notChecked.some(n => /Open PageRank/.test(n.area)) && o.notChecked.some(n => /Ahrefs/.test(n.area)));
   } finally {

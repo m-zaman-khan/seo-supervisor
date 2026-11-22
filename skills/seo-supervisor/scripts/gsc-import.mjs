@@ -8,6 +8,7 @@ import { isMain } from "./lib/is-main.mjs";
 import { parseCsv } from "./lib/csv.mjs";
 import { parseArgs } from "./lib/args.mjs";
 import { Fail, runMain } from "./lib/cli.mjs";
+import { foundOn } from "./lib/findings.mjs";
 
 // http/https and www variants of a page add up; position is weighted by impressions.
 export function addTraffic(traffic, path, m) {
@@ -42,7 +43,7 @@ export function gscFindings(traffic, pageQueries, urls) {
       severity,
       category: "Search intent",
       title,
-      what: `${evidence.length === 1 ? "Found on" : `${evidence.length} cases, for example`} ${ex.url} (${ex.detail}).`,
+      what: foundOn(evidence.length, ex),
       why,
       fix,
       count: evidence.length,
