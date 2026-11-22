@@ -116,17 +116,22 @@ export const CHECKS = {
 const pathKey = u => u.pathname.replace(/\/+$/, "") || "/";
 // Links to the page's own or the public origin are ours and compared by path; other hosts can't be verified. A variant
 // is the site's host on the other protocol or with or without www: ours, but not where the pages live, so a bad target.
+const bareHost = u => u.host.replace(/^www\./i, "");
 const entriesOf = (p, origin) =>
   (p.hreflang || []).flatMap(h => {
     try {
       const u = new URL(h.href, p.finalUrl),
-        ours = u.origin === origin || u.origin === new URL(p.finalUrl).origin;
+        homes = [origin, p.finalUrl].filter(Boolean).map(o => new URL(o)),
+        exact = homes.some(o => o.origin === u.origin);
+      const variant = !exact && /^https?:$/.test(u.protocol) && homes.some(o => bareHost(o) === bareHost(u)),
+        ours = exact || variant;
       return [
         {
           lang: h.lang.toLowerCase(),
           href: u.href,
           raw: h.href,
           ours,
+          variant,
           path: pathKey(u),
           where: ours ? pathKey(u) : u.href,
         },
@@ -147,6 +152,14 @@ export function checkHreflang(pages, { add, canonicalFor, statusOf, origin }) {
     if (!entries.some(e => e.ours && e.path === self)) add("hreflang-no-self", u);
     if (!entries.some(e => e.lang === "x-default")) add("hreflang-no-xdefault", u);
     for (const e of entries) {
+      if (e.variant) {
+        add(
+          "hreflang-bad-target",
+          u,
+          `${e.lang} → ${e.href} (this site at another address, ${new URL(e.href).origin}; its pages are at ${origin})`,
+        );
+        continue;
+      }
       if (!e.ours || e.path === self) continue;
       const t = byPath.get(e.path);
       if (!t) {
