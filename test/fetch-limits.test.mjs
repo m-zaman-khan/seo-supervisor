@@ -317,3 +317,33 @@ test("an hreflang target on another site that couldn't be visited is quoted and 
   );
   assert.ok(!note.includes("push"), note);
 });
+
+// The sitemap pool reads 2 files at a time at most, whatever --concurrency is, and never 0.
+const INDEX = o =>
+  `<?xml version="1.0"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${Array.from({ length: 8 }, (_, i) => `<sitemap><loc>${o}/sm-${i}.xml</loc></sitemap>`).join("")}</sitemapindex>`;
+test("the sitemap files are read 2 at a time at most, however many requests the crawl runs at once", async () => {
+  const O = "https://site.example";
+  let live = 0,
+    peak = 0;
+  const fetchSitemap = async u => {
+    live++;
+    peak = Math.max(peak, live);
+    await new Promise(ok => setTimeout(ok, 20));
+    live--;
+    return { status: 200, body: u.endsWith("/index.xml") ? INDEX(O) : urlset([u.replace(/\.xml$/, "/")]) };
+  };
+  const sm = await findSitemaps([O + "/index.xml"], true, {
+    startOrigin: O,
+    notes: [],
+    fetchSitemap,
+    toCrawl: u => u,
+    conc: 8,
+  });
+  assert.equal(sm.entries.length, 8);
+  assert.deepEqual(
+    sm.entries.map(e => e.loc),
+    Array.from({ length: 8 }, (_, i) => `${O}/sm-${i}/`),
+    "still in the index's order",
+  );
+  assert.equal(peak, 2);
+});

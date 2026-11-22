@@ -6,7 +6,9 @@ import { quote } from "../lib/findings.mjs";
 import { pool } from "../crawl/queue.mjs";
 
 const SITEMAP_URLS = 50000; // the protocol's limit per file: Google reads no further
-export const SITEMAP_KEEP = 200000;
+export const SITEMAP_KEEP = 200000; // URLs kept from all the sitemap files, far more than a crawl fetches
+// Sitemap files read at once, whatever --concurrency is: each may be 50 MB, and 8 at once can take 1 GB.
+const SITEMAP_CONC = 2;
 const XML_TAG =
   /<([A-Za-z_][\w.:-]*)((?:\s+[A-Za-z_:][\w.:-]*\s*=\s*(?:"[^"<]*"|'[^'<]*'))*)\s*(\/?)>|<\/([A-Za-z_][\w.:-]*)\s*>/y;
 const BAD_ENTITY = /&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[\da-fA-F]+);)/;
@@ -258,7 +260,7 @@ export async function findSitemaps(
   smListed,
   { startOrigin: START_ORIGIN, notes, fetchSitemap, toCrawl, conc = 1 },
 ) {
-  const io = { fetchSitemap, toCrawl, conc };
+  const io = { fetchSitemap, toCrawl, conc: Math.min(SITEMAP_CONC, conc) };
   let sm = await readSitemaps(smUrls, smListed, io);
   // The plugins' index names, then WordPress core's (since 5.5), and /sitemap.xml when robots.txt named other files: a
   // stale Sitemap: line left after a move mustn't hide the real sitemap. The named files stay in files, so a broken one
