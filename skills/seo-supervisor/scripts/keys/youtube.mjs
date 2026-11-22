@@ -31,7 +31,10 @@ export const YT_TOPICS = 5;
 const CHANNEL_ID = /^UC[\w-]{22}$/;
 export async function fetchYoutube(key, base, { topics, channel }, notes) {
   const get = (path, params) =>
-    request("youtube", youtube, `${base}/${path}?${new URLSearchParams({ ...params, key })}`);
+    request("youtube", youtube, `${base}/${path}?${new URLSearchParams(params)}`, {
+      redirect: "manual",
+      headers: { "x-goog-api-key": key },
+    });
   const n = v => (v != null && Number(v) >= 0 ? Number(v) : null),
     out = { channel: null, topics: [] };
   if (channel) {

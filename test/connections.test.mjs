@@ -221,7 +221,7 @@ const ytRoute = ({ path, query }) => {
     ];
 };
 
-test("YouTube: the channel by handle and the top videos per topic, with the key only in the query, at most 5 topics", async () => {
+test("YouTube: the channel by handle and the top videos per topic, with the key only in a header, at most 5 topics", async () => {
   const srv = await fake({ "/yt": ytRoute });
   try {
     const topics = ["widgets", "widget repair", "a", "b", "c", "d"];
@@ -235,9 +235,10 @@ test("YouTube: the channel by handle and the top videos per topic, with the key 
     assert.deepEqual(problems, []);
     const ch = srv.hits[0];
     assert.equal(ch.path, "/yt/channels");
+    // The key goes in the X-Goog-Api-Key header, not the address.
     assert.deepEqual(
-      [ch.query.get("part"), ch.query.get("forHandle"), ch.query.get("key")],
-      ["snippet,statistics", "@example", "yt-key-0001"],
+      [ch.query.get("part"), ch.query.get("forHandle"), ch.query.get("key"), ch.headers["x-goog-api-key"]],
+      ["snippet,statistics", "@example", null, "yt-key-0001"],
     );
     const searches = srv.hits.filter(h => h.path === "/yt/search");
     assert.equal(searches.length, 5, "search.list has 100 calls a day");
