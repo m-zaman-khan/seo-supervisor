@@ -226,7 +226,7 @@ node <skill-dir>/scripts/render-report.mjs seo-audit/seo-audit.json
 ```
 
 This writes two files:
-- **`seo-audit.html`:** the Overview first: the verdict, the 0–100 health score and its band, Fix first (each with its `/seo-fix` line), Needs you, what's moving your score, the scope and the key numbers. Then the tabs, in this order: Plan (setup mode), Since last audit (with a diff or a change check), Findings, Decisions, Search & AI, Speed, Links, Site & content, Changes, Passed and Limits. The four topic tabs (Search & AI to Site & content) appear only when they have data.
+- **`seo-audit.html`:** the Overview first: the verdict, the 0–100 health score and its band, Fix first (each with its `/seo-fix` line), Needs you, what's moving your score, the scope and the key numbers. Then the tabs, in this order: Plan (setup mode), Findings, Decisions, Search & AI, Speed, Links, Site & content, Since last audit (with a diff or a change check), Changes, Passed and Limits. The four topic tabs (Search & AI to Site & content) appear only when they have data.
 - **`seo-audit.md`:** every finding in full, with all evidence.
 
 Add `--pdf` if the owner wants a PDF too (`seo-audit.pdf`, printed by the installed Chrome or Edge). The renderer ends with a short receipt: repeat it in chat.
@@ -376,14 +376,17 @@ Connect mode changes nothing in the project. Then offer an audit to use the new 
 
 ## Guard
 
-In the Claude Code plugin, and in the agents the installer adds it to (Codex, Cursor, GitHub Copilot, Devin and Cline), a hook checks each action before it runs and pauses for the owner's yes when it would:
-- run one of the scripts with `--yes`, `log-scan.mjs --verify-ips` without a saved-lists folder, `schema-check.mjs --allow-remote`, or a crawl with `--outside` before `seo-audit/settings.json` records the owner's yes;
+In the Claude Code plugin, and in the agents the installer adds it to (Codex, Cursor, GitHub Copilot, Devin, and Cline's CLI, SDK and Kanban, not its VS Code or JetBrains extension), a hook checks each action before it runs and pauses for the owner's yes when it would:
+- run one of the scripts with `--yes`, `log-scan.mjs --verify-ips` without a saved-lists folder, `schema-check.mjs --allow-remote`, or a crawl with `--outside` before `seo-audit/settings.json` records the owner's yes; or a crawl with `--outbound-links`, `--hreflang-other-sites`, `--ai-bot-probe`, `--desktop`, `--render all` or `--lighthouse` before `outsideChecks.approved` lists that check, `--render-page` on another site, or `--psi-endpoint`/`--crux-endpoint`;
 - add a noindex (a robots meta tag, a metadata object or an `X-Robots-Tag`), or change or remove a canonical;
 - edit robots.txt or the code that builds it (it names `Disallow: /`, a Googlebot block, a removed Sitemap line or a change for the AI crawlers);
 - change redirect or URL rules (next.config redirects, `_redirects`, `.htaccess`, `vercel.json`, `netlify.toml` and the like);
-- delete, move or empty a page or route file.
+- delete, move or empty a page or route file;
+- change `seo-audit/settings.json` so the guard asks less: turning it off or down, turning outside checks on, or adding a check to `approved`, by an edit or from the shell. Writing the owner's outside-checks answer there asks them again; where the agent can't ask, the owner writes it.
 
 A message holding an API key is stopped before you see it (Cline has no hook for that), and `connect-keys.mjs set <service> <key>` is refused: the owner runs `connect-keys.mjs set <service>` in their own terminal, which asks for the key and hides it.
+
+The chat check knows keys by their prefix (sk-, AIza, ghp_ and the like). A bare 32-character hex key, like Bing's or Matomo's, has none, so it isn't caught in chat or when piped into `connect-keys set`. Never paste one in chat: use `connect-keys.mjs set <service>`.
 
 When the guard asks, wait for the owner's answer. Some agents can't show a yes/no box (Codex, Devin, and Cursor for edits): there the guard stops the step with its reason, and you ask the owner in chat. If they say yes, they do it themselves, or switch the guard off for that one step with `"guard": "off"` in `seo-audit/settings.json` and back to `"ask"` after. When it blocks (block mode), tell the owner what you wanted to do and why, and let them run it or change the mode. Never work around it with another command, another file or another tool that has the same effect. The hook can't see the rest of this file's rules (fix only approved findings, decisions, never inventing facts, edits made through a CMS's website), so those stay yours.
 

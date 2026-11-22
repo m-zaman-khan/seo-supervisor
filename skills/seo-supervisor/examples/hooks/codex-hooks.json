@@ -7,6 +7,7 @@
           {
             "type": "command",
             "command": "node \"$(git rev-parse --show-toplevel)/.agents/skills/seo-supervisor/scripts/schema-check.mjs\" --hook",
+            "commandWindows": "node -e \"const p=require('path'),f=require('fs');let d=process.cwd(),g;for(;;d=p.dirname(d)){g=p.join(d,'.agents/skills/seo-supervisor/scripts/schema-check.mjs');if(f.existsSync(g)||p.dirname(d)==d)break}process.exitCode=require('child_process').spawnSync(process.execPath,[g,'--hook'],{stdio:'inherit'}).status??1\"",
             "statusMessage": "Checking structured data"
           }
         ]

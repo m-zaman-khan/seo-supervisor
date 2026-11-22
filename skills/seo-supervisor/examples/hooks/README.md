@@ -10,14 +10,14 @@ The paths assume a project install (`npx seo-supervisor --scope project`): `.cla
 
 Agent hooks only see the files the agent edits. A framework page (`.tsx`, `.vue`, `.astro`, `.erb`) builds its JSON-LD at runtime, so it can't be checked from source. Neither can a template `.html` file (Hugo, Jekyll, Django/Jinja, Eleventy, Liquid, ERB) whose JSON-LD holds template tags (`{{`, `{%`, `{#`, `<%`): the checker reports that block as a note, "templated; check the built output", and never fails on it. Check the built output instead, with the CI step or `node schema-check.mjs out/`, or check the running dev server: `node schema-check.mjs http://localhost:3000/`.
 
-Hook formats checked against each vendor's docs on 19 Nov 2026.
+Hook formats checked against each vendor's docs on 19 Nov 2026, and Codex's and Copilot's again on 23 Nov 2026.
 
 | File | Where it goes | What happens on errors |
 | --- | --- | --- |
 | `claude-code-settings.json` | Merge into `.claude/settings.json` ([hooks](https://code.claude.com/docs/en/hooks)). | `PostToolUse` on Edit, Write and MultiEdit; exit 2 sends the errors to Claude. |
-| `codex-hooks.json` | `.codex/hooks.json` ([hooks](https://learn.chatgpt.com/docs/hooks)), then trust it in `/hooks`. | `PostToolUse` on `apply_patch`; exit 2 sends the errors to Codex. |
+| `codex-hooks.json` | `.codex/hooks.json` ([hooks](https://learn.chatgpt.com/docs/hooks)), then trust it in `/hooks`. Its `commandWindows` line replaces `command` on Windows, where Codex runs hooks through cmd; it finds the skill from the folder Codex starts in, with no git. | `PostToolUse` on `apply_patch`; exit 2 sends the errors to Codex. |
 | `cursor-hooks.json` | `.cursor/hooks.json` ([hooks](https://cursor.com/docs/hooks)). | `postToolUse` on `Write`; the errors go back to the agent as `additional_context`. |
-| `copilot-hooks.json` | `.github/hooks/schema-check.json` ([CLI hooks reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference)). | `postToolUse` on `edit` and `create`; the errors go back to Copilot as `additionalContext`. |
+| `copilot-hooks.json` | `.github/hooks/schema-check.json` ([CLI hooks reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference)). Its `"cwd": "."` runs it from the repository root, so the relative path works when Copilot starts in a subfolder. | `postToolUse` on `edit`, `create`, `str_replace_editor` and `apply_patch`; the errors go back to Copilot as `additionalContext`. The checker doesn't yet read the file names in a Copilot `apply_patch`, so those edits pass unchecked. |
 | `pre-commit` | `.git/hooks/pre-commit`, then `chmod +x` it. POSIX sh. | Lists the errors and stops the commit. It checks the files as they are on disk. |
 | `github-actions.yml` | `.github/workflows/structured-data.yml`. Set your build command and output folder. | Fails the job. |
 

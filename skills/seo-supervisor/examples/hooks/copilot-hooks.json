@@ -4,7 +4,7 @@
     "postToolUse": [
       {
         "type": "command",
-        "matcher": "edit|create",
+        "matcher": "edit|create|str_replace_editor|apply_patch",
         "bash": "node .agents/skills/seo-supervisor/scripts/schema-check.mjs --hook copilot",
         "powershell": "node .agents/skills/seo-supervisor/scripts/schema-check.mjs --hook copilot",
         "cwd": ".",

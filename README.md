@@ -172,7 +172,7 @@ It asks two things:
 The skill goes into each agent's own skills folder, and agents that share a folder get one copy. Each agent also gets what it supports:
 - **The `/seo-audit`, `/seo-fix`, `/seo-review`, `/seo-launch`, `/seo-setup`, `/seo-brief`, `/seo-rewrite`, `/seo-grow`, `/seo-watch` and `/seo-connect` commands:** Claude Code, OpenCode, Roo Code, Augment and Gemini CLI. Most other agents show the skill itself as `/seo-supervisor`. In any agent you can also just ask in plain words: "audit the SEO of this site", "did my change help?", "is my setup OK?".
 - **Subagents** (`seo-auditor`, `seo-reviewer`): Cursor, OpenCode and GitHub Copilot (and the Claude Code plugin).
-- **The guard hook** ([below](#the-guard)): Codex, Cursor, GitHub Copilot, Devin and Cline (and the Claude Code plugin). It's added next to any hooks you already have. Codex runs it once you trust it in `/hooks`. `--no-guard` leaves it out.
+- **The guard hook** ([below](#the-guard)): Codex, Cursor, GitHub Copilot, Devin and Cline (and the Claude Code plugin). It's added next to any hooks you already have. Codex runs it once you trust it in `/hooks`. Cline runs it in its CLI, SDK and Kanban only: its VS Code and JetBrains extensions don't run plugins yet. `--no-guard` leaves it out.
 
 The installer only ever replaces or removes its own files, and `--uninstall` also removes the folders it made, once they're empty.
 
@@ -212,9 +212,9 @@ Fix, rewrite and setup run only when you type them, never on Claude's own initia
 
 ### The guard
 
-Before an AI agent does something risky for SEO, SEO Supervisor stops it and asks you: a script that contacts an outside service or writes to your accounts, a noindex, a robots.txt or AI crawler rule, a redirect change, a removed page or a changed canonical. Each question says what would happen, for example "Every page would drop out of Google." An API key pasted in chat is stopped before the AI sees it (except in Cline, which has no hook for that).
+Before an AI agent does something risky for SEO, SEO Supervisor stops it and asks you: a script that contacts an outside service or writes to your accounts, a noindex, a robots.txt or AI crawler rule, a redirect change, a removed page or a changed canonical. Each question says what would happen, for example "Every page would drop out of Google." An API key pasted in chat is stopped before the AI sees it (except in Cline, which has no hook for that). A bare 32-character hex key, like Bing's or Matomo's, has no prefix to spot, so it isn't caught: type keys only at `connect-keys.mjs set <service>`'s hidden prompt.
 
-It comes with the Claude Code plugin, and the npx installer adds it to Codex, Cursor, GitHub Copilot, Devin and Cline. Where the agent can show a yes/no box (Claude Code, Cursor's shell commands, Copilot CLI, Cline), you're asked there. Elsewhere the step is stopped with the reason, and the AI asks you in chat; if you say yes, do the step yourself, or set `"guard": "off"` in `seo-audit/settings.json` for that one step. Codex runs a new hook only after you trust it in `/hooks`.
+It comes with the Claude Code plugin, and the npx installer adds it to Codex, Cursor, GitHub Copilot, Devin and Cline (its CLI, SDK and Kanban; not yet its VS Code or JetBrains extension). Where the agent can show a yes/no box (Claude Code, Cursor's shell commands, Copilot CLI, Cline), you're asked there. Elsewhere the step is stopped with the reason, and the AI asks you in chat; if you say yes, do the step yourself, or set `"guard": "off"` in `seo-audit/settings.json` for that one step. Codex runs a new hook only after you trust it in `/hooks`.
 
 It's on by default (ask). Switch it to block (the AI must ask you in chat) or off: in Claude Code with `/plugin configure seo-supervisor@seo-supervisor`, elsewhere with `SEO_SUPERVISOR_GUARD=block` or `"guard": "block"` in `seo-audit/settings.json`.
 
@@ -250,7 +250,7 @@ One HTML file that works offline. It opens in dark mode and has a light-mode swi
 - **"Fix the blockers and the score rises to 90."** A blocker caps the score, and the report shows what fixing it unlocks.
 - **"Needs you."** Anything only the owner can do (content, CMS edits, business decisions) is labelled, so it's clear what the agent will and won't change.
 - **Action first:** the Overview shows the verdict and score, then **Fix first** (up to 5 things the agent can fix, each with a `/seo-fix F-012` line to copy) and **Needs you** (up to 3 owner tasks or decisions). Every finding ends with its next step.
-- **The rest in tabs:** Since last audit (from the second audit on), Findings and Decisions, then Search & AI, Speed, Links and Site & content, each only when it has data, then Changes, Passed and Limits. Every finding says what's wrong, why it matters, how to fix it, and gives the evidence: URLs, files and line numbers.
+- **The rest in tabs:** Findings and Decisions, then Search & AI, Speed, Links and Site & content, each only when it has data, then Since last audit (from the second audit on), Changes, Passed and Limits. Every finding says what's wrong, why it matters, how to fix it, and gives the evidence: URLs, files and line numbers.
 - **How long each fix takes:** findings can say roughly whether a fix is quick, an hour or two, or half a day.
 - **Traffic and speed when you have them:** Search Console clicks on the findings and plan rows they concern, with clicks and Core Web Vitals in the Overview's key numbers, and the detail on the Search & AI and Speed tabs.
 
