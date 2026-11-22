@@ -161,6 +161,19 @@ async function readSitemaps(urls, listed = true, { fetchSitemap, toCrawl }) {
     }
     file.urls = 0;
     const hasNews = body.includes("<news:news");
+    // Image and video tags Google retired on 6 Aug 2022 have no effect and can stay, so they get a note, not a finding.
+    // https://developers.google.com/search/docs/crawling-indexing/sitemaps/image-sitemaps
+    // https://developers.google.com/search/docs/crawling-indexing/sitemaps/video-sitemaps
+    const retired = [
+      ...new Set(
+        [
+          ...body.matchAll(
+            /<(image:(?:caption|geo_location|title|license)|video:(?:category|gallery_loc|price|tvshow))\b|<video:player_loc\b[^>]*?\s(autoplay|allow_embed)\s*=/g,
+          ),
+        ].map(m => (m[1] ? `<${m[1]}>` : `${m[2]} on <video:player_loc>`)),
+      ),
+    ];
+    if (retired.length) file.retired = retired;
     for (const m of body.matchAll(/<url\b[^>]*>([\s\S]*?)<\/url>/gi)) {
       // Past a file's 50,000 URLs, or the 200,000 kept in all, the rest is only counted, for sitemap-too-big.
       if (entries.length === SITEMAP_KEEP) cut = true;
@@ -341,6 +354,11 @@ export function checkSitemapEntries(
     return !d || new Date(Date.UTC(y, m - 1, d)).getUTCDate() === d;
   };
   const validLastmod = s => W3C_DATE.test(s) && realDay(s);
+  for (const f of sm.files)
+    if (f.retired)
+      notes.push(
+        `${f.url} uses image or video sitemap tags Google has retired: ${f.retired.join(", ")}. Google has ignored them since August 2022, so they do no harm, but they can go when the sitemap code is next touched.`,
+      );
   const bySitemap = new Map();
   for (const e of sm.entries) (bySitemap.get(e.sitemap) || bySitemap.set(e.sitemap, []).get(e.sitemap)).push(e);
   // The same URL twice in one file or in two regular sitemaps; a media or news entry for a listed page is fine.
