@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Fail, Refused, runMain } from "../skills/seo-supervisor/scripts/lib/cli.mjs";
 import { parseArgs } from "../skills/seo-supervisor/scripts/lib/args.mjs";
+import { bodyUpTo, retryAfter } from "../skills/seo-supervisor/scripts/lib/http.mjs";
 
 // runMain sets process.exitCode; each test puts it back, so the test run's own exit code stays the runner's.
 async function exitOf(t, main) {
@@ -132,4 +133,23 @@ test("parseArgs: aliases, repeated flags, unknown options and unexpected words",
     e => e instanceof Fail && /"yes"/.test(e.message) && /--yes/.test(e.message),
   );
   assert.deepEqual(parseArgs(["off"], { positionals: 1 })._, ["off"]);
+});
+
+test("retryAfter: seconds or an HTTP date in any of its three formats, as ms from now; null when absent or unreadable", () => {
+  const now = Date.parse("1994-11-06T08:49:00Z");
+  assert.equal(retryAfter("120", now), 120000);
+  assert.equal(retryAfter(" 0 ", now), 0);
+  // IMF-fixdate, the obsolete RFC 850 form and asctime (which is UTC though it says no zone).
+  // https://www.rfc-editor.org/rfc/rfc9110#section-5.6.7
+  for (const d of ["Sun, 06 Nov 1994 08:49:37 GMT", "Sunday, 06-Nov-94 08:49:37 GMT", "Sun Nov  6 08:49:37 1994"])
+    assert.equal(retryAfter(d, now), 37000, d);
+  assert.equal(retryAfter("Sun, 06 Nov 1994 08:00:00 GMT", now), 0, "a date already past is no wait");
+  for (const bad of [null, undefined, "", "1.5", "-3", "soon", "5 seconds"])
+    assert.equal(retryAfter(bad, now), null, String(bad));
+});
+
+test("bodyUpTo: the body up to the cap, or null past it", async () => {
+  assert.equal(String(await bodyUpTo(new Response("0123456789"), 10)), "0123456789");
+  assert.equal(await bodyUpTo(new Response("0123456789"), 9), null);
+  assert.equal(String(await bodyUpTo(new Response(null), 9)), "");
 });
