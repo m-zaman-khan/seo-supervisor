@@ -2,7 +2,7 @@
   "name": "seo-supervisor",
   "displayName": "SEO Supervisor",
   "version": "2.0.0",
-  "description": "SEO audit, safe fixes, PR review and a launch gate. Crawls any site, scores it 0-100 and writes a polished offline report.",
+  "description": "SEO audit, safe fixes, PR review, a launch gate, setup from scratch, content briefs, plain-words rewrites, growth plans, watching what changed, and connecting your data. Crawls any site, scores it 0-100 and writes a polished offline report. A guard asks you before risky SEO changes.",
   "author": {
     "name": "Zaman Khan",
     "url": "https://github.com/m-zaman-khan"
