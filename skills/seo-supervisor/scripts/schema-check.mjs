@@ -452,7 +452,7 @@ export function checkJsonLd(text) {
               `${path}.${key}`,
               known,
               `this nested ${k === "review" ? "review" : "rating"} names "${clip(other)}" in "itemReviewed", but Google takes the item it sits in as the one reviewed; leave "itemReviewed" out, or move the review out on its own`,
-              { doc: REVIEW_DOC, key: "itemReviewed" },
+              { doc: REVIEW_DOC, rule: "SCHEMA-01", key: "itemReviewed" },
             );
         }
       walk(val, `${path}.${key}`, known.length ? known : parent, true, k);

@@ -143,6 +143,26 @@ test("an organization's return policy needs applicableCountry with returnPolicyC
   ]);
 });
 
+// ---------- One rule id for review-target-conflict ----------
+test("schema-check reports review-target-conflict under SCHEMA-01, as the crawler does", async () => {
+  const { CHECKS } = await import("../skills/seo-supervisor/scripts/checks/hygiene.mjs");
+  const [issue] = checkJsonLd(
+    JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: "Kettle",
+      review: {
+        "@type": "Review",
+        author: { "@type": "Person", name: "Ana" },
+        reviewRating: { "@type": "Rating", ratingValue: 4 },
+        itemReviewed: { "@type": "Product", name: "Steel kettle" },
+      },
+    }),
+  ).filter(i => i.check === "review-target-conflict");
+  assert.equal(issue?.rule, "SCHEMA-01");
+  assert.equal(issue.rule, CHECKS["review-target-conflict"][0]);
+});
+
 // ---------- One business-type test ----------
 test("every Organization subtype is a business, read from schema.org's tree; WebSite, Person and Service aren't", () => {
   for (const t of [

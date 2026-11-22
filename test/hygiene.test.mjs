@@ -284,7 +284,7 @@ test("otherReviewed and onlineOnly: a nested review that names another item, and
     assert.ok(!onlineOnly(e), why);
 });
 
-test("schema-check warns on both: review-target-conflict (SCHEMA-08) and event-online (SCHEMA-05)", () => {
+test("schema-check warns on both: review-target-conflict (SCHEMA-01) and event-online (SCHEMA-05)", () => {
   const issues = o =>
     checkJsonLd(JSON.stringify(o)).filter(i => ["review-target-conflict", "event-online"].includes(i.check));
   const [r] = issues(
@@ -301,7 +301,7 @@ test("schema-check warns on both: review-target-conflict (SCHEMA-08) and event-o
     [r.severity, r.rule, r.path, r.doc],
     [
       "warning",
-      "SCHEMA-08",
+      "SCHEMA-01",
       "$.review",
       "https://developers.google.com/search/docs/appearance/structured-data/review-snippet",
     ],
