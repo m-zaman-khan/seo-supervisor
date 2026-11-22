@@ -627,11 +627,6 @@ const labLcp = speed?.lcpBreakdown
   ? null
   : labLcpBreakdown([...(speed?.samples || []).map(s => ({ url: s.url, ...s.lab })), ...(lighthouse || [])]);
 if (labLcp) speed = { ...(speed || { strategy: "mobile", samples: [] }), lcpBreakdown: labLcp };
-// ---------- the bot probes, the last requests to the site: a firewall may ban the address that sent them ----------
-// The home page and up to 9 sample pages as Googlebot, then a few as AI search crawlers with --ai-bot-probe. Every
-// other request to the site, schema images and browser loads included, has already gone.
-const botSample = sampleUrls(htmlPages.map(p => p.url));
-const botCompared = await compareGooglebot(site, { page, botSample });
 
 // ---------- site-wide checks and data, in this order (data for the report goes on `extra`) ----------
 
@@ -762,16 +757,6 @@ checkCoverage(site, {
     });
   }
 }
-// After every request this crawl makes: what the private-address guard stopped, and whether the crawler slowed down.
-if (blocked.size)
-  notes.push(
-    `The crawler didn't fetch ${blocked.size} address(es) outside the crawled site that are private, local or cloud-metadata addresses: ${[
-      ...blocked,
-    ]
-      .slice(0, 3)
-      .map(([u, why]) => `${u} (${why})`)
-      .join("; ")}. A redirect there is reported as the redirect itself.`,
-  );
 
 aiBotAccess({ robots, robotsRes, star }, { add, extra, startOrigin: START_ORIGIN });
 bingAiPrefs(site);
@@ -782,9 +767,6 @@ aiRobotRules({ robots, robotsRes }, { add, extra, startOrigin: START_ORIGIN });
 
 // Also #fragment links.
 linkedOnce(site, { section: SECTION, capped });
-// One note if the crawler slowed down. The AI-bot probe below can still pause it.
-const slowed = slowNote(slow);
-if (slowed) notes.push(slowed);
 
 // Duplicate analytics, secret keys in pages and scripts, hidden links, app files, PDFs.
 await hygieneChecks(site, UA);
@@ -798,8 +780,24 @@ pageWords(site, { out: OUT, stamp: t0 });
 
 // Click-only elements and missing landmarks.
 landmarks(site);
-
+// ---------- the bot probes, the last requests to the site: a firewall may ban the address that sent them ----------
+// The home page and up to 9 sample pages as Googlebot, then a few as AI search crawlers with --ai-bot-probe. Every
+// other request to the site, schema images and browser loads included, has already gone.
+const botSample = sampleUrls(htmlPages.map(p => p.url));
+const botCompared = await compareGooglebot(site, { page, botSample });
 await aiBotProbe(site, { page, botSample, aiProbe: AI_PROBE, outside: OUTSIDE });
+// After every request this crawl makes: what the private-address guard stopped, and whether the crawler slowed down.
+if (blocked.size)
+  notes.push(
+    `The crawler didn't fetch ${blocked.size} address(es) outside the crawled site that are private, local or cloud-metadata addresses: ${[
+      ...blocked,
+    ]
+      .slice(0, 3)
+      .map(([u, why]) => `${u} (${why})`)
+      .join("; ")}. A redirect there is reported as the redirect itself.`,
+  );
+const slowed = slowNote(slow);
+if (slowed) notes.push(slowed);
 
 // Also schema placeholders and deprecated types.
 await schemaImages(site);
