@@ -8,7 +8,13 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CHROME_FLAGS, launchChrome } from "../../skills/seo-supervisor/scripts/lib/cdp.mjs";
-import { findBrowser, renderArgs, startGuard } from "../../skills/seo-supervisor/scripts/checks/render.mjs";
+import {
+  findBrowser,
+  openSession,
+  renderArgs,
+  renderPage,
+  startGuard,
+} from "../../skills/seo-supervisor/scripts/checks/render.mjs";
 import { shotArgs } from "../../skills/seo-supervisor/scripts/og-card.mjs";
 import { serve } from "../serve.mjs";
 import { tmp } from "../helpers.mjs";
@@ -115,6 +121,62 @@ test(
     }
     console.log(`hosts Chrome tried: ${JSON.stringify(found)}`);
     assert.deepEqual(found, { cdp: [], render: [], ogCard: [] });
+  },
+);
+
+test(
+  "renderPage in an open session: the DOM after scripts and 5 s of timers, a fresh cookie jar each time, the same errors",
+  { skip, timeout: 120000 },
+  async () => {
+    const dir = tmp(),
+      page = body =>
+        `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Page</title></head><body>${body}</body></html>`;
+    const pages = {
+      late: page(`<h1>Late</h1><script>setTimeout(() => { document.title = "Set after 3 s" }, 3000)</script>`),
+      cookie: page(
+        `<h1>Cookie</h1><p id="seen"></p><script>document.getElementById("seen").textContent = "seen:" + document.cookie; document.cookie = "visit=1; path=/"</script>`,
+      ),
+      login: page(
+        `<main><h1>Sign in</h1><form><input name="email"><input type="password" name="pw"><button>Log in</button></form></main>`,
+      ).replace("<title>Page", "<title>Sign in"),
+    };
+    for (const [name, html] of Object.entries(pages)) {
+      mkdirSync(join(dir, name));
+      writeFileSync(join(dir, name, "index.html"), html);
+    }
+    const site = await serve(dir),
+      closed = createServer();
+    await new Promise(ok => closed.listen(0, "127.0.0.1", () => ok(undefined)));
+    const deadPort = /** @type {import("node:net").AddressInfo} */ (closed.address()).port;
+    await new Promise(ok => closed.close(() => ok(undefined)));
+    const b = /** @type {string} */ (browser),
+      session = await openSession(b, `${site.url}/`);
+    try {
+      const t0 = Date.now(),
+        late = await renderPage(b, `${site.url}/late/`, {}, session);
+      assert.match(late, /<title>Set after 3 s<\/title>/, "the page's timers ran, in Chrome's virtual time");
+      assert.ok(Date.now() - t0 < 3000, `virtual time, not 3 s of waiting (${Date.now() - t0} ms)`);
+      const seen = [];
+      for (let i = 0; i < 2; i++)
+        seen.push((await renderPage(b, `${site.url}/cookie/`, {}, session)).match(/seen:[^<]*/)?.[0]);
+      assert.deepEqual(
+        seen,
+        ["seen:", "seen:"],
+        "each render starts with no cookies, like the one-shot render's fresh profile",
+      );
+      await assert.rejects(
+        renderPage(b, `${site.url}/login/`, {}, session),
+        /Chrome showed a login screen at .*\/login\/, so it wasn't compared with the raw HTML/,
+      );
+      // Another port goes through the guard's proxy, which hangs up when nothing answers there.
+      await assert.rejects(
+        renderPage(b, `http://127.0.0.1:${deadPort}/`, {}, session),
+        /Chrome couldn't load http:\/\/127\.0\.0\.1:\d+\/: net::ERR_(CONNECTION_REFUSED|EMPTY_RESPONSE)$/,
+      );
+    } finally {
+      await session.close();
+      await site.close();
+    }
   },
 );
 

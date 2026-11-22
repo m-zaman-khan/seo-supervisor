@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launchChrome, containerArgs } from "../lib/cdp.mjs";
 import { redact } from "../lib/redact.mjs";
-import { addressCheck, startGuard } from "./render.mjs";
+import { addressCheck, guardTab, startGuard } from "./render.mjs";
 
 export const CHECKS = {
   "mobile-content-missing": [
@@ -184,27 +184,6 @@ async function evaluate(page, expression) {
   if (r.exceptionDetails)
     throw new Error(r.exceptionDetails.exception?.description?.split("\n")[0] || r.exceptionDetails.text);
   return r.result.value;
-}
-
-// Every request the tab makes is held until checkAddress (checks/render.mjs) clears its host. Service workers are off:
-// their requests aren't the tab's, and one would serve the next load from its cache. WebSockets stay for Chrome's
-// back/forward cache test. Cross-site frames and WebSockets, which the tab doesn't see, go through the guard's proxy
-// (startGuard) instead.
-const NO_SW = "delete Navigator.prototype.serviceWorker";
-async function guardTab(page, checkAddress) {
-  page.on("Fetch.requestPaused", ({ requestId, request }) => {
-    const u = new URL(request.url);
-    (/^https?:$/.test(u.protocol) ? checkAddress(u.hostname) : Promise.resolve(true))
-      .then(ok =>
-        page.send(
-          ok ? "Fetch.continueRequest" : "Fetch.failRequest",
-          ok ? { requestId } : { requestId, errorReason: "AddressUnreachable" },
-        ),
-      )
-      .catch(() => {});
-  });
-  await page.send("Fetch.enable", { patterns: [{ urlPattern: "*" }] });
-  await page.send("Page.addScriptToEvaluateOnNewDocument", { source: NO_SW });
 }
 
 // A fresh tab per load, so emulation and throttling never leak into the next. After the load event the page settles

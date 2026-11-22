@@ -1,8 +1,9 @@
+// @ts-check
 // Render network guards in real Chrome.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { findBrowser, renderPage } from "../../skills/seo-supervisor/scripts/checks/render.mjs";
+import { findBrowser, openSession, renderPage } from "../../skills/seo-supervisor/scripts/checks/render.mjs";
 import { checkVisual } from "../../skills/seo-supervisor/scripts/checks/visual.mjs";
 
 const listen = (server, host = "127.0.0.1") =>
@@ -53,6 +54,17 @@ test(
       assert.equal(hits.other, 0, "a phone or desktop load reached another address");
       assert.ok(hits.own >= 1);
       assert.equal(hits.sw, 0, "no service worker was registered");
+      // A render in an open session (an isolated tab) is guarded the same way, and so are the loads that share it.
+      hits.own = 0;
+      const session = await openSession(browser, url);
+      try {
+        assert.match(await renderPage(browser, url, { timeoutMs: 180000 }, session), /<h1>Guarded<\/h1>/);
+      } finally {
+        await session.close();
+      }
+      assert.equal(hits.other, 0, "a render in the session reached another address");
+      assert.ok(hits.own >= 1);
+      assert.equal(hits.sw, 0, "no service worker was registered in the session");
     } finally {
       site.close();
       own.close();

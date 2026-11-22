@@ -202,9 +202,13 @@ export async function launchChrome(browserPath, { headless = true, timeoutMs = 3
     send,
     close,
     // A new tab on a flat session, its commands tagged with the session id over the same pipe. on(event, fn) gets the
-    // tab's events until it closes.
-    async newPage() {
-      const { targetId } = await send("Target.createTarget", { url: "about:blank" });
+    // tab's events until it closes. isolated: its own browser context (cookies, storage, cache), removed with the tab.
+    async newPage({ isolated = false } = {}) {
+      const context = isolated ? (await send("Target.createBrowserContext")).browserContextId : null;
+      const { targetId } = await send("Target.createTarget", {
+        url: "about:blank",
+        ...(context ? { browserContextId: context } : {}),
+      });
       const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
       const mine = new Set();
       return {
@@ -215,9 +219,12 @@ export async function launchChrome(browserPath, { headless = true, timeoutMs = 3
           listeners.add(l);
           mine.add(l);
         },
+        // Removing the context closes its tab too.
         close: () => {
           for (const l of mine) listeners.delete(l);
-          return send("Target.closeTarget", { targetId });
+          return context
+            ? send("Target.disposeBrowserContext", { browserContextId: context })
+            : send("Target.closeTarget", { targetId });
         },
       };
     },

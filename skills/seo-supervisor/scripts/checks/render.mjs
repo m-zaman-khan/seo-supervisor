@@ -8,7 +8,7 @@ import { createServer, request as httpRequest } from "node:http";
 import { connect, isIP } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CHROME_FLAGS, containerArgs, quietProfile } from "../lib/cdp.mjs";
+import { CHROME_FLAGS, containerArgs, launchChrome, quietProfile } from "../lib/cdp.mjs";
 import { chromeProxyArgs } from "../lib/proxy.mjs";
 import { redact } from "../lib/redact.mjs";
 import { installedBrowser } from "../lib/settings-dir.mjs";
@@ -245,15 +245,97 @@ export async function startGuard(siteUrl, { dns = lookup, env = process.env } = 
   };
 }
 
-// The DOM after scripts ran, behind the guard, from a throwaway profile so a running browser isn't touched. No switch
-// turns service workers off, so the guard checks their requests and WebSockets, and each profile is deleted after use
-// so a worker never runs again. Errors are redacted because Chrome's command line names the temporary profile, under
-// the home folder.
+// Service workers are off: their requests aren't the tab's, and one would serve the next load from its cache.
+// WebSockets stay for Chrome's back/forward cache test. Cross-site frames and WebSockets, which the tab doesn't see,
+// go through the guard's proxy instead.
+const NO_SW = "delete Navigator.prototype.serviceWorker";
+export async function guardTab(page, checkAddress) {
+  page.on("Fetch.requestPaused", ({ requestId, request }) => {
+    const u = new URL(request.url);
+    (/^https?:$/.test(u.protocol) ? checkAddress(u.hostname) : Promise.resolve(true))
+      .then(ok =>
+        page.send(
+          ok ? "Fetch.continueRequest" : "Fetch.failRequest",
+          ok ? { requestId } : { requestId, errorReason: "AddressUnreachable" },
+        ),
+      )
+      .catch(() => {});
+  });
+  await page.send("Fetch.enable", { patterns: [{ urlPattern: "*" }] });
+  await page.send("Page.addScriptToEvaluateOnNewDocument", { source: NO_SW });
+}
+
+/** One guarded Chrome for a site's whole outside check: the renders and visual.mjs's phone and desktop loads.
+ * close() closes the browser and the guard.
+ * @param {string} browser
+ * @param {string} siteUrl
+ * @param {{ dns?: typeof lookup }} [options] */
+export async function openSession(browser, siteUrl, { dns } = {}) {
+  const checkAddress = await addressCheck(siteUrl, { dns }),
+    guard = await startGuard(siteUrl, { dns });
+  const chrome = await launchChrome(browser, { args: guard?.args || [] }).catch(async e => {
+    await guard?.close();
+    throw e;
+  }); // a browser that won't start leaves no guard open
+  return {
+    ...chrome,
+    checkAddress,
+    close: async () => {
+      await chrome.close();
+      await guard?.close();
+    },
+  };
+}
+
+// A browser context per render, so cookies, storage and cache never carry over, and the same 5 s of virtual time the
+// one-shot render gets from --virtual-time-budget. timeoutMs is real time.
+async function renderIn(session, url, timeoutMs, dns) {
+  const checkAddress = session.checkAddress || (await addressCheck(url, { dns }));
+  const page = await session.newPage({ isolated: true });
+  let timer;
+  try {
+    const budget = new Promise(ok => page.on("Emulation.virtualTimeBudgetExpired", ok));
+    await guardTab(page, checkAddress);
+    await page.send("Page.enable");
+    const nav = await page.send("Page.navigate", { url });
+    if (nav.errorText) throw new Error(redact(`Chrome couldn't load ${url}: ${nav.errorText}`));
+    // Set after navigating: on the blank tab the budget runs out before the page arrives.
+    await page.send("Emulation.setVirtualTimePolicy", { policy: "pauseIfNetworkFetchesPending", budget: 5000 });
+    await Promise.race([
+      budget,
+      new Promise((_, no) => {
+        timer = setTimeout(
+          no,
+          timeoutMs,
+          new Error(redact(`Chrome didn't finish rendering ${url} in ${timeoutMs / 1000} s`)),
+        );
+      }),
+    ]);
+    const dom = String(
+      (await page.send("Runtime.evaluate", { expression: "document.documentElement.outerHTML", returnByValue: true }))
+        .result?.value ?? "",
+    );
+    const why = chromeError(dom),
+      gate = why ? null : gateOf(dom);
+    if (why) throw new Error(redact(`Chrome couldn't load ${url}: ${why}`));
+    if (gate) throw new Error(redact(`Chrome showed ${gate} at ${url}, so it wasn't compared with the raw HTML`));
+    return dom;
+  } finally {
+    clearTimeout(timer);
+    await page.close().catch(() => {});
+  }
+}
+
+// The DOM after scripts ran, in a tab of session's browser or else a one-shot Chrome with a throwaway profile. No
+// switch turns service workers off there, so the guard checks their requests and each profile is deleted after use.
+// Errors are redacted because Chrome's command line names the temporary profile, under the home folder.
 /**
  * @param {string} browser
  * @param {string} url
- * @param {{ timeoutMs?: number, dns?: typeof lookup }} [options] */
-export async function renderPage(browser, url, { timeoutMs = 20000, dns } = {}) {
+ * @param {{ timeoutMs?: number, dns?: typeof lookup }} [options]
+ * @param {Awaited<ReturnType<typeof launchChrome>> & { checkAddress?: (host: string) => Promise<string[] | null> } | null} [session] */
+export async function renderPage(browser, url, { timeoutMs = 20000, dns } = {}, session = null) {
+  if (session) return renderIn(session, url, timeoutMs, dns);
   const profile = quietProfile(mkdtempSync(join(tmpdir(), "seo-supervisor-render-")));
   const guard = await startGuard(url, { dns });
   const args = renderArgs(profile, url, {}, guard?.args);
