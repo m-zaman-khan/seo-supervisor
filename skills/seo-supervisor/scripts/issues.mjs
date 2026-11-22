@@ -5,6 +5,8 @@ import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain } from "./lib/cli.mjs";
 import { findingsOf } from "./lib/score.mjs";
 import { redact } from "./lib/redact.mjs";
 
@@ -20,6 +22,22 @@ const REPO = /^[\w.][\w.-]*(\/[\w.][\w.-]*){1,2}$/;
 // the @ stops it. An email address (a letter right before the @) is left as it is.
 const noPing = s => String(s ?? "").replace(/(^|[^\w])@(?=\w)/g, "$1@​");
 const code = s => "`" + String(s).replace(/[`\r\n]/g, " ") + "`";
+// Findings quote crawled pages and other sites, so they're escaped as the Markdown report escapes them: `code` spans
+// stay, bare URLs become code spans, and the rest is backslash-escaped. Nothing can show as a link, image or tag.
+const plain = s => noPing(s.replace(/[\\`*_[\]<>]/g, "\\$&"));
+const md = s =>
+  String(s ?? "")
+    .replace(/\s+/g, " ")
+    .split(/(`[^`]+`)/)
+    .map((p, i) =>
+      i % 2
+        ? p
+        : p
+            .split(/(https?:\/\/[^\s<>"]*[^\s<>".,;:!?)'])/)
+            .map((q, j) => (j % 2 ? code(q) : plain(q)))
+            .join(""),
+    )
+    .join("");
 // gh's own error text, with any secret masked (lib/redact.mjs knows GitHub's token prefixes too).
 const tidy = s =>
   redact(
@@ -28,9 +46,7 @@ const tidy = s =>
       .split("\n")
       .slice(-3)
       .join(" "),
-  )
-    .replace(/\b(gh[pousr]_|github_pat_)\w+/g, "$1[hidden]")
-    .slice(0, 300);
+  ).slice(0, 300);
 
 /** One finding as an issue: its own title, what, why, fix and up to 10 evidence lines, then the marker. */
 export function issueOf(f, site) {
@@ -43,9 +59,9 @@ export function issueOf(f, site) {
     shown = Math.min(10, ev.length);
   const marker = `<!-- seo-supervisor:${host ? host + ":" : ""}${f.id} -->`;
   const body = [
-    f.what && `**What's wrong.** ${noPing(f.what)}`,
-    f.why && `**Why it matters.** ${noPing(f.why)}`,
-    f.fix && `**How to fix.** ${noPing(f.fix)}`,
+    f.what && `**What's wrong.** ${md(f.what)}`,
+    f.why && `**Why it matters.** ${md(f.why)}`,
+    f.fix && `**How to fix.** ${md(f.fix)}`,
     shown &&
       [
         `**Evidence**${shown < total ? ` (${shown} of ${total.toLocaleString("en-US")} cases)` : ""}:`,
@@ -53,7 +69,7 @@ export function issueOf(f, site) {
           .slice(0, 10)
           .map(
             e =>
-              `- ${[e.url && code(e.url), e.file && code(e.file + (e.line ? ":" + e.line : ""))].filter(Boolean).join(" ")}${e.detail ? ` ${noPing(String(e.detail).replace(/\s+/g, " "))}` : ""}`,
+              `- ${[e.url && code(e.url), e.file && code(e.file + (e.line ? ":" + e.line : ""))].filter(Boolean).join(" ")}${e.detail ? ` ${md(e.detail)}` : ""}`,
           ),
       ].join("\n"),
     `${SEV_LABEL[f.severity] || "Low"}${f.rule ? ` · Rule ${f.rule}` : ""} · Finding ${f.id} from SEO Supervisor's audit${host ? ` of ${host}` : ""}.`,
@@ -66,7 +82,12 @@ export function issueOf(f, site) {
 
 /** The findings to file: the ids asked for, or every open one except those marked won't fix (wontFix: how many). */
 export function pickFindings(findings, ids) {
-  if (!ids) return { picked: findings.filter(f => !["fixed", "wont-fix"].includes(f.status)), unknown: [] };
+  if (!ids)
+    return {
+      picked: findings.filter(f => !["fixed", "wont-fix"].includes(f.status)),
+      unknown: [],
+      wontFix: findings.filter(f => f.status === "wont-fix").length,
+    };
   return {
     picked: findings.filter(f => ids.includes(f.id)),
     unknown: ids.filter(id => !findings.some(f => f.id === id)),
@@ -106,7 +127,7 @@ const gh = (args, input) =>
  * @param {{ yes?: boolean, repo?: string | null, run?: (args: string[], input?: string) => Promise<{ code: number, stdout: string, stderr: string }>, log?: (line: string) => void }} [options] */
 export async function fileIssues(list, { yes = false, repo = null, run = gh, log = console.log } = {}) {
   if (repo != null && !REPO.test(repo))
-    throw new Error(`issues: --repo takes owner/name (or host/owner/name), not "${repo}".`);
+    throw new Fail(`issues: --repo takes owner/name (or host/owner/name), not "${repo}".`);
   const where = repo ? [`--repo=${repo}`] : [],
     at = repo || "the current folder's GitHub repository",
     n = `${list.length} issue${list.length === 1 ? "" : "s"}`;
@@ -162,40 +183,47 @@ export async function fileIssues(list, { yes = false, repo = null, run = gh, log
   return r;
 }
 
-if (isMain(import.meta.url)) {
-  const argv = process.argv.slice(2),
-    opt = k => {
-      const i = argv.indexOf(k);
-      return i >= 0 ? argv[i + 1] : null;
-    };
-  const file = opt("--audit") || "seo-audit/seo-audit.json",
+async function main(argv) {
+  const args = parseArgs(argv, { flags: ["audit", "ids", "repo"], booleans: ["yes"], positionals: 0 }),
+    str = k => (typeof args[k] === "string" ? args[k] : null);
+  const file = str("audit") || "seo-audit/seo-audit.json",
     ids =
-      opt("--ids")
+      str("ids")
         ?.split(",")
         .map(s => s.trim())
         .filter(Boolean) || null;
+  let raw;
   try {
-    const raw = JSON.parse(readFileSync(file, "utf8")),
-      loaded = findingsOf(raw, dirname(resolve(file)));
-    for (const w of loaded.warnings) console.error("Settings warning: " + w);
-    const { picked, unknown } = pickFindings(loaded.findings, ids);
-    if (unknown.length)
-      console.error(
-        `No finding with the ID ${unknown.join(", ")} in ${file} (or its check is turned off in settings.json).`,
-      );
-    const site = raw.site?.url || raw.siteOrigin || "";
-    if (!picked.length) console.log("No findings to file.");
-    else {
-      const r = await fileIssues(
-        picked.map(f => issueOf(f, site)),
-        { yes: argv.includes("--yes"), repo: opt("--repo") },
-      );
-      if (r.failed) process.exitCode = 1;
-    }
+    raw = JSON.parse(readFileSync(file, "utf8"));
   } catch (e) {
-    console.error(
-      e.code === "ENOENT" ? `issues: ${file} doesn't exist. Pass --audit with the audit's JSON file.` : e.message,
+    throw new Fail(
+      e.code === "ENOENT"
+        ? `issues: ${file} doesn't exist. Pass --audit with the audit's JSON file.`
+        : `issues: ${file} isn't JSON (${e.code || e.message}). Pass --audit with the audit's JSON file.`,
     );
-    process.exitCode = 2;
   }
+  // findingsOf applies the project's check settings, so a check turned off isn't filed.
+  const loaded = findingsOf(raw, dirname(resolve(file)));
+  for (const w of loaded.warnings) console.error("Settings warning: " + w);
+  const { picked, unknown, wontFix } = pickFindings(loaded.findings, ids);
+  if (unknown.length)
+    console.error(
+      `No finding with the ID ${unknown.join(", ")} in ${file} (or its check is turned off in settings.json).`,
+    );
+  if (wontFix)
+    console.log(
+      `${wontFix} finding${wontFix === 1 ? " marked won't fix isn't" : "s marked won't fix aren't"} filed. The report still counts ${wontFix === 1 ? "it" : "them"} as open; pass --ids to file one anyway.`,
+    );
+  const site = raw?.site?.url || raw?.siteOrigin || "";
+  if (!picked.length) {
+    console.log("No findings to file.");
+    return 0;
+  }
+  const r = await fileIssues(
+    picked.map(f => issueOf(f, site)),
+    { yes: !!args.yes, repo: str("repo") },
+  );
+  return r.failed ? 1 : 0;
 }
+
+if (isMain(import.meta.url)) await runMain(() => main(process.argv.slice(2)));
