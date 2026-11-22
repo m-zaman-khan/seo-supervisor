@@ -108,19 +108,22 @@ const count = (re, s) => (s.match(re) || []).length;
 
 // noindex as search engines read it, never the word in prose: a robots or crawler meta tag saying noindex or none; an
 // X-Robots-Tag header (_headers, Apache, nginx, next.config, setHeader); a robots value or metadata object
-// (`robots: { index: false }`, front matter `robots: noindex`); a noindex prop or key set to true.
-const META = /<meta\b[^>]*>/gi,
+// (`robots: { index: false }`, front matter `robots: noindex`); a noindex prop or key set to true. Header and robots
+// values are cut at their quote or line end before the word is tested, so a long line can't backtrack, and the word
+// must stand as a directive ("Robots: none of them" isn't one). A meta tag ends at > or the next <, so it's read once.
+const META = /<meta\b[^<>]*>/gi,
   META_ROBOTS = /\bname\s*=\s*\{?\s*["'`]?(?:robots|googlebot|googlebot-news|bingbot)\b/i,
   META_NOINDEX = /\bcontent\s*=\s*\{?\s*["'`][^"'`]*\b(?:noindex|none)\b/i;
-const NOINDEX = [
-  /x-robots-tag["'`]?\]?\s*(?:[:=]|,(?:\s*value\s*:)?|\s)\s*["'`]?[^"'`\n]*?\b(?:noindex|none)\b/gi,
-  /\brobots["']?\s*[:=]\s*["'`]?[^"'`\n{]*\b(?:noindex|none)\b/gi,
-  /\brobots\s*:\s*\{[^}]*?\bindex\s*:\s*false\b/gi,
-  /\bnoindex\s*[:=]\s*\{?\s*true\b/gi,
-];
+const VALUES = [
+    /x-robots-tag["'`]?\]?(?:\s*[:=]|\s*,(?:\s*value\s*:)?|\s)\s*["'`]?([^"'`\n]*)/gi,
+    /\brobots["']?\s*[:=]\s*["'`]?([^"'`\n{]*)/gi,
+  ],
+  NOINDEX_WORD = /\b(?:noindex|none)\b/i;
+const NOINDEX = [/\brobots\s*:\s*\{[^}]*?\bindex\s*:\s*false\b/gi, /\bnoindex\s*[:=]\s*(?:\{\s*)?true\b/gi];
 const noindexCount = s =>
   (s.match(META) || []).filter(t => META_ROBOTS.test(t) && META_NOINDEX.test(t)).length +
-  NOINDEX.reduce((n, re) => n + count(re, s), 0);
+  NOINDEX.reduce((n, re) => n + count(re, s), 0) +
+  VALUES.reduce((n, re) => n + [...s.matchAll(re)].filter(m => NOINDEX_WORD.test(m[1])).length, 0);
 
 // A canonical in the forms sites set it: <link rel="canonical">, a Link header, Next.js alternates.canonical or
 // { canonical }, front matter canonical/canonical_url/canonicalURL, a head library's { rel: 'canonical' }. Each line is
@@ -140,7 +143,9 @@ const SECTION_KEYS = /\b(redirects|rewrites|routeRules|createRedirect|trailingSl
   SCALAR = new Set(["trailingSlash", "cleanUrls", "basePath"]);
 function sections(text) {
   const out = [];
+  let seen = 0; // a key inside a block already taken is part of it, so the text is read once
   for (const m of text.matchAll(SECTION_KEYS)) {
+    if (m.index < seen) continue;
     const i = m.index + m[0].length,
       nl = text.indexOf("\n", i),
       at = SCALAR.has(m[1]) ? -1 : text.slice(i, i + 200).search(/[{[]/);
@@ -156,6 +161,7 @@ function sections(text) {
       else if ((c === "}" || c === "]") && --depth === 0) break;
     }
     out.push(m[0] + text.slice(i, j + 1).replace(/\s+/g, ""));
+    seen = j;
   }
   return out.join("\n");
 }

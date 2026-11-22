@@ -317,3 +317,31 @@ test("smaller gaps: cd in the same command, mv -t, alternates shorthand, middlew
   }
   assert.ok(fires("Edit", "content/a.markdown"));
 });
+
+test("speed: a long X-Robots-Tag or robots line can't stall the guard", () => {
+  for (const after of [
+    "x-robots-tag" + " ".repeat(4000) + "a".repeat(4000),
+    "robots=" + " ".repeat(4000) + "b".repeat(4000),
+    "noindex" + " ".repeat(4000) + "=" + " ".repeat(4000),
+    "X-Robots-Tag: all " + "a".repeat(100000),
+  ]) {
+    const t = performance.now();
+    check(edit("a.html", "", after));
+    assert.ok(
+      performance.now() - t < 200,
+      `${after.slice(0, 20)}… in under 200 ms (${(performance.now() - t).toFixed(0)} ms)`,
+    );
+  }
+  // Unclosed blocks in a config file, and unclosed meta tags.
+  for (const [file, after] of [
+    ["next.config.js", "redirects [".repeat(20000)],
+    ["a.html", ("<meta " + "a".repeat(50)).repeat(20000)],
+  ]) {
+    const t = performance.now();
+    check(edit(file, "", after));
+    assert.ok(
+      performance.now() - t < 500,
+      `${after.slice(0, 12)}… in under 500 ms (${(performance.now() - t).toFixed(0)} ms)`,
+    );
+  }
+});
