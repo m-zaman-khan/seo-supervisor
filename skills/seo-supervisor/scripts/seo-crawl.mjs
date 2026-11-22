@@ -54,8 +54,8 @@ import {
   CRUX_HISTORY_ENDPOINT,
   labLcpBreakdown,
 } from "./checks/speed.mjs";
-import { findBrowser, renderPage, renderFindings, renderAll } from "./checks/render.mjs";
-import { checkVisual, checkMore } from "./checks/visual.mjs";
+import { findBrowser, openSession, renderPage, renderFindings, renderAll } from "./checks/render.mjs";
+import { checkPages as browserChecks } from "./checks/visual.mjs";
 import { checkLighthouse, findLighthouse, ALL_CAP } from "./checks/lighthouse.mjs";
 import { trustSignals } from "./checks/trust.mjs";
 import { checkBusinessType, detectBusinessType } from "./checks/business-type.mjs";
@@ -103,7 +103,7 @@ const BOOLEANS = [
   "clean-screenshots",
   "include-query",
 ];
-/** @type {{ args: ReturnType<typeof parseArgs> } | undefined} */
+/** @type {{ args: ReturnType<typeof parseArgs>, browser: string | null } | undefined} */
 let options;
 await runMain(() => {
   const a = parseArgs(process.argv.slice(2), { flags: FLAGS, booleans: BOOLEANS, positionals: 0 });
@@ -124,10 +124,18 @@ await runMain(() => {
       } catch (e) {
         no(k, `isn't a valid pattern (${e.message}).`);
       }
-  options = { args: a };
+  // With --outside, find the browser first: a CHROME_PATH that points at nothing stops the crawl before it starts.
+  let browser = null;
+  if (a.outside)
+    try {
+      browser = findBrowser();
+    } catch (e) {
+      throw new Fail(`seo-crawl: ${e.message}`);
+    }
+  options = { args: a, browser };
 });
 if (!options) process.exit(); // runMain said why and set the exit code; nothing has been asked of the site yet
-const { args } = options;
+const { args, browser } = options;
 const START = new URL(args.url);
 const START_ORIGIN = START.origin;
 const MAX = Number(args.max || 1000);
@@ -507,7 +515,6 @@ else if (DESKTOP) {
 }
 
 // ---------- outside checks: what JavaScript changes ----------
-const browser = OUTSIDE ? findBrowser() : null;
 const renderSample = sampleUrls(htmlPages.filter(p => indexable(p) && !p.refreshTo).map(p => p.finalUrl)); // a meta refresh would render its target
 // --render all: every page meant to rank (as Lighthouse's all mode takes them), capped, after the time estimate.
 const renderEvery =
@@ -517,22 +524,34 @@ const renderEvery =
       })
     : null;
 const renderList = renderEvery?.urls || renderSample;
+// One Chrome behind the site's guard serves the renders (each in an isolated tab), then the phone and desktop loads.
+// Lighthouse starts its own.
+let sessionError = /** @type {Error | null} */ (null);
+const session =
+  browser && (renderList.length || RENDER_PAGE)
+    ? await openSession(browser, renderList[0] ?? START.href).catch(e => {
+        sessionError = e;
+        return null;
+      })
+    : null;
 let renderFailure = null;
 if (browser) {
   let rendered = 0;
-  for (const u of renderList) {
-    try {
-      const [rawRes, dom] = await Promise.all([get(u, { manual: false }), renderPage(browser, u)]);
-      if (rawRes.status !== 200 || !rawRes.body) {
-        renderFailure ||= `the raw HTML of ${u} couldn't be fetched again`;
-        continue;
+  if (sessionError) renderFailure = String(sessionError.message).split("\n")[0].slice(0, 120);
+  else
+    for (const u of renderList) {
+      try {
+        const [rawRes, dom] = await Promise.all([get(u, { manual: false }), renderPage(browser, u, {}, session)]);
+        if (rawRes.status !== 200 || !rawRes.body) {
+          renderFailure ||= `the raw HTML of ${u} couldn't be fetched again`;
+          continue;
+        }
+        rendered++;
+        renderFindings(u, rawRes.body, dom, { add, clientRendered: !!byPage.get(u)?.clientOnly });
+      } catch (e) {
+        renderFailure ||= String(e.message).split("\n")[0].slice(0, 120);
       }
-      rendered++;
-      renderFindings(u, rawRes.body, dom, { add, clientRendered: !!byPage.get(u)?.clientOnly });
-    } catch (e) {
-      renderFailure ||= String(e.message).split("\n")[0].slice(0, 120);
     }
-  }
   if (rendered) {
     evalRules("REND-06");
     notes.push(
@@ -562,14 +581,38 @@ let bfTested = 0,
   bfReason = OUTSIDE
     ? "Chrome or Edge isn't installed (or set CHROME_PATH)"
     : "outside checks are off (with the owner's go-ahead, --outside runs it in headless Chrome)";
+/** @type {{ checked: number, pages: any[], chosen: any, notes: string[] } | null} */
+let more = null; // the render checks (REND-11), read from the same loads; their notes and data go in further down
 if (browser) {
-  const v = /** @type {{ checked: number, lab: any[], notes: string[], bfTested?: number }} */ (
-    await checkVisual(browser, renderSample, { add, screenshotDir: resolve(dirname(OUT), "screenshots") }).catch(e => ({
-      checked: 0,
-      lab: [],
-      notes: [`the browser didn't start: ${String(e.message).split("\n")[0].slice(0, 160)}`],
-    }))
-  );
+  // --render-page's raw HTML is read first for the comparison.
+  let chosen = null;
+  if (RENDER_PAGE) {
+    const u = urlOr(RENDER_PAGE, START.href);
+    if (u && /^https?:$/.test(u.protocol)) {
+      const res = await get(u.href, { manual: false }).catch(() => null);
+      chosen = { url: u.href, steps: RENDER_STEPS, raw: res?.status === 200 && res.body ? res.body : null };
+    } else notes.push(`--render-page needs an http or https address; “${RENDER_PAGE}” isn't one, so it didn't run.`);
+  }
+  const failed = e => {
+    const why = String(e.message).split("\n")[0].slice(0, 160);
+    return {
+      visual: { checked: 0, lab: [], notes: [`the browser didn't start: ${why}`], bfTested: 0 },
+      more: { checked: 0, pages: [], chosen: null, notes: [`the browser didn't start for the render checks: ${why}`] },
+    };
+  };
+  const both = sessionError
+    ? failed(sessionError)
+    : await browserChecks(browser, renderSample, {
+        add,
+        screenshotDir: resolve(dirname(OUT), "screenshots"),
+        rawWords: new Map(htmlPages.filter(p => !p.clientOnly).map(p => [p.finalUrl, p.words])),
+        clean: CLEAN_SHOTS,
+        chosen,
+        session,
+      }).catch(failed);
+  await session?.close();
+  const v = both.visual;
+  more = both.more;
   if (v.lab.length) labSpeed = v.lab;
   if (v.checked) {
     evalRules("REND-07", "PERF-07");
@@ -828,35 +871,15 @@ if (RENDER_PAGE && !OUTSIDE)
 let moreReason = OUTSIDE
   ? "Chrome or Edge isn't installed (or set CHROME_PATH), so the phone menu and ads couldn't be checked."
   : "Outside checks are off. With the owner's go-ahead, --outside loads sample pages in headless Chrome at phone size (running the site's own scripts) to try the menu button and measure ads.";
-if (browser) {
-  let chosen = null;
-  if (RENDER_PAGE) {
-    const u = urlOr(RENDER_PAGE, START.href);
-    if (u && /^https?:$/.test(u.protocol)) {
-      const res = await get(u.href, { manual: false }).catch(() => null);
-      chosen = { url: u.href, steps: RENDER_STEPS, raw: res?.status === 200 && res.body ? res.body : null };
-    } else notes.push(`--render-page needs an http or https address; “${RENDER_PAGE}” isn't one, so it didn't run.`);
-  }
-  const r = await checkMore(browser, renderSample, {
-    add,
-    screenshotDir: resolve(dirname(OUT), "screenshots"),
-    rawWords: new Map(htmlPages.filter(p => !p.clientOnly).map(p => [p.finalUrl, p.words])),
-    clean: CLEAN_SHOTS,
-    chosen,
-  }).catch(e => ({
-    checked: 0,
-    pages: [],
-    chosen: null,
-    notes: [`the browser didn't start for the render checks: ${String(e.message).split("\n")[0].slice(0, 160)}`],
-  }));
-  notes.push(...r.notes);
-  if (r.pages.length) extra.renderSample = r.pages;
-  if (r.chosen) extra.renderedPage = r.chosen;
-  if (r.checked) {
+if (more) {
+  notes.push(...more.notes);
+  if (more.pages.length) extra.renderSample = more.pages;
+  if (more.chosen) extra.renderedPage = more.chosen;
+  if (more.checked) {
     evalRules("REND-11");
     moreReason = null;
   } else
-    moreReason = `The browser at ${browser} couldn't load the sample pages at phone size (${r.notes[0] || "no pages to load"}).`;
+    moreReason = `The browser at ${browser} couldn't load the sample pages at phone size (${more.notes[0] || "no pages to load"}).`;
 }
 if (moreReason) notChecked.push({ rule: "REND-11", area: `REND-11 ${RULES["REND-11"][0]}`, reason: moreReason });
 
