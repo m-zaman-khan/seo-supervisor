@@ -3,7 +3,16 @@
 // Installs the skill into the chosen coding agents, with each agent's commands, subagents and guard hook
 // (bin/agents.mjs, bin/extras.mjs). No dependencies.
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -165,6 +174,12 @@ const ownsSkill = dir => {
   } catch {
     return false;
   }
+};
+// Copied file by file: on Windows, Node 24.12's cpSync garbles a non-ASCII path ("José" becomes "JosÃ©").
+const copyDir = (src, dst) => {
+  mkdirSync(dst, { recursive: true });
+  for (const e of readdirSync(src, { withFileTypes: true }))
+    (e.isDirectory() ? copyDir : copyFileSync)(join(src, e.name), join(dst, e.name));
 };
 
 // ---- --zip: the skill for claude.ai and the Claude desktop app, which take an uploaded zip ----
@@ -346,7 +361,7 @@ for (const t of targetsFor(keys, scope, c)) {
   const created = readRecord(dir); // keeps what an earlier install made on the uninstall list
   rmSync(dir, { recursive: true, force: true });
   mkdirs(t.skills, created, root);
-  cpSync(SRC_SKILL, dir, { recursive: true });
+  copyDir(SRC_SKILL, dir);
   console.log(`skill    ${show(dir)}  (${t.agents.join(", ")})`);
   names.push(...t.agents);
   const r = installExtras(t, { src: SRC, guard: !opts.noGuard, force: opts.force, scope, root, created, show });
