@@ -4,7 +4,10 @@
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
-import { proxyNote } from "./lib/proxy.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
+import { bodyUpTo } from "./lib/http.mjs";
+import { loopback } from "./lib/net.mjs";
 
 const VOCAB = JSON.parse(readFileSync(new URL("./data/schema-vocab.json", import.meta.url), "utf8"));
 // Null-prototype maps, so "toString" or "__proto__" in a page is just an unknown name.
@@ -674,7 +677,32 @@ function* walkDir(dir) {
   }
 }
 
-const LOCAL = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$/;
+// Redirects are followed by hand so every hop gets the same loopback test as the URL itself. 50 MB is a local cap.
+const MAX_HOPS = 5,
+  MAX_BYTES = 50 * 1024 * 1024;
+async function fetchPage(input, allowRemote) {
+  let u = new URL(input);
+  for (let hop = 0; hop <= MAX_HOPS; hop++) {
+    const res = await fetch(u, { redirect: "manual", signal: AbortSignal.timeout(30000) });
+    const to = res.status >= 300 && res.status < 400 && res.headers.get("location");
+    if (!to) {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await bodyUpTo(res, MAX_BYTES);
+      if (!body) throw new Error("it's over 50 MB");
+      return {
+        u,
+        text: body.toString("utf8"),
+        json: /json/i.test(res.headers.get("content-type") || "") || /\.json(ld)?$/i.test(u.pathname),
+      };
+    }
+    const next = new URL(to, u);
+    if (!/^https?:$/.test(next.protocol) || (!allowRemote && !loopback(next.hostname)))
+      throw new Error(`it redirects to ${next.href}, which isn't on this machine (pass --allow-remote to follow it)`);
+    u = next;
+  }
+  throw new Error(`it redirects more than ${MAX_HOPS} times`);
+}
+
 async function checkInputs(inputs, { allowRemote = false } = {}) {
   const out = { files: 0, items: 0, issues: [] };
   const take = r => {
@@ -690,23 +718,19 @@ async function checkInputs(inputs, { allowRemote = false } = {}) {
   };
   for (const input of inputs) {
     if (/^https?:\/\//i.test(input)) {
-      const u = new URL(input);
-      if (!allowRemote && !LOCAL.test(u.hostname)) {
-        console.error(
+      let u;
+      try {
+        u = new URL(input);
+      } catch {
+        throw new Fail(`schema-check: ${input} isn't a web address.`);
+      }
+      if (!allowRemote && !loopback(u.hostname))
+        throw new Fail(
           `schema-check: ${input} isn't on this machine. This is a local tool; pass --allow-remote to fetch other hosts.`,
         );
-        process.exit(2);
-      }
       try {
-        const res = await fetch(u);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        take(
-          checkText(
-            input,
-            await res.text(),
-            /json/i.test(res.headers.get("content-type") || "") || /\.json(ld)?$/i.test(u.pathname),
-          ),
-        );
+        const page = await fetchPage(input, allowRemote);
+        take(checkText(input, page.text, page.json));
       } catch (e) {
         out.issues.push({
           file: input,
@@ -722,10 +746,7 @@ async function checkInputs(inputs, { allowRemote = false } = {}) {
       }
       continue;
     }
-    if (!existsSync(input)) {
-      console.error(`schema-check: ${input} doesn't exist`);
-      process.exit(2);
-    }
+    if (!existsSync(input)) throw new Fail(`schema-check: ${input} doesn't exist`);
     const files = statSync(input).isDirectory() ? [...walkDir(input)] : [input];
     for (const f of files) take(checkText(show(f), readFileSync(f, "utf8"), /\.json(ld)?$/i.test(f)));
   }
@@ -776,70 +797,53 @@ async function hook(mode) {
   if (mode === "copilot") console.log(JSON.stringify({ additionalContext: text }));
   else {
     console.error(text);
-    process.exitCode = 2;
+    return 2;
   }
 }
 
-if (isMain(import.meta.url)) {
-  const usage = () => {
-    console.error(
-      "usage: node schema-check.mjs <file|folder|url ...> [--json out.json] [--quiet] [--allow-remote]\n       node schema-check.mjs --hook [copilot]   (reads an agent hook payload on stdin)",
+// Every word that isn't an option is a file, folder or URL to check; after --hook, copilot or cursor is its mode.
+async function main(argv) {
+  const USAGE =
+    "usage: node schema-check.mjs <file|folder|url ...> [--json out.json] [--quiet] [--allow-remote]\n       node schema-check.mjs --hook [copilot]   (reads an agent hook payload on stdin)";
+  const args = parseArgs(argv, { flags: ["json"], booleans: ["hook", "quiet", "allow-remote"] }),
+    inputs = args._;
+  if (args.hook) return hook(inputs[0] === "copilot" ? "copilot" : true);
+  if (!inputs.length || args.json === true) throw new Fail(USAGE);
+  const opts = { json: args.json, quiet: !!args.quiet, allowRemote: !!args["allow-remote"] };
+  if (inputs.some(a => /^https?:\/\//i.test(a))) warnProxy(); // only URLs are fetched
+  const r = await checkInputs(inputs, opts);
+  const count = s => r.issues.filter(i => i.severity === s).length,
+    errors = count("error"),
+    warnings = count("warning"),
+    notes = count("note");
+  if (opts.json) {
+    mkdirSync(dirname(resolve(opts.json)), { recursive: true });
+    writeFileSync(
+      opts.json,
+      JSON.stringify(
+        {
+          tool: "schema-check",
+          vocabulary: `schema.org ${VOCAB.version}`,
+          googleRulesChecked: GOOGLE.checked,
+          files: r.files,
+          items: r.items,
+          errors,
+          warnings,
+          notes,
+          issues: r.issues,
+        },
+        null,
+        2,
+      ),
     );
-    process.exit(2);
-  };
-  const argv = process.argv.slice(2),
-    opts = {},
-    inputs = [];
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === "--json") {
-      opts.json = argv[++i];
-      if (!opts.json) usage();
-    } else if (a === "--hook") opts.hook = argv[i + 1] === "copilot" ? argv[++i] : true;
-    else if (a === "--quiet") opts.quiet = true;
-    else if (a === "--allow-remote") opts.allowRemote = true;
-    else if (a.startsWith("--")) usage();
-    else inputs.push(a);
   }
-  if (opts.hook) await hook(opts.hook);
-  else {
-    if (!inputs.length) usage();
-    if (inputs.some(a => /^https?:\/\//i.test(a))) {
-      const n = proxyNote();
-      if (n) console.error("note: " + n);
-    } // only URLs are fetched
-    const r = await checkInputs(inputs, opts);
-    const count = s => r.issues.filter(i => i.severity === s).length,
-      errors = count("error"),
-      warnings = count("warning"),
-      notes = count("note");
-    if (opts.json) {
-      mkdirSync(dirname(resolve(opts.json)), { recursive: true });
-      writeFileSync(
-        opts.json,
-        JSON.stringify(
-          {
-            tool: "schema-check",
-            vocabulary: `schema.org ${VOCAB.version}`,
-            googleRulesChecked: GOOGLE.checked,
-            files: r.files,
-            items: r.items,
-            errors,
-            warnings,
-            notes,
-            issues: r.issues,
-          },
-          null,
-          2,
-        ),
-      );
-    }
-    if (!opts.quiet || errors) {
-      console.log(
-        `schema-check: ${plural(r.files, "file")}, ${plural(r.items, "item")}, ${plural(errors, "error")}, ${plural(warnings, "warning")}${notes ? `, ${plural(notes, "note")}` : ""} · schema.org ${VOCAB.version} · Google's rules as of ${GOOGLE.checked}`,
-      );
-      for (const i of r.issues) if (!opts.quiet || i.severity === "error") console.log(format(i));
-    }
-    process.exitCode = errors ? 1 : 0;
+  if (!opts.quiet || errors) {
+    console.log(
+      `schema-check: ${plural(r.files, "file")}, ${plural(r.items, "item")}, ${plural(errors, "error")}, ${plural(warnings, "warning")}${notes ? `, ${plural(notes, "note")}` : ""} · schema.org ${VOCAB.version} · Google's rules as of ${GOOGLE.checked}`,
+    );
+    for (const i of r.issues) if (!opts.quiet || i.severity === "error") console.log(format(i));
   }
+  return errors ? 1 : 0;
 }
+
+if (isMain(import.meta.url)) await runMain(() => main(process.argv.slice(2)));
