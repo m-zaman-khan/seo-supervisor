@@ -122,7 +122,7 @@ export const CHECKS = {
     "CRAWL-01",
     "blocker",
     () => "robots.txt blocks the whole site",
-    "With `Disallow: /` for every crawler, search engines can't crawl any page, so nothing new gets indexed and existing pages decay.",
+    "The group Googlebot obeys says `Disallow: /`: its own `User-agent: Googlebot` group, or `User-agent: *` when it has none (Google reads only the most specific group that names it, and never combines the two). Google can't crawl any page, so nothing new gets indexed and existing pages decay.",
     "Allow crawling in production (`Allow: /`). Keep staging out of Google with a noindex header and a password instead.",
   ],
   "robots-server-error": [

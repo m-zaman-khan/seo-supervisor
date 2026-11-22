@@ -1,6 +1,6 @@
 // @ts-check
 // Per-page checks over every crawled HTML page, plus the site-wide ones that need the same pass.
-import { allowedBy } from "./robots.mjs";
+import { allowedBy, groupOf } from "./robots.mjs";
 import { checkHreflang } from "./hreflang.mjs";
 import { titleWidth, widthText } from "./content.mjs";
 import { judgeLocal } from "./local.mjs";
@@ -68,13 +68,14 @@ export function checkPages(site) {
     if (/[A-Z]/.test(x.pathname) || /_/.test(x.pathname) || /%20| /.test(x.pathname) || /\/\//.test(x.pathname))
       add("url-format", p.url);
   }
+  const google = robots && groupOf(robots, "googlebot"); // the group Googlebot obeys
   for (const [u, e] of smSet) {
     const p = pages.get(u);
     if (!p) continue;
     if (p.status !== 200 || p.chain.length > 1)
       add("sitemap-bad-status", e.loc, p.chain.length > 1 ? `redirects to ${p.finalUrl}` : `status ${p.status}`);
     else if (p.html && p.noindex && !IGNORE_NOINDEX) add("noindex-in-sitemap", e.loc);
-    if (robots && star && !allowedBy(star, new URL(u).pathname)) add("sitemap-url-disallowed", e.loc);
+    if (google && !allowedBy(google, new URL(u).pathname)) add("sitemap-url-disallowed", e.loc);
   }
   const titleMap = new Map(),
     descMap = new Map(),

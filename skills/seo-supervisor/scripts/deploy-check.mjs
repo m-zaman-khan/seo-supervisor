@@ -7,6 +7,7 @@ import { parseArgs } from "./lib/args.mjs";
 import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
 import { isPublic, pinnedGet } from "./lib/net.mjs";
 import { tlsCert } from "./checks/tls.mjs";
+import { allowedBy, groupFor, groupOf, parseRobots } from "./lib/robots.mjs";
 import { VERSION } from "./update-check.mjs";
 import { anomaliesIn, anomalyNote, searchConsole } from "./google/search-console.mjs";
 
@@ -113,46 +114,6 @@ function noindexOf(html, header) {
   return h ? `the X-Robots-Tag header says ${h}` : null;
 }
 
-// Reads robots.txt as the crawler's parseRobots and allowedBy do: a crawler follows the groups naming it, combined,
-// else the * groups; the longest rule matching a path wins, an allow on a tie; rules with no path are ignored.
-// https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt#order-of-precedence-for-user-agents
-// https://www.rfc-editor.org/rfc/rfc9309#section-2.2.1
-function readRobots(txt) {
-  const groups = [],
-    sitemaps = [];
-  let cur = null;
-  for (const raw of txt.split(/\r?\n/)) {
-    const line = raw.replace(/#.*/, "").trim(),
-      i = line.indexOf(":");
-    if (i < 0) continue;
-    const k = line.slice(0, i).trim().toLowerCase(),
-      v = line.slice(i + 1).trim();
-    if (k === "sitemap" && v) sitemaps.push(v);
-    else if (k === "user-agent") {
-      if (!cur || cur.rules.length) groups.push((cur = { agents: [], rules: [] }));
-      cur.agents.push(v.startsWith("*") ? "*" : (/^[A-Za-z_-]+/.exec(v)?.[0] || v).toLowerCase());
-    } else if ((k === "allow" || k === "disallow") && cur && v) cur.rules.push({ allow: k === "allow", path: v });
-  }
-  const own = a => groups.filter(g => g.agents.includes(a)).flatMap(g => g.rules);
-  // "*" matches anything, a "$" at the end anchors the path.
-  const re = p =>
-    new RegExp(
-      "^" +
-        p
-          .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
-          .replace(/\*/g, ".*")
-          .replace(/\\\$$/, "$"),
-    );
-
-  const blocksHome = a => {
-    const best = (own(a).length ? own(a) : own("*"))
-      .filter(r => re(r.path).test("/"))
-      .sort((x, y) => y.path.length - x.path.length || +y.allow - +x.allow)[0];
-    return !!best && !best.allow;
-  };
-  return { sitemaps, blocksHome, ownGroup: a => own(a).length > 0 };
-}
-
 /** The checks, in order, each { id, state: "ok" | "warning" | "blocker" | "skipped", text }.
  * @param {string} site
  * @param {{ fetchFn?: typeof fetch, connect?: typeof tlsCert, lookup?: any, now?: number }} [options] */
@@ -204,7 +165,9 @@ export async function deployCheck(
   // https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt
   const rs = robots.res?.status,
     txt = rs === 200 && !/<html/i.test(robots.body) ? robots.body : null;
-  const rules = txt != null ? readRobots(txt) : null;
+  // Googlebot obeys only its own group, or `User-agent: *` when it has none.
+  const rules = txt != null ? parseRobots(txt) : null,
+    ownGoogle = rules && groupFor(rules, "googlebot");
   if (robots.error || rs >= 500 || rs === 429)
     put(
       "robots",
@@ -217,14 +180,20 @@ export async function deployCheck(
       "warning",
       `robots.txt ${rs === 200 ? "is an HTML page, not a robots.txt file" : `answers ${rs}`}, so Google reads it as no rules: nothing is blocked, and no sitemap is listed there.`,
     );
-  else if (rules.blocksHome("*"))
+  else if (!allowedBy(groupOf(rules, "googlebot"), "/"))
     put(
       "robots",
       "blocker",
-      "robots.txt blocks every crawler without a group of its own (User-agent: *) from the whole site.",
+      ownGoogle
+        ? "robots.txt blocks Googlebot from the whole site (its own User-agent: Googlebot group)."
+        : "robots.txt blocks every crawler without a group of its own (User-agent: *) from the whole site, Googlebot included.",
     );
-  else if (rules.ownGroup("googlebot") && rules.blocksHome("googlebot"))
-    put("robots", "blocker", "robots.txt blocks Googlebot from the whole site (its own User-agent: Googlebot group).");
+  else if (!allowedBy(groupFor(rules, "*"), "/"))
+    put(
+      "robots",
+      "warning",
+      "robots.txt blocks every crawler without a group of its own (User-agent: *) from the whole site. Googlebot has its own group that lets it in, but Bing and other search engines without a group are kept out.",
+    );
   else put("robots", "ok", "robots.txt doesn't block the home page.");
   if (!rules?.sitemaps.length)
     put(

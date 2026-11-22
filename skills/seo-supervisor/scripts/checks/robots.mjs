@@ -2,66 +2,8 @@
 // robots.txt checks, and the AI crawler access the report shows. Parsing and matching live in lib/robots.mjs.
 import { AI_BOTS, signalPlacement, aiRobots } from "./agents.mjs";
 import { quote } from "../lib/findings.mjs";
-
-// A user-agent counts by its name up to the first character other than a letter, "_" or "-", so "GPTBot/1.1" is
-// GPTBot, as in Google's open-source parser and RFC 9309. versioned: the lines that carried more, for a note.
-// https://github.com/google/robotstxt
-// https://www.rfc-editor.org/rfc/rfc9309#section-2.2.1
-export function parseRobots(txt) {
-  const groups = [];
-  let cur = null;
-  const sitemaps = [],
-    versioned = [];
-  for (const raw of txt.split(/\r?\n/)) {
-    const line = raw.replace(/#.*/, "").trim();
-    if (!line) continue;
-    const i = line.indexOf(":");
-    if (i < 0) continue;
-    const k = line.slice(0, i).trim().toLowerCase(),
-      v = line.slice(i + 1).trim();
-    if (k === "sitemap") {
-      sitemaps.push(v);
-      continue;
-    }
-    if (k === "user-agent") {
-      if (!cur || cur.rules.length) groups.push((cur = { agents: [], rules: [] }));
-      const name = v.startsWith("*") ? "*" : /^[A-Za-z_-]+/.exec(v)?.[0] || v;
-      if (name !== v && name !== "*") versioned.push(v);
-      cur.agents.push(name.toLowerCase());
-      continue;
-    }
-    if ((k === "allow" || k === "disallow") && cur) cur.rules.push({ allow: k === "allow", path: v });
-  }
-  return { groups, sitemaps, versioned };
-}
-export const ruleRe = p =>
-  new RegExp(
-    "^" +
-      p
-        .replace(/[.+?^{}()|[\]\\]/g, "\\$&")
-        .replace(/\*/g, ".*")
-        .replace(/\\\$$/, "$")
-        .replace(/\$$/, "$"),
-  );
-export function allowedBy(group, path) {
-  if (!group) return true;
-  let best = null;
-  for (const r of group.rules) {
-    if (!r.path) continue;
-    if (
-      ruleRe(r.path).test(path) &&
-      (!best || r.path.length > best.path.length || (r.path.length === best.path.length && r.allow))
-    )
-      best = r;
-  }
-  return !best || best.allow;
-}
-// Every group naming the crawler, combined into one, as RFC 9309 2.2.1 requires.
-export const groupFor = (robots, agent) => {
-  const a = agent.toLowerCase(),
-    gs = robots.groups.filter(g => g.agents.includes(a));
-  return gs.length ? { agents: [a], rules: gs.flatMap(g => g.rules) } : null;
-};
+import { allowedBy, groupFor, groupOf, parseRobots } from "../lib/robots.mjs";
+export { allowedBy, groupFor, groupOf, parseRobots, ruleRe } from "../lib/robots.mjs";
 
 // Returns the parsed rules (null when unreadable), whether the server failed, and the `User-agent: *` group.
 export function checkRobots(robotsRes, { add, evalRules, startOrigin: START_ORIGIN }) {
@@ -89,10 +31,15 @@ export function checkRobots(robotsRes, { add, evalRules, startOrigin: START_ORIG
     );
   } else if (!robots) add("robots-missing", START_ORIGIN + "/robots.txt", `status ${robotsRes.status}`);
   else {
-    if (star && !allowedBy(star, "/"))
-      add("robots-blocks-all", START_ORIGIN + "/robots.txt", "User-agent: * is not allowed to crawl /");
+    // Judged as Googlebot reads it: its own group if it has one, else `User-agent: *`.
+    const google = groupOf(robots, "googlebot"),
+      which = groupFor(robots, "googlebot")
+        ? "Googlebot's own group (User-agent: Googlebot)"
+        : "User-agent: *, which Googlebot follows as it has no group of its own,";
+    if (google && !allowedBy(google, "/"))
+      add("robots-blocks-all", START_ORIGIN + "/robots.txt", `${which} is not allowed to crawl /`);
     for (const p of ["/_next/static/x.js", "/assets/x.js", "/static/x.css", "/x.css", "/x.js"])
-      if (star && !allowedBy(star, p) && allowedBy(star, "/"))
+      if (google && !allowedBy(google, p) && allowedBy(google, "/"))
         add("robots-blocks-assets", START_ORIGIN + "/robots.txt", `blocks ${p.replace(/x\.(js|css)$/, "")}`);
     // Only a bot's own group counts here; a block by `User-agent: *` shows in the AI bot table instead.
     for (const [bot, , , , { alias } = {}] of AI_BOTS) {
