@@ -256,3 +256,64 @@ test("PowerShell renames and moves of pages ask, and the hook fires for them, un
     assert.ok(fires("Bash", c), `Bash if: ${c}`);
   assert.ok(fires("PowerShell", "git -C site mv pages/a.html pages/b.html"));
 });
+
+test("smaller gaps: cd in the same command, mv -t, alternates shorthand, middleware and proxy redirects, template files", () => {
+  mkdirSync(join(dir, "app", "blog"), { recursive: true });
+  writeFileSync(join(dir, "app", "blog", "page.tsx"), "export default () => null;");
+  asks(bash("cd app && rm -rf blog"), "page-remove");
+  asks(bash("cd app; cd ..; rm -rf app/blog"), "page-remove");
+  asks(bash("Set-Location app; Remove-Item -Recurse blog"), "page-remove");
+  asks(bash("git -C app rm -r blog"), "page-remove");
+  allows(bash("cd app && rm -rf components"));
+  for (const c of [
+    "mv -t archive pages/about.html",
+    "mv --target-directory=archive pages/about.html",
+    "mv --target-directory archive pages/about.html",
+  ])
+    asks(bash(c), "page-remove");
+  allows(bash("mv -t archive notes.txt"));
+  // alternates: { canonical } shorthand.
+  asks(
+    edit(
+      "app/a/page.tsx",
+      "import { canonical } from './seo';\nexport const metadata = { alternates: { canonical } };",
+      "import { canonical } from './seo';\nexport const metadata = { alternates: {} };",
+    ),
+    "canonical",
+  );
+  asks(
+    edit(
+      "app/a/page.tsx",
+      "export const metadata = { alternates: { languages, canonical } };",
+      "export const metadata = { alternates: { languages } };",
+    ),
+    "canonical",
+  );
+  asks(
+    edit(
+      "app/a/page.tsx",
+      "const canonical = '/a';\nexport const metadata = { alternates: { canonical } };",
+      "const canonical = '/b';\nexport const metadata = { alternates: { canonical } };",
+    ),
+    "canonical",
+  );
+  // Next.js middleware, and proxy, its name since Next.js 16.
+  const mw =
+    "import { NextResponse } from 'next/server';\nexport function middleware(req) {\n  return NextResponse.next();\n}\n";
+  for (const f of ["middleware.ts", "src/middleware.js", "proxy.ts"])
+    asks(
+      edit(f, mw, mw.replace("NextResponse.next()", "NextResponse.redirect(new URL('/new', req.url), 308)")),
+      "redirects",
+    );
+  allows(edit("middleware.ts", mw, mw.replace("return", "const t = Date.now();\n  return")));
+  // Template files are pages, and the hook fires for them.
+  for (const ext of ["ejs", "twig", "pug", "jinja", "j2", "cshtml", "tmpl"]) {
+    asks(bash(`rm pages/about.${ext}`), "page-remove");
+    assert.ok(fires("Edit", `templates/base.${ext}`), `Edit if: .${ext}`);
+    asks(
+      edit(`templates/base.${ext}`, "<head></head>", '<head><meta name="robots" content="noindex"></head>'),
+      "noindex",
+    );
+  }
+  assert.ok(fires("Edit", "content/a.markdown"));
+});

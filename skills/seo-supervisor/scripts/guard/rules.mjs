@@ -58,12 +58,18 @@ const LINE_REDIRECTS = new Set([
   "routes.rb",
   "urls.py",
 ]);
+// Next.js 16 renamed middleware to proxy; both are read line by line.
+// https://nextjs.org/docs/app/api-reference/file-conventions/proxy
+const isMiddleware = f => /^(middleware|proxy)\.[cm]?[jt]s$/.test(nameOf(f));
 export const isRedirectFile = f => {
   const n = nameOf(f);
-  return JSON_REDIRECTS.has(n) || LINE_REDIRECTS.has(n) || n.endsWith(".conf") || isFrameworkConfig(f);
+  return (
+    JSON_REDIRECTS.has(n) || LINE_REDIRECTS.has(n) || n.endsWith(".conf") || isFrameworkConfig(f) || isMiddleware(f)
+  );
 };
 const BUILT = /(^|\/)(node_modules|\.git|\.next|\.nuxt|\.svelte-kit|\.astro|dist|build|out|coverage|vendor)\//;
-const PAGE_EXT = "(?:[cm]?[jt]sx?|mdx?|markdown|vue|svelte|astro|html?|php|erb|liquid|njk|hbs)";
+const PAGE_EXT =
+  "(?:[cm]?[jt]sx?|mdx?|markdown|vue|svelte|astro|html?|php|erb|liquid|njk|hbs|ejs|twig|pug|jinja|j2|cshtml|tmpl)";
 // Page and route files (a hand-picked list): Next.js app/…/page and route; pages/ or routes/ folders minus pages/api/
 // and _app-style files; Markdown in a content folder; any .html file.
 const PAGE_RES = [
@@ -116,11 +122,11 @@ const noindexCount = s =>
   (s.match(META) || []).filter(t => META_ROBOTS.test(t) && META_NOINDEX.test(t)).length +
   NOINDEX.reduce((n, re) => n + count(re, s), 0);
 
-// A canonical in the forms sites set it: <link rel="canonical">, a Link header, Next.js alternates.canonical, front
-// matter canonical/canonical_url/canonicalURL, a head library's { rel: 'canonical' }. Each line is compared without
-// its spacing, so an edit elsewhere on the page doesn't count.
+// A canonical in the forms sites set it: <link rel="canonical">, a Link header, Next.js alternates.canonical or
+// { canonical }, front matter canonical/canonical_url/canonicalURL, a head library's { rel: 'canonical' }. Each line is
+// compared without its spacing, so an edit elsewhere on the page doesn't count.
 const CANONICAL =
-  /rel\s*=\s*\{?\s*["'`]?canonical\b|\bcanonical(?:_?url|URL)?["'`]?\s*[:=]|["'`]canonical["'`]\s*[:,]/i;
+  /rel\s*=\s*\{?\s*["'`]?canonical\b|\bcanonical(?:_?url|URL)?["'`]?\s*[:=]|["'`]canonical["'`]\s*[:,]|\{\s*canonical\s*[,}]|,\s*canonical\s*\}/i;
 const canonicals = s =>
   s
     .split("\n")
@@ -461,7 +467,9 @@ function positional(args) {
   let dest = null;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (NAMED.test(a)) {
+    if (a === "-t" || a === "--target-directory") dest = args[++i];
+    else if (a.startsWith("--target-directory=")) dest = a.slice(19);
+    else if (NAMED.test(a)) {
       const v = args[++i];
       if (/^-(dest|newname)/i.test(a)) dest = v;
       else if (/^-(path|literalpath|lp)$/i.test(a) && v) out.push(v);
@@ -652,6 +660,12 @@ function bashHit(command, settings, cwd, dir = cwd, depth = 0) {
         rule: "settings",
         reason: `This writes seo-audit/settings.json from the shell, where the guard can't see what changes. ${OWNER_ONLY}`,
       };
+    // A cd earlier in the same command moves where the later paths start.
+    if (/^(cd|chdir|pushd|set-location|sl)$/.test(cmd)) {
+      const to = positional(words.slice(1)).out.find(w => !/^\/d$/i.test(w));
+      if (to && !/^[~$%]/.test(to)) dir = resolve(dir, to);
+      continue;
+    }
     // The skill's scripts by file name, run by node, bun or deno or directly. The bin's subcommands (seo-supervisor
     // issues, npx seo-supervisor@1.2.0 issues, node bin/seo-supervisor.mjs issues) run the script of that name.
     let script = null,
@@ -702,20 +716,24 @@ function bashHit(command, settings, cwd, dir = cwd, depth = 0) {
       continue;
     }
     // Removing or moving files: rm, git rm, del, Remove-Item; mv, git mv, Move-Item (the last word is where it goes).
-    let paths = [];
+    let paths = [],
+      base = dir;
     if (DELETE.has(cmd)) paths = positional(words.slice(1)).out;
     else if (MOVE.has(cmd)) {
       const p = positional(words.slice(1));
       paths = p.dest ? p.out : p.out.slice(0, -1);
     } else if (cmd === "git") {
       let i = 1;
-      while (i < words.length && words[i].startsWith("-")) i += /^-[Cc]$/.test(words[i]) ? 2 : 1;
+      while (i < words.length && words[i].startsWith("-")) {
+        if (words[i] === "-C") base = resolve(base, words[i + 1] ?? "");
+        i += /^-[Cc]$/.test(words[i]) ? 2 : 1;
+      }
       const p = positional(words.slice(i + 1));
       if (words[i] === "rm") paths = p.out;
       else if (words[i] === "mv") paths = p.out.slice(0, -1);
     }
     for (const f of paths) {
-      const hit = deleteHit(f, cwd);
+      const hit = deleteHit(resolve(base, f), cwd);
       if (hit) return hit;
     }
   }
