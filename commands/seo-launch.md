@@ -2,12 +2,14 @@
 description: "Pre-launch SEO gate: pass or fail, plus the launch-day steps. Answers: is it safe to switch indexing on?, are we ready to go live?, will our site move or URL change lose traffic? For checking each deploy after launch, use /seo-watch."
 argument-hint: "[staging or production URL, or the old site's URL list]"
 allowed-tools:
-  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs *)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/seo-crawl.mjs *)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/seo-diff.mjs *)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/render-report.mjs *)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/deploy-check.mjs *)
 ---
+**Script paths:** here `<skill-dir>` is `${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor`. Run each script by that path exactly as written, with no `cd` first, for example `node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs`: that's the form this command's pre-approved scripts match, so they run without a prompt. Any other form, or a path with a space in it (quote it), still works and asks first. If that path starts with `$` (installed with npx, not as the plugin), `<skill-dir>` is the folder that holds the skill's SKILL.md, and each script asks first.
+
 Use the **seo-supervisor** skill in **launch** mode for this project (site or URL, may be empty: $ARGUMENTS).
 
 Run the audit, with `--check-live` once the production origin answers, then give a clear **PASS** or **FAIL**. It passes only with zero open blockers and zero open high findings in the CRAWL, URL, REND, MAP and TRUST-07 rules; a certificate blocker always fails. List what blocks launch, then the launch-day steps from `rules/launch-monitoring.md`. Don't edit anything.

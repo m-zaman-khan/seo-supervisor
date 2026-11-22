@@ -2,13 +2,15 @@
 description: "Check the setup and connect data sources. Answers: is my setup OK?, why did a script fail?, is Search Console connected?, how do I add my Bing, Clarity or other key? Changes nothing in the project. For using the data in a report, use /seo-audit."
 argument-hint: "[service, e.g. google, bing, clarity]"
 allowed-tools:
-  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs *)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/doctor.mjs *)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/google.mjs status)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/google.mjs guide)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/connect-keys.mjs status)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/connect-keys.mjs guide *)
 ---
+**Script paths:** here `<skill-dir>` is `${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor`. Run each script by that path exactly as written, with no `cd` first, for example `node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs`: that's the form this command's pre-approved scripts match, so they run without a prompt. Any other form, or a path with a space in it (quote it), still works and asks first. If that path starts with `$` (installed with npx, not as the plugin), `<skill-dir>` is the folder that holds the skill's SKILL.md, and each script asks first.
+
 Use the **seo-supervisor** skill in **connect** mode for this project. Follow SKILL.md's Connect mode and its Connections list (step 2).
 
 1. **Run `doctor.mjs` first.** It checks Node, Chrome or Edge, the add-ons and the connections, and changes nothing. Pass on anything marked `!!` with its fix.

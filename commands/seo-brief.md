@@ -2,9 +2,11 @@
 description: "Write an SEO content brief for a topic or page. Answers: what should this page say?, which phrases and questions should it cover?, how do I plan a cluster of posts? Read-only. For changing the words of a page that exists, use /seo-rewrite."
 argument-hint: "[topic or URL]"
 allowed-tools:
-  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs *)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/keyword-ideas.mjs *)
 ---
+**Script paths:** here `<skill-dir>` is `${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor`. Run each script by that path exactly as written, with no `cd` first, for example `node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs`: that's the form this command's pre-approved scripts match, so they run without a prompt. Any other form, or a path with a space in it (quote it), still works and asks first. If that path starts with `$` (installed with npx, not as the plugin), `<skill-dir>` is the folder that holds the skill's SKILL.md, and each script asks first.
+
 Use the **seo-supervisor** skill in **brief** mode for: $ARGUMENTS
 
 Follow the brief format in `strategy.md` exactly, with its headings: Intent · Target and related phrases · Title and description · What's new here · Outline · Questions to answer · Facts needed from the owner · Internal links in and out.

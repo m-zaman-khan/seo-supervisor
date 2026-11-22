@@ -2,12 +2,14 @@
 description: "Plan how to get more visitors from search, from the site's own data. Answers: how do I get more visitors?, what should I work on next?, which searches am I almost winning? For whether a past change helped, use /seo-watch; for one page's brief, use /seo-brief."
 argument-hint: "[goal, page or audience]"
 allowed-tools:
-  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs *)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/gsc-import.mjs *)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/google.mjs fetch *)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/keyword-ideas.mjs *)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/change-check.mjs *)
 ---
+**Script paths:** here `<skill-dir>` is `${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor`. Run each script by that path exactly as written, with no `cd` first, for example `node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs`: that's the form this command's pre-approved scripts match, so they run without a prompt. Any other form, or a path with a space in it (quote it), still works and asks first. If that path starts with `$` (installed with npx, not as the plugin), `<skill-dir>` is the folder that holds the skill's SKILL.md, and each script asks first.
+
 Use the **seo-supervisor** skill in **grow** mode for this project. Follow `grow.md` exactly, stage by stage.
 
 - **Read-only.** Grow mode's own output is `seo-audit/grow-plan.md`. The steps it runs with the owner's OK, such as `keyword-ideas.mjs`, `change-check.mjs` and the audience check, write their usual files in `seo-audit/`. Never edit the project's code, content or config.

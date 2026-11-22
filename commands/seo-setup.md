@@ -3,7 +3,7 @@ description: "Set up SEO from scratch: propose a plan, build it after approval. 
 argument-hint: "[url or notes]"
 disable-model-invocation: true
 allowed-tools:
-  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs *)
+  - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/doctor.mjs *)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/seo-crawl.mjs *)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/seo-diff.mjs *)
@@ -13,6 +13,8 @@ allowed-tools:
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/schema-check.mjs *)
   - Bash(node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/render-report.mjs *)
 ---
+**Script paths:** here `<skill-dir>` is `${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor`. Run each script by that path exactly as written, with no `cd` first, for example `node ${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/update-check.mjs`: that's the form this command's pre-approved scripts match, so they run without a prompt. Any other form, or a path with a space in it (quote it), still works and asks first. If that path starts with `$` (installed with npx, not as the plugin), `<skill-dir>` is the folder that holds the skill's SKILL.md, and each script asks first.
+
 Use the **seo-supervisor** skill in **setup** mode for this project. Follow its SKILL.md and `planning.md` exactly.
 
 - **No plan in `seo-audit/seo-audit.json` yet:**
