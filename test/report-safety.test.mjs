@@ -10,6 +10,7 @@ import { summaryOf } from "../skills/seo-supervisor/scripts/dashboard.mjs";
 import { SCORE_HOW } from "../skills/seo-supervisor/scripts/report/overview.mjs";
 import { mdSafe } from "../skills/seo-supervisor/scripts/report/format.mjs";
 import { panelHtml, panelMd } from "../skills/seo-supervisor/scripts/report/panel.mjs";
+import { byPath } from "../skills/seo-supervisor/scripts/report/traffic.mjs";
 import { issueOf } from "../skills/seo-supervisor/scripts/issues.mjs";
 
 const KITCHEN = JSON.parse(readFileSync(join(ROOT, "test", "golden", "kitchen-sink.json"), "utf8"));
@@ -451,6 +452,48 @@ test("one view model draws a panel on the page and in the Markdown, escaped the 
   ]);
   assert.equal(panelHtml(null), "");
   assert.deepEqual(panelMd(null), []);
+});
+
+test("a page finds its Search Console row with tracking parameters dropped and either trailing slash", () => {
+  const map = {
+    "/pricing/": { clicks: 1 },
+    "/shoes?utm_source=news&utm_medium=mail": { clicks: 2 },
+    "/a": { clicks: 3 },
+    "/a/": { clicks: 4 },
+    "/list": { clicks: 5 },
+    "/q?id=7": { clicks: 6 },
+    "/": { clicks: 7 },
+  };
+  const clicks = u => byPath(map, u)?.clicks ?? null;
+  assert.equal(clicks("https://s.example/pricing"), 1, "the other slash form");
+  assert.equal(clicks("https://s.example/shoes"), 2, "the row's tracking parameters dropped");
+  assert.equal(clicks("https://s.example/pricing/?gclid=x&srsltid=y&fbclid=z&_gl=1"), 1, "the page's too");
+  assert.equal(clicks("https://s.example/a"), 3, "an exact match comes first");
+  assert.equal(clicks("https://s.example/a/"), 4);
+  assert.equal(clicks("https://s.example/list?page=2"), 5, "as before, a page's path alone matches");
+  assert.equal(clicks("https://s.example/q?id=7&utm_campaign=x"), 6, "other parameters stay");
+  assert.equal(clicks("https://s.example/q?id=8"), null, "a different page isn't matched");
+  assert.equal(clicks("https://s.example/?msclkid=1"), 7);
+  assert.equal(clicks("https://s.example/nope/"), null);
+  const { html } = rend({
+    site: { name: "S", url: "https://s.example" },
+    findings: [
+      {
+        id: "F-001",
+        rule: "R-1",
+        severity: "low",
+        title: "T",
+        category: "Other",
+        evidence: [{ url: "https://s.example/pricing?utm_source=x", detail: "d" }],
+      },
+    ],
+    traffic: { "/pricing/": { clicks: 12, impressions: 340 } },
+  });
+  assert.match(
+    html,
+    /<p class="quiet">Search Console: 12 clicks · 340 impressions on <code>\/pricing<\/code><\/p>/,
+    "the finding's card shows the page's traffic",
+  );
 });
 
 test("the page's styles have no dead .as.b3-t,.as.b4-t rule", () => {

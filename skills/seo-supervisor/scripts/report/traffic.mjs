@@ -11,6 +11,28 @@ export const isoDates = x =>
   [x?.period?.from, x?.period?.to].every(d => /^\d{4}-\d{2}-\d{2}$/.test(d))
     ? `${x.period.from} to ${x.period.to}`
     : "";
+// A row by page: path and query exactly, else the path, else both compared without tracking parameters or the
+// trailing slash, so /pricing/?utm_source=x finds /pricing/. TRACKING is CRAWL-10's list (checks/coverage.mjs) plus
+// srsltid, which Merchant Center auto-tagging adds to free listing links.
+const TRACKING = /^(utm_\w+|gclid|gbraid|wbraid|dclid|fbclid|msclkid|yclid|igshid|mc_cid|mc_eid|_gl|_ga|srsltid)$/i;
+const looseKey = (x, query = true) => {
+  const q = query ? [...x.searchParams].filter(([k]) => !TRACKING.test(k)) : [];
+  return x.pathname.replace(/(.)\/$/, "$1") + (q.length ? "?" + new URLSearchParams(q) : "");
+};
+const loose = new WeakMap(); // each map's rows by loose key, the first row of a key kept
+const looseRows = map => {
+  if (!loose.has(map)) {
+    const rows = new Map();
+    for (const [k, v] of Object.entries(map)) {
+      try {
+        const key = looseKey(new URL(k, "https://site.invalid"));
+        if (!rows.has(key)) rows.set(key, v);
+      } catch {}
+    }
+    loose.set(map, rows);
+  }
+  return loose.get(map);
+};
 export const byPath = (map, u) => {
   if (!obj(map) || !u) return null;
   let x;
@@ -19,7 +41,10 @@ export const byPath = (map, u) => {
   } catch {
     return null;
   }
-  return obj(map[x.pathname + x.search] || map[x.pathname]);
+  const rows = () => looseRows(map);
+  return (
+    obj(map[x.pathname + x.search] || map[x.pathname]) || obj(rows().get(looseKey(x)) || rows().get(looseKey(x, false)))
+  );
 };
 const sum = (map, k) => Object.values(obj(map) || {}).reduce((s, t) => s + (Number(t?.[k]) || 0), 0);
 const visitsLine = (name, x) => {
