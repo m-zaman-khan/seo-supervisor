@@ -4,6 +4,7 @@ import { Fail, Refused, runMain } from "../skills/seo-supervisor/scripts/lib/cli
 import { parseArgs } from "../skills/seo-supervisor/scripts/lib/args.mjs";
 import { bodyUpTo, retryAfter } from "../skills/seo-supervisor/scripts/lib/http.mjs";
 import * as net from "../skills/seo-supervisor/scripts/lib/net.mjs";
+import { privacyOf, writePrivate } from "../skills/seo-supervisor/scripts/lib/settings-dir.mjs";
 
 // runMain sets process.exitCode; each test puts it back, so the test run's own exit code stays the runner's.
 async function exitOf(t, main) {
@@ -214,6 +215,32 @@ test("pinnedGet: redirects followed by hand, each hop checked; the address each 
   } finally {
     srv.close();
   }
+});
+
+test("writePrivate: an atomic write only this user can read, in a folder whose path has a space; locked says whether that held", async () => {
+  const { mkdtempSync, readdirSync, readFileSync, statSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const dir = join(mkdtempSync(join(tmpdir(), "seo tools ")), "Sam Lee", ".seo-supervisor"),
+    file = join(dir, "google.json");
+  const r = writePrivate(file, '{"a":1}');
+  assert.equal(readFileSync(file, "utf8"), '{"a":1}');
+  assert.deepEqual(readdirSync(dir), ["google.json"], "no temporary file is left behind");
+  assert.equal(writePrivate(file, "second").locked, r.locked, "an existing file is replaced the same way");
+  assert.equal(readFileSync(file, "utf8"), "second");
+  if (process.platform === "win32") {
+    // icacls ships with Windows: inherited entries (BUILTIN\Users and the like) are removed and only this user is left.
+    const { execFileSync } = await import("node:child_process");
+    const out = execFileSync(join(process.env.SystemRoot || "C:\\Windows", "System32", "icacls.exe"), [file], {
+      encoding: "utf8",
+    });
+    const acl = out.slice(out.lastIndexOf("google.json") + 11).split("Successfully")[0]; // the entries, without the path
+    assert.equal(r.locked, true);
+    assert.doesNotMatch(acl, /\(I\)|Users|Everyone/);
+    assert.match(acl, new RegExp(`${process.env.USERNAME.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:\\(F\\)`));
+  } else assert.equal(r.locked, (statSync(file).mode & 0o077) === 0);
+  assert.match(privacyOf({ locked: true }), /only your user account can read it/);
+  assert.doesNotMatch(privacyOf({ locked: false }), /only your user account/);
 });
 
 test("bodyUpTo: the body up to the cap, or null past it", async () => {

@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { findBrowser } from "./checks/render.mjs";
 import { findLighthouse } from "./checks/lighthouse.mjs";
 import { SERVICES, savedKeys } from "./connect-keys.mjs";
-import { installedBrowser, loginDir, settingsDir, toolsDir } from "./lib/settings-dir.mjs";
+import { googleFile, installedBrowser, loginDir, settingsDir, toolsDir } from "./lib/settings-dir.mjs";
 import { proxyNote } from "./lib/proxy.mjs";
 import { isMain } from "./lib/is-main.mjs";
 
@@ -85,8 +85,9 @@ export function doctor({ env = process.env, cwd = process.cwd(), version = proce
 
   if (logins) {
     let g = null;
+    const gFile = googleFile(env);
     try {
-      g = JSON.parse(readFileSync(join(logins, "google.json"), "utf8"));
+      g = JSON.parse(readFileSync(gFile, "utf8"));
     } catch {}
     const how =
       {
@@ -98,7 +99,7 @@ export function doctor({ env = process.env, cwd = process.cwd(), version = proce
       g ? "ok" : "off",
       g
         ? `Google: connected with ${how}${/^\d{4}-\d{2}-\d{2}/.test(g.connected_at || "") ? ` on ${g.connected_at.slice(0, 10)}` : ""}. To test it: node google.mjs status`
-        : existsSync(join(logins, "google.json"))
+        : existsSync(gFile)
           ? "Google: the saved sign-in can't be read. Connect again: node google.mjs connect"
           : "Google: not connected (optional). Connect Search Console and Analytics with: node google.mjs connect",
     );
