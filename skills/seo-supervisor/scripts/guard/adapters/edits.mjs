@@ -111,7 +111,12 @@ export function say(result, canAsk = false) {
   if (result?.decision === "deny" && result.rule !== "key")
     return `${why} The guard is set to block. Tell the owner what you wanted to do and why; they can do it themselves or change the guard's mode. Don't work around it.`;
   if (result?.decision !== "ask" || canAsk) return why;
-  return `${why} This agent can't show a yes/no box, so the step was stopped. Ask the owner in chat. If they say yes, they can do it themselves, or let it through by setting "guard": "off" in seo-audit/settings.json for this one step (and back to "ask" after). Don't work around it.`;
+  // A change to the guard's own settings must come from the user, so turning the guard off isn't offered for it.
+  const or =
+    result.rule === "settings"
+      ? ""
+      : `, or let it through by setting "guard": "off" in seo-audit/settings.json for this one step (and back to "ask" after)`;
+  return `${why} This agent can't show a yes/no box, so the step was stopped. Ask the owner in chat. If they say yes, they can do it themselves${or}. Don't work around it.`;
 }
 
 /** The answer every adapter gives when the guard lets an action through, unless it says otherwise. */

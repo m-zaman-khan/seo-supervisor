@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { ROOT, tmp } from "./helpers.mjs";
 import { checkAction } from "../skills/seo-supervisor/scripts/guard/rules.mjs";
 import { run } from "../skills/seo-supervisor/scripts/guard.mjs";
+import { say } from "../skills/seo-supervisor/scripts/guard/adapters/edits.mjs";
 
 const dir = tmp();
 const check = (a, o = {}) => checkAction(a, { mode: "ask", settings: {}, cwd: dir, ...o });
@@ -225,6 +226,9 @@ test("an edit that turns the guard off or down, turns outside checks on or widen
     "Get-Content seo-audit/settings.json",
   ])
     allows(bash(c));
+  // An agent that can't ask isn't told to switch the guard off to let a settings change through.
+  assert.doesNotMatch(say({ decision: "ask", rule: "settings", reason: "x" }), /"guard": "off"/);
+  assert.match(say({ decision: "ask", rule: "robots", reason: "x" }), /"guard": "off"/);
   // Removing a file that sets block lowers the guard to ask.
   writeFileSync(join(p, f), j({ guard: "block" }));
   assert.equal(checkAction(bash("rm seo-audit/settings.json"), { cwd: p }).rule, "settings");
