@@ -270,28 +270,18 @@ export function linkPanels({ raw }) {
     return L;
   };
   const MORE_LINKS_INTRO = "Information only: none of this changes the score.";
-  const moreLinksHtml = () => {
+  const moreLinks = () => {
     const L = moreLinkLines();
-    return L.length
-      ? `\n    <details class="how morelinks"><summary>More about links</summary><p>${esc(MORE_LINKS_INTRO)}</p>${L.map(([t, list]) => `<p>${esc(t)}</p>${list.length ? `<ul class="lim">${list.map(([k, v]) => `<li><b><code>${esc(k)}</code></b><span>${esc(v)}</span></li>`).join("")}</ul>` : ""}`).join("")}</details>`
-      : "";
-  };
-  const moreLinksMd = () => {
-    const L = moreLinkLines();
-    return L.length
-      ? [
-          "## More about links",
-          "",
-          MORE_LINKS_INTRO,
-          "",
-          ...L.flatMap(([t, list]) => [
-            noteMd(t),
-            "",
-            ...list.map(([k, v]) => `- ${noteCode(k)}${v ? ` ${noteMd(v)}` : ""}`),
-            ...(list.length ? [""] : []),
-          ]),
-        ]
-      : [];
+    return (
+      L.length && {
+        cls: "morelinks",
+        title: "More about links",
+        blocks: [
+          { p: MORE_LINKS_INTRO },
+          ...L.flatMap(([t, list]) => [{ p: t }, { rows: list.map(([k, v]) => [{ code: k }, v]) }]),
+        ],
+      }
+    );
   };
 
   // linkIdeas and queryGaps (keyword-ideas.mjs), copied into the audit as they are. Searches and paths are escaped. Up
@@ -427,8 +417,7 @@ export function linkPanels({ raw }) {
     linked,
     linksHtml,
     linksMd,
-    moreLinksHtml,
-    moreLinksMd,
+    moreLinks,
     linkIdeasHtml,
     linkIdeasMd,
     linkedOnce: linkedOncePanel,
