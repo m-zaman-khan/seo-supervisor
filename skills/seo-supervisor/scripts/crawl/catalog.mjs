@@ -774,8 +774,8 @@ export const CHECKS = {
   "sitemap-lastmod-same": [
     "MAP-04",
     "low",
-    () => "Every sitemap lastmod has the same date",
-    "Identical dates usually mean the build time was used. Google learns to ignore lastmod that isn't accurate.",
+    () => "Almost every sitemap lastmod has the same date",
+    "When 90% or more of the lastmod dates fall on one day (our own line), the build time was usually used. Google learns to ignore lastmod that isn't accurate.",
     "Use each record's real last-updated date.",
   ],
   "sitemap-lastmod-future": [
@@ -792,11 +792,14 @@ export const CHECKS = {
     "Search engines read lastmod only in W3C Datetime format (`2026-11-17` or `2026-11-17T10:30:00+00:00`) and ignore anything else.",
     "Write lastmod as `YYYY-MM-DD` or a full datetime with a timezone (for example with `toISOString()`).",
   ],
+  // Low: Google reads a 4xx other than 429 as no rules, and a site needs the file only to keep crawlers out.
+  // https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt
+  // https://developers.google.com/search/docs/crawling-indexing/robots/intro
   "robots-missing": [
     "MAP-05",
-    "medium",
+    "low",
     () => "robots.txt is missing",
-    "Crawlers expect it; without it the sitemap isn't advertised and nothing is excluded.",
+    "Google reads a missing robots.txt (a 4xx answer) as no rules, so everything may be crawled, and a site only needs one to keep crawlers out of something. It's still where the sitemap is listed for every crawler, and where junk URLs (search results, filters, carts) are kept out.",
     "Serve robots.txt that allows crawling, blocks only junk, and lists the sitemap.",
   ],
   "robots-blocks-assets": [
@@ -1150,6 +1153,23 @@ Object.assign(CHECKS, {
     n => `${n} sitemap URL(s) aren't full URLs`,
     "Google asks for fully-qualified, absolute URLs in a sitemap (`https://www.example.com/page/`, not `/page/` or `page.html`) and crawls them exactly as listed, so a relative path or another kind of address in `<loc>` points nowhere, and those pages aren't found through the sitemap.",
     "Write every `<loc>` as a full URL, built from one production origin setting: `https://`, the host and the path.",
+  ],
+  // Google says a well-linked site of about 500 pages or fewer, without much media or news, may not need a sitemap.
+  // checks/coverage.mjs swaps sitemap-missing for this on such a site.
+  // https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview
+  "sitemap-missing-small": [
+    "MAP-01",
+    "low",
+    () => "No XML sitemap found (a small, well-linked site, so it matters less)",
+    "Google says a site of about 500 pages or fewer, linked well enough that every important page can be found from the home page, and without many videos or news pages, might not need a sitemap. This crawl found every page through links from the home page, none more than three clicks deep. A sitemap still tells search engines when pages change, and lists a new page before any link to it exists.",
+    "Generate `/sitemap.xml` from the live content data and reference it in robots.txt, or leave it until the site grows.",
+  ],
+  "sitemap-unreachable": [
+    "MAP-01",
+    "medium",
+    n => `${n} listed sitemap file(s) don't load`,
+    "robots.txt or a sitemap index names these sitemap files, but they answer an error instead of the file, so search engines can't read the URLs in them. An old `Sitemap:` line left behind after the sitemap moved usually does this.",
+    "Point the `Sitemap:` line and the sitemap index at the sitemap's current address, or serve the file there again, and check it answers 200 with the XML.",
   ],
   "sitemap-empty": [
     "MAP-01",

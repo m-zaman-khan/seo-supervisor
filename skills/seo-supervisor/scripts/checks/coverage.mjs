@@ -63,6 +63,22 @@ export function checkCoverage(
         );
     }
   }
+  // A small, well-linked site (about 500 pages, all reached from the home page) without video or news may not need a
+  // sitemap. A crawl that read no indexable page (a site that's down) can't call the site small.
+  // https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview
+  if (
+    findings.has("sitemap-missing") &&
+    !capped &&
+    !SECTION &&
+    site.start.pathname === "/" &&
+    !findings.has("deep-page") &&
+    htmlPages.filter(p => indexable(p)).length <= 500 &&
+    !htmlPages.some(p => (p.types || []).some(t => t === "VideoObject" || t === "NewsArticle"))
+  ) {
+    const f = findings.get("sitemap-missing");
+    findings.delete("sitemap-missing");
+    for (const e of f.evidence) add("sitemap-missing-small", e.url, e.detail);
+  }
   for (const p of htmlPages)
     if (!p.clientOnly && p.badUrls?.length)
       add("url-malformed", p.finalUrl, `${p.badUrls.length} address(es): ${p.badUrls.slice(0, 5).join(", ")}`);

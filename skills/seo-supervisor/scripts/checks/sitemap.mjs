@@ -232,10 +232,16 @@ export async function findSitemaps(smUrls, smListed, { startOrigin: START_ORIGIN
   // The plugins' index names, then WordPress core's (since 5.5), and /sitemap.xml when robots.txt named other files: a
   // stale Sitemap: line left after a move mustn't hide the real sitemap. The named files stay in files, so a broken one
   // is still reported.
-  for (const path of ["/sitemap_index.xml", "/sitemap-index.xml", "/wp-sitemap.xml"]) {
-    if (sm.entries.length || smListed) break;
+  for (const path of [
+    ...(smListed ? ["/sitemap.xml"] : []),
+    "/sitemap_index.xml",
+    "/sitemap-index.xml",
+    "/wp-sitemap.xml",
+  ]) {
+    if (sm.entries.length) break;
+    if (smUrls.some(u => toCrawl(u) === START_ORIGIN + path)) continue;
     const alt = await readSitemaps([START_ORIGIN + path], false, io);
-    if (alt.entries.length) sm = alt;
+    if (alt.entries.length) sm = smListed ? { ...alt, files: [...sm.files, ...alt.files] } : alt;
   }
   if (sm.filesLeft)
     notes.push(
@@ -256,6 +262,9 @@ export function checkSitemapFiles(sm, smUrls, { add, findings }) {
       add("sitemap-too-big", f.url, f.tooBig ? "over 50 MB uncompressed" : `${f.urls.toLocaleString("en-US")} URLs`);
     if (f.nestedIn) add("sitemap-index-nested", f.url, `listed in ${f.nestedIn}`);
     if (f.urls === 0 && !f.invalid && !f.html) add("sitemap-empty", f.url);
+    // A file robots.txt or an index names that doesn't load, while URLs came from others (else it's sitemap-missing).
+    if (f.status !== 200 && sm.entries.length)
+      add("sitemap-unreachable", f.url, f.status ? `status ${f.status}` : "no answer");
   }
   if (!sm.entries.length && !findings.has("sitemap-invalid") && !findings.has("sitemap-empty"))
     add(
@@ -316,9 +325,13 @@ export function checkSitemapEntries(
       queue.push(c);
     }
   }
-  const lm = sm.entries.map(e => (e.lastmod || "").slice(0, 10)).filter(Boolean);
-  if (lm.length >= 5 && new Set(lm).size === 1)
-    add("sitemap-lastmod-same", firstSm, `all ${lm.length} entries: ${lm[0]}`);
+  // 90% or more of the dates on one day (a local threshold) reads as a build date, not real edits.
+  const lm = sm.entries.map(e => (e.lastmod || "").slice(0, 10)).filter(Boolean),
+    byDay = new Map();
+  for (const d of lm) byDay.set(d, (byDay.get(d) || 0) + 1);
+  const [day, same] = [...byDay].sort((a, b) => b[1] - a[1])[0] || [];
+  if (lm.length >= 5 && same >= 0.9 * lm.length)
+    add("sitemap-lastmod-same", firstSm, `${same === lm.length ? "all" : `${same} of`} ${lm.length} entries: ${day}`);
   // Per file: lastmod after tomorrow (a day of slack for time zones) or not a W3C date, and tags Google ignores.
   const W3C_DATE =
     /^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01])(T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d+)?)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d))?)?)?$/;
