@@ -42,7 +42,7 @@
 
     <h2>Where the data is stored</h2>
     <ul>
-      <li><strong>Your sign-in</strong> (the access and refresh tokens Google issues) is saved in <code>~/.seo-supervisor/google.json</code> in your home folder, readable only by your user account. It's never written into your project.</li>
+      <li><strong>Your sign-in</strong> (the access and refresh tokens Google issues) is saved in <code>~/.seo-supervisor/google.json</code> in your home folder. SEO Supervisor makes the file readable only by your user account where your system allows it (on Windows, through Windows' own file permissions); when that doesn't work, the connect step says so, and the file is as private as the folder it's in. It's never written into your project.</li>
       <li><strong>The results</strong> are saved in your project's <code>seo-audit/</code> folder, as the report and its data files.</li>
       <li>Nothing is sent to the maintainers or to any server of ours. There isn't one.</li>
     </ul>

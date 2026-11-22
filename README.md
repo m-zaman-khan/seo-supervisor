@@ -56,7 +56,7 @@ npx seo-supervisor        # then, in Claude Code: /seo-audit
 - **More connections and checks:** Matomo and PostHog visits, a check that your known backlinks still exist, Google ranking updates next to your numbers, Lighthouse on every page if you want it, and "Since last audit" now notices schema that lost fields.
 - **Search Console in more depth:** image, video, news and Discover clicks, clicks by device and country, the change from the period before with the pages that dropped most, and the rich-result errors Google reports. It also warns when a period overlaps a data problem Google has documented.
 - **Fewer blind spots:**
-  - Gzipped and plain-text sitemaps are read, and a broken sitemap is reported with its line.
+  - Gzipped and plain-text sitemaps are read; a broken sitemap is reported with its line, and an empty one or a relative `<loc>` is flagged.
   - robots `none` counts as noindex.
   - Tests the www/bare-domain redirect, and compares what Googlebot gets with what visitors get.
   - Checks the favicon and your phone number and address on the page.
@@ -99,6 +99,7 @@ npx seo-supervisor        # then, in Claude Code: /seo-audit
   - The crawler:
     - reads RSS and Atom sitemaps and `/wp-sitemap.xml`
     - merges repeated and versioned robots.txt groups
+    - reads the one group Googlebot obeys (its own, else `*`)
     - waits when a site says "too many requests" (429)
     - audits one section (`--include`, `--exclude`)
     - estimates the site's size past its page limit
@@ -129,9 +130,9 @@ npx seo-supervisor        # then, in Claude Code: /seo-audit
   - Shop checks for a missing product image, a price of 0, a price end date that has passed, a currency that isn't an ISO code, a stock status schema.org doesn't list, an "N/A" brand, unlabelled adult products and one H1 shared by many product pages. The report counts which products give a brand, GTIN, SKU, colour, size, material and category.
   - Image checks: weak alt text, extra image preloads, images over 500 KB, and a main image without `fetchpriority`. Image credits and AI labels are read from the files, and `images.mjs --label-ai` adds the AI label without re-encoding the image.
   - More real-user speed detail: the share of good and poor visits, FCP and TTFB, the data's period, 4-week averages, and tablet and home-page trends. Server response time per page, and Lighthouse on as many pages as you name.
-  - With outside checks on, the browser loads each sample page again: browser errors, text only JavaScript adds, what's on the first screen, the phone menu, ads, hidden text and jump links. Whole-page, 1920×1080 and tablet screenshots, and `--render-page` renders a page you pick.
+  - With outside checks on, each sample page's desktop and phone loads are also read for: browser errors, text only JavaScript adds, what's on the first screen, the phone menu, ads, hidden text and jump links. Whole-page, 1920×1080 and tablet screenshots, and `--render-page` renders a page you pick.
   - Tells a storefront from a business that goes to its customers, and doesn't ask the second for a street address. With your yes, it adds nearby competitors and an address check from OpenStreetMap: free, no key.
-  - A table of which AI crawlers robots.txt lets in, a check of where Content-Signal lines sit, and, with your yes, a test of whether a firewall turns AI search crawlers away. The log scan knows more Google and OpenAI bots, and can check visits against the vendors' published addresses.
+  - A table of which AI crawlers robots.txt lets in, a check of where Content-Signal lines sit, and, with your yes, a test of whether a firewall turns AI search crawlers away. The log scan knows more Google, OpenAI and Meta bots, from the same list as the table, and can check visits against the vendors' published addresses.
   - "Since last audit" now covers H1 and H2 text, hreflang, more share tags, retired schema and shrunk sections. It keeps a timeline of every crawl and can run on a schedule.
   - A PDF report (`render-report.mjs --pdf`), a score per page, `npx seo-supervisor doctor` when something fails, `npx seo-supervisor dashboard` for several sites, and per-client logins for agencies (`SEO_SUPERVISOR_CLIENT`). `--with-browser` adds Chrome for containers and CI, and `--zip` makes a zip to upload to claude.ai (Customize → Skills, with code execution on).
 
