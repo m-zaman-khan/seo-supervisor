@@ -204,6 +204,36 @@ export function findingsOf(raw, dir) {
   return { ...r, warnings: [...(bad ? [bad] : []), ...renamed, ...r.warnings] };
 }
 
+// The score summary every reader shows, so the report and the dashboard can't disagree: the findings as the settings
+// leave them (open first, then by severity, then by count), the passed rules, the rules and the score, and the score
+// once the open blockers are fixed (null when no blocker caps it).
+export function scoreSummary(raw, dir) {
+  const { findings, ...checkSettings } = findingsOf(raw, dir);
+  findings.sort(
+    (a, b) =>
+      Number(!isOpen(a)) - Number(!isOpen(b)) ||
+      SEV.indexOf(a.severity) - SEV.indexOf(b.severity) ||
+      (b.count || 0) - (a.count || 0),
+  );
+  const passed = Array.isArray(raw?.passed) ? raw.passed : [],
+    open = findings.filter(isOpen),
+    rules = buildRules(findings, passed),
+    overall = score(rules);
+  const unlock = overall?.cap
+    ? score(buildRules(findings, passed, { assume: /** @type {any} */ (f => f.severity === "blocker") }))
+    : null;
+  return {
+    findings,
+    checkSettings,
+    passed,
+    open,
+    rules,
+    overall,
+    unlock,
+    countSev: sev => open.filter(f => f.severity === sev).length,
+  };
+}
+
 export const BANDS = [
   [90, "Excellent", "b5"],
   [75, "Good", "b4"],

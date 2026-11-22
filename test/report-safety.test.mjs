@@ -320,6 +320,25 @@ test("issues.mjs escapes a finding's text with the report's own Markdown escaper
   );
 });
 
+test("the dashboard reads the report's one score summary and shared helpers, so its numbers match the report", () => {
+  const src = readFileSync(join(SKILL, "scripts", "dashboard.mjs"), "utf8");
+  assert.match(src, /import \{ bandOf, scoreSummary, OWN_SCORE \} from "\.\/lib\/score\.mjs";/);
+  assert.match(src, /import \{ esc, fmtDate, plural \} from "\.\/report\/format\.mjs";/);
+  assert.doesNotMatch(src, /const (esc|plural|fmtDate) =|buildRules\(|findingsOf\(/, "no copies of its own");
+  for (const raw of [KITCHEN, SAMPLE]) {
+    const dir = tmp();
+    writeFileSync(join(dir, "seo-audit.json"), JSON.stringify(raw));
+    const r = render(copy(raw), { dir }),
+      d = summaryOf(dir);
+    assert.ok(r.receipt[0].startsWith(`SEO health score: ${d.score.value}/100`), r.receipt[0]);
+    assert.equal(
+      d.unlock?.value ?? null,
+      Number(r.receipt.find(l => /^Fixing the/.test(l))?.match(/raises it to (\d+)/)?.[1] ?? NaN) || null,
+    );
+    assert.ok(r.receipt.some(l => l.startsWith(`Open: ${d.open} (${d.blockers} blocker, ${d.high} high,`)));
+  }
+});
+
 test("the page's styles have no dead .as.b3-t,.as.b4-t rule", () => {
   const { html } = rend(KITCHEN);
   assert.doesNotMatch(html, /\.as\.b[34]-t/);

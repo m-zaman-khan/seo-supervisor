@@ -1,7 +1,7 @@
 // @ts-check
 // The report's model: the audit read once, with check settings applied and the score worked out.
 import { basename } from "node:path";
-import { SEV, EARN, isOpen, findingsOf, buildRules as rulesOf, score } from "../lib/score.mjs";
+import { EARN, isOpen, buildRules as rulesOf, score, scoreSummary } from "../lib/score.mjs";
 import { plural, obj, isText } from "./format.mjs";
 
 export const needsYou = f => f.fixBy === "owner" && isOpen(f);
@@ -33,15 +33,8 @@ export function buildModel(raw, dir) {
       auditor: "seo-crawl.mjs " + raw.version,
     });
   if (isScan) Object.assign(run, { mode: "content scan", date: raw.scannedAt, auditor: "content-scan.mjs" });
-  // The check settings (settings.json beside the audit file) apply before the score.
-  const { findings, ...checkSettings } = findingsOf(raw, dir);
-  findings.sort(
-    (a, b) =>
-      Number(!isOpen(a)) - Number(!isOpen(b)) ||
-      SEV.indexOf(a.severity) - SEV.indexOf(b.severity) ||
-      (b.count || 0) - (a.count || 0),
-  );
-  const passed = raw.passed || [];
+  // scoreSummary applies settings.json before scoring, the same way the dashboard does.
+  const { findings, checkSettings, passed, open, rules, overall, unlock, countSev } = scoreSummary(raw, dir);
   const notChecked = raw.notChecked || [];
   const notes = raw.notes || [];
   // Lighthouse runs, validated once for every panel; each failed audit keeps up to 10 of the items it names.
@@ -68,14 +61,10 @@ export function buildModel(raw, dir) {
         recommendation: f.decision?.recommendation || f.fix,
       })),
   ];
-  const open = findings.filter(isOpen),
-    fixed = findings.filter(f => !isOpen(f));
-  const countSev = s => open.filter(f => f.severity === s).length;
+  const fixed = findings.filter(f => !isOpen(f));
 
   // The score model is documented in report-format.md.
   const buildRules = opts => rulesOf(findings, passed, opts);
-  const rules = buildRules();
-  const overall = score(rules);
   const areaNames = [...new Set(rules.map(r => r.area))];
   const areas = areaNames
     .map(name => {
@@ -90,7 +79,6 @@ export function buildModel(raw, dir) {
   // While blockers cap the score, the report shows what fixing them unlocks.
   const isBlocker = f => f.severity === "blocker";
   const openBlockers = findings.filter(f => isBlocker(f) && isOpen(f));
-  const unlock = overall?.cap ? score(buildRules({ assume: isBlocker })) : null;
   const beforeUnlock = unlock && before ? score(buildRules({ fixedCountsAsOpen: true, assume: isBlocker })) : null;
   // What this run's fixes changed. While the blocker cap holds the total, the gain shows in the unlocked score instead.
   function deltaOf() {

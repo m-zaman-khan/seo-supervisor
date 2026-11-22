@@ -3,13 +3,12 @@
 // Several sites at a glance from local audits. Scores come from lib/score.mjs, so they match each seo-audit.html.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
-import { buildRules, bandOf, isOpen, findingsOf, score, OWN_SCORE } from "./lib/score.mjs";
+import { bandOf, scoreSummary, OWN_SCORE } from "./lib/score.mjs";
 import { isMain } from "./lib/is-main.mjs";
-import { fmtDate } from "./report/format.mjs";
+import { esc, fmtDate, plural } from "./report/format.mjs";
 
 // fmtDate keeps a YYYY-MM-DD date on that day in every time zone; a missing or bad date shows nothing.
 const dayOf = d => (d && !isNaN(new Date(d).getTime()) ? fmtDate(d) : "");
-const plural = (n, w) => `${n} ${n === 1 ? w : w + "s"}`;
 
 export function summaryOf(dir) {
   const file = [join(dir, "seo-audit.json"), join(dir, "seo-audit", "seo-audit.json")].find(f => existsSync(f));
@@ -20,24 +19,18 @@ export function summaryOf(dir) {
   } catch {
     return { dir, problem: `${file} can't be read as JSON` };
   }
-  const { findings } = findingsOf(raw, dirname(file)),
-    passed = Array.isArray(raw.passed) ? raw.passed : [],
-    open = findings.filter(isOpen);
-  const s = score(buildRules(findings, passed)),
-    count = sev => open.filter(f => f.severity === sev).length;
+  const { open, overall, unlock, countSev } = scoreSummary(raw, dirname(file));
   return {
     dir,
     report: file.replace(/\.json$/i, ".html"),
     name: String(raw.site?.name || basename(dirname(resolve(file)))),
     url: typeof raw.site?.url === "string" ? raw.site.url : "",
     date: dayOf(raw.run?.date),
-    score: s,
+    score: overall,
     open: open.length,
-    blockers: count("blocker"),
-    high: count("high"),
-    unlock: s?.cap
-      ? score(buildRules(findings, passed, { assume: /** @type {any} */ (f => f.severity === "blocker") }))
-      : null,
+    blockers: countSev("blocker"),
+    high: countSev("high"),
+    unlock,
     regressions: Array.isArray(raw.diff?.regressions) ? raw.diff.regressions.length : null,
   };
 }
@@ -69,11 +62,6 @@ export const order = list =>
       String(a.name).localeCompare(String(b.name)),
   );
 
-const esc = s =>
-  String(s ?? "").replace(
-    /[&<>"']/g,
-    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-  );
 export function dashboardHtml(list, out) {
   const link = x => {
     const r = relative(dirname(out), x.report).split(/[\\/]/).map(encodeURIComponent).join("/");
