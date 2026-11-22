@@ -211,11 +211,20 @@ export function targetsFor(keys, scope, c) {
   return [...byDir.values()];
 }
 
+// Windsurf's and Goose's own skills folders, used by v1.x. Uninstall still removes the skill from them.
+const LEGACY = [
+  { user: c => join(c.home, ".codeium", "windsurf", "skills"), project: ".windsurf/skills" },
+  { user: c => join(config(c), "goose", "skills"), project: ".goose/skills" },
+];
+
 /** Every skills folder any agent could use in this scope, plus the legacy ones, for uninstall. */
 export function allTargets(scope, c) {
-  return targetsFor(
-    AGENTS.map(a => a.key),
-    scope,
-    c,
-  );
+  return [
+    ...targetsFor(
+      AGENTS.map(a => a.key),
+      scope,
+      c,
+    ),
+    ...LEGACY.map(l => ({ skills: resolve(scope === "project" ? l.project : l.user, c), agents: [], extras: [] })),
+  ];
 }

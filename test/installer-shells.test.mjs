@@ -179,6 +179,29 @@ test("Cline: the help and the install say its guard runs in Cline's CLI, SDK and
   );
 });
 
+test("uninstall also removes the copies v1.x put in Windsurf's and Goose's old skill folders, and nothing else there", async () => {
+  const home = tmp(),
+    cwd = tmp();
+  const old = [
+    join(home, ".codeium", "windsurf", "skills"),
+    join(home, ".config", "goose", "skills"),
+    join(cwd, ".windsurf", "skills"),
+    join(cwd, ".goose", "skills"),
+  ];
+  for (const d of old)
+    for (const name of ["seo-supervisor", "mine"]) {
+      mkdirSync(join(d, name), { recursive: true });
+      writeFileSync(join(d, name, "SKILL.md"), `---\nname: ${name}\n---\n`);
+    }
+  const user = await node([BIN, "--uninstall"], { env: env(home), cwd });
+  await node([BIN, "--uninstall", "--project"], { env: env(home), cwd });
+  for (const d of old) {
+    assert.ok(!existsSync(join(d, "seo-supervisor")), `${d}: ours is gone`);
+    assert.ok(existsSync(join(d, "mine", "SKILL.md")), `${d}: the owner's skill stays`);
+  }
+  assert.match(user.stdout, /removed +~\/\.codeium\/windsurf\/skills\/seo-supervisor/);
+});
+
 test("a home folder with letters outside ASCII gets the whole skill (Node 24's cpSync writes to a garbled folder on Windows)", async () => {
   const home = join(tmp(), "José D’Souza"),
     cwd = tmp();
