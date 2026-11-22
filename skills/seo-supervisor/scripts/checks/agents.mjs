@@ -2,6 +2,7 @@
 // Agent readiness: what AI agents can use on a page, Bing's AI rules, AI crawler rules, and the AI bot list.
 import { readFileSync } from "node:fs";
 import { attrs } from "../lib/html.mjs";
+import { bodyUpTo } from "../lib/http.mjs";
 import { parseRobots } from "../lib/robots.mjs";
 
 export const CHECKS = {
@@ -471,7 +472,8 @@ export async function agentFiles(fetchFn, origin) {
         await r.body?.cancel();
         return null;
       }
-      return JSON.parse(await r.text());
+      const b = await bodyUpTo(r, 1 << 20);
+      return b && JSON.parse(new TextDecoder().decode(b));
     } catch {
       return null;
     }
