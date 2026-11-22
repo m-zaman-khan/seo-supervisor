@@ -10,6 +10,7 @@ import { serve } from "./serve.mjs";
 import { SCRIPTS, node, tmp } from "./helpers.mjs";
 import { createFetcher, isLocal, isPublic as fetchIsPublic } from "../skills/seo-supervisor/scripts/crawl/fetch.mjs";
 import { isPublic as netIsPublic } from "../skills/seo-supervisor/scripts/lib/net.mjs";
+import { probeSite } from "../skills/seo-supervisor/scripts/checks/probes.mjs";
 
 const ORIGIN = "https://site.example";
 // Over 50 distinct main words, so the Markdown comparison takes the page.
@@ -453,6 +454,61 @@ test("pages that answer with a bot challenge (Cloudflare, AWS WAF) aren't read a
   );
   const note = r.notes.find(n => /bot challenge/.test(n)) ?? "";
   assert.match(note, /^3 page\(s\) answered with a bot challenge/, r.notes.join("\n"));
+});
+
+test("the site's own images, scripts and stylesheets that answer 4xx or 5xx are reported once each, on the page that uses them", async () => {
+  const before = (req, res) =>
+    pathOf(req.url) === "/img/err.png" && !!res.writeHead(500, { "Content-Type": "text/plain" }).end("boom");
+  const head = `<link rel="stylesheet" href="/css/missing.css"><link rel="stylesheet" href="/css/ok.css"><!-- <link rel="stylesheet" href="/css/old.css"> --><link rel="alternate stylesheet" href="/css/alt.css">`;
+  const body = `<img src="/img/missing.png" alt="Boiler" width="10" height="10"><img src="/img/err.png" alt="Pipes" width="10" height="10"><script src="/js/missing.js"></script><script src="https://cdn.example/x.js"></script>`;
+  const r = await crawlSite(
+    {
+      "/": page("Boiler repairs in Leeds", body + links("/d/"), head),
+      "/d/": page("Leak detection", `<img src="/img/missing.png" alt="Boiler" width="10" height="10">`),
+    },
+    { before, files: { "/css/ok.css": { type: "text/css", body: "body{color:#111}" } } },
+  );
+  const f = r.findings.find(x => x.check === "own-file-broken");
+  assert.deepEqual([f?.rule, f?.severity], ["CRAWL-07", "medium"]);
+  assert.deepEqual(f.evidence.map(e => [pathOf(e.url), e.detail.replace(/http:\/\/127\.0\.0\.1:\d+/, "")]).sort(), [
+    ["/", "image /img/err.png → 500"],
+    ["/", "image /img/missing.png → 404"],
+    ["/", "script /js/missing.js → 404"],
+    ["/", "stylesheet /css/missing.css → 404"],
+  ]);
+});
+
+test("on an https crawl without --check-live, a home page with no HSTS header is no-hsts, the id --check-live uses", async () => {
+  const added = [],
+    none = {
+      status: 404,
+      headers: new Headers(),
+      ct: "text/html",
+      body: "",
+      chain: [{ url: "x", status: 404 }],
+      finalUrl: "x",
+    };
+  const home = { finalUrl: "https://site.example/", headers: new Headers({ "x-content-type-options": "nosniff" }) };
+  await probeSite({
+    start: new URL(home.finalUrl),
+    startOrigin: "https://site.example",
+    expectOrigin: "https://site.example",
+    checkLive: false,
+    home,
+    add: (id, url, detail) => added.push([id, url, detail]),
+    evalRules: () => {},
+    notes: [],
+    follow: async () => none,
+    get: async () => none,
+  });
+  assert.deepEqual(
+    added.filter(([id]) => id === "no-hsts"),
+    [["no-hsts", home.finalUrl, undefined]],
+  );
+  assert.ok(
+    !added.some(([id, , d]) => id === "sec-headers" && /Strict-Transport-Security/.test(d)),
+    JSON.stringify(added),
+  );
 });
 
 test("Cloudflare's own /cdn-cgi/ addresses aren't crawled as pages", async () => {

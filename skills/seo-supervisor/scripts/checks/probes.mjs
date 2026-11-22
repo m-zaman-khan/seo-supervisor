@@ -48,7 +48,7 @@ export async function probeSite({ start: START, startOrigin: START_ORIGIN, expec
   if (sectxt.status !== 200 || /<html/i.test(sectxt.body || "")) add("security-txt", START_ORIGIN + "/.well-known/security.txt", sectxt.status === 200 ? "returns an HTML page instead (soft 404)" : `status ${sectxt.status}`);
   if (home && home.headers) {
     const h = home.headers, missing = [];
-    if (!CHECK_LIVE && EXPECT_ORIGIN.startsWith("https") && START_ORIGIN.startsWith("https") && !h.get("strict-transport-security")) missing.push("Strict-Transport-Security");
+    if (!CHECK_LIVE && EXPECT_ORIGIN.startsWith("https") && START_ORIGIN.startsWith("https") && !h.get("strict-transport-security")) add("no-hsts", home.finalUrl); // one id with or without --check-live (checks/tls.mjs)
     if (!h.get("x-content-type-options")) missing.push("X-Content-Type-Options");
     if (!h.get("referrer-policy")) missing.push("Referrer-Policy");
     // A Report-Only policy monitors without enforcing, so it doesn't count as a CSP.
