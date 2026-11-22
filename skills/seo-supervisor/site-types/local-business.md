@@ -7,7 +7,7 @@ Generate only the service × city pairs listed in your data, never the full cros
 Each page needs a unique intro that names its own city and says something specific about the work there, at least one local consideration (climate, permits, housing stock, regulations, with sources), at least 2–3 unique FAQs, and real proof from that city (jobs, photos, reviews) rendered on the server from your own data, not a widget. No city-swapped templates; the crawler's `near-duplicate` check must pass. A town with no proof of its own may show proof from the hub town that serves it, saying so plainly.
 
 ### LOCAL-03 · Each page names one city · high
-The city in the slug, title, H1 and `areaServed` must match. Other cities appear only in the nearby/sibling link blocks. Mention the city naturally (about 15–30 times per page; 40 or more reads as stuffing).
+The city in the slug, title, H1 and `areaServed` must match. Other cities appear only in the nearby/sibling link blocks. Name the city where it reads naturally (the title, H1, intro, address and local proof); there's no target count. Google's spam policies list "Blocks of text that list cities and regions that a web page is trying to rank for" as keyword stuffing (developers.google.com/search/docs/essentials/spam-policies, updated 28 Aug 2026, read 22 Nov 2026).
 
 ### LOCAL-04 · Local URLs · medium
 At most 3 path segments. The service slug is reused exactly in service × city URLs. In a metro spanning two states, the state goes into the city slug (`kansas-city-ks`). County is data, not part of the URL. Dropped geo layers (e.g. county pages) 301 to the service page.
