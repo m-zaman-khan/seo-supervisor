@@ -347,3 +347,26 @@ test("the sitemap files are read 2 at a time at most, however many requests the 
   );
   assert.equal(peak, 2);
 });
+
+test("a missing or zero concurrency reads the sitemaps one at a time instead of looping forever", async () => {
+  // In a worker: a loop that never yields to the timers can only be stopped by terminating the thread.
+  const url = pathToFileURL(join(SCRIPTS, "checks", "sitemap.mjs")).href;
+  const code = `const { parentPort } = require("node:worker_threads");
+import(${JSON.stringify(url)}).then(async ({ findSitemaps }) => {
+  const O = "https://site.example", out = [];
+  for (const conc of [0, undefined, NaN, -3]) {
+    const sm = await findSitemaps([O + "/a.xml", O + "/b.xml"], true, { startOrigin: O, notes: [], toCrawl: u => u, conc,
+      fetchSitemap: async u => ({ status: 200, body: '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>' + u + '-page</loc></url></urlset>' }) });
+    out.push(sm.entries.length);
+  }
+  parentPort.postMessage(out);
+});`;
+  const worker = new Worker(code, { eval: true });
+  try {
+    const got = await within(new Promise((ok, ko) => worker.once("message", ok).once("error", ko)), 5000);
+    assert.notEqual(got, "hang", "findSitemaps was still looping after 5 s");
+    assert.deepEqual(got.v, [2, 2, 2, 2]);
+  } finally {
+    await worker.terminate();
+  }
+});

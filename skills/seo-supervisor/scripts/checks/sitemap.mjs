@@ -260,7 +260,8 @@ export async function findSitemaps(
   smListed,
   { startOrigin: START_ORIGIN, notes, fetchSitemap, toCrawl, conc = 1 },
 ) {
-  const io = { fetchSitemap, toCrawl, conc: Math.min(SITEMAP_CONC, conc) };
+  // At least 1: with 0 (or NaN) no file would ever be asked for, and readSitemaps would loop forever.
+  const io = { fetchSitemap, toCrawl, conc: Math.max(1, Math.min(SITEMAP_CONC, conc || 1)) };
   let sm = await readSitemaps(smUrls, smListed, io);
   // The plugins' index names, then WordPress core's (since 5.5), and /sitemap.xml when robots.txt named other files: a
   // stale Sitemap: line left after a move mustn't hide the real sitemap. The named files stay in files, so a broken one
