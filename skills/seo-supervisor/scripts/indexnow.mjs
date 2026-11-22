@@ -7,28 +7,24 @@ import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, statSy
 import { randomBytes } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { dirname, join, resolve } from "node:path";
-import { proxyNote } from "./lib/proxy.mjs";
+import { isMain } from "./lib/is-main.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
+import { bodyUpTo } from "./lib/http.mjs";
+import { isPublic } from "./lib/net.mjs";
 import { changedPages } from "./seo-diff.mjs";
-{
-  const n = proxyNote();
-  if (n) console.error("note: " + n);
-} // once, before any request
 
-const cmd = process.argv[2];
-const args = {};
-for (let i = 3; i < process.argv.length; i++) {
-  const k = process.argv[i].replace(/^--/, "");
-  args[k] = process.argv[i + 1] && !process.argv[i + 1].startsWith("--") ? process.argv[++i] : true;
-}
-const str = k => (typeof args[k] === "string" ? args[k] : null);
 const USAGE =
   "usage: node indexnow.mjs key --public-dir <dir> [--site https://x]\n       node indexnow.mjs submit --site https://x --key <key> (--urls file.txt | --from-diff seo-diff.json | --from-sitemap https://x/sitemap.xml) [--endpoint url] [--out seo-audit/indexnow.json] [--yes]";
-class Fail extends Error {}
 const fail = msg => {
   throw new Fail("indexnow: " + msg);
 };
 const KEY = /^[a-zA-Z0-9-]{8,128}$/;
 const UA = "seo-supervisor-indexnow";
+// A sitemap may be at most 50 MB uncompressed, so neither the answer nor a .gz's output is read past that: a
+// decompression bomb can't fill memory.
+// https://www.sitemaps.org/protocol.html
+const SITEMAP_MAX = 52428800;
 const siteOf = s => {
   try {
     const u = new URL(s);
@@ -45,19 +41,25 @@ const read = f => {
   }
 };
 const getText = async u => {
-  let r;
+  let r, b;
   try {
     r = await fetch(u, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(20000) });
+    if (r.ok) b = await bodyUpTo(r, SITEMAP_MAX);
   } catch (e) {
     fail(`couldn't fetch ${u} (${e.cause?.code || e.message})`);
   }
   if (!r.ok) fail(`${u} returned ${r.status}`);
+  if (!b) fail(`${u} is over 50 MB, more than a sitemap may be (sitemaps.org)`);
   // A gzipped sitemap (sitemap.xml.gz) starts with gzip's magic bytes 1f 8b; a server that already decoded it doesn't.
-  const b = Buffer.from(await r.arrayBuffer());
+  if (b[0] !== 0x1f || b[1] !== 0x8b) return b.toString("utf8");
   try {
-    return (b[0] === 0x1f && b[1] === 0x8b ? gunzipSync(b) : b).toString("utf8");
-  } catch {
-    fail(`${u} looks gzipped but couldn't be unpacked`);
+    return gunzipSync(b, { maxOutputLength: SITEMAP_MAX }).toString("utf8");
+  } catch (e) {
+    fail(
+      e.code === "ERR_BUFFER_TOO_LARGE"
+        ? `${u} unpacks to more than 50 MB, more than a sitemap may be (sitemaps.org)`
+        : `${u} looks gzipped but couldn't be unpacked`,
+    );
   }
 };
 const ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
@@ -71,11 +73,21 @@ const decode = s =>
     );
 const locs = (xml, tag) =>
   [...xml.matchAll(new RegExp(`<${tag}\\b[\\s\\S]*?<loc>([\\s\\S]*?)</loc>`, "gi"))].map(m => decode(m[1]));
+// An index is followed one level, to children on its own host or a public address: the index itself may be local, but
+// it can't point this script at a private network.
 async function sitemapLocs(u) {
   const xml = await getText(u);
   if (!/<sitemapindex\b/i.test(xml)) return locs(xml, "url");
-  const out = [];
-  for (const child of locs(xml, "sitemap")) out.push(...locs(await getText(child), "url"));
+  const out = [],
+    host = new URL(u).host;
+  for (const child of locs(xml, "sitemap")) {
+    let same = false;
+    try {
+      same = new URL(child).host === host;
+    } catch {}
+    if (same || isPublic(child)) out.push(...locs(await getText(child), "url"));
+    else console.log(`indexnow: skipped the child sitemap ${child}: it isn't on ${host} or a public web address.`);
+  }
   return out;
 }
 
@@ -88,8 +100,11 @@ const MEANING = {
   429: "refused, too many requests (IndexNow treats this as possible spam); wait before submitting again",
 };
 
-async function key() {
-  const dir = str("public-dir");
+const strOf = args => k => (typeof args[k] === "string" ? args[k] : null);
+
+async function key(args) {
+  const str = strOf(args),
+    dir = str("public-dir");
   if (!dir) throw new Fail(USAGE);
   if (!existsSync(dir) || !statSync(dir).isDirectory())
     fail(
@@ -108,7 +123,8 @@ async function key() {
   return 0;
 }
 
-async function submit() {
+async function submit(args) {
+  const str = strOf(args);
   if (!str("site") || !str("key") || !(str("urls") || str("from-diff") || str("from-sitemap"))) throw new Fail(USAGE);
   const site = siteOf(args.site),
     key = args.key;
@@ -194,7 +210,7 @@ async function submit() {
     );
   };
 
-  if (args.yes !== true) {
+  if (!args.yes) {
     record(false, []);
     console.log(
       `indexnow: dry run, nothing sent. It would POST ${urls.length} URL(s) for ${site.host} to ${ENDPOINT} in ${batches.length} batch(es), with keyLocation ${keyLocation}:\n${urls
@@ -216,7 +232,11 @@ async function submit() {
       headers: { "user-agent": UA },
       signal: AbortSignal.timeout(20000),
     });
-    check = { status: r.status, body: (await r.text()).trim(), location: r.headers.get("location") };
+    check = {
+      status: r.status,
+      body: String((await bodyUpTo(r, 1024)) ?? "").trim(),
+      location: r.headers.get("location"),
+    };
   } catch (e) {
     check = { status: e.cause?.code || e.message, body: "" };
   }
@@ -266,12 +286,14 @@ async function submit() {
   return results.every(r => r.status === 200 || r.status === 202) ? 0 : 1;
 }
 
-// Not process.exit(): exiting while fetch's sockets close crashes Node on Windows.
-process.exitCode = await (cmd === "key" ? key() : cmd === "submit" ? submit() : Promise.reject(new Fail(USAGE))).then(
-  null,
-  e => {
-    if (!(e instanceof Fail)) throw e;
-    console.error(e.message);
-    return 2;
-  },
-);
+if (isMain(import.meta.url))
+  await runMain(() => {
+    const args = parseArgs(process.argv.slice(2), {
+        flags: ["public-dir", "site", "key", "urls", "from-diff", "from-sitemap", "endpoint", "out"],
+        booleans: ["yes"],
+        positionals: 1,
+      }),
+      cmd = args._[0];
+    if (cmd !== "key") warnProxy(); // once, before any request: key only writes a local file
+    return cmd === "key" ? key(args) : cmd === "submit" ? submit(args) : Promise.reject(new Fail(USAGE));
+  });
