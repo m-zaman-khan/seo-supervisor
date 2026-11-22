@@ -87,16 +87,23 @@ const docOf = type => GOOGLE.supported.find(r => r.type === type).doc;
 const monthOf = d =>
   new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 
-const byDomain = Object.create(null);
-for (const [p, [domains]] of Object.entries(PROPS)) for (const d of domains) (byDomain[d] ||= []).push(p);
+// The lookup maps are built on first use: the crawler imports this module for a few helpers that need none of them.
+let byDomain, typeLc, propLc;
+const domainProps = () => {
+  if (!byDomain) {
+    byDomain = Object.create(null);
+    for (const [p, [domains]] of Object.entries(PROPS)) for (const d of domains) (byDomain[d] ||= []).push(p);
+  }
+  return byDomain;
+};
 const allowedCache = new Map();
 const allowed = t =>
-  allowedCache.get(t) || allowedCache.set(t, new Set([...ancestors(t)].flatMap(a => byDomain[a] || []))).get(t);
+  allowedCache.get(t) || allowedCache.set(t, new Set([...ancestors(t)].flatMap(a => domainProps()[a] || []))).get(t);
 const lowerMap = o => bare(Object.fromEntries(Object.keys(o).map(k => [k.toLowerCase(), k])));
-const TYPE_LC = lowerMap(TYPES),
-  PROP_LC = lowerMap(PROPS);
+const TYPE_LC = () => (typeLc ||= lowerMap(TYPES)),
+  PROP_LC = () => (propLc ||= lowerMap(PROPS));
 const hint = (lc, t) =>
-  lc[t.toLowerCase()] && lc[t.toLowerCase()] !== t ? `; did you mean "${lc[t.toLowerCase()]}"?` : "";
+  lc()[t.toLowerCase()] && lc()[t.toLowerCase()] !== t ? `; did you mean "${lc()[t.toLowerCase()]}"?` : "";
 const term = s => s.replace(/^(?:https?:\/\/schema\.org\/|schema:)/, "");
 const has = (o, k) => o[k] != null && o[k] !== "" && !(Array.isArray(o[k]) && !o[k].length);
 const list = x => [].concat(x ?? []);
