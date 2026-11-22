@@ -35,6 +35,26 @@ async function crawlSite(pages) {
 }
 const findingOf = (r, check) => r.findings.find(f => f.check === check);
 
+// ---------- Shared schema checks ----------
+test("the crawler's schema helpers come from checks/schema.mjs, and schema-check.mjs re-exports the same ones", async () => {
+  const shared = await import("../skills/seo-supervisor/scripts/checks/schema.mjs"),
+    cli = await import("../skills/seo-supervisor/scripts/schema-check.mjs");
+  for (const k of [
+    "ISO_4217",
+    "SUPERSEDED",
+    "merchantProblems",
+    "onlineOnly",
+    "otherReviewed",
+    "placeholderIn",
+    "reviewEventProblems",
+    "sellsWithOffer",
+  ]) {
+    assert.ok(shared[k], k);
+    assert.equal(cli[k], shared[k], k);
+  }
+  assert.equal(typeof cli.checkJsonLd, "function");
+});
+
 // ---------- One business-type test ----------
 test("every Organization subtype is a business, read from schema.org's tree; WebSite, Person and Service aren't", () => {
   for (const t of [
