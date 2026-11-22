@@ -99,7 +99,7 @@ export function findingTabs(m, { trafficHtml, clarityHtml }) {
             ? `<div class="cards">${decisions
                 .map(
                   d => `<article class="panel dcard">
-    ${d.id ? `<a class="mono idlink" href="#${esc(d.id)}">${esc(d.id)}</a>` : ""}
+    ${d.id ? (findings.some(f => f.id === d.id) ? `<a class="mono idlink" href="#${esc(d.id)}">${esc(d.id)}</a>` : `<span class="mono idlink">${esc(d.id)}</span>`) : ""}
     <h3>${inl(d.question)}</h3>${d.context ? `<p>${inl(d.context)}</p>` : ""}
     ${(d.options || []).length ? `<ul class="opts">${d.options.map(o => `<li>${inl(o)}</li>`).join("")}</ul>` : ""}
     ${d.recommendation ? `<p class="rec"><strong>Recommended</strong> ${inl(d.recommendation)}</p>` : ""}

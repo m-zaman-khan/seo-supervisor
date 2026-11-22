@@ -113,7 +113,7 @@ export function overviewHtml(m) {
   // A row links to the finding's card, or to the Decisions tab for a decision no finding carries: its id (D-1) is no
   // anchor on the page.
   const row = x =>
-    `<a href="#${esc(x.id || "decisions")}">${dot(x.sev)}<span class="sev-t">${SEV_LABEL[x.sev]}</span><span class="t">${inl(x.title)}</span><span class="c">${esc(x.f?.category || "")}</span>${ICON.arrow}</a>`;
+    `<a href="#${esc(x.d && !findings.some(f => f.id === x.id) ? "decisions" : x.id || "decisions")}">${dot(x.sev)}<span class="sev-t">${SEV_LABEL[x.sev]}</span><span class="t">${inl(x.title)}</span><span class="c">${esc(x.f?.category || "")}</span>${ICON.arrow}</a>`;
   const stat = (h, n, rest = "") =>
     `\n      <div class="stat">\n        <h3>${h}</h3>\n        <p class="stat-n"><span class="n">${n}</span>${rest}</p>`;
   return `
