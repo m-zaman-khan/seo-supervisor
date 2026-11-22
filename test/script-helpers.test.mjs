@@ -406,6 +406,105 @@ test("backlinks and commoncrawl print the proxy note before they contact anythin
   }
 });
 
+// A javascript:, data: or protocol-relative address must come out as plain text wherever a URL could become a link.
+const HOSTILE = [
+  "[click](javascript:alert(1))",
+  "![x](data:text/html;base64,PHNjcmlwdD4=)",
+  '<a href="//evil.example/x">here</a>',
+  "[y](//evil.example/y)",
+  "<img src=x onerror=alert(1)>",
+];
+
+test("issues: finding text is escaped for GitHub, so crawled text can't make a link, an image or a tag", async () => {
+  const { issueOf } = await import("../skills/seo-supervisor/scripts/issues.mjs");
+  const f = {
+    id: "F-001",
+    title: "T",
+    severity: "low",
+    what: `Found on \`https://a.example/p\` (${HOSTILE[0]}).`,
+    why: HOSTILE[1] + " " + HOSTILE[2],
+    fix: HOSTILE[3] + " then https://docs.example/fix_it",
+    evidence: [{ url: "https://a.example/p", detail: HOSTILE[4] }],
+  };
+  const { body } = issueOf(f, S);
+  assert.doesNotMatch(body, /(^|[^\\])\]\(|(^|[^\\])<(a|img)\b/m, "no Markdown link or image, no HTML tag");
+  assert.match(
+    body,
+    /Found on `https:\/\/a\.example\/p` \(\\\[click\\\]\(javascript:alert\(1\)\)\)\./,
+    "code spans stay; the rest is escaped",
+  );
+  assert.match(body, /`https:\/\/docs\.example\/fix_it`/, "a web address becomes a code span");
+  assert.match(body, /\\<img src=x onerror=alert\(1\)\\>/);
+});
+
+test("issues: it says how many won't-fix findings it skipped, since the report counts them as open", async () => {
+  const dir = tmp(),
+    file = join(dir, "seo-audit.json");
+  const f = {
+    id: "F-001",
+    title: "Open one",
+    severity: "low",
+    rule: "META-01",
+    check: "x",
+    what: "w",
+    why: "y",
+    fix: "z",
+    status: "open",
+  };
+  writeFileSync(
+    file,
+    JSON.stringify({
+      site: { url: S },
+      findings: [
+        f,
+        { ...f, id: "F-002", status: "wont-fix" },
+        { ...f, id: "F-003", status: "wont-fix" },
+        { ...f, id: "F-004", status: "fixed" },
+      ],
+    }),
+  );
+  const { stdout } = await run("issues.mjs", ["--audit", file]);
+  assert.match(stdout, /2 findings marked won't fix aren't filed/);
+  await assert.rejects(
+    run("issues.mjs", ["--audit", join(dir, "nope.json")]),
+    plain(/issues: .*nope\.json doesn't exist/),
+  );
+  writeFileSync(join(dir, "bad.json"), "{");
+  await assert.rejects(run("issues.mjs", ["--audit", join(dir, "bad.json")]), plain(/bad\.json isn't JSON/));
+});
+
+test("report-plan: a draft link is made only for a web address or a path; anything else is shown as text", async () => {
+  const { planHtml } = await import("../skills/seo-supervisor/scripts/report-plan.mjs");
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`),
+    helpers = { esc, inl: esc, num: String };
+  const html = draft =>
+    planHtml(
+      {
+        status: "approved",
+        pages: [{ url: "/a/", status: "to-build", owner: { needs: "copy", what: "Approve", draft } }],
+      },
+      helpers,
+    );
+  for (const bad of [
+    "javascript:alert(1)",
+    "JaVaScRiPt:alert(1)",
+    " javascript:alert(1)",
+    "java\tscript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "//evil.example/x",
+    "/\\evil.example/x",
+    "\\\\evil\\share",
+    "vbscript:x",
+    "file:///etc/passwd",
+  ]) {
+    const h = html(bad);
+    assert.doesNotMatch(h, /<a href="(?!#)/, JSON.stringify(bad));
+    assert.match(h, /Draft:/, JSON.stringify(bad));
+  }
+  for (const good of ["drafts/privacy.md", "https://docs.example.com/d?x=1"])
+    assert.match(html(good), new RegExp(`<a href="${good.replace(/[.?]/g, "\\$&")}">Read the draft</a>`));
+});
+
 test("update-check off|on with a bad SEO_SUPERVISOR_HOME is a plain message; the weekly check itself stays silent", async () => {
   await assert.rejects(
     run("update-check.mjs", ["off"], { env: { SEO_SUPERVISOR_HOME: "relative/folder" } }),
