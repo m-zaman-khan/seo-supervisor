@@ -31,10 +31,10 @@ export function checkLinks(site) {
       if (!t) continue;
       if ((t.status >= 400 || t.status === 0) && !brokenSeen.has(l.url)) {
         brokenSeen.add(l.url);
-        add("broken-internal-link", l.url, `status ${t.status}, linked from ${p.finalUrl}`);
+        add("broken-internal-link", p.finalUrl, `links to ${l.url}: status ${t.status}`);
       } else if (t.chain && t.chain.length > 1 && !redirSeen.has(l.url)) {
         redirSeen.add(l.url);
-        add("link-to-redirect", l.url, `→ ${t.finalUrl} (linked from ${p.finalUrl})`);
+        add("link-to-redirect", p.finalUrl, `links to ${l.url}, which redirects to ${t.finalUrl}`);
       }
     }
   for (const [u, e] of smSet) {
@@ -192,7 +192,7 @@ export async function outboundLinks(site, OUTBOUND) {
     }
   if (OUTBOUND) {
     const r = await checkOutbound([...outbound.keys()], { limit: 100 });
-    for (const b of r.broken) add("outbound-broken", b.url, `status ${b.status}, linked from ${outbound.get(b.url)}`);
+    for (const b of r.broken) add("outbound-broken", outbound.get(b.url), `links to ${b.url}: status ${b.status}`);
     extra.outboundLinks = { checked: Math.min(outbound.size, 100), ...r };
     if (r.unreachable.length)
       notes.push(
@@ -237,7 +237,7 @@ export function linkedOnce(site, { section: SECTION, capped }) {
         key = t && `${t.finalUrl}#${name}`;
       if (!t || t.clientOnly || done.has(key) || hasName(t.anchorIds, name)) continue;
       done.add(key);
-      add("link-fragment-missing", key, `linked from ${p.finalUrl}`);
+      add("link-fragment-missing", p.finalUrl, `links to ${key}, but that page has no such part`);
     }
 }
 

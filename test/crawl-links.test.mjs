@@ -120,8 +120,11 @@ test("a link to page#name where the crawled page has no such id or <a name> is a
   });
   const f = findingOf(r, "link-fragment-missing");
   assert.deepEqual([f?.rule, f?.severity], ["CRAWL-07", "low"]);
-  assert.deepEqual(f.evidence.map(e => path(e.url)).sort(), ["/#nowhere", "/a/#missing"]);
-  assert.match(f.evidence[0].detail, /^linked from http:\/\/127\.0\.0\.1:\d+\/$/);
+  // The page that holds the link, with the target in the detail.
+  assert.deepEqual(f.evidence.map(e => [path(e.url), path(e.detail.match(/^links to (\S+),/)[1])]).sort(), [
+    ["/", "/#nowhere"],
+    ["/", "/a/#missing"],
+  ]);
   assert.match(f.why, /JavaScript/, "says ids added by scripts aren't seen");
   assert.ok(findingOf(r, "broken-internal-link"), "/gone/ is the broken-link check's");
 });
