@@ -43,6 +43,7 @@ export function pageSignals(site) {
     if (r.backTrap) add("back-button-trap", u, r.backTrap);
     if (r.paywall) add("paywall-text-sent", u, `about ${r.paywall.words} words inside ${r.paywall.selector}`);
     if (r.late.length) add("head-tags-late", u, `in the body: ${r.late.join(", ")}`);
+    if (r.relCanon) add("canonical-relative", u, r.relCanon);
   }
   for (const [u, d] of identityDrift(read.map(p => ({ url: p.finalUrl, ...p.pageChecks.identity }))))
     add("site-identity-differs", u, d);

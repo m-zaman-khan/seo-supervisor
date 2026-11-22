@@ -97,18 +97,14 @@ test("a one-page site with a starter title is a blocker too", async () => {
   assert.ok(r.findings.some(f => f.check === "title-missing-sitewide" && f.severity === "blocker"));
 });
 
-test("titles and canonicals streamed into the body (Next.js 15.2+) are read", async () => {
+// Google accepts a canonical link only in the <head>, so this page's canonical is missing; its title and description
+// still count. https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls
+test("titles and descriptions streamed into the body (Next.js 15.2+) are read; a canonical there isn't", async () => {
   const r = await crawlPages({
     "/": `<!doctype html><html><head><meta charset="utf-8"></head><body><main><h1>Home</h1><p>${words}</p></main><title>Streamed title for the home page</title><link rel="canonical" href="https://site.example/"><meta name="description" content="A description that arrived late in the body, as streamed metadata does on dynamic routes in newer Next.js versions."></body></html>`,
   });
-  for (const key of [
-    "title-missing",
-    "title-missing-sitewide",
-    "canonical-missing",
-    "canonical-missing-sitewide",
-    "desc-missing",
-  ])
-    assert.ok(!has(r, key), key);
+  for (const key of ["title-missing", "title-missing-sitewide", "desc-missing"]) assert.ok(!has(r, key), key);
+  assert.ok(has(r, "canonical-missing") || has(r, "canonical-missing-sitewide"), "the body's canonical doesn't count");
 });
 
 test("product prices in other formats, superscript cents and variant prices aren't mismatches", async () => {

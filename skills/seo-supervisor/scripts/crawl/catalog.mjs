@@ -262,15 +262,15 @@ export const CHECKS = {
     "URL-04",
     "high",
     n => `${n} indexable page(s) have no canonical tag`,
-    "Without a canonical, Google picks one itself among parameter, slash and tracking variants.",
+    "Without a canonical, Google picks one itself among parameter, slash and tracking variants. A canonical in the `<body>`, or after an element that ended the head early, doesn't count: Google accepts it only in the `<head>`.",
     "Add a self-referencing absolute canonical to every indexable page through the shared metadata helper.",
   ],
   "canonical-multiple": [
     "URL-04",
     "high",
     n => `${n} page(s) declare more than one canonical`,
-    "Conflicting canonicals are ignored.",
-    "Emit exactly one canonical per page from one place.",
+    'Conflicting canonicals are ignored. A `Link` header with rel="canonical" counts too: Google says giving one URL there and another in the page\'s link element is the error to avoid.',
+    "Emit exactly one canonical per page from one place: the HTML link element or the `Link` header, not both.",
   ],
   "canonical-not-self": [
     "URL-04",

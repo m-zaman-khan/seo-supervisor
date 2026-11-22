@@ -45,6 +45,15 @@ export const CHECKS = {
     "These tags came after the page's `<head>` had ended. For Google the head also ends early, at the first element a head can't hold, such as an `<img>`, an `<iframe>` or a tracking pixel: Google then stops reading the head, so the tags after it count as being in the body. Google asks for the title, meta tags and canonical early in the HTML, because it reads only the first 2 MB of a page, and it accepts a canonical only inside the `<head>`, so one sent in the body works only if the page's JavaScript moves it there. Google does read a robots tag anywhere in the page. Next.js 15.2 and later send metadata late on purpose when it loads slowly (\"streamed metadata\"): browsers and Googlebot, which runs JavaScript, get it in the body, while the bots on Next.js's own list, such as Bingbot, Applebot and the link previews of X, Slack and Facebook, get it in the head. This crawler (user agent seo-supervisor-crawler) isn't on that list, so it saw what a browser gets.",
     "Put these tags in the `<head>`, before any element that doesn't belong there (move an `<img>`, `<iframe>` or tracking pixel into the body). In Next.js, make `generateMetadata` fast (cache the data it reads), or list the bots that should get the head version in `htmlLimitedBots` in next.config; `/.*/` turns streaming off. Elsewhere, check the template, component or plugin that writes the tags into the body.",
   ],
+  // Google supports relative canonicals but recommends absolute ones, in the HTML and the HTTP header.
+  // https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls
+  "canonical-relative": [
+    "URL-04",
+    "low",
+    n => `${n} page(s) give their canonical as a relative URL`,
+    "The canonical is written without the site's address (`/page/` or `//host/page/`). Google supports relative canonicals but recommends full URLs: a relative one points at whatever host serves the page, so a staging or test copy that gets crawled names itself as the canonical.",
+    "Write the canonical as a full URL on the production origin (`https://www.example.com/page/`), built from one setting such as Next.js `metadataBase`, in the HTML and in any `Link` header.",
+  ],
   // One Organization and one WebSite node, with stable @ids, on every page.
   "site-identity-differs": [
     "SCHEMA-02",

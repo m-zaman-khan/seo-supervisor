@@ -1,6 +1,10 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { serve } from "./serve.mjs";
+import { SCRIPTS, node, tmp } from "./helpers.mjs";
 import { attrs, decode } from "../skills/seo-supervisor/scripts/lib/html.mjs";
 import { analyze, readLight } from "../skills/seo-supervisor/scripts/crawl/page.mjs";
 import { readPage } from "../skills/seo-supervisor/scripts/checks/bots.mjs";
@@ -160,4 +164,99 @@ test("lateHead: the head ends at the first element the head can't hold, and cano
     "the crawl keeps the element that ended the head",
   );
   assert.equal(read(page("<title>T</title>", tags)).pageChecks.lateAt, null, "a tag in the body needs no such note");
+});
+
+// rel=canonical counts only in the head, the Link header works too, both at once is error prone, and absolute URLs are
+// recommended. https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls
+test("canonicals: from the head as Google reads it and the HTTP Link header; one only in the body counts as missing", () => {
+  const abs = '<link rel="canonical" href="https://site.example/pricing/">',
+    at = "https://site.example/pricing/";
+  const canon = (head, body = "", link) => {
+    const r = read(page(head, body), at, link ? { link } : {});
+    return [
+      r.canonicals,
+      r.pageChecks.relCanon,
+      readLight(page(head, body), at, new Headers(link ? { link } : {})).canonical,
+    ];
+  };
+  assert.deepEqual(canon("<title>x</title>", abs), [[], null, null], "a canonical in the body doesn't count");
+  assert.deepEqual(
+    canon(`<title>x</title><img src="/pixel.gif">${abs}`),
+    [[], null, null],
+    "nor one after the head ended at an <img>",
+  );
+  assert.deepEqual(
+    canon("<title>x</title>", "", `<${at}>; rel="canonical"`),
+    [[at], null, at],
+    "the Link header's counts",
+  );
+  assert.deepEqual(
+    canon(abs, "", "</pricing/>; rel=canonical"),
+    [[at], "/pricing/", at],
+    "the same URL twice is one canonical; the header's is relative",
+  );
+  assert.deepEqual(
+    canon(
+      abs,
+      "",
+      '<https://site.example/prices/>; rel="canonical", <https://site.example/de/>; rel="alternate"; hreflang="de"',
+    )[0],
+    [at, "https://site.example/prices/"],
+    "a header naming another URL is a second canonical, so canonical-multiple reports the conflict",
+  );
+  assert.deepEqual(
+    canon('<link rel="canonical" href="/pricing/">'),
+    [["/pricing/"], "/pricing/", at],
+    "a relative canonical is noted",
+  );
+  assert.deepEqual(
+    canon('<link rel="canonical" href="//site.example/pricing/">')[1],
+    "//site.example/pricing/",
+    "no scheme is relative too",
+  );
+  assert.deepEqual(canon(abs), [[at], null, at]);
+});
+
+test("a crawl: canonical-relative and canonical-multiple from the Link header, canonical-missing for one only in the body", async () => {
+  const dir = tmp(),
+    out = join(tmp(), "crawl.json"),
+    O = "https://site.example";
+  const words =
+    "Our engineers fix leaks, radiators and hot water faults across the city every day of the week. ".repeat(6);
+  const html = (title, head = "", body = "") =>
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title} at Leeds Heating Company</title><meta name="description" content="${title}: fixed prices from Leeds Heating Company, agreed before the work starts.">${head}</head><body><main><h1>${title}</h1><p>${words}</p>${body}<a href="/">Home</a> <a href="/rel/">Relative</a> <a href="/hdr/">Header</a> <a href="/both/">Both</a> <a href="/body/">Body</a></main></body></html>`;
+  const pages = {
+    "": html("Home", `<link rel="canonical" href="${O}/">`),
+    rel: html("Relative", '<link rel="canonical" href="/rel/">'),
+    hdr: html("Header"),
+    both: html("Both", `<link rel="canonical" href="${O}/both/">`),
+    body: html("Body", "", `<link rel="canonical" href="${O}/body/">`),
+  };
+  for (const [p, h] of Object.entries(pages)) {
+    mkdirSync(join(dir, p), { recursive: true });
+    writeFileSync(join(dir, p, "index.html"), h);
+  }
+  writeFileSync(join(dir, "robots.txt"), "User-agent: *\nAllow: /\n");
+  const site = await serve(dir, {
+    headers: {
+      "/hdr/": { Link: `<${O}/hdr/>; rel="canonical"` },
+      "/both/": { Link: `<${O}/other/>; rel="canonical"` },
+    },
+  });
+  try {
+    await node([join(SCRIPTS, "seo-crawl.mjs"), "--url", site.url, "--site-origin", O, "--out", out]);
+  } finally {
+    await site.close();
+  }
+  const r = JSON.parse(readFileSync(out, "utf8")),
+    on = check =>
+      (r.findings.find(f => f.check === check)?.evidence || []).map(e => [new URL(e.url).pathname, e.detail ?? null]);
+  assert.deepEqual(on("canonical-relative"), [["/rel/", "/rel/"]]);
+  assert.deepEqual(on("canonical-multiple"), [["/both/", `${O}/both/ | ${O}/other/`]]);
+  assert.deepEqual(
+    on("canonical-missing").map(([p]) => p),
+    ["/body/"],
+    "the header's canonical counts; the body's doesn't",
+  );
+  assert.equal(r.findings.find(f => f.check === "canonical-relative").rule, "URL-04");
 });

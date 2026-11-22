@@ -54,18 +54,45 @@ function googleRobots(s) {
 }
 const TITLE = /<title\b[^>]*>([\s\S]*?)<\/title>/i;
 const relIs = (l, r) => (l.rel || "").toLowerCase().split(/\s+/).includes(r);
+// Google takes a canonical link only from the head, takes the Link header too, and warns the two can disagree, so a
+// header naming another URL is a second canonical (canonical-multiple). relative is the first one written without a
+// scheme, since Google recommends absolute URLs.
+// https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls
+const LINK = /<([^>]*)>((?:\s*;\s*[\w*.-]+\s*(?:=\s*(?:"[^"]*"|[^\s;,]*))?)*)/g,
+  LINK_REL = /;\s*rel\s*=\s*(?:"([^"]*)"|([^\s;,]*))/i; // Link header entries, as checks/hreflang.mjs reads them
+function canonicalsOf(headLinks, linkHeader, url, base) {
+  const html = headLinks.filter(l => relIs(l, "canonical")).map(l => l.href);
+  const header = [...(linkHeader || "").matchAll(LINK)]
+    .filter(([, , p]) => {
+      const r = LINK_REL.exec(p);
+      return (r?.[1] ?? r?.[2] ?? "").toLowerCase().split(/\s+/).includes("canonical");
+    })
+    .map(([, h]) => h.trim());
+  const named = new Set(html.map(c => (c && urlOr(c, base)?.href) ?? c)),
+    more = header.map(h => urlOr(h, url)?.href ?? h).filter(h => !named.has(h));
+  return {
+    list: [...html, ...more],
+    relative:
+      [...html, ...header].find(h => typeof h === "string" && h.trim() && !/^[a-z][a-z\d+.-]*:/i.test(h.trim())) ??
+      null,
+  };
+}
 // A light read for pages fetched again (the bot comparisons, hreflang return links), each field read as analyze()
 // reads it.
 export function readLight(html, url, headers = new Headers()) {
   const headEnd = html.search(/<\/head>/i),
-    head = headEnd > 0 ? html.slice(0, headEnd) : html;
+    head = headEnd > 0 ? html.slice(0, headEnd) : html,
+    googleHead = headEndOf(html).at;
   const bodyStart = html.search(/<body\b/i),
     body = stripNonContent(bodyStart >= 0 ? html.slice(bodyStart) : html);
   const titleM = head.match(TITLE) || body.match(TITLE),
     links = tagsOf(head, "link");
-  const canonical = (links.some(l => relIs(l, "canonical")) ? links : tagsOf(body, "link")).find(l =>
-    relIs(l, "canonical"),
-  )?.href;
+  const canonical = canonicalsOf(
+    googleHead < 0 ? tagsOf(html, "link") : tagsOf(html.slice(0, googleHead), "link"),
+    headers.get("link"),
+    url,
+    url,
+  ).list[0];
   return {
     title: titleM ? textOf(titleM[1]) : null,
     canonical: canonical ? (urlOr(canonical, url)?.href ?? canonical) : null,
@@ -166,10 +193,6 @@ export function analyze(url, html, headers, xRobotsLines, site) {
       .map(l => l.href);
   const headIcons = iconsIn(headLinks),
     icons = headIcons.length ? headIcons : iconsIn(bodyLinksOf());
-  const canonIn = links =>
-    links.filter(l => (l.rel || "").toLowerCase().split(/\s+/).includes("canonical")).map(l => l.href);
-  const headCanon = canonIn(headLinks),
-    canon = headCanon.length ? headCanon : canonIn(bodyLinksOf());
   const headings = [...body.matchAll(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi)].map(m => ({
     level: +m[1],
     text: textOf(m[2]),
@@ -382,6 +405,13 @@ export function analyze(url, html, headers, xRobotsLines, site) {
       if (!resolved.has(s)) resolved.set(s, urlOr(s, base));
       return resolved.get(s);
     };
+  const googleHeadLinks =
+    headStop.at < 0
+      ? tagsOf(html, "link")
+      : headStop.at === head.length
+        ? headLinks
+        : tagsOf(html.slice(0, headStop.at), "link");
+  const canon = canonicalsOf(googleHeadLinks, headers.get("link"), url, base);
   const rec = {
     base,
     title: titleM ? textOf(titleM[1]) : null,
@@ -407,7 +437,7 @@ export function analyze(url, html, headers, xRobotsLines, site) {
     nofollow: directives.includes("nofollow"),
     metaRules,
     headerRules,
-    canonicals: canon,
+    canonicals: canon.list,
     hreflang,
     products,
     amounts,
@@ -545,6 +575,7 @@ export function analyze(url, html, headers, xRobotsLines, site) {
     late,
     // The element that ended Google's head early (an <img>, an <iframe>), when tags came after it.
     lateAt: late.length && !/^<(\/head|body)>$/.test(headStop.by) ? headStop.by : null,
+    relCanon: canon.relative, // a canonical written without a scheme (canonical-relative, URL-04)
     identity: { org: idNodes(t => ORG_RE.test(t) && t !== "Service"), site: idNodes(t => t === "WebSite") },
   };
 
