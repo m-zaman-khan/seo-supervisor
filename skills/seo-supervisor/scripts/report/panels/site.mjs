@@ -141,35 +141,26 @@ export function sitePanels({ raw, mdFile, site, areas, overall, open, buildRules
   const SECTIONS_INTRO =
     "How the crawled pages split across the site's top-level folders. Pages with nothing below them count as top-level pages (/). Information only.";
   const pctOf = s => `${Math.round(s * 100)}%`;
-  const crawlCoverageHtml = () =>
-    coverageLines()
-      .map(t => `\n    <p class="quiet">${esc(t)}</p>`)
-      .join("") +
-    (siteSections.length > 1
-      ? `\n    <details class="how sections"><summary>Site sections</summary><p>${esc(SECTIONS_INTRO)}</p><div class="tablewrap"><table><thead><tr><th scope="col">Section</th><th scope="col">Pages</th><th scope="col">Share</th></tr></thead><tbody>${siteSections.map(s => `<tr><td><code>${esc(s.path)}</code></td><td>${num(s.pages)}</td><td>${pctOf(s.share)}</td></tr>`).join("")}</tbody></table></div></details>`
-      : "");
-  const crawlCoverageMd = () => {
+  const crawlCoverage = () => {
     const lines = coverageLines(),
-      table = siteSections.length > 1;
-    return lines.length || table
-      ? [
-          "## Crawl coverage",
-          "",
-          ...lines.flatMap(t => [t, ""]),
-          ...(table
-            ? [
-                "### Site sections",
-                "",
-                SECTIONS_INTRO,
-                "",
-                "| Section | Pages | Share |",
-                "| --- | ---: | ---: |",
-                ...siteSections.map(s => `| ${cellMd(noteCode(s.path))} | ${num(s.pages)} | ${pctOf(s.share)} |`),
-                "",
-              ]
-            : []),
-        ]
-      : [];
+      sections = siteSections.length > 1 && {
+        cls: "sections",
+        title: "Site sections",
+        blocks: [
+          { p: SECTIONS_INTRO },
+          {
+            head: ["Section", "Pages", "Share"],
+            align: ["---", "---:", "---:"],
+            rows: siteSections.map(s => [{ code: s.path }, num(s.pages), pctOf(s.share)]),
+          },
+        ],
+      };
+    return (
+      (lines.length || sections) && {
+        title: "Crawl coverage",
+        blocks: [...lines.map(quiet => ({ quiet })), sections && { panel: sections }],
+      }
+    );
   };
 
   // Findings from these browser loads are listed with the others. Errors, text and addresses come from the site, so
@@ -372,8 +363,7 @@ export function sitePanels({ raw, mdFile, site, areas, overall, open, buildRules
     viewsHtml,
     viewsMd,
     hstsPreload,
-    crawlCoverageHtml,
-    crawlCoverageMd,
+    crawlCoverage,
     browserHtml,
     browserMd,
     pageScoresHtml,
