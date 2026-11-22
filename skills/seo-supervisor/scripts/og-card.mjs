@@ -235,7 +235,12 @@ if (isMain(import.meta.url)) {
     fail(`og-card: ${e.message}`);
   }
 
-  const browser = findBrowser();
+  let browser = null;
+  try {
+    browser = findBrowser();
+  } catch (e) {
+    fail(`og-card: ${e.message}`);
+  }
   if (!browser) fail("og-card: no Chrome or Edge found. Install one, or set CHROME_PATH to its executable.");
   try {
     for (const [opts, out] of jobs) await renderCard(browser, opts, out);

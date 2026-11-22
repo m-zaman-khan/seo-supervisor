@@ -44,6 +44,10 @@ export const CHECKS = {
 // A CHROME_PATH with no file there (a typo, or a Git Bash /c/... path on Windows) throws rather than quietly running a
 // browser nobody chose.
 export function findBrowser(env = process.env, platform = process.platform, exists = existsSync) {
+  if (env.CHROME_PATH && !exists(env.CHROME_PATH))
+    throw new Error(
+      `CHROME_PATH is set to “${env.CHROME_PATH}”, but there's no file there, so that browser can't start. Set it to the full path of Chrome or Edge, or unset it to use the installed one.`,
+    );
   const pf = env.PROGRAMFILES ?? env.ProgramFiles,
     pf86 = env["PROGRAMFILES(X86)"] ?? env["ProgramFiles(x86)"],
     local = env.LOCALAPPDATA ?? env.LocalAppData;

@@ -7,7 +7,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { CHROME_FLAGS } from "../skills/seo-supervisor/scripts/lib/cdp.mjs";
-import { renderArgs } from "../skills/seo-supervisor/scripts/checks/render.mjs";
+import { findBrowser, renderArgs } from "../skills/seo-supervisor/scripts/checks/render.mjs";
 import { runLighthouse } from "../skills/seo-supervisor/scripts/checks/lighthouse.mjs";
 import { shotArgs } from "../skills/seo-supervisor/scripts/og-card.mjs";
 import { clsOf } from "../skills/seo-supervisor/scripts/checks/visual.mjs";
@@ -117,6 +117,32 @@ test("the PageSpeed and CrUX keys go in the X-Goog-Api-Key header, never in the 
       ["crux-key", false],
     ],
   );
+});
+
+test("a CHROME_PATH with no file there stops with a plain message, never falls back to the installed browser", async () => {
+  const installed = p => p === "/usr/bin/google-chrome";
+  assert.throws(
+    () => findBrowser({ CHROME_PATH: "/c/Program Files/Google/chrome.exe" }, "linux", installed),
+    /^Error: CHROME_PATH is set to “\/c\/Program Files\/Google\/chrome\.exe”, but there's no file there/,
+  );
+  assert.equal(
+    findBrowser({ CHROME_PATH: "" }, "linux", installed),
+    "/usr/bin/google-chrome",
+    "an empty CHROME_PATH is unset",
+  );
+  assert.equal(findBrowser({}, "linux", installed), "/usr/bin/google-chrome");
+  const dir = tmp(),
+    r = await new Promise(ok =>
+      execFile(
+        process.execPath,
+        [join(SCRIPTS, "og-card.mjs"), "--title", "Home", "--out", join(dir, "x.png")],
+        { env: { ...process.env, CHROME_PATH: join(dir, "no-chrome.exe") } },
+        (err, stdout, stderr) => ok({ err, stderr }),
+      ),
+    );
+  assert.equal(r.err?.code, 2);
+  assert.match(r.stderr, /^og-card: CHROME_PATH is set to “.*no-chrome\.exe”, but there's no file there/);
+  assert.doesNotMatch(r.stderr, /at .*\.mjs:\d+/, "no stack trace");
 });
 
 // Loaded with --import: every start of "Chrome" is recorded with its command line and its profile's Local State at that
