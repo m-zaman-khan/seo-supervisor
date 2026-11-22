@@ -284,33 +284,29 @@ export function sitePanels({ raw, mdFile, site, areas, overall, open, buildRules
       }))
       .sort((a, b) => a.value - b.value || b.ids.length - a.ids.length || a.path.localeCompare(b.path));
   })();
-  const pageScoresHtml = () =>
-    pageScores.length
-      ? `\n    <details class="how pagescores"><summary>Page scores</summary><p>${PAGE_INTRO}</p><div class="tablewrap"><table><thead><tr><th scope="col">Page</th><th scope="col">Score</th><th scope="col">Open findings</th></tr></thead><tbody>${pageScores
-          .slice(0, 10)
-          .map(
-            p =>
-              `<tr><td><code>${esc(p.path)}</code></td><td>${p.value}</td><td>${p.ids.map(id => `<a href="#${esc(id)}">${esc(id)}</a>`).join(", ")}</td></tr>`,
-          )
-          .join(
-            "",
-          )}</tbody></table></div>${pageScores.length > 10 && mdFile ? `<p>The 10 lowest. All ${num(pageScores.length)} pages are listed in <code>${esc(mdFile)}</code>.</p>` : ""}</details>`
-      : "";
-  const pageScoresMd = () =>
-    pageScores.length
-      ? [
-          "## Page scores",
-          "",
-          PAGE_INTRO,
-          "",
-          "| Page | Score | Open findings |",
-          "| --- | ---: | --- |",
-          ...pageScores.map(
-            p => `| ${cellMd(noteCode(p.path))} | ${p.value}/100 | ${p.ids.map(id => cellMd(noteMd(id))).join(", ")} |`,
-          ),
-          "",
-        ]
-      : [];
+  // The page shows the 10 lowest, the Markdown all. PAGE_INTRO is a local sentence, written into the page as is.
+  const pageScoresPanel = () =>
+    pageScores.length && {
+      cls: "pagescores",
+      title: "Page scores",
+      blocks: [
+        { p: { html: PAGE_INTRO, md: PAGE_INTRO } },
+        {
+          head: ["Page", "Score", "Open findings"],
+          align: ["---", "---:", "---"],
+          cap: 10,
+          rows: pageScores.map(p => [
+            { code: p.path },
+            { html: String(p.value), md: `${p.value}/100` },
+            p.ids.flatMap((id, i) => (i ? [", ", { id }] : [{ id }])),
+          ]),
+        },
+        pageScores.length > 10 &&
+          mdFile && {
+            page: [`The 10 lowest. All ${num(pageScores.length)} pages are listed in `, { code: mdFile }, "."],
+          },
+      ],
+    };
 
   // Every turned-off check, changed severity and warning about settings.json, so a setting is never silent. Ids and
   // warnings come from the user's file, so they're escaped.
@@ -360,8 +356,7 @@ export function sitePanels({ raw, mdFile, site, areas, overall, open, buildRules
     hstsPreload,
     crawlCoverage,
     browser,
-    pageScoresHtml,
-    pageScoresMd,
+    pageScores: pageScoresPanel,
     checkSettingsHtml,
     checkSettingsMd,
     settingRows,
