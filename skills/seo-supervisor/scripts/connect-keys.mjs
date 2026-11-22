@@ -6,7 +6,8 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
-import { proxyNote } from "./lib/proxy.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { runMain, warnProxy } from "./lib/cli.mjs";
 import { changedPages } from "./seo-diff.mjs";
 import { Fail, Refused, fail, domainOf, domainsFor, num } from "./keys/http.mjs";
 import { SERVICES, serviceOf, call } from "./keys/services.mjs";
@@ -167,15 +168,28 @@ export async function fetchKeys({
   };
 }
 
+// Positional words per command: set <service> [<key>], remove|guide|test <service>.
+const WORDS = { set: 2, remove: 1, guide: 1, test: 1 };
+const FLAGS = [
+  "site",
+  "competitors",
+  "days",
+  "out",
+  "topics",
+  "youtube-channel",
+  "bing-pages",
+  "bing-sister",
+  "urls",
+  "from-diff",
+  ...Object.values(SERVICES).flatMap(s => (s.fields || []).map(f => f.flag)),
+];
 async function main(argv) {
   const [cmd, ...rest] = argv;
-  const args = {},
-    pos = [];
-  for (let i = 0; i < rest.length; i++)
-    if (rest[i].startsWith("--")) {
-      const k = rest[i].slice(2);
-      args[k] = rest[i + 1] && !rest[i + 1].startsWith("--") ? rest[++i] : true;
-    } else pos.push(rest[i]);
+  const { _: pos, ...args } = parseArgs(rest, {
+    flags: FLAGS,
+    booleans: ["yes"],
+    positionals: Object.hasOwn(WORDS, cmd) ? WORDS[cmd] : 0,
+  });
   const str = k => (typeof args[k] === "string" ? args[k] : null);
 
   if (cmd === "set") {
@@ -216,13 +230,7 @@ async function main(argv) {
       );
       return 0;
     }
-    try {
-      console.log("connect-keys: " + (await (id === "matomo" ? testMatomo(k) : testPosthog(k))));
-    } catch (e) {
-      if (!(e instanceof Refused)) throw e;
-      console.log("connect-keys: " + e.message);
-      return 1;
-    }
+    console.log("connect-keys: " + (await (id === "matomo" ? testMatomo(k) : testPosthog(k)))); // runMain prints a refusal and exits 1
   } else if (cmd === "status") {
     const keys = activeKeys();
     for (const [id, s] of Object.entries(SERVICES)) {
@@ -377,19 +385,12 @@ async function main(argv) {
       );
       return 0;
     }
-    let r;
-    try {
-      r = await submitBing({
-        key,
-        site: site.href,
-        urls,
-        endpoint: process.env[SERVICES.bing.endpointEnv] || SERVICES.bing.endpoint,
-      });
-    } catch (e) {
-      if (!(e instanceof Refused)) throw e;
-      console.log("connect-keys: " + e.message);
-      return 1;
-    }
+    const r = await submitBing({
+      key,
+      site: site.href,
+      urls,
+      endpoint: process.env[SERVICES.bing.endpointEnv] || SERVICES.bing.endpoint,
+    });
     const { quota, sent, notSent, error } = r;
     console.log(
       `connect-keys: Bing's URL submission quota for ${r.siteUrl}: ${num(quota.daily)} URL(s) today${quota.monthly != null ? `, ${num(quota.monthly)} this month` : ""}.`,
@@ -409,15 +410,7 @@ async function main(argv) {
   return 0;
 }
 
-// Not process.exit(): exiting while fetch's sockets close crashes Node on Windows.
 if (isMain(import.meta.url)) {
-  {
-    const n = proxyNote();
-    if (n) console.error("note: " + n);
-  } // once, before any request is sent
-  process.exitCode = await main(process.argv.slice(2)).then(null, e => {
-    if (!(e instanceof Fail) && e.code !== "SEO_SETTINGS") throw e;
-    console.error(e.message);
-    return 2;
-  });
+  warnProxy(); // once, before any request is sent
+  await runMain(() => main(process.argv.slice(2)));
 }

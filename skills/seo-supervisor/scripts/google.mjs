@@ -8,8 +8,9 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { isMain } from "./lib/is-main.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { runMain, warnProxy } from "./lib/cli.mjs";
 import { loginDir } from "./lib/settings-dir.mjs";
-import { proxyNote } from "./lib/proxy.mjs";
 import { SHARED_CLIENT } from "./lib/google-client.mjs";
 import { addTraffic, gscFindings } from "./gsc-import.mjs";
 import { foundOn } from "./lib/findings.mjs";
@@ -1252,32 +1253,41 @@ const USAGE = `usage: node google.mjs connect [--client-file client_secret.json 
        node google.mjs guide | status | disconnect
        node google.mjs fetch --site https://www.example.com [--days 90] [--ga4-property <id>] [--crawl seo-audit/seo-crawl.json] [--inspect pages.txt] [--inspect-urls /a/,/b/] [--out seo-audit/google.json]
        node google.mjs submit-sitemap --site https://www.example.com --sitemap https://www.example.com/sitemap.xml [--yes] [--no-browser] [--print-url]`;
+
+const COMMANDS = {
+  connect,
+  status,
+  disconnect,
+  fetch: fetchCli,
+  "submit-sitemap": submitSitemap,
+  guide: async () => {
+    console.log(GUIDE);
+    return 0;
+  },
+};
+const FLAGS = [
+  "client-file",
+  "service-account",
+  "site",
+  "days",
+  "ga4-property",
+  "crawl",
+  "inspect",
+  "inspect-urls",
+  "out",
+  "sitemap",
+];
 // Exit codes as in connect-keys.mjs: 1 when Google refuses or can't be reached, or status finds nothing connected;
 // 2 on bad input or no usable sign-in.
 if (isMain(import.meta.url)) {
-  const note = proxyNote();
-  if (note) console.error("note: " + note); // stderr: connect --print-url keeps the link as stdout's first line
-  const cmd = process.argv[2],
-    args = {};
-  for (let i = 3; i < process.argv.length; i++) {
-    const k = process.argv[i].replace(/^--/, "");
-    args[k] = process.argv[i + 1] && !process.argv[i + 1].startsWith("--") ? process.argv[++i] : true;
-  }
-  const run = {
-    connect,
-    status,
-    disconnect,
-    fetch: fetchCli,
-    "submit-sitemap": submitSitemap,
-    guide: async () => {
-      console.log(GUIDE);
-      return 0;
-    },
-  }[cmd];
-  // Exit by setting the code, not process.exit(): exiting while fetch's sockets close crashes Node on Windows.
-  process.exitCode = await (run ? run(args) : Promise.reject(new Fail(USAGE))).then(null, e => {
-    if (!(e instanceof Fail) && e.code !== "SEO_SETTINGS") throw e;
-    console.error(e.message);
-    return 2;
-  });
+  warnProxy(); // stderr: connect --print-url keeps the link as stdout's first line
+  const [cmd, ...rest] = process.argv.slice(2);
+  // A word that isn't an option stops it, so a stray "yes" never counts as --yes.
+  await runMain(() =>
+    Object.hasOwn(COMMANDS, cmd)
+      ? COMMANDS[cmd](
+          parseArgs(rest, { flags: FLAGS, booleans: ["no-browser", "print-url", "paste", "yes"], positionals: 0 }),
+        )
+      : fail(USAGE),
+  );
 }

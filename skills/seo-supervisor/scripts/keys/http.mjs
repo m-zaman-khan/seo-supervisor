@@ -1,9 +1,12 @@
 // @ts-check
 // Shared by connect-keys.mjs's services: errors, checks on typed addresses and IDs, one request with a plain refusal,
 // and helpers. Callers pass their SERVICES entry in, so service modules can use this without an import loop.
+import { Fail, Refused } from "../lib/cli.mjs";
+
 const UA = "seo-supervisor-connect-keys";
-export class Fail extends Error {} // bad input: exit 2
-export class Refused extends Error {} // a service said no: noted, the rest still runs, exit 1
+// Fail is bad input (exit 2); Refused is a service saying no (noted, the rest still runs, exit 1). Re-exported so every
+// instanceof check sees the same classes.
+export { Fail, Refused };
 export const fail = msg => {
   throw new Fail("connect-keys: " + msg);
 };

@@ -4,7 +4,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
-import { proxyNote } from "./lib/proxy.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { runMain, warnProxy } from "./lib/cli.mjs";
 import { Fail, anomaliesIn, pagePath, searchConsole } from "./google/search-console.mjs";
 import { changedPages } from "./seo-diff.mjs";
 
@@ -227,7 +228,8 @@ const said = m =>
 const str = v => (typeof v === "string" ? v : null);
 const USAGE =
   "usage: node change-check.mjs --site https://www.example.com --date YYYY-MM-DD (--pages changed.txt | --from-diff seo-audit/seo-diff.json) [--days 28] [--out seo-audit/change-check.json]";
-async function main(args) {
+async function main(argv) {
+  const args = parseArgs(argv, { flags: ["site", "date", "pages", "from-diff", "days", "out"], positionals: 0 });
   if (!str(args.site) || !str(args.date) || !(str(args.pages) || str(args["from-diff"]))) throw new Fail(USAGE);
   const read = f => {
     try {
@@ -262,17 +264,6 @@ async function main(args) {
 }
 
 if (isMain(import.meta.url)) {
-  const note = proxyNote();
-  if (note) console.error("note: " + note);
-  const args = {};
-  for (let i = 2; i < process.argv.length; i++) {
-    const k = process.argv[i].replace(/^--/, "");
-    args[k] = process.argv[i + 1] && !process.argv[i + 1].startsWith("--") ? process.argv[++i] : true;
-  }
-  // Exit by setting the code, not process.exit(): exiting while fetch's sockets close crashes Node on Windows.
-  process.exitCode = await main(args).then(null, e => {
-    if (!(e instanceof Fail) && e.code !== "SEO_SETTINGS") throw e;
-    console.error(e.message);
-    return 2;
-  });
+  warnProxy();
+  await runMain(() => main(process.argv.slice(2)));
 }

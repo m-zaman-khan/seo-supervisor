@@ -5,6 +5,7 @@ import { sign } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { Fail, Refused } from "../lib/cli.mjs";
 import { loginDir } from "../lib/settings-dir.mjs";
 
 export const SC = "https://www.googleapis.com/auth/webmasters.readonly",
@@ -27,7 +28,7 @@ export const endpointsFrom = (over = {}) =>
       over[k] || process.env[`SEO_GOOGLE_${k.replace(/[A-Z]/g, c => "_" + c).toUpperCase()}_URL`] || v,
     ]),
   );
-export class Fail extends Error {}
+export { Fail, Refused }; // lib/cli.mjs's classes, so instanceof checks agree
 export const fail = msg => {
   throw new Fail(msg);
 };

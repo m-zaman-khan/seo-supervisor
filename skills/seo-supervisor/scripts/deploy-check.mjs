@@ -4,7 +4,8 @@
 import { promisify } from "node:util";
 import { lookup as dnsLookup } from "node:dns";
 import { isMain } from "./lib/is-main.mjs";
-import { proxyNote } from "./lib/proxy.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
 import { guarded, isPublic } from "./checks/outbound.mjs";
 import { tlsCert } from "./checks/tls.mjs";
 import { VERSION } from "./update-check.mjs";
@@ -448,31 +449,25 @@ Search Console (sign in first with node google.mjs connect). --since is when the
 at most 2 days ago; without it, the last 24 hours. It only warns: it never fails the check.`;
 
 if (isMain(import.meta.url)) {
-  const argv = process.argv.slice(2),
-    i = argv.indexOf("--site"),
-    site = i >= 0 ? argv[i + 1] : null;
-  const j = argv.indexOf("--since"),
-    since = j >= 0 ? (argv[j + 1] ?? "") : null,
-    gsc = argv.includes("--search-console");
-  let ok = false;
-  try {
-    ok = !!site && /^https?:$/.test(new URL(site).protocol);
-  } catch {}
-  if (since != null && !(gsc && SINCE.test(since) && !isNaN(Date.parse(since)))) ok = false;
-  if (!ok) {
-    console.error(USAGE);
-    process.exitCode = 2;
-  } else {
-    const note = proxyNote();
-    if (note) console.error("note: " + note);
-    const [r, hourly] = await Promise.all([
-      deployCheck(String(site)),
-      gsc ? searchHourly({ site: String(site), since }) : null,
-    ]);
+  await runMain(async () => {
+    const a = parseArgs(process.argv.slice(2), {
+      flags: ["site", "since"],
+      booleans: ["json", "search-console"],
+      positionals: 0,
+    });
+    const site = typeof a.site === "string" ? a.site : null,
+      since = a.since === undefined ? null : typeof a.since === "string" ? a.since : "",
+      gsc = a["search-console"] === true;
+    let ok = false;
+    try {
+      ok = !!site && /^https?:$/.test(new URL(site).protocol);
+    } catch {}
+    if (since != null && !(gsc && SINCE.test(since) && !isNaN(Date.parse(since)))) ok = false;
+    if (!ok) throw new Fail(USAGE);
+    warnProxy();
+    const [r, hourly] = await Promise.all([deployCheck(site), gsc ? searchHourly({ site, since }) : null]);
     if (hourly) r.searchConsole = hourly;
-    console.log(argv.includes("--json") ? JSON.stringify(r, null, 2) : textOf(r));
-    // Only blockers fail the run; the Search Console part never does. Not process.exit(): exiting while fetch's sockets
-    // close crashes Node on Windows.
-    process.exitCode = r.blockers ? 1 : 0;
-  }
+    console.log(a.json ? JSON.stringify(r, null, 2) : textOf(r));
+    return r.blockers ? 1 : 0; // blockers only: the Search Console part never changes it
+  });
 }
