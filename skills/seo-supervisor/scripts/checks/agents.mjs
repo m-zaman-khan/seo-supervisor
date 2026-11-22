@@ -1,6 +1,7 @@
 // @ts-check
 // Agent readiness: what AI agents can use on a page, Bing's AI rules, AI crawler rules, and the AI bot list.
 import { readFileSync } from "node:fs";
+import { attrs } from "../lib/html.mjs";
 
 export const CHECKS = {
   "click-only-elements": [
@@ -64,15 +65,6 @@ export const CHECKS = {
   ],
 };
 
-const ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
-const attrs = tag => {
-  const out = {},
-    re = /([^\s=\/>"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
-  const inner = tag.replace(/^<[\w-]+/, "").replace(/\/?>$/, "");
-  for (let m; (m = re.exec(inner));)
-    out[m[1].toLowerCase()] = (m[2] ?? m[3] ?? m[4] ?? "").replace(/&(amp|lt|gt|quot|apos);/g, (_, e) => ENT[e]);
-  return out;
-};
 const filled = v => typeof v === "string" && v.trim() !== "";
 const named = a => ["aria-label", "aria-labelledby", "title"].some(k => filled(a[k]));
 const unseen = a => /^(none|presentation)$/i.test(a.role || "");

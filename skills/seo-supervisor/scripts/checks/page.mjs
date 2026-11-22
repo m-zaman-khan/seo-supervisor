@@ -1,5 +1,7 @@
 // @ts-check
 // Per-page checks for seo-crawl.mjs. Thresholds are local, and HTML is read with regexes, as in the crawler.
+import { attrs } from "../lib/html.mjs";
+
 const PAID_WORDS = 150; // local threshold for paid text sent in full
 export const CHECKS = {
   // Google suggests rel ugc or nofollow on every link in untrusted content.
@@ -53,11 +55,8 @@ export const CHECKS = {
   ],
 };
 
-const ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", "#39": "'" };
-const attr = (tag, name) => {
-  const m = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i").exec(tag);
-  return m ? (m[1] ?? m[2] ?? m[3]).replace(/&(amp|lt|gt|quot|apos|#39);/g, (_, e) => ENT[e]) : null;
-};
+// Takes a whole tag or just the attribute text after its name.
+const attr = (tag, name) => attrs(tag)[name] ?? null;
 const strip = h => h.replace(/<(script|style|noscript|template|svg|textarea)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi, " ");
 const SEG = new Intl.Segmenter(undefined, { granularity: "word" });
 const wordCount = h => [...SEG.segment(h.replace(/<[^>]+>/g, " "))].filter(s => s.isWordLike).length;

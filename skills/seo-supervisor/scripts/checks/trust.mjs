@@ -3,21 +3,10 @@
 // says E-E-A-T isn't a ranking factor, so the view is a local check, not a Google score.
 // https://developers.google.com/search/docs/fundamentals/creating-helpful-content
 // HTML is read with regexes; page names and paths are matched in English and a few European languages.
-const ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
-const decode = s =>
-  s.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (m, e) => {
-    if (e[0] !== "#") return ENT[e.toLowerCase()] ?? m;
-    const n = e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
-    return n <= 0x10ffff ? String.fromCodePoint(n) : m;
-  });
-const textOf = h =>
-  decode(h.replace(/<[^>]+>/g, " "))
-    .replace(/\s+/g, " ")
-    .trim();
-const attr = (tag, name) => {
-  const m = new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i").exec(tag);
-  return m ? decode(m[1] ?? m[2] ?? m[3]) : null;
-};
+import { attrs, textOf } from "../lib/html.mjs";
+
+// a is the attribute text after the tag name.
+const attr = (a, name) => attrs("<a " + a + ">")[name] ?? null;
 const words = s =>
   s
     .toLowerCase()

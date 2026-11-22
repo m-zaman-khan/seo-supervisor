@@ -6,19 +6,41 @@
 // symbols titles use. Names are case-sensitive (&Eacute; is É), with a lowercase fallback for &AMP; and the like.
 // &nbsp; reads as a plain space; a numeric reference past U+10FFFF stays as written.
 // https://html.spec.whatwg.org/multipage/named-characters.html
-const ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
-export const decode = s =>
-  s.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (m, e) =>
-    e[0] === "#"
-      ? String.fromCodePoint(e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10))
-      : (ENT[e.toLowerCase()] ?? m),
+const LATIN1 =
+  "nbsp iexcl cent pound curren yen brvbar sect uml copy ordf laquo not shy reg macr deg plusmn sup2 sup3 acute micro para middot cedil sup1 ordm raquo frac14 frac12 frac34 iquest Agrave Aacute Acirc Atilde Auml Aring AElig Ccedil Egrave Eacute Ecirc Euml Igrave Iacute Icirc Iuml ETH Ntilde Ograve Oacute Ocirc Otilde Ouml times Oslash Ugrave Uacute Ucirc Uuml Yacute THORN szlig agrave aacute acirc atilde auml aring aelig ccedil egrave eacute ecirc euml igrave iacute icirc iuml eth ntilde ograve oacute ocirc otilde ouml divide oslash ugrave uacute ucirc uuml yacute thorn yuml".split(
+    " ",
   );
+const MORE =
+  "OElig 338 oelig 339 Scaron 352 scaron 353 Yuml 376 fnof 402 circ 710 tilde 732 ensp 8194 emsp 8195 thinsp 8201 zwnj 8204 zwj 8205 lrm 8206 rlm 8207 ndash 8211 mdash 8212 lsquo 8216 rsquo 8217 sbquo 8218 ldquo 8220 rdquo 8221 bdquo 8222 dagger 8224 Dagger 8225 bull 8226 hellip 8230 permil 8240 prime 8242 Prime 8243 lsaquo 8249 rsaquo 8250 euro 8364 trade 8482".split(
+    " ",
+  );
+/** @type {Record<string, string>} */
+const NAMED = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+LATIN1.forEach((n, i) => {
+  NAMED[n] = String.fromCodePoint(0xa0 + i);
+});
+for (let i = 0; i < MORE.length; i += 2) NAMED[MORE[i]] = String.fromCodePoint(+MORE[i + 1]);
+NAMED.nbsp = " ";
+export const decode = s =>
+  !s.includes("&")
+    ? s
+    : s.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (m, e) => {
+        if (e[0] !== "#") return NAMED[e] ?? NAMED[e.toLowerCase()] ?? m;
+        const n = e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+        return n <= 0x10ffff ? String.fromCodePoint(n) : m;
+      });
+// A tag's attributes by lowercased name, values decoded; a repeated name keeps its first value, as browsers do. An
+// unquoted value keeps a slash before ">" (<a href=/blog/> is "/blog/"); after a quote or space it's no value. The tag
+// is copied first: V8 keeps a substring as a view of its parent, so a cut value would pin the whole page in memory.
 export function attrs(tag) {
   const out = {};
-  const inner = tag.replace(/^<[\w-]+/, "").replace(/\/?>$/, "");
+  const inner = tag.replace(/^<[\w-]+/, "").replace(/>$/, "");
   const re = /([^\s=\/>"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
   let m;
-  while ((m = re.exec(inner))) out[m[1].toLowerCase()] = decode(m[2] ?? m[3] ?? m[4] ?? "");
+  while ((m = re.exec(inner))) {
+    const k = m[1].toLowerCase();
+    if (!Object.hasOwn(out, k)) out[k] = decode(m[2] ?? m[3] ?? m[4] ?? "");
+  }
   return out;
 }
 export const tagsOf = (html, name) => [...html.matchAll(new RegExp(`<${name}\\b[^>]*>`, "gi"))].map(m => attrs(m[0]));
