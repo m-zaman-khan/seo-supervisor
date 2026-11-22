@@ -164,35 +164,17 @@ export function contentPanels({ raw, mdFile }) {
   const PDF_INTRO =
     "PDFs on the site that 3 or more pages link to (our own cut-off), or that the menu links to. Microsoft Advertising's guide to AI search answers (8 Oct 2025) says to avoid relying on PDFs for core information: search engines can read text PDFs, but they often lack the headings and other structure HTML gives. If any of these hold something important, such as prices, a menu, specifications or opening hours, put it on an HTML page too. Information only: none of this changes the score.";
   const pdfTail = p => `linked from ${plural(p.pages, "page")}${p.menu === true ? ", including the menu" : ""}`;
-  const appsPdfsHtml = () =>
-    appLinks.length || pdfLinks.length
-      ? `\n    <details class="how hygiene"><summary>App links and PDFs</summary>` +
-        (appLinks.length
-          ? `<p>${esc(APP_INTRO)}</p><ul class="lim">${appLinks.map(a => `<li><b>${esc(a.platform)}</b><span><code>${esc(a.file)}</code> ${esc(appTail(a))}</span></li>`).join("")}</ul>`
-          : "") +
-        (pdfLinks.length
-          ? `<p>${esc(PDF_INTRO)}</p><ul class="lim">${pdfLinks.map(p => `<li><b><code>${esc(notePath(p.url))}</code></b><span>${esc(pdfTail(p))}</span></li>`).join("")}</ul>`
-          : "") +
-        `</details>`
-      : "";
-  const appsPdfsMd = () =>
-    appLinks.length || pdfLinks.length
-      ? [
-          "## App links and PDFs",
-          "",
-          ...(appLinks.length
-            ? [
-                APP_INTRO,
-                "",
-                ...appLinks.map(a => `- ${noteMd(a.platform)}: ${noteCode(a.file)} ${noteMd(appTail(a))}`),
-                "",
-              ]
-            : []),
-          ...(pdfLinks.length
-            ? [PDF_INTRO, "", ...pdfLinks.map(p => `- ${noteCode(notePath(p.url))} ${noteMd(pdfTail(p))}`), ""]
-            : []),
-        ]
-      : [];
+  const appsPdfs = () =>
+    (appLinks.length || pdfLinks.length) && {
+      cls: "hygiene",
+      title: "App links and PDFs",
+      blocks: [
+        appLinks.length && { p: APP_INTRO },
+        { rows: appLinks.map(a => [a.platform, [{ code: a.file }, " ", appTail(a)], ": "]) },
+        pdfLinks.length && { p: PDF_INTRO },
+        { rows: pdfLinks.map(p => [{ code: notePath(p.url) }, pdfTail(p)]) },
+      ],
+    };
 
   // audiences (audience.md) is written into seo-audit.json and may quote page text, so every string is escaped.
   // Malformed entries are dropped quietly, and lists are capped at 4 audiences, 5 pages each and 10 items a list.
@@ -242,5 +224,5 @@ export function contentPanels({ raw, mdFile }) {
           ]),
         ]
       : [];
-  return { writing, productData, descriptionsHtml, descriptionsMd, appsPdfsHtml, appsPdfsMd, audienceHtml, audienceMd };
+  return { writing, productData, descriptionsHtml, descriptionsMd, appsPdfs, audienceHtml, audienceMd };
 }

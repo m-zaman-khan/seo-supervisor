@@ -97,7 +97,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     settingsSummary,
   } = sitePanels(m);
   const { agents, aiCrawlersHtml, aiCrawlersMd, aiAnswersHtml, aiAnswersMd } = aiPanels(m);
-  const { writing, productData, descriptionsHtml, descriptionsMd, appsPdfsHtml, appsPdfsMd, audienceHtml, audienceMd } =
+  const { writing, productData, descriptionsHtml, descriptionsMd, appsPdfs, audienceHtml, audienceMd } =
     contentPanels(m);
   const { images, lighthouseDetailHtml, lighthouseDetailMd, speedDetails, a11yHtml, a11yMd } = speedPanels(m);
   const { localHtml, localMd, geoGridHtml, geoGridMd } = localPanels(m);
@@ -126,7 +126,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     [linkIdeasHtml, linkIdeasMd],
     drawn(changeCheck),
     drawn(linkedOnce),
-    [appsPdfsHtml, appsPdfsMd],
+    drawn(appsPdfs),
     drawn(newSearches),
     drawn(checkSettingsPanel),
     drawn(recheckNote),
