@@ -86,7 +86,7 @@ test("every rule ID a check reports is defined in a rule file", () => {
     "connect-keys.mjs",
     "log-scan.mjs",
     "backlinks.mjs",
-    ...readdirSync(join(S, "checks")).map(f => join("checks", f)),
+    ...["checks", "crawl"].flatMap(d => readdirSync(join(S, d)).map(f => join(d, f))),
   ];
   const used = new Set(
     sources.flatMap(f => [...readFileSync(join(S, f), "utf8").matchAll(/"([A-Z]+-\d{2})"/g)].map(m => m[1])),
