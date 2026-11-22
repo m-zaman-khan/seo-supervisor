@@ -5,7 +5,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
-import { proxyNote } from "./lib/proxy.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
 
 // The Search Status Dashboard's history, in Google Cloud's status format.
 export const FEED = "https://status.search.google.com/incidents.json";
@@ -60,39 +61,36 @@ const feedPosts = xml =>
 export const blogPosts = (xml, { from, to }) =>
   feedPosts(xml).filter(p => p.date >= from && p.date <= to && !EVENT.test(p.title));
 
-class Fail extends Error {
-  constructor(msg, code = 2) {
-    super("google-updates: " + msg);
-    this.code = code;
-  }
-}
+/** @type {(msg: string, code?: number) => never} */
+const fail = (msg, code = 2) => {
+  throw new Fail("google-updates: " + msg, code);
+};
 
-async function main() {
-  const args = {};
-  for (let i = 2; i < process.argv.length; i++) {
-    const k = process.argv[i].replace(/^--/, "");
-    args[k] = process.argv[i + 1] && !process.argv[i + 1].startsWith("--") ? process.argv[++i] : true;
-  }
+async function main(argv) {
+  const args = parseArgs(argv, {
+    flags: ["from", "to", "since", "out", "endpoint", "blog"],
+    booleans: ["yes"],
+    positionals: 0,
+  });
   // A date, or the date part of a timestamp; "2026-02-30" isn't one.
   const day = k => {
     if (args[k] == null) return null;
     const s = String(args[k]).slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || ymd(s + "T00:00:00Z") !== s)
-      throw new Fail(`--${k} needs a date as YYYY-MM-DD (got ${args[k]}).`);
+      fail(`--${k} needs a date as YYYY-MM-DD (got ${args[k]}).`);
     return s;
   };
   const today = ymd(Date.now()),
     back = n => ymd(Date.now() - n * 864e5);
   const to = day("to") || today,
     from = day("from") || day("since") || back(90);
-  if (from > to)
-    throw new Fail(`the period starts (${from}) after it ends (${to}); the start must come before the end.`);
+  if (from > to) fail(`the period starts (${from}) after it ends (${to}); the start must come before the end.`);
   // --endpoint, GOOGLE_STATUS_ENDPOINT and a URL after --blog point at the tests' feeds.
   const feed = typeof args.endpoint === "string" ? args.endpoint : process.env.GOOGLE_STATUS_ENDPOINT || FEED;
   const OUT = resolve(typeof args.out === "string" ? args.out : "seo-audit/google-updates.json");
   const blog = args.blog ? (typeof args.blog === "string" ? args.blog : BLOG) : null;
 
-  if (args.yes !== true) {
+  if (!args.yes) {
     console.log(
       `google-updates: dry run, nothing fetched. With --yes it reads ${feed} (Google's public status feed: one plain GET, nothing about your site is sent)${blog ? ` and ${blog} (the Google Search Central blog's feed, the same way)` : ""} and lists Google's ranking updates${blog ? " and blog posts" : ""} from ${from} to ${to} in ${OUT}.`,
     );
@@ -105,18 +103,17 @@ async function main() {
       signal: AbortSignal.timeout(20000),
     });
   } catch (e) {
-    throw new Fail(`couldn't reach ${feed} (${e.cause?.code || e.message}). Nothing was written.`, 1);
+    fail(`couldn't reach ${feed} (${e.cause?.code || e.message}). Nothing was written.`, 1);
   }
-  if (!r.ok) throw new Fail(`${feed} returned ${r.status}. Nothing was written.`, 1);
+  if (!r.ok) fail(`${feed} returned ${r.status}. Nothing was written.`, 1);
   try {
     list = await r.json();
   } catch {}
-  if (!Array.isArray(list))
-    throw new Fail(`${feed} isn't the list of incidents it used to be. Nothing was written.`, 1);
+  if (!Array.isArray(list)) fail(`${feed} isn't the list of incidents it used to be. Nothing was written.`, 1);
   // Google announces several ranking updates a year, so a year of incidents with none marked Ranking means the labels
   // changed, not a quiet year. Writing an empty list would make the report say none were announced.
   if (list.length && !list.some(isRanking))
-    throw new Fail(
+    fail(
       `none of the ${list.length} incidents in ${feed} is marked Ranking, so the feed's format may have changed. Nothing was written.`,
       1,
     );
@@ -183,15 +180,7 @@ async function main() {
   return 0;
 }
 
-// Not process.exit(): exiting while fetch's sockets close crashes Node on Windows.
 if (isMain(import.meta.url)) {
-  {
-    const n = proxyNote();
-    if (n) console.error("note: " + n);
-  } // once, before any request is sent
-  process.exitCode = await main().catch(e => {
-    if (!(e instanceof Fail)) throw e;
-    console.error(e.message);
-    return e.code;
-  });
+  warnProxy(); // once, before any request
+  await runMain(() => main(process.argv.slice(2)));
 }
