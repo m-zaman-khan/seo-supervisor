@@ -8,6 +8,33 @@ import { KEPT, RULES } from "../crawl/catalog.mjs";
 import { clean, urlOr } from "../crawl/fetch.mjs";
 import { NOSPACE, capsOf, norm } from "../lib/html.mjs";
 
+// [i, j, dice] for pairs of 5-word chunk sets with Dice similarity over 0.6; an inverted index compares only pages that
+// share a chunk. A chunk on every page (boilerplate) still costs pages² steps; index only each page's rarest chunks
+// (prefix filtering) if that ever shows in a profile.
+export function nearPairs(sets) {
+  const index = new Map(),
+    shared = new Int32Array(sets.length),
+    out = [];
+  sets.forEach((s, i) => {
+    const met = [];
+    for (const x of s) {
+      const at = index.get(x);
+      if (!at) {
+        index.set(x, [i]);
+        continue;
+      }
+      for (const j of at) if (shared[j]++ === 0) met.push(j);
+      at.push(i);
+    }
+    for (const j of met) {
+      const dice = (2 * shared[j]) / (sets[j].size + s.size);
+      if (dice > 0.6) out.push([j, i, dice]);
+      shared[j] = 0;
+    }
+  });
+  return out.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+}
+
 export function checkPages(site) {
   const {
     all,
@@ -385,25 +412,9 @@ export function checkPages(site) {
         `${r.type} on ${at.length} page(s), e.g. ${at[0].finalUrl}: Google retired ${r.feature} in ${r.since.slice(0, 4)}, but keep it: ${r.note}.`,
       );
   }
-  // Near-duplicate main content: 5-word shingles with Dice similarity over 0.6. Every pair is compared, so 400 pages at
-  // most; a set under 0.4 of the other's size can't reach 0.6, so that pair is skipped.
-  {
-    const cand = htmlPages.filter(p => p.shingles && !p.clientOnly && indexable(p)).slice(0, 400);
-    for (let i = 0; i < cand.length; i++)
-      for (let j = i + 1; j < cand.length; j++) {
-        const a = cand[i].shingles,
-          b = cand[j].shingles;
-        const [small, big] = a.size < b.size ? [a, b] : [b, a];
-        if (small.size / big.size < 0.4) continue;
-        let inter = 0;
-        for (const x of small) if (big.has(x)) inter++;
-        const dice = (2 * inter) / (a.size + b.size);
-        if (dice > 0.6)
-          add("near-duplicate", cand[i].finalUrl, `${Math.round(dice * 100)}% shared with ${cand[j].finalUrl}`);
-      }
-    if (htmlPages.filter(p => p.shingles).length > 400)
-      notes.push("Near-duplicate check compared the first 400 indexable pages only.");
-  }
+  const cand = htmlPages.filter(p => p.shingles && !p.clientOnly && indexable(p));
+  for (const [i, j, dice] of nearPairs(cand.map(p => p.shingles)))
+    add("near-duplicate", cand[i].finalUrl, `${Math.round(dice * 100)}% shared with ${cand[j].finalUrl}`);
   for (const { q, pages: ps } of faqMap.values())
     if (ps.length > 1) add("faq-reused", ps[0], `“${q.slice(0, 70)}” on ${ps.length} pages`);
   const PER_PAGE_RULES = [
