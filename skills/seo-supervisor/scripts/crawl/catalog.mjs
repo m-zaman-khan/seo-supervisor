@@ -1185,6 +1185,13 @@ Object.assign(CHECKS, {
     "These pages return status 200, but their title or main heading says “not found”, “404” or “no results”. Google treats a page like that as a soft 404 and leaves it out of search, and the links to it lead visitors to a dead end.",
     "If the page is gone, return a 404 or 410 status and remove the links to it. If it's a real page, give it a real title and heading and its content. An empty category or search page that shows “no results” should be noindex, or not linked, until it has items.",
   ],
+  "old-urls-same-target": [
+    "URL-07",
+    "medium",
+    n => `${n} page(s) receive the redirects of many old URLs`,
+    "Many old URLs redirect to the same page: the home page, or one other page. Google says not to redirect many old URLs to one irrelevant page, such as the home page, since it can confuse visitors and may be treated as a soft 404, so the old pages' links and rankings aren't passed on.",
+    "Point each old URL at its closest new page with one 301 or 308. If the old pages' content was merged into this page, the redirects are fine as they are. An old page with no match can answer 404 or 410.",
+  ],
   "sitemap-empty": [
     "MAP-01",
     "medium",

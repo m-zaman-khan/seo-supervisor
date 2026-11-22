@@ -173,6 +173,25 @@ export async function oldUrls(site, { urlList: URL_LIST, nextManifest: NEXT_MANI
       }
     }
     notes.push(`Tested ${Math.min(list.length, 2000)} old/redirect URLs, each with and without a trailing slash.`);
+    // Google may treat many old URLs redirected to one page as soft 404s. Counted per old path, both slash forms as
+    // one; 3 to the home page or 10 to another (local thresholds), since merging a few pages into one is fine.
+    // https://developers.google.com/search/docs/crawling-indexing/site-move-with-url-changes
+    const rec = new Map(all.map(p => [p.url, p])),
+      landed = new Map(); // final URL -> old paths
+    for (const u of list.slice(0, 2000)) {
+      const r = pages.get(u) || rec.get(u);
+      if (r?.status !== 200 || !(r.chain?.length > 1) || slashOnly(u, r.finalUrl)) continue;
+      (landed.get(r.finalUrl) || landed.set(r.finalUrl, new Set()).get(r.finalUrl)).add(
+        new URL(u).pathname.replace(/(.)\/$/, "$1"),
+      );
+    }
+    for (const [to, from] of landed)
+      if (from.size >= (new URL(to).pathname === "/" ? 3 : 10))
+        add(
+          "old-urls-same-target",
+          to,
+          `${from.size} old URLs redirect here, e.g. ${[...from].slice(0, 3).join(", ")}`,
+        );
   }
   return redirectSources;
 }
