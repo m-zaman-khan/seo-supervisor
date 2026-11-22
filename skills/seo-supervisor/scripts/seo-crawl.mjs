@@ -7,67 +7,15 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { fileCrawl } from "./seo-diff.mjs";
-import { RULES, CHECKS, RETIRED, KEPT, SHOP_FIELDS } from "./crawl/catalog.mjs";
-import {
-  TEMPORARY,
-  clean,
-  createFetcher,
-  isLocal,
-  isPublic,
-  mapOrigin,
-  pathKey,
-  slashOnly,
-  upTo,
-  urlOr,
-} from "./crawl/fetch.mjs";
-import {
-  CLIENT_ROUTER,
-  FILE_EXT,
-  NOSPACE,
-  NOSPACE_RUN,
-  ORG_RE,
-  attrs,
-  capsOf,
-  ctx,
-  decode,
-  deepHas,
-  jsonLdNodes,
-  norm,
-  stripNonContent,
-  tagsOf,
-  textOf,
-  typesOf,
-  wordsOf,
-} from "./lib/html.mjs";
-import {
-  checkHreflang,
-  linkHreflang,
-  mergeHreflang,
-  languageFeatures,
-  checkLanguages,
-  otherSiteTargets,
-  linksBack,
-} from "./checks/hreflang.mjs";
-import { checkLive } from "./checks/tls.mjs";
-import {
-  checkSpeed,
-  sampleUrls,
-  PSI_ENDPOINT,
-  speedTrend,
-  CRUX_HISTORY_ENDPOINT,
-  labLcpBreakdown,
-} from "./checks/speed.mjs";
-import { findBrowser, renderPage, compareRendered, changesHead, changesText, renderAll } from "./checks/render.mjs";
-import { checkVisual, checkMore } from "./checks/visual.mjs";
-import { checkLighthouse, findLighthouse, medianScores, ALL_CAP } from "./checks/lighthouse.mjs";
-import { imageSize, imageMeta } from "./lib/image-size.mjs";
-import { trustFeatures, trustSignals } from "./checks/trust.mjs";
-import { agentFeatures, agentFiles, bingAiRules, BING_PREFS, VALUED } from "./checks/agents.mjs";
-import { allowedBy, checkRobots, versionedNote, aiBotAccess, aiRobotRules } from "./checks/robots.mjs";
-import { SITEMAP_KEEP, findSitemaps, checkSitemapFiles, checkSitemapEntries } from "./checks/sitemap.mjs";
-import { analyze } from "./crawl/page.mjs";
-import { createCrawler } from "./crawl/queue.mjs";
+import { proxyNote, chromeProxyArgs } from "./lib/proxy.mjs";
+import { redact, hideSecrets } from "./lib/redact.mjs";
 import { createFindings } from "./lib/findings.mjs";
+import { RULES, CHECKS } from "./crawl/catalog.mjs";
+import { clean, createFetcher, isLocal, isPublic, mapOrigin, urlOr } from "./crawl/fetch.mjs";
+import { createCrawler } from "./crawl/queue.mjs";
+import { checkRobots, versionedNote, aiBotAccess, aiRobotRules } from "./checks/robots.mjs";
+import { SITEMAP_KEEP, findSitemaps, checkSitemapFiles, checkSitemapEntries } from "./checks/sitemap.mjs";
+import { probeSite } from "./checks/probes.mjs";
 import { checkPages } from "./checks/site-pages.mjs";
 import { checkAssets, imageList, schemaImages, mediaData } from "./checks/assets.mjs";
 import {
@@ -80,6 +28,7 @@ import {
   pageWords,
   otherSites,
 } from "./checks/links.mjs";
+import { compareGooglebot, aiBotProbe, readPage } from "./checks/bots.mjs";
 import { cookiesAndPolicies, securityHeaders } from "./checks/site-security.mjs";
 import { agentData, bingAiPrefs, landmarks } from "./checks/site-agents.mjs";
 import {
@@ -92,48 +41,23 @@ import {
 } from "./checks/site-content.mjs";
 import { hygieneChecks, markdownCheck } from "./checks/site-hygiene.mjs";
 import { checkCoverage } from "./checks/coverage.mjs";
-import { probeSite } from "./checks/probes.mjs";
-import { compareGooglebot, aiBotProbe, readPage } from "./checks/bots.mjs";
-import { writingText, writingFeatures } from "./checks/writing.mjs";
+import { checkLanguages, otherSiteTargets, linksBack } from "./checks/hreflang.mjs";
+import { checkLive } from "./checks/tls.mjs";
+import {
+  checkSpeed,
+  sampleUrls,
+  PSI_ENDPOINT,
+  speedTrend,
+  CRUX_HISTORY_ENDPOINT,
+  labLcpBreakdown,
+} from "./checks/speed.mjs";
+import { findBrowser, renderPage, compareRendered, changesHead, changesText, renderAll } from "./checks/render.mjs";
+import { checkVisual, checkMore } from "./checks/visual.mjs";
+import { checkLighthouse, findLighthouse, ALL_CAP } from "./checks/lighthouse.mjs";
+import { trustSignals } from "./checks/trust.mjs";
 import { checkBusinessType, detectBusinessType } from "./checks/business-type.mjs";
-import { cookieProblems, cspProblems, hstsRead, insecureResources, serverHoles } from "./checks/technical.mjs";
-import { checkOutbound } from "./checks/outbound.mjs";
-import { proxyNote, chromeProxyArgs } from "./lib/proxy.mjs";
-import { estSaving } from "./images.mjs";
-import { redact, hideSecrets } from "./lib/redact.mjs";
-import { parseCsv } from "./lib/csv.mjs";
-import { SUPERSEDED, placeholderIn, merchantProblems, sellsWithOffer, reviewEventProblems } from "./schema-check.mjs";
-import { altProblem, lazySrc, hintsOf, domShape, cdnOf, uncached } from "./checks/media.mjs";
-import {
-  titleWidth,
-  widthText,
-  obsoleteMore,
-  brandTail,
-  templatedDescs,
-  templatedShare,
-  sectionOf,
-  keywordUse,
-  isGuide,
-  newestDate,
-} from "./checks/content.mjs";
-import { localFeatures, judgeLocal } from "./checks/local.mjs";
-import { ugcLinks, backTrap, paywallLeak, lateHead, identityDrift } from "./checks/page.mjs";
-import { pageRank, scale as strengthScale } from "./checks/link-strength.mjs";
-import { fragmentLinks, hasName, sleep, slowNote } from "./checks/crawl.mjs";
-import {
-  HIDDEN_MIN,
-  PDF_PAGES,
-  JS_CAPS,
-  APP_FILES,
-  analyticsTwice,
-  secretsIn,
-  maskKeys,
-  hiddenLinks,
-  appPromo,
-  appFile,
-} from "./checks/hygiene.mjs";
-// keyword-ideas.mjs's own word rules, so the words file matches its searches exactly.
-import { mainWords as pickMainWords } from "./keyword-ideas.mjs";
+import { slowNote } from "./checks/crawl.mjs";
+import { maskKeys } from "./checks/hygiene.mjs";
 {
   const n = proxyNote();
   if (n) console.error("note: " + n);
@@ -819,7 +743,9 @@ linkStrength(site, { section: SECTION, capped });
 // The page-words file for keyword-ideas.mjs.
 pageWords(site, { out: OUT, stamp: t0 });
 
+// Click-only elements and missing landmarks.
 landmarks(site);
+
 await aiBotProbe(site, { page, botSample, aiProbe: AI_PROBE, outside: OUTSIDE });
 
 // Also schema placeholders and deprecated types.
@@ -890,9 +816,8 @@ localData(site, localBusiness);
 
 otherSites(site, outbound);
 
-// ---------- trust signals ----------
-// E-E-A-T signals for the trust view, never findings or scored; after the security checks, so their findings are in.
-// HTTPS counts with no open TRUST-01 or TRUST-07 finding, and is unknown without a public origin.
+// E-E-A-T signals for the trust view, never findings or scored; last, so the security findings are in. HTTPS counts
+// with no open TRUST-01 or TRUST-07 finding, and is unknown without a public origin.
 extra.trustSignals = trustSignals(htmlPages, {
   origin: EXPECT_ORIGIN,
   https: !isPublic(EXPECT_ORIGIN)
