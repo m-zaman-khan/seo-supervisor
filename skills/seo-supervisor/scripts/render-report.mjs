@@ -57,8 +57,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     linkIdeasHtml,
     linkIdeasMd,
     linkedOnce,
-    linkStrengthHtml,
-    linkStrengthMd,
+    linkStrength,
   } = linkPanels(m);
   const {
     trafficFor,
@@ -132,7 +131,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     drawn(checkSettingsPanel),
     drawn(recheckNote),
     [a11yHtml, a11yMd],
-    [linkStrengthHtml, linkStrengthMd],
+    drawn(linkStrength),
     [aiAnswersHtml, aiAnswersMd],
     [geoGridHtml, geoGridMd],
   ];

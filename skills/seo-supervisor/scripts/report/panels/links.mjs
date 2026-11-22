@@ -412,31 +412,17 @@ export function linkPanels({ raw }) {
     `Found in search, but little link strength: of the 20 crawled pages with the most Search Console clicks, then impressions${raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : ""}, these are in the bottom third of the site's strength (our own rule). People already find them in search, so they're worth more links from your own pages. Link to them from the strongest pages above, in a sentence about what they cover, and see Internal link ideas for pages that already mention their searches.`;
   const weakTail = x =>
     `strength ${x.v} · Search Console: ${num(n0(x.t.clicks))} clicks · ${num(n0(x.t.impressions))} impressions`;
-  const linkStrengthHtml = () =>
-    strength
-      ? `\n    <details class="how linkstrength"><summary>Internal link strength</summary><p>${esc(strengthIntro())}</p><ul class="lim">${strength.pages
-          .slice(0, 10)
-          .map(([u, v]) => `<li><b><code>${esc(u)}</code></b><span>strength ${v}</span></li>`)
-          .join("")}</ul>` +
-        (strength.weak.length
-          ? `<p>${esc(weakIntro())}</p><ul class="lim">${strength.weak.map(x => `<li><b><code>${esc(x.u)}</code></b><span>${esc(weakTail(x))}</span></li>`).join("")}</ul>`
-          : "") +
-        `</details>`
-      : "";
-  const linkStrengthMd = () =>
-    strength
-      ? [
-          "## Internal link strength",
-          "",
-          noteMd(strengthIntro()),
-          "",
-          ...strength.pages.slice(0, 10).map(([u, v]) => `- ${noteCode(u)} strength ${v}`),
-          "",
-          ...(strength.weak.length
-            ? [noteMd(weakIntro()), "", ...strength.weak.map(x => `- ${noteCode(x.u)} ${noteMd(weakTail(x))}`), ""]
-            : []),
-        ]
-      : [];
+  const linkStrength = () =>
+    strength && {
+      cls: "linkstrength",
+      title: "Internal link strength",
+      blocks: [
+        { p: strengthIntro() },
+        { rows: strength.pages.slice(0, 10).map(([u, v]) => [{ code: u }, `strength ${v}`]) },
+        strength.weak.length && { p: weakIntro() },
+        { rows: strength.weak.map(x => [{ code: x.u }, weakTail(x)]) },
+      ],
+    };
   return {
     linked,
     linksHtml,
@@ -446,7 +432,6 @@ export function linkPanels({ raw }) {
     linkIdeasHtml,
     linkIdeasMd,
     linkedOnce: linkedOncePanel,
-    linkStrengthHtml,
-    linkStrengthMd,
+    linkStrength,
   };
 }
