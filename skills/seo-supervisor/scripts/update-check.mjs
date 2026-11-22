@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 import { runMain } from "./lib/cli.mjs";
+import { parseArgs } from "./lib/args.mjs";
 import { settingsDir } from "./lib/settings-dir.mjs";
 
 export const VERSION = "2.0.0"; // kept equal to package.json by test/update-check.test.mjs
@@ -51,11 +52,19 @@ async function checkForUpdate({ env = process.env, now = Date.now(), fetchFn = f
   return isNewer(latest, VERSION) ? latest : null;
 }
 
-if (isMain(import.meta.url)) {
-  const cmd = process.argv[2];
-  // A bad SEO_SUPERVISOR_HOME can't save the setting; runMain prints one plain line and exits 2.
-  if (cmd === "off" || cmd === "on")
-    await runMain(() => {
+const USAGE = `usage: node update-check.mjs          say when a newer SEO Supervisor is on npm (weekly at most)
+       node update-check.mjs off|on   turn the weekly check off or on again
+
+It never updates anything itself, and it sends npm nothing but the package name. Also off with
+SEO_SUPERVISOR_NO_UPDATE_CHECK=1, and in CI.
+  --help, -h    show this help`;
+
+if (isMain(import.meta.url))
+  await runMain(async () => {
+    // No option list: the weekly check takes any other words and still exits 0; only --help or -h stops it.
+    const [cmd] = parseArgs(process.argv.slice(2), { usage: USAGE })._;
+    // A bad SEO_SUPERVISOR_HOME can't save the setting; runMain prints one plain line and exits 2.
+    if (cmd === "off" || cmd === "on") {
       const f = join(dir(), "settings.json");
       writeJson(f, { ...readJson(f), updateCheck: cmd === "on" });
       console.log(
@@ -63,12 +72,11 @@ if (isMain(import.meta.url)) {
           ? "Update notices turned off. Turn them on again with: node update-check.mjs on"
           : "Update notices turned on (npm is checked at most once a week).",
       );
-    });
-  else {
-    const latest = await checkForUpdate().catch(() => null);
-    if (latest)
-      console.log(
-        `SEO Supervisor ${latest} is out (you have ${VERSION}). Update with: npx seo-supervisor@latest (plugin installs: update it from Claude Code's /plugin menu). Turn these notices off: node update-check.mjs off`,
-      );
-  }
-}
+    } else {
+      const latest = await checkForUpdate().catch(() => null);
+      if (latest)
+        console.log(
+          `SEO Supervisor ${latest} is out (you have ${VERSION}). Update with: npx seo-supervisor@latest (plugin installs: update it from Claude Code's /plugin menu). Turn these notices off: node update-check.mjs off`,
+        );
+    }
+  });

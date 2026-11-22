@@ -8,6 +8,8 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { isMain } from "./lib/is-main.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain } from "./lib/cli.mjs";
 import { findBrowser } from "./checks/render.mjs";
 import { CHROME_FLAGS, quietProfile } from "./lib/cdp.mjs";
 
@@ -176,80 +178,96 @@ const fileOf = slug => {
   return (name || (s ? `page-${createHash("sha256").update(s).digest("hex").slice(0, 8)}` : "home")) + ".png";
 };
 
-if (isMain(import.meta.url)) {
-  const args = {};
-  for (let i = 2; i < process.argv.length; i++) {
-    const k = process.argv[i].replace(/^--/, "");
-    args[k] = process.argv[i + 1] && !process.argv[i + 1].startsWith("--") ? process.argv[++i] : true;
-  }
-  const fail = (msg, code = 2) => {
-    console.error(msg);
-    process.exit(code);
-  };
-  const single = typeof args.title === "string" && typeof args.out === "string",
-    batch = typeof args.pages === "string" && typeof args["out-dir"] === "string";
-  if (!single && !batch)
-    fail(`usage: node og-card.mjs --title "..." [--subtitle ...] [--brand ...] [--accent #2459c9] [--background #0b1220] [--logo logo.svg|png] --out public/og/home.png
-       node og-card.mjs --pages pages.json --out-dir public/og/ [--brand ... --accent ... --background ... --logo ...]`);
+const USAGE = `usage: node og-card.mjs --title "Plans and pricing" --out public/og/home.png [options]
+       node og-card.mjs --pages pages.json --out-dir public/og/ [options]
 
-  const shared = {};
-  for (const k of ["brand", "accent", "background"]) if (typeof args[k] === "string") shared[k] = args[k];
-  if (typeof args.logo === "string") {
-    const mime = MIME[extname(args.logo).toLowerCase()];
-    if (!mime) fail(`og-card: --logo must be .svg, .png, .jpg or .webp, got ${args.logo}`);
-    if (!existsSync(args.logo)) fail(`og-card: logo not found: ${args.logo}`);
-    shared.logo = `data:${mime};base64,${readFileSync(args.logo).toString("base64")}`;
-  }
+Makes 1200x630 share images on this computer with the installed Chrome or Edge
+(CHROME_PATH picks one). No AI and no outside service.
+  --title <text>          the card's headline (one card)
+  --subtitle <text>       a line under the title
+  --out <file>            where that card's PNG is written
+  --pages <file>          many cards: a JSON list of { "slug", "title", "subtitle" }
+  --out-dir <folder>      where those cards are written, one PNG a page, named from its slug
+  --brand <name>          the name at the bottom of each card
+  --accent <#hex>         the colour of the bar and bottom edge (default #2459c9)
+  --background <#hex>     the background colour (default #0b1220)
+  --logo <file>           a .svg, .png, .jpg or .webp beside the brand name
+  --help, -h              show this help`;
 
-  let jobs;
-  if (single)
-    jobs = [
-      [
-        { ...shared, title: args.title, subtitle: typeof args.subtitle === "string" ? args.subtitle : "" },
-        resolve(args.out),
-      ],
-    ];
-  else {
-    let pages;
+if (isMain(import.meta.url))
+  await runMain(async () => {
+    const args = parseArgs(process.argv.slice(2), {
+      flags: ["title", "subtitle", "brand", "accent", "background", "logo", "out", "pages", "out-dir"],
+      positionals: 0,
+      usage: USAGE,
+    });
+    const fail = (msg, code = 2) => {
+      throw new Fail(msg, code);
+    };
+    const single = typeof args.title === "string" && typeof args.out === "string",
+      batch = typeof args.pages === "string" && typeof args["out-dir"] === "string";
+    if (!single && !batch) fail(USAGE);
+
+    const shared = {};
+    for (const k of ["brand", "accent", "background"]) if (typeof args[k] === "string") shared[k] = args[k];
+    if (typeof args.logo === "string") {
+      const mime = MIME[extname(args.logo).toLowerCase()];
+      if (!mime) fail(`og-card: --logo must be .svg, .png, .jpg or .webp, got ${args.logo}`);
+      if (!existsSync(args.logo)) fail(`og-card: logo not found: ${args.logo}`);
+      shared.logo = `data:${mime};base64,${readFileSync(args.logo).toString("base64")}`;
+    }
+
+    let jobs;
+    if (single)
+      jobs = [
+        [
+          { ...shared, title: args.title, subtitle: typeof args.subtitle === "string" ? args.subtitle : "" },
+          resolve(args.out),
+        ],
+      ];
+    else {
+      let pages;
+      try {
+        pages = JSON.parse(readFileSync(args.pages, "utf8"));
+      } catch (e) {
+        fail(`og-card: can't read ${args.pages} as JSON: ${e.message}`);
+      }
+      if (!Array.isArray(pages) || !pages.length || pages.some(p => !p || typeof p.title !== "string" || !p.title))
+        fail(
+          `og-card: ${args.pages} must be a non-empty array of { "slug", "title", "subtitle" } with a title in each`,
+        );
+      jobs = pages.map(p => [
+        { ...shared, title: p.title, subtitle: p.subtitle || "" },
+        resolve(args["out-dir"], fileOf(p.slug)),
+      ]);
+      const seen = new Set();
+      // Case-insensitive: About.png and about.png are one file on Windows and macOS.
+      for (const [, out] of jobs) {
+        if (seen.has(out.toLowerCase())) fail(`og-card: two pages would both write ${out}; give them different slugs`);
+        seen.add(out.toLowerCase());
+      }
+    }
     try {
-      pages = JSON.parse(readFileSync(args.pages, "utf8"));
+      for (const [opts] of jobs) cardHtml(opts);
     } catch (e) {
-      fail(`og-card: can't read ${args.pages} as JSON: ${e.message}`);
+      fail(`og-card: ${e.message}`);
     }
-    if (!Array.isArray(pages) || !pages.length || pages.some(p => !p || typeof p.title !== "string" || !p.title))
-      fail(`og-card: ${args.pages} must be a non-empty array of { "slug", "title", "subtitle" } with a title in each`);
-    jobs = pages.map(p => [
-      { ...shared, title: p.title, subtitle: p.subtitle || "" },
-      resolve(args["out-dir"], fileOf(p.slug)),
-    ]);
-    const seen = new Set();
-    // Case-insensitive: About.png and about.png are one file on Windows and macOS.
-    for (const [, out] of jobs) {
-      if (seen.has(out.toLowerCase())) fail(`og-card: two pages would both write ${out}; give them different slugs`);
-      seen.add(out.toLowerCase());
-    }
-  }
-  try {
-    for (const [opts] of jobs) cardHtml(opts);
-  } catch (e) {
-    fail(`og-card: ${e.message}`);
-  }
 
-  let browser = null;
-  try {
-    browser = findBrowser();
-  } catch (e) {
-    fail(`og-card: ${e.message}`);
-  }
-  if (!browser) fail("og-card: no Chrome or Edge found. Install one, or set CHROME_PATH to its executable.");
-  try {
-    for (const [opts, out] of jobs) await renderCard(browser, opts, out);
-  } catch (e) {
-    fail(e.message, e instanceof CardError ? e.code : 1);
-  }
-  console.log(
-    single
-      ? `og-card: wrote ${jobs[0][1]} (${W}x${H})`
-      : `og-card: wrote ${jobs.length} card(s) (${W}x${H}) to ${resolve(args["out-dir"])}`,
-  );
-}
+    let browser = null;
+    try {
+      browser = findBrowser();
+    } catch (e) {
+      fail(`og-card: ${e.message}`);
+    }
+    if (!browser) fail("og-card: no Chrome or Edge found. Install one, or set CHROME_PATH to its executable.");
+    try {
+      for (const [opts, out] of jobs) await renderCard(browser, opts, out);
+    } catch (e) {
+      fail(e.message, e instanceof CardError ? e.code : 1);
+    }
+    console.log(
+      single
+        ? `og-card: wrote ${jobs[0][1]} (${W}x${H})`
+        : `og-card: wrote ${jobs.length} card(s) (${W}x${H}) to ${resolve(args["out-dir"])}`,
+    );
+  });

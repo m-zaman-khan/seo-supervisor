@@ -5,6 +5,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { bandOf, scoreSummary, OWN_SCORE } from "./lib/score.mjs";
 import { isMain } from "./lib/is-main.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain } from "./lib/cli.mjs";
 import { esc, fmtDate, plural } from "./report/format.mjs";
 
 // fmtDate keeps a YYYY-MM-DD date on that day in every time zone; a missing or bad date shows nothing.
@@ -114,21 +116,25 @@ ${rows}
 `;
 }
 
-if (isMain(import.meta.url)) {
-  const argv = process.argv.slice(2),
-    at = argv.indexOf("--out"),
-    outArg = at >= 0 ? argv[at + 1] : null;
-  if (at >= 0 && !outArg) {
-    console.error("Usage: node dashboard.mjs [folder ...] [--out dashboard.html]");
-    process.exit(2);
-  }
-  const dirs = argv.filter((a, i) => !a.startsWith("--") && !(at >= 0 && i === at + 1));
-  const list = order((dirs.length ? dirs : ["seo-audit"]).map(summaryOf));
-  for (const x of list) console.log(lineOf(x));
-  if (outArg) {
-    const out = resolve(outArg);
-    mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, dashboardHtml(list, out));
-    console.log(`Wrote ${out}`);
-  }
-}
+const USAGE = `Usage: node dashboard.mjs [folder ...] [--out dashboard.html]
+       npx seo-supervisor dashboard [folder ...] [--out dashboard.html]
+
+The state of several sites at a glance, from the audits already on this computer. Sends nothing.
+  folder ...         a seo-audit/ folder, or a project folder with one inside (default: ./seo-audit)
+  --out <file>       also write one offline HTML page that links to each site's report
+  --help, -h         show this help`;
+
+if (isMain(import.meta.url))
+  await runMain(() => {
+    const args = parseArgs(process.argv.slice(2), { flags: ["out"], usage: USAGE }),
+      dirs = args._;
+    if (args.out === true) throw new Fail(USAGE); // --out with no file after it
+    const list = order((dirs.length ? dirs : ["seo-audit"]).map(summaryOf));
+    for (const x of list) console.log(lineOf(x));
+    if (args.out) {
+      const out = resolve(args.out);
+      mkdirSync(dirname(out), { recursive: true });
+      writeFileSync(out, dashboardHtml(list, out));
+      console.log(`Wrote ${out}`);
+    }
+  });

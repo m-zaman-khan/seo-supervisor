@@ -68,8 +68,73 @@ const UA = "seo-supervisor-crawler/" + VERSION;
 
 // ---------- args ----------
 // An unknown option or unusable value stops the crawl (exit 2) before anything is asked of the site.
-const USAGE =
-  "Usage: node seo-crawl.mjs --url http://localhost:3000 [--site-origin https://example.com] [--trailing-slash auto|always|never] [--brand Name] [--ignore-noindex] [--banned regex] [--verify regex] [--urls file] [--next-manifest file] [--max 1000] [--concurrency 4] [--include-query] [--out seo-audit/seo-crawl.json]";
+// Each option in FLAGS and BOOLEANS needs its own line here, at most 100 characters wide (test/help.test.mjs).
+const USAGE = `Usage: node seo-crawl.mjs --url http://localhost:3000 [options]
+
+Crawls a site and writes what it finds to one JSON file. Read-only: it sends only GET and HEAD
+requests. Point it at a local or staging server when you can; against production keep
+--concurrency low.
+
+Basics
+  --url <address>            where the crawl starts (required), like http://localhost:3000
+  --site-origin <address>    the public address canonicals and sitemaps should use,
+                             like https://www.example.com
+  --trailing-slash <style>   auto (the default: detect the site's style, flag a mix), always
+                             or never
+  --brand <name>             flag titles that repeat the brand name
+  --ignore-noindex           before launch: check noindex pages as if they could be indexed
+  --banned <pattern>         flag visible text that matches (banned claims, wrong names)
+  --verify <pattern>         flag claims the owner hasn't confirmed yet, as decisions
+
+Scope
+  --max <n>                  crawl at most n pages (default 1000)
+  --concurrency <n>          requests at once (default 8 on this computer, 4 on any other server)
+  --include <paths>          crawl only these sections: comma-separated path starts, like /blog/
+                             (the start page is still crawled, as the way in)
+  --exclude <paths>          skip these sections, like /blog/tag/
+  --include-query            crawl addresses with a ?query as pages of their own
+
+Outside checks (each contacts more than the server being crawled, so each needs the owner's yes)
+  --check-live               live site only: the certificate, the http-to-https and www/bare-domain
+                             redirects, and HSTS (the "always use https" header) on --site-origin
+  --outside                  real-user speed from Google PageSpeed Insights for up to 10 public
+                             pages (set PSI_API_KEY); a Chrome or Edge render of up to 10 pages on
+                             desktop and phone, with screenshots (CHROME_PATH picks the browser);
+                             Chrome's back/forward cache test and lab speed; with CRUX_API_KEY,
+                             the site's 25-week speed trend
+  --render all               with --outside: render every indexable page (up to 200, about 5 s
+                             a page) instead of 10; it prints the time it expects first
+  --lighthouse [all|<n>]     with --outside: Lighthouse on 5 sample pages, on every indexable
+                             page (all: up to 200, about 20 s a page) or on n of them. Install it
+                             first: npx seo-supervisor --with-lighthouse, or set LIGHTHOUSE_PATH
+  --desktop                  with --outside: send the same pages to PageSpeed again for desktop
+                             (information only)
+  --render-page <address>    with --outside: render one page you pick
+  --render-steps "<steps>"   what to do on that page first, like "scroll; click .more; wait 1000"
+                             (it never types)
+  --clean-screenshots        with --outside: also save screenshots with cookie bars and chat
+                             boxes hidden
+  --ai-bot-probe             with --outside: ask up to 3 pages again as AI search crawlers, to see
+                             whether a firewall turns them away
+  --hreflang-other-sites     with --outside: visit up to 20 language versions on other sites, to
+                             see whether they link back
+  --outbound-links           visit up to 100 links to other sites, to find broken ones (never
+                             private or local addresses)
+  --psi-endpoint <address>   send the PageSpeed requests here instead of to Google (for tests)
+  --crux-endpoint <address>  send the speed-trend requests here instead of to Google (for tests)
+
+Data inputs
+  --urls <file>              old addresses or redirect sources to test: one per line, a CSV's first
+                             column, or a JSON array
+  --next-manifest <file>     test every fixed-path redirect in a Next.js build's
+                             .next/routes-manifest.json
+  --gsc-indexing <file>      Search Console's Page indexing export (its Chart.csv): Google's
+                             indexed count beside the crawl's, information only
+
+Output
+  --out <file>               where the crawl is written (default seo-audit/seo-crawl.json);
+                             screenshots go in screenshots/ next to it
+  --help, -h                 show this help`;
 const FLAGS = [
   "url",
   "site-origin",
@@ -107,7 +172,10 @@ const BOOLEANS = [
 let options;
 await runMain(() => {
   const a = parseArgs(process.argv.slice(2), { flags: FLAGS, booleans: BOOLEANS, positionals: 0, usage: USAGE });
-  if (typeof a.url !== "string") throw new Fail(USAGE);
+  if (typeof a.url !== "string")
+    throw new Fail(
+      `${USAGE.slice(0, USAGE.indexOf("\n"))}\n--url is required. Every option: node seo-crawl.mjs --help`,
+    );
   const no = (k, why) => {
     throw new Fail(`seo-crawl: --${k} ${why}`);
   };

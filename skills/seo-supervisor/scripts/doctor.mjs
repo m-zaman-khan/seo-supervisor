@@ -11,6 +11,7 @@ import { googleFile, installedBrowser, loginDir, settingsDir, toolsDir } from ".
 import { proxyNote } from "./lib/proxy.mjs";
 import { isMain } from "./lib/is-main.mjs";
 import { runMain } from "./lib/cli.mjs";
+import { parseArgs } from "./lib/args.mjs";
 
 const writable = p => {
   try {
@@ -157,8 +158,16 @@ export function doctor({ env = process.env, cwd = process.cwd(), version = proce
   };
 }
 
+const USAGE = `usage: node doctor.mjs      (or: npx seo-supervisor doctor)
+
+Checks this computer is ready for an audit: Node, Chrome or Edge, the optional add-ons, the settings
+folder, the connections and write access to this folder. Read-only: it changes and contacts nothing.
+Exits 1 when the audit can't run here, else 0.
+  --help, -h    show this help`;
+
 if (isMain(import.meta.url))
   await runMain(() => {
+    parseArgs(process.argv.slice(2), { flags: [], positionals: 0, usage: USAGE });
     const r = doctor();
     console.log(r.text);
     return r.ready ? 0 : 1;

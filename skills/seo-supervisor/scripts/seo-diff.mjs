@@ -4,6 +4,8 @@
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, copyFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain } from "./lib/cli.mjs";
 import { LIMITS, fmtCwv } from "./checks/speed.mjs";
 
 const pathOf = u => {
@@ -530,44 +532,53 @@ export function fileCrawl(hist, file, crawl) {
   return to;
 }
 
-if (isMain(import.meta.url)) {
-  const args = process.argv.slice(2),
-    val = k => (args.includes(k) ? args[args.indexOf(k) + 1] : null);
-  const files = args.filter((a, i) => !a.startsWith("--") && !["--out", "--history"].includes(args[i - 1]));
-  const hist = val("--history"),
-    out = resolve(val("--out") || "seo-audit/seo-diff.json");
-  if (files.length !== (hist ? 1 : 2)) {
-    console.error(
-      "usage: node seo-diff.mjs old-crawl.json new-crawl.json [--out seo-audit/seo-diff.json]\n       node seo-diff.mjs --history seo-audit/history new-crawl.json [--out seo-audit/seo-diff.json] [--fail-on-regressions]",
-    );
-    process.exit(1);
-  }
-  const crawls = files.map(f => JSON.parse(readFileSync(f, "utf8"))),
-    newR = crawls.at(-1);
-  let oldR = crawls[0],
-    rows = null;
-  if (hist) {
-    if (typeof newR.crawledAt !== "string") {
-      console.error(`seo-diff: ${files[0]} has no crawledAt, so it isn't a crawl from seo-crawl.mjs.`);
-      process.exit(1);
+const USAGE = `usage: node seo-diff.mjs old-crawl.json new-crawl.json [--out seo-audit/seo-diff.json]
+       node seo-diff.mjs --history seo-audit/history new-crawl.json [--out <file>]
+         [--fail-on-regressions]
+
+What changed between two crawls from seo-crawl.mjs, matched by path. Reads local files only.
+  --out <file>             where the diff is written (default seo-audit/seo-diff.json)
+  --history <folder>       compare with the newest crawl filed there, add a timeline of every crawl
+                           there, and file this one too (the first crawl is only filed)
+  --fail-on-regressions    exit 1 after writing if anything got worse, so a scheduled run can alert
+  --help, -h               show this help`;
+
+if (isMain(import.meta.url))
+  await runMain(() => {
+    const args = parseArgs(process.argv.slice(2), {
+      flags: ["out", "history"],
+      booleans: ["fail-on-regressions"],
+      usage: USAGE,
+    });
+    const str = k => (typeof args[k] === "string" ? args[k] : null),
+      files = args._;
+    const hist = str("history"),
+      out = resolve(str("out") || "seo-audit/seo-diff.json");
+    if (files.length !== (hist ? 1 : 2)) throw new Fail(USAGE, 1);
+    const crawls = files.map(f => JSON.parse(readFileSync(f, "utf8"))),
+      newR = crawls.at(-1);
+    let oldR = crawls[0],
+      rows = null;
+    if (hist) {
+      if (typeof newR.crawledAt !== "string")
+        throw new Fail(`seo-diff: ${files[0]} has no crawledAt, so it isn't a crawl from seo-crawl.mjs.`, 1);
+      const past = filed(hist),
+        earlier = past.filter(r => r.crawledAt < newR.crawledAt);
+      fileCrawl(hist, files[0], newR);
+      oldR = earlier.at(-1);
+      rows = oldR && timeline([...earlier, newR]);
     }
-    const past = filed(hist),
-      earlier = past.filter(r => r.crawledAt < newR.crawledAt);
-    fileCrawl(hist, files[0], newR);
-    oldR = earlier.at(-1);
-    rows = oldR && timeline([...earlier, newR]);
-  }
-  if (!oldR)
-    console.log(
-      `seo-diff: no earlier crawl in ${hist}, so nothing to compare. This crawl is filed there for the next run.`,
-    );
-  else {
-    const diff = { since: oldR.crawledAt || null, ...diffCrawls(oldR, newR), ...(rows ? { timeline: rows } : {}) };
-    mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, JSON.stringify(diff, null, 2));
-    console.log(
-      `seo-diff: ${diff.regressions.length} regressions, ${diff.improvements.length} improvements, ${diff.added.length} pages added, ${diff.removed.length} gone · wrote ${out}`,
-    );
-    if (args.includes("--fail-on-regressions") && diff.regressions.length) process.exitCode = 1;
-  }
-}
+    if (!oldR)
+      console.log(
+        `seo-diff: no earlier crawl in ${hist}, so nothing to compare. This crawl is filed there for the next run.`,
+      );
+    else {
+      const diff = { since: oldR.crawledAt || null, ...diffCrawls(oldR, newR), ...(rows ? { timeline: rows } : {}) };
+      mkdirSync(dirname(out), { recursive: true });
+      writeFileSync(out, JSON.stringify(diff, null, 2));
+      console.log(
+        `seo-diff: ${diff.regressions.length} regressions, ${diff.improvements.length} improvements, ${diff.added.length} pages added, ${diff.removed.length} gone · wrote ${out}`,
+      );
+      if (args["fail-on-regressions"] && diff.regressions.length) return 1;
+    }
+  });
