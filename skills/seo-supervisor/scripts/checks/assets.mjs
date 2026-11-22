@@ -3,7 +3,7 @@
 // Files are read with firstBytes, which never leaves the crawled site.
 import { RULES } from "../crawl/catalog.mjs";
 import { clean, urlOr } from "../crawl/fetch.mjs";
-import { ORG_RE } from "../lib/html.mjs";
+import { isBusinessType } from "../lib/business.mjs";
 import { imageSize, imageMeta } from "../lib/image-size.mjs";
 import { altProblem, cdnOf, uncached } from "./media.mjs";
 import { medianScores } from "./lighthouse.mjs";
@@ -125,7 +125,7 @@ export async function checkAssets(site, { images, shareImages }) {
   if (productImgs.size > 20)
     notes.push(`Product image size was checked for the first 20 of ${productImgs.size} Product schema images.`);
   if (home && home.html) {
-    if (![...home.types, ...home.schemaOther].some(t => ORG_RE.test(t))) add("org-missing", home.finalUrl);
+    if (![...home.types, ...home.schemaOther].some(isBusinessType)) add("org-missing", home.finalUrl);
     if (![...home.types, ...home.schemaOther].includes("WebSite")) add("website-missing", home.finalUrl);
   }
   // Google wants a square favicon of 48 px or more in BMP, GIF, ICO, PNG, JPEG, PPM or TIFF. A type whose size can't

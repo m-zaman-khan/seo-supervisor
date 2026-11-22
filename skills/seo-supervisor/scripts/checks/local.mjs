@@ -5,12 +5,8 @@
 // https://support.google.com/business/answer/3038177
 // https://support.google.com/business/answer/9157481
 // OnlineStore, Organization and a bare Service aren't local businesses.
-import { readFileSync } from "node:fs";
+import { isLocalBusinessType as isLocal } from "../lib/business.mjs";
 
-// LocalBusiness and its subtypes, from schema.org's type tree.
-// OnlineStore, Organization and a bare Service aren't local businesses.
-const TYPES = JSON.parse(readFileSync(new URL("../data/schema-vocab.json", import.meta.url), "utf8")).types;
-const isLocal = t => t === "LocalBusiness" || (Object.hasOwn(TYPES, t) && TYPES[t].some(isLocal));
 const typesOf = n => [].concat(n?.["@type"] || []).filter(t => typeof t === "string");
 const str = v => (typeof v === "string" && v.trim() ? v.trim() : null);
 const ADDRESS = ["streetAddress", "addressLocality", "addressRegion", "postalCode", "addressCountry"];

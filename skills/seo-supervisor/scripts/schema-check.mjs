@@ -8,6 +8,7 @@ import { parseArgs } from "./lib/args.mjs";
 import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
 import { bodyUpTo } from "./lib/http.mjs";
 import { loopback } from "./lib/net.mjs";
+import { ancestors, isA, isLocalBusinessType } from "./lib/business.mjs";
 
 const VOCAB = JSON.parse(readFileSync(new URL("./data/schema-vocab.json", import.meta.url), "utf8"));
 // Null-prototype maps, so "toString" or "__proto__" in a page is just an unknown name.
@@ -232,10 +233,6 @@ export function reviewEventProblems(nodes) {
 const monthOf = d =>
   new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 
-const cache = new Map();
-const ancestors = t =>
-  cache.get(t) || cache.set(t, new Set([t, ...(TYPES[t] || []).flatMap(p => [...ancestors(p)])])).get(t);
-const isA = (t, base) => ancestors(t).has(base);
 const byDomain = Object.create(null);
 for (const [p, [domains]] of Object.entries(PROPS)) for (const d of domains) (byDomain[d] ||= []).push(p);
 const allowedCache = new Map();
@@ -461,7 +458,7 @@ export function checkJsonLd(text) {
 
   // A business's map pin and price range, as Google's local business and vacation rental docs set them.
   function business(v, path, known) {
-    if (!known.some(t => isA(t, "LocalBusiness"))) return;
+    if (!known.some(isLocalBusinessType)) return;
     const doc = docOf(known.some(t => isA(t, "VacationRental")) ? "VacationRental" : "LocalBusiness");
     // Both docs want latitude and longitude to at least 5 decimal places.
     for (const o of [v, ...list(v.geo)])

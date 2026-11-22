@@ -3,15 +3,9 @@
 // Keyword evidence, not a model, so every audit gives the same answer. A test checks data/business-types.json against
 // data/schema-vocab.json; its fields follow https://developers.google.com/search/docs/appearance/structured-data/
 import { readFileSync } from "node:fs";
+import { isA, isBusinessType } from "../lib/business.mjs";
 
-const read = f => JSON.parse(readFileSync(new URL(f, import.meta.url), "utf8"));
-export const BUSINESS_TYPES = read("../data/business-types.json");
-// Null prototype, so a page's "constructor" or "__proto__" type is just an unknown name.
-const TYPES = Object.assign(Object.create(null), read("../data/schema-vocab.json").types);
-const cache = new Map();
-const ancestors = t =>
-  cache.get(t) || cache.set(t, new Set([t, ...(TYPES[t] || []).flatMap(p => [...ancestors(p)])])).get(t);
-const isA = (t, base) => ancestors(t).has(base);
+export const BUSINESS_TYPES = JSON.parse(readFileSync(new URL("../data/business-types.json", import.meta.url), "utf8"));
 
 export const CHECKS = {
   "schema-too-generic": [
@@ -102,7 +96,7 @@ function judge(pages) {
     }) || pages[0];
   // Any Organization type counts, LocalBusiness and its subtypes included.
   const siteTypes = [...new Set(pages.flatMap(p => p.types || []))].filter(
-    t => typeof t === "string" && isA(t, "Organization"),
+    t => typeof t === "string" && isBusinessType(t),
   );
   const by = new Map(),
     at = b => by.get(b) || by.set(b, { b, schema: [], title: [], h1: [], text: new Set() }).get(b);
