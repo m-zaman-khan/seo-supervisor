@@ -67,6 +67,7 @@ import { allowedBy, checkRobots, versionedNote, aiBotAccess, aiRobotRules } from
 import { SITEMAP_KEEP, findSitemaps, checkSitemapFiles, checkSitemapEntries } from "./checks/sitemap.mjs";
 import { analyze } from "./crawl/page.mjs";
 import { createCrawler } from "./crawl/queue.mjs";
+import { createFindings } from "./lib/findings.mjs";
 import { writingText, writingFeatures } from "./checks/writing.mjs";
 import { checkBusinessType, detectBusinessType } from "./checks/business-type.mjs";
 import { cookieProblems, cspProblems, hstsRead, insecureResources, serverHoles } from "./checks/technical.mjs";
@@ -182,41 +183,10 @@ const AI_PROBE = !!args["ai-bot-probe"];
 const RENDER_PAGE = typeof args["render-page"] === "string" ? args["render-page"] : null;
 const RENDER_STEPS = typeof args["render-steps"] === "string" ? args["render-steps"] : "";
 const CLEAN_SHOTS = !!args["clean-screenshots"];
-// Every finding and note passes through lib/redact.mjs on the way in, whichever check adds it: secret query values
-// and home folders in findings, and email addresses too in notes, which carry error messages.
-// @ts-expect-error TS2630: add is a function declaration, and no annotation allows reassigning one.
-{
-  const raw = add;
-  add = (key, url, detail) =>
-    raw(
-      key,
-      url && redact(url, { emails: false }),
-      detail == null ? detail : redact(String(detail), { emails: false }),
-    );
-}
-notes.push = (...xs) =>
-  Array.prototype.push.apply(
-    notes,
-    xs.map(n => redact(n)),
-  );
-// Every finding's URL and detail also has any secret key masked, so no key reaches the crawl file through another
-// check's evidence.
-// @ts-expect-error TS2630: add is a function declaration; this wraps it as the redaction above does.
-{
-  const raw = add;
-  add = (key, url, detail) => raw(key, url && maskKeys(url), detail == null ? detail : maskKeys(String(detail)));
-}
-
-const findings = new Map(); // key -> {evidence:[], count}
-function add(key, url, detail) {
-  if (!CHECKS[key]) throw new Error("unknown check " + key);
-  let f = findings.get(key);
-  if (!f) findings.set(key, (f = { evidence: [], count: 0 }));
-  f.count++;
-  if (f.evidence.length < 100) f.evidence.push(detail ? { url, detail } : { url });
-}
-const evaluated = new Set();
-const evalRules = (...ids) => ids.forEach(r => evaluated.add(r));
+// Every finding's URL and detail is scrubbed of secret keys, secret query values and home folders, whichever check adds
+// it, so no secret reaches the crawl file through another check's evidence. Notes and notChecked reasons get the same
+// scrub on output, emails included.
+const { findings, add, evaluated, evalRules } = createFindings(CHECKS, s => redact(maskKeys(s), { emails: false }));
 
 // Sitemap <xhtml:link> hreflang by crawl URL, built on first use: `sm` is only read later, before the crawl starts.
 let smHreflang;
@@ -2691,6 +2661,7 @@ const passed = [...evaluated]
   .sort()
   .map(r => ({ rule: r, title: RULES[r][0], category: RULES[r][1] }));
 if (capped) notes.push(`Crawl stopped at ${MAX} pages (--max). Some pages were not checked; raise --max.`);
+const noteList = notes.map(n => redact(n)); // every note, whichever check wrote it
 const report = {
   tool: "seo-supervisor-crawler",
   version: VERSION,
@@ -2721,7 +2692,7 @@ const report = {
     sitemapComplete: !sm.cut && sm.files.every(f => f.status === 200),
     robotsTxt: robotsRes.status,
   },
-  notes,
+  notes: noteList,
   findings: out,
   passed,
   notChecked,
@@ -2778,5 +2749,5 @@ console.log(
     JSON.stringify(counts) +
     `, ${passed.length} rules passed`,
 );
-for (const n of notes) console.log("note: " + n);
+for (const n of noteList) console.log("note: " + n);
 console.log("wrote " + OUT);
