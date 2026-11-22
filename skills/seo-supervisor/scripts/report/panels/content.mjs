@@ -65,14 +65,21 @@ export function contentPanels({ raw, mdFile }) {
           c => obj(c) && typeof c.section === "string" && Number.isInteger(c.templated) && Number.isInteger(c.pages),
         )
       : [];
-  // The verdict's sections go through `code`, which escapes for its format.
-  const tdText = code => [
-    `${num(tdShare.templated)} of ${plural(tdShare.pages, "description")} (${Math.round((100 * tdShare.templated) / tdShare.pages)}%) end in a stock call to action or in a last sentence other pages share.`,
+  // The verdict is a local sentence, so it's written as is.
+  const asIs = s => ({ html: s, md: s });
+  const tdText = () => [
+    `${num(tdShare.templated)} of ${plural(tdShare.pages, "description")} (${Math.round((100 * tdShare.templated) / tdShare.pages)}%) end in a stock call to action or in a last sentence other pages share. `,
     tdShare.verdict === "cluster" && tdClusters.length
-      ? `Verdict: a cluster. Most are in ${tdClusters.map(c => `${code(c.section)} (${c.templated} of ${c.pages} pages)`).join(", ")}, so that section's template is the fix.`
-      : tdShare.verdict === "site-wide"
-        ? "Verdict: site-wide. Half or more of the descriptions are templated, so the shared description template is the fix."
-        : "Verdict: scattered. Fix them page by page.",
+      ? [
+          asIs("Verdict: a cluster. Most are in "),
+          tdClusters.map((c, i) => [i ? ", " : "", { code: c.section }, ` (${c.templated} of ${c.pages} pages)`]),
+          asIs(", so that section's template is the fix."),
+        ]
+      : asIs(
+          tdShare.verdict === "site-wide"
+            ? "Verdict: site-wide. Half or more of the descriptions are templated, so the shared description template is the fix."
+            : "Verdict: scattered. Fix them page by page.",
+        ),
   ];
   const KW = ["natural", "missing", "repetitive", "forced"];
   const KW_WHY = {
@@ -100,52 +107,18 @@ export function contentPanels({ raw, mdFile }) {
     )}: ${kwCounts.map(([v, c]) => `${num(c)} ${v}`).join(" · ")}.`;
   const CONTENT_INTRO =
     "How the descriptions and the main keyword are written, for information: these notes never change the score. Each English page's main phrase is taken from its title; the 3% and 5% lines are our own, from CONTENT-03's “no density targets above about 2–3%”.";
-  const descriptionsHtml = () =>
-    tdShare || kwCounts.length
-      ? `\n    <details class="how content"><summary>Descriptions and keyword use</summary><p>${esc(CONTENT_INTRO)}</p>${
-          tdShare
-            ? `<p>${tdText(s => `<code>${esc(s)}</code>`)
-                .map((t, i) => (i ? t : esc(t)))
-                .join(" ")}</p>`
-            : ""
-        }${
-          kwCounts.length
-            ? `<p>${esc(kwLine())}</p>${
-                kwPages.length
-                  ? `<ul class="lim">${kwPages
-                      .slice(0, 10)
-                      .map(k => `<li><b><code>${esc(notePath(k.url))}</code></b><span>${esc(kwRow(k))}</span></li>`)
-                      .join("")}</ul>`
-                  : ""
-              }`
-            : ""
-        }${kwPages.length > 10 && mdFile ? `<p>All ${num(kwPages.length)} pages are listed in <code>${esc(mdFile)}</code>.</p>` : ""}</details>`
-      : "";
-  const descriptionsMd = () =>
-    tdShare || kwCounts.length
-      ? [
-          "## Descriptions and keyword use",
-          "",
-          CONTENT_INTRO,
-          "",
-          ...(tdShare
-            ? [
-                tdText(noteCode)
-                  .map((t, i) => (i ? t : noteMd(t)))
-                  .join(" "),
-                "",
-              ]
-            : []),
-          ...(kwCounts.length
-            ? [
-                kwLine(),
-                "",
-                ...kwPages.map(k => `- ${noteCode(notePath(k.url))} ${noteMd(kwRow(k))}`),
-                ...(kwPages.length ? [""] : []),
-              ]
-            : []),
-        ]
-      : [];
+  const descriptions = () =>
+    (tdShare || kwCounts.length) && {
+      cls: "content",
+      title: "Descriptions and keyword use",
+      blocks: [
+        { p: CONTENT_INTRO },
+        tdShare && { p: tdText() },
+        kwCounts.length && { p: kwLine() },
+        kwCounts.length && { rows: kwPages.map(k => [{ code: notePath(k.url) }, kwRow(k)]), cap: 10 },
+        kwPages.length > 10 && listedIn(kwPages.length, mdFile),
+      ],
+    };
 
   // App link files missing or broken on a site that promotes an app, and PDFs that several pages or the menu link to,
   // which Microsoft Advertising advised against for core information (8 Oct 2025). Crawled text is escaped.
@@ -224,5 +197,5 @@ export function contentPanels({ raw, mdFile }) {
           ]),
         ]
       : [];
-  return { writing, productData, descriptionsHtml, descriptionsMd, appsPdfs, audienceHtml, audienceMd };
+  return { writing, productData, descriptions, appsPdfs, audienceHtml, audienceMd };
 }
