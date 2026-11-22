@@ -345,3 +345,25 @@ test("speed: a long X-Robots-Tag or robots line can't stall the guard", () => {
     );
   }
 });
+
+test("false positives: prose about robots and X-Robots-Tag, and edits elsewhere on a one-line page", () => {
+  allows(edit("content/a.md", "Hi", "Robots: none of them read the footer."));
+  allows(edit("content/a.md", "Hi", "The X-Robots-Tag header is something none of us use."));
+  allows(edit("content/a.md", "Hi", "Robots: noindex is what we use on tag pages."));
+  // Still caught: the real forms.
+  asks(edit("public/_headers", "/*\n", "/*\n  X-Robots-Tag: none\n"), "noindex");
+  asks(edit("content/a.md", "---\ntitle: A\n---", "---\ntitle: A\nrobots: none\n---"), "noindex");
+  asks(
+    edit("app/layout.tsx", "export const metadata = {};", "export const metadata = { robots: 'noindex, nofollow' };"),
+    "noindex",
+  );
+  asks(
+    edit("app/layout.tsx", "export const metadata = {};", "export const metadata = { robots: 'noindex nofollow' };"),
+    "noindex",
+  );
+  const page =
+    '<!doctype html><html><head><title>A</title><link rel="canonical" href="https://x.com/a"><meta name="description" content="d"></head><body><p>Old text</p></body></html>';
+  allows(edit("a.html", page, page.replace("Old text", "New text")));
+  asks(edit("a.html", page, page.replace("https://x.com/a", "https://x.com/b")), "canonical");
+  asks(edit("a.html", page, page.replace('<link rel="canonical" href="https://x.com/a">', "")), "canonical");
+});

@@ -115,10 +115,10 @@ const META = /<meta\b[^<>]*>/gi,
   META_ROBOTS = /\bname\s*=\s*\{?\s*["'`]?(?:robots|googlebot|googlebot-news|bingbot)\b/i,
   META_NOINDEX = /\bcontent\s*=\s*\{?\s*["'`][^"'`]*\b(?:noindex|none)\b/i;
 const VALUES = [
-    /x-robots-tag["'`]?\]?(?:\s*[:=]|\s*,(?:\s*value\s*:)?|\s)\s*["'`]?([^"'`\n]*)/gi,
-    /\brobots["']?\s*[:=]\s*["'`]?([^"'`\n{]*)/gi,
-  ],
-  NOINDEX_WORD = /\b(?:noindex|none)\b/i;
+  /x-robots-tag["'`]?\]?(?:\s*[:=]|\s*,(?:\s*value\s*:)?|\s)\s*["'`]?([^"'`\n]*)/gi,
+  /\brobots["']?\s*[:=]\s*["'`]?([^"'`\n{]*)/gi,
+];
+const NOINDEX_WORD = /\b(?:noindex|none)\s*(?:[,;)}\]]|$|\s+(?:nofollow|follow|noarchive|nosnippet)\b)/i;
 const NOINDEX = [/\brobots\s*:\s*\{[^}]*?\bindex\s*:\s*false\b/gi, /\bnoindex\s*[:=]\s*(?:\{\s*)?true\b/gi];
 const noindexCount = s =>
   (s.match(META) || []).filter(t => META_ROBOTS.test(t) && META_NOINDEX.test(t)).length +
@@ -126,15 +126,24 @@ const noindexCount = s =>
   VALUES.reduce((n, re) => n + [...s.matchAll(re)].filter(m => NOINDEX_WORD.test(m[1])).length, 0);
 
 // A canonical in the forms sites set it: <link rel="canonical">, a Link header, Next.js alternates.canonical or
-// { canonical }, front matter canonical/canonical_url/canonicalURL, a head library's { rel: 'canonical' }. Each line is
-// compared without its spacing, so an edit elsewhere on the page doesn't count.
+// { canonical }, front matter canonical/canonical_url/canonicalURL, a head library's { rel: 'canonical' }. Each is
+// compared without spacing, from the < { or line start before it to the > } or line end after (500 characters at most
+// each way), so an edit elsewhere on a one-line page doesn't count. Only the first 200 are read, to stay fast.
 const CANONICAL =
-  /rel\s*=\s*\{?\s*["'`]?canonical\b|\bcanonical(?:_?url|URL)?["'`]?\s*[:=]|["'`]canonical["'`]\s*[:,]|\{\s*canonical\s*[,}]|,\s*canonical\s*\}/i;
+  /rel\s*=\s*\{?\s*["'`]?canonical\b|\bcanonical(?:_?url|URL)?["'`]?\s*[:=]|["'`]canonical["'`]\s*[:,]|\{\s*canonical\s*[,}]|,\s*canonical\s*\}/gi;
 const canonicals = s =>
-  s
-    .split("\n")
-    .filter(l => CANONICAL.test(l))
-    .map(l => l.replace(/\s+/g, ""));
+  [...s.matchAll(CANONICAL)].slice(0, 200).map(m => {
+    const from = Math.max(0, m.index - 500),
+      head = s.slice(from, m.index),
+      z = m.index + m[0].length,
+      tail = s.slice(z, z + 500).search(/[>}\n]/);
+    return s
+      .slice(
+        from + Math.max(head.lastIndexOf("<"), head.lastIndexOf("{"), head.lastIndexOf("\n")) + 1,
+        tail < 0 ? z + 500 : z + tail + 1,
+      )
+      .replace(/\s+/g, "");
+  });
 
 // Redirect and URL rules: in JSON and JS configs, the whole block after one of these keys (Next.js redirects(), Astro
 // redirects, Nuxt routeRules, Gatsby createRedirect, base path, trailing slash); in line-based server files, the lines
