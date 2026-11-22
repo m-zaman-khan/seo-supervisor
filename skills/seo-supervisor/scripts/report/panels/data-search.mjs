@@ -2,7 +2,7 @@
 // Search & AI panels from the tools' results. Each returns a view model, or null with nothing to show; report/panel.mjs
 // escapes the text from logs, Search Console and the crawl.
 import { fmtDate, num, obj, plural, isCount, isText, notePath } from "../format.mjs";
-import { fromFile, fromLine } from "../sources.mjs";
+import { fromLine, periodOf, sameSource } from "../sources.mjs";
 
 const arr = x => (Array.isArray(x) ? x.filter(obj) : []);
 const fin = Number.isFinite;
@@ -120,7 +120,7 @@ export function brandTrendPanel({ raw }) {
   const b = obj(raw.brandSplit),
     was = obj(b?.previous);
   if (!side(b?.branded) || !side(b?.nonBranded) || !side(was?.branded) || !side(was?.nonBranded)) return null;
-  const period = fromFile(raw, "brandSplit")?.json.period ?? raw.trafficPeriod;
+  const period = periodOf(raw, "brandSplit");
   const row = (label, x) => [
     label,
     num(x.branded.clicks),
@@ -153,9 +153,9 @@ export function brandTrendPanel({ raw }) {
 // Pages and period come from the same source as the queries, else the pages' own source. Searches are third-party
 // text, escaped.
 export function topSearchesPanel({ raw }) {
-  const f = fromFile(raw, "queries"),
-    traffic = obj(f ? f.json.traffic : raw.traffic),
-    period = f ? f.json.period : raw.trafficPeriod;
+  const of = raw.queries === undefined ? "traffic" : "queries",
+    traffic = obj(sameSource(raw, of, "traffic")),
+    period = periodOf(raw, of);
   const byClicks = (a, b) => b.clicks - a.clicks || b.impressions - a.impressions;
   const searches = arr(raw.queries)
     .filter(q => isText(q.query) && fin(q.clicks) && fin(q.impressions))
@@ -171,7 +171,7 @@ export function topSearchesPanel({ raw }) {
     title: "Top searches and pages",
     blocks: [
       {
-        p: `${fromLine(raw, "queries")}${isText(period) ? ` Google Search, ${period.charAt(0).toLowerCase()}${period.slice(1)}.` : ""} Google hides searches very few people make, so the searches add up to fewer clicks than the pages. Information only.`.trim(),
+        p: `${fromLine(raw, of)}${isText(period) ? ` Google Search, ${period.charAt(0).toLowerCase()}${period.slice(1)}.` : ""} Google hides searches very few people make, so the searches add up to fewer clicks than the pages. Information only.`.trim(),
       },
       searches.length && {
         sub: "What people search to find you",

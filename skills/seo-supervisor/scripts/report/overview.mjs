@@ -5,6 +5,7 @@ import { passes } from "../checks/speed.mjs";
 import { SEV_LABEL, ICON, dot, esc, inl, num, obj, plural } from "./format.mjs";
 import { needsYou } from "./model.mjs";
 import { byPath } from "./traffic.mjs";
+import { periodOf } from "./sources.mjs";
 
 // Fix first and Needs you, for the page and the Markdown. Needs you takes what /seo-fix won't change unasked: fixBy:
 // "owner" findings, open decisions and findings with a decision. Fix first takes the rest, so nothing is in both. Both
@@ -49,9 +50,10 @@ export function keyNumbers({ raw }) {
   const clicks = tot > 0 ? tot : t && Object.keys(t).length ? sum : null;
   const s = (Array.isArray(raw.speed?.samples) ? raw.speed.samples : []).filter(obj),
     v = s.find(x => obj(x.origin))?.origin || s.find(x => obj(x.field))?.field;
+  const period = periodOf(raw, tot > 0 ? "siteTotals" : "traffic"); // from the clicks' own source
   return {
     clicks,
-    period: raw.trafficPeriod ? String(raw.trafficPeriod).toLowerCase() : "",
+    period: period ? String(period).toLowerCase() : "",
     cwv: v && Number.isFinite(v.lcp) ? (passes(v) ? "Pass" : "Fail") : null,
     strategy: raw.speed?.strategy || "mobile",
   };

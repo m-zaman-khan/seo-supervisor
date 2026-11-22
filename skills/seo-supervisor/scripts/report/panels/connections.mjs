@@ -2,6 +2,7 @@
 // Panels from connected services: their reports, the change check and the new searches.
 import { fmtDate, num, obj, plural, isCount, isText } from "../format.mjs";
 import { isoDates } from "../traffic.mjs";
+import { periodOf } from "../sources.mjs";
 
 export function connectionPanels({ raw }) {
   const bing = obj(raw.bing),
@@ -66,7 +67,7 @@ export function connectionPanels({ raw }) {
         `Search Console totals for the whole property: ${plural(n(st.clicks), "click")} · ${plural(n(st.impressions), "impression")}. ${st.complete === false ? `The queries listed cover ${Math.round((100 * n(st.queryClicks)) / n(st.clicks))}% of the clicks; Google doesn't list rare queries.` : st.complete ? "The queries listed cover every click." : ""}`.trim(),
       ad &&
         n(ad.sessions) > 0 &&
-        `Google Analytics organic: ${plural(n(ad.sessions), "session")}${n(ad.users) ? ` from ${plural(n(ad.users), "user")}` : ""}${top(ad.byDevice, "sessions") ? ` · ${top(ad.byDevice, "sessions")}` : ""}${raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : ""}`,
+        `Google Analytics organic: ${plural(n(ad.sessions), "session")}${n(ad.users) ? ` from ${plural(n(ad.users), "user")}` : ""}${top(ad.byDevice, "sessions") ? ` · ${top(ad.byDevice, "sessions")}` : ""}${periodOf(raw, "analyticsDetail") ? ` (${String(periodOf(raw, "analyticsDetail")).toLowerCase()})` : ""}`,
       ad &&
         top(ad.byCountry, "sessions") &&
         `Google Analytics organic sessions by country: ${top(ad.byCountry, "sessions")}`,

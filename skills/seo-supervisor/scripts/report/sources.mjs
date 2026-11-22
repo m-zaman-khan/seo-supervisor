@@ -63,6 +63,21 @@ const SOURCES = /** @type {[string, string, string[][]][]} */ ([
 const FROM = Symbol("result files");
 /** @param {any} raw @param {string} field */
 export const fromFile = (raw, field) => raw?.[FROM]?.[field] ?? null;
+/**
+ * `field` from wherever `of` came from: that file's `key`, else the audit's own `field`. A file's value never sits
+ * beside the audit's own data (google.json's traffic period beside the audit's searches, say).
+ * @param {any} raw @param {string} of @param {string} field
+ * @param {string} [key] the field's name in the file
+ */
+export const sameSource = (raw, of, field, key = field) => {
+  const f = fromFile(raw, of);
+  return f ? f.json[key] : fromFile(raw, field) ? undefined : raw[field];
+};
+/**
+ * The Search Console period from the same source as `of` (google.json names it `period`).
+ * @param {any} raw @param {string} of
+ */
+export const periodOf = (raw, of) => sameSource(raw, of, "trafficPeriod", "period");
 /** "From your server logs (log-scan.json, 12 Nov 2026)." when a file supplied the field, else "". An undated file
  * says "file saved 12 Nov 2026" instead. @param {any} raw @param {string} field */
 export const fromLine = (raw, field) => {

@@ -1,6 +1,7 @@
 // @ts-check
 // Search and analytics lines for findings, plan rows and the search panels.
 import { esc, fmtDate, num, obj, plural } from "./format.mjs";
+import { periodOf } from "./sources.mjs";
 
 // Matomo and PostHog: a page counts only with visits above zero, and dates show only when they are dates.
 export const visitsOf = t => {
@@ -155,9 +156,14 @@ export function searchTraffic({ raw }, { linked }) {
   };
   // Site-wide search lines. Third-party data, escaped where shown.
   function googleLines() {
+    // Each line's period from its own data's source: the search splits', the brand split's.
     const n = (x, k) => Number(x?.[k]) || 0,
       isDay = s => /^\d{4}-\d{2}-\d{2}$/.test(s),
-      per = raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : "";
+      perOf = of => {
+        const p = periodOf(raw, of);
+        return p ? ` (${String(p).toLowerCase()})` : "";
+      },
+      per = perOf("searchTypes");
     const ch = obj(raw.trafficChange),
       was = obj(ch?.previous),
       now = obj(ch?.current),
@@ -187,7 +193,7 @@ export function searchTraffic({ raw }, { linked }) {
         `Search by device: ${devices.map(([k, v]) => `${k.toLowerCase()} ${num(n(v, "clicks"))} clicks · ${num(n(v, "impressions"))} impressions`).join("; ")}${per}`,
       brandSide(raw.brandSplit?.branded) &&
         brandSide(raw.brandSplit?.nonBranded) &&
-        `Brand searches, as Google labels them: ${num(raw.brandSplit.branded.clicks)} clicks · ${num(raw.brandSplit.branded.impressions)} impressions; other searches: ${num(raw.brandSplit.nonBranded.clicks)} clicks · ${num(raw.brandSplit.nonBranded.impressions)} impressions${per}`,
+        `Brand searches, as Google labels them: ${num(raw.brandSplit.branded.clicks)} clicks · ${num(raw.brandSplit.branded.impressions)} impressions; other searches: ${num(raw.brandSplit.nonBranded.clicks)} clicks · ${num(raw.brandSplit.nonBranded.impressions)} impressions${perOf("brandSplit")}`,
       countries.length &&
         `Search clicks by country: ${countries.map(([k, v]) => `${k.toUpperCase()} ${num(n(v, "clicks"))}`).join(" · ")}${per}`,
       anomalies.length &&
@@ -218,7 +224,8 @@ export function searchTraffic({ raw }, { linked }) {
       ok = ["top3", "top10", "beyond"].every(k => typeof p?.[k] === "number" && p[k] >= 0 && p[k] <= 1);
     if (!ok || !(Number.isInteger(p.queries) && p.queries > 0)) return "";
     const pct = k => `${Math.round(100 * p[k])}%`;
-    return `Search Console queries by average position: ${pct("top3")} in the top 3 · ${pct("top10")} in the top 10 · ${pct("beyond")} beyond, of ${plural(p.queries, "query", "queries")}${raw.trafficPeriod ? ` (${String(raw.trafficPeriod).toLowerCase()})` : ""}`;
+    const period = periodOf(raw, "positions");
+    return `Search Console queries by average position: ${pct("top3")} in the top 3 · ${pct("top10")} in the top 10 · ${pct("beyond")} beyond, of ${plural(p.queries, "query", "queries")}${period ? ` (${String(period).toLowerCase()})` : ""}`;
   };
   // Matomo and PostHog device and country splits ({ name: { visits } }), top 10. The callers escape the names.
   const analyticsSplitLines = () =>
