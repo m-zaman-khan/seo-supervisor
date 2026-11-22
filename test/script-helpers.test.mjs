@@ -358,7 +358,7 @@ test("a misspelt option stops the script; the other name of a flag works (--riva
   );
   assert.match(
     (await run("rdap.mjs", ["--site", S, "--rivals", "rival.example"])).stdout,
-    /www\.example\.com, rival\.example/,
+    /\(example\.com, rival\.example\)/,
   );
   const dir = tmp(),
     q = join(dir, "q.txt");
@@ -514,6 +514,14 @@ test("report-plan: a draft link is made only for a web address or a path; anythi
   }
   for (const good of ["drafts/privacy.md", "https://docs.example.com/d?x=1"])
     assert.match(html(good), new RegExp(`<a href="${good.replace(/[.?]/g, "\\$&")}">Read the draft</a>`));
+});
+
+test("the installer's --help lists deploy-check, issues and --agents", async () => {
+  const { ROOT } = await import("./helpers.mjs");
+  const { stdout } = await node([join(ROOT, "bin", "seo-supervisor.mjs"), "--help"]);
+  assert.match(stdout, /^\s+--agents\s+\S/m);
+  assert.match(stdout, /npx seo-supervisor deploy-check --site/);
+  assert.match(stdout, /npx seo-supervisor issues --audit/);
 });
 
 test("update-check off|on with a bad SEO_SUPERVISOR_HOME is a plain message; the weekly check itself stays silent", async () => {
