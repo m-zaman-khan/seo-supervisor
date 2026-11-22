@@ -2,19 +2,13 @@
 
 `https://www.example.com` · 1240 pages crawled · Next.js 16 (App Router) · local-business, services, ecommerce · 20 Nov 2026 · fix
 
+Not ready: two blockers hold the score down, the 80 town pages that only swap the town name and a noindex on the home page. The boiler and heat-pump pages are solid & well linked, and this run fixed the staging canonicals and the sitemap host. Fix the two blockers first, then the slow combi-boiler page, the short HSTS header and the long titles; the owner's call on AI crawlers is under Decisions. Everything else is minor.
+
 **SEO health score: 49/100 (Poor).** Not ready: 2 blockers to fix first.
 
 2 open blockers hold the score at 49 until fixed.
 
 **Fix the 2 blockers and the score rises to 89/100 (Good).** The 2 fixes from this run earned **4** points. You'll see them once the blockers are fixed. F-001 needs you: the agent won't change it without your go-ahead.
-
-Not ready: two blockers hold the score down, the 80 town pages that only swap the town name and a noindex on the home page. The boiler and heat-pump pages are solid & well linked, and this run fixed the staging canonicals and the sitemap host. Fix the two blockers first, then the slow combi-boiler page, the short HSTS header and the long titles; the owner's call on AI crawlers is under Decisions. Everything else is minor.
-
-Open: 12 (2 blocker, 2 high, 1 decision, 3 medium, 4 low) · Fixed: 2 · Rules passing: 22 of 34
-
-Checked 1,240 pages against 34 rules · 3 checks couldn't run: see Limits of this audit, below.
-
-Clicks from Google: 1,240 (last 3 months) · Core Web Vitals (real visitors, mobile): pass
 
 ## Fix first
 
@@ -54,6 +48,12 @@ All 5 are under Decisions needed, below.
 | Services | 100 | 0 | All checks pass |
 | Sitemaps & robots | 100 | 0 | All checks pass |
 | URLs & canonicals | 100 | 0 | All checks pass |
+
+Checked 1,240 pages against 34 rules · 3 checks couldn't run: see Limits of this audit, below.
+
+Open: 12 (2 blocker, 2 high, 1 decision, 3 medium, 4 low) · Fixed: 2 · Rules passing: 22 of 34
+
+Clicks from Google: 1,240 (last 3 months) · Core Web Vitals (real visitors, mobile): pass
 
 ## SEO plan
 
@@ -398,11 +398,6 @@ Findings only you can resolve: a setting on your host or an account, your conten
 
 - **F-001** 80 town pages differ only by the town name · Blocker
 - **F-013** Gallery images use “image1.jpg”-style names and empty alt text · Low
-
-## What was changed
-
-- **F-006** The sitemap listed localhost URLs: sitemap.ts uses the same SITE\_URL constant as the metadata helper. (`src/app/sitemap.ts`). Verified: re-crawl 20 Nov: all 1,240 URLs on `https://www.example.com`
-- **F-005** 52 canonicals pointed at the staging host: metadataBase now reads SITE\_URL, which fails the build if missing; production env updated. (`src/lib/seo.ts`, `next.config.ts`). Verified: re-crawl 20 Nov: 0 canonicals on the wrong host
 
 ## Search & AI
 
@@ -1337,6 +1332,11 @@ Every crawl filed in seo-audit/history, newest first, each compared with the one
 ### Change check
 
 Change check, 3 pages changed on 1 Oct 2026, 28 days before and after: Google Search clicks likely up, about +18% compared with 20 similar unchanged pages (likely range +5% to +33%). This shows what happened to the numbers, not why. Information only.
+
+## What was changed
+
+- **F-006** The sitemap listed localhost URLs: sitemap.ts uses the same SITE\_URL constant as the metadata helper. (`src/app/sitemap.ts`). Verified: re-crawl 20 Nov: all 1,240 URLs on `https://www.example.com`
+- **F-005** 52 canonicals pointed at the staging host: metadataBase now reads SITE\_URL, which fails the build if missing; production env updated. (`src/lib/seo.ts`, `next.config.ts`). Verified: re-crawl 20 Nov: 0 canonicals on the wrong host
 
 ## Passed checks
 

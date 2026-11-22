@@ -2,19 +2,13 @@
 
 `https://security.example` · 214 pages crawled · Next.js 16 (App Router) · tools, content, services · 17 Nov 2026 · fix
 
+Close to launch-ready: the tool pages are server-rendered and well structured, but two blockers remain. Shareable scan reports are indexable, and 36 DNS-lookup tool pages share most of their text. Two earlier fixes (canonicals and the sitemap host) are in and verified.
+
 **SEO health score: 49/100 (Poor).** Not ready: 2 blockers to fix first.
 
 2 open blockers hold the score at 49 until fixed.
 
 **Fix the 2 blockers and the score rises to 90/100 (Excellent).** The 2 fixes from this run earned **7** points. You'll see them once the blockers are fixed. F-002 needs you: the agent won't change it without your go-ahead.
-
-Close to launch-ready: the tool pages are server-rendered and well structured, but two blockers remain. Shareable scan reports are indexable, and 36 DNS-lookup tool pages share most of their text. Two earlier fixes (canonicals and the sitemap host) are in and verified.
-
-Open: 7 (2 blocker, 1 high, 1 decision, 2 medium, 1 low) · Fixed: 2 · Rules passing: 14 of 21
-
-Checked 214 pages against 21 rules · 2 checks couldn't run: see Limits of this audit, below.
-
-Clicks from Google: 2,920 (last 3 months) · Core Web Vitals (real visitors, mobile): pass
 
 ## Fix first
 
@@ -49,6 +43,12 @@ All 3 are under Decisions needed, below.
 | Sitemaps & robots | 100 | 0 | All checks pass |
 | Structured data | 100 | 0 | All checks pass |
 | URLs & canonicals | 100 | 0 | All checks pass |
+
+Checked 214 pages against 21 rules · 2 checks couldn't run: see Limits of this audit, below.
+
+Open: 7 (2 blocker, 1 high, 1 decision, 2 medium, 1 low) · Fixed: 2 · Rules passing: 14 of 21
+
+Clicks from Google: 2,920 (last 3 months) · Core Web Vitals (real visitors, mobile): pass
 
 ## SEO plan
 
@@ -272,11 +272,6 @@ Findings only you can resolve: a setting on your host or an account, your conten
 
 - **F-002** 36 tool pages share most of their text · Blocker
 
-## What was changed
-
-- **F-004** The sitemap listed localhost URLs: sitemap.ts uses the same SITE\_URL constant as the metadata helper. (`src/app/sitemap.ts`). Verified: re-crawl 17 Nov: all 214 URLs on `https://security.example`
-- **F-003** 52 canonicals pointed at the staging host: metadataBase now reads SITE\_URL, which fails the build if missing; production env updated. (`src/lib/seo.ts`, `next.config.ts`). Verified: re-crawl 17 Nov: 0 canonicals on the wrong host
-
 ## Search & AI
 
 Information only: nothing here changes the score.
@@ -332,6 +327,11 @@ Compared with the crawl of 3 Nov 2026.
 ### Pages added
 
 - `/tools/dmarc-checker/`
+
+## What was changed
+
+- **F-004** The sitemap listed localhost URLs: sitemap.ts uses the same SITE\_URL constant as the metadata helper. (`src/app/sitemap.ts`). Verified: re-crawl 17 Nov: all 214 URLs on `https://security.example`
+- **F-003** 52 canonicals pointed at the staging host: metadataBase now reads SITE\_URL, which fails the build if missing; production env updated. (`src/lib/seo.ts`, `next.config.ts`). Verified: re-crawl 17 Nov: 0 canonicals on the wrong host
 
 ## Passed checks
 
