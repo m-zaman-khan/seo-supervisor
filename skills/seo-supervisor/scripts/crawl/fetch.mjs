@@ -7,6 +7,7 @@ import { Readable } from "node:stream";
 import { promisify } from "node:util";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import { guarded, isPublic, loopback } from "../lib/net.mjs";
+import { bodyUpTo } from "../lib/http.mjs";
 import { brake, sleep } from "../checks/crawl.mjs";
 
 export const TEMPORARY = new Set([302, 303, 307]); // redirects that tell search engines the old URL may come back
@@ -18,7 +19,9 @@ export const slashOnly = (a, b) => {
     x.origin === y.origin && x.search === y.search && x.pathname.replace(/\/$/, "") === y.pathname.replace(/\/$/, "")
   );
 };
-const SITEMAP_MAX = 50 * 1024 * 1024;
+const SITEMAP_MAX = 50 * 1024 * 1024; // the sitemap protocol's limit per file, uncompressed
+// Local cap on an unpacked page body, which also stops a small gzip that unpacks huge.
+export const PAGE_MAX = 10 * 1024 * 1024;
 // Reads one chunk past max when there's more, so callers can tell the body was cut.
 export async function upTo(stream, max) {
   const chunks = [];
@@ -150,7 +153,7 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl, dns 
       text = /** @type {boolean | RegExp} */ (true),
       ua = UA,
       accept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      max = 0,
+      max = PAGE_MAX,
     } = {},
   ) {
     if (!manual) return follow(url, ua);
@@ -170,7 +173,7 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl, dns 
           attempt--;
           slow.busy++;
           slow.pause(retryAfter(res.headers.get("retry-after")));
-          await res.arrayBuffer().catch(() => {});
+          await bodyUpTo(res, PAGE_MAX).catch(() => {});
           continue;
         }
         const ms = Math.round(performance.now() - t),
@@ -179,12 +182,9 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl, dns 
         let body = "",
           over = false;
         if (want && res.status < 300 && want.test(ct)) {
-          if (!max) body = await res.text();
-          else {
-            const b = res.body ? await upTo(res.body, max) : Buffer.alloc(0);
-            if (!(over = b.length > max)) body = new TextDecoder().decode(b);
-          }
-        } else await res.arrayBuffer().catch(() => {});
+          const b = await bodyUpTo(res, max);
+          if (!(over = !b)) body = new TextDecoder().decode(b);
+        } else await bodyUpTo(res, PAGE_MAX).catch(() => {});
         return { status: res.status, headers: res.headers, ct, body, location: res.headers.get("location"), ms, over };
       } catch (e) {
         // The guard refused the resolved address at connect time, so a retry would fail the same way.

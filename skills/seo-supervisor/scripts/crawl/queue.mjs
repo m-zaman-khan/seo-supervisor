@@ -1,7 +1,7 @@
 // @ts-check
 // The crawl queue. seo-crawl.mjs runs it twice: the start page first, then the sitemap's URLs and every link found.
 import { FILE_EXT } from "../lib/html.mjs";
-import { clean, urlOr } from "./fetch.mjs";
+import { PAGE_MAX, clean, urlOr } from "./fetch.mjs";
 import { agentRule, analyze, productImages } from "./page.mjs";
 
 /**
@@ -85,7 +85,10 @@ export function createCrawler({
         const x = c && urlOr(c, a.base);
         if (x) enqueue(toCrawl(x.href), r.finalUrl);
       }
-    }
+    } else if (r.over)
+      notes.push(
+        `${r.finalUrl} is over ${PAGE_MAX / 1048576} MB (once unpacked), our own limit for one page, so it wasn't read or checked.`,
+      );
   }
   async function runQueue() {
     await new Promise(done => {

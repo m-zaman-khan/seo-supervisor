@@ -143,7 +143,7 @@ for (const [form, header] of [
   });
 }
 
-test("a page that never ends and a gzip bomb (1 GB of spaces) are read up to 10 MB: the crawl finishes and stays small", async () => {
+test("a page that never ends and a gzip bomb (1 GB of spaces) are read up to 10 MB: the crawl finishes and stays small", async t => {
   const before = (req, res) => {
     const p = pathOf(req.url);
     if (p === "/endless/") {
@@ -196,6 +196,7 @@ test("a page that never ends and a gzip bomb (1 GB of spaces) are read up to 10 
       `${p}: ${r.notes.join("\n")}`,
     );
   const mb = Number(readFileSync(rss, "utf8")) / 1024;
+  t.diagnostic(`peak memory ${Math.round(mb)} MB`);
   assert.ok(mb < 400, `peak memory ${Math.round(mb)} MB`);
 });
 
