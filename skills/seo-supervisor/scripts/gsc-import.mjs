@@ -129,7 +129,7 @@ const toCount = s => {
   const d = String(s ?? "").replace(/\D/g, "");
   return d ? Number(d) : NaN;
 };
-export function aiReport(rows, metric, host) {
+function aiReport(rows, metric, host) {
   const cols = Object.keys(rows[0] || {}),
     isUrl = v => /^https?:\/\//i.test(v || "");
   const page = cols.find(c => rows.some(r => isUrl(r[c])));

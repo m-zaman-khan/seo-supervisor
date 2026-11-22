@@ -35,7 +35,7 @@ export function rankingUpdates(incidents, { from, to, feed = FEED }) {
     .sort((a, b) => a.start.localeCompare(b.start));
 }
 
-export // RSS 2.0 holding only the latest 10 posts, hence the note on older periods.
+// RSS 2.0 holding only the latest 10 posts, hence the note on older periods.
 const BLOG = "https://developers.google.com/search/blog/feed.xml";
 const XML_ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
 const unxml = s =>

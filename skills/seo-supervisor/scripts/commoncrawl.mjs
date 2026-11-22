@@ -73,7 +73,7 @@ function warc(buf) {
 // stopping at the domain or the cap; 500 MB covers about the top 27 million domains. The edges file is never read, so
 // linking sites come only from linking pages already known.
 // https://data.commoncrawl.org/projects/hyperlinkgraph/
-export const RANK_CAP_MB = 500;
+const RANK_CAP_MB = 500;
 // The registered domain, reversed as the graph writes it (shop.acme.co.uk gives uk.co.acme). A two-letter TLD after a
 // label of 3 letters or fewer counts as the suffix; use the Public Suffix List if a domain comes out wrong.
 export function rankDomain(hostname) {

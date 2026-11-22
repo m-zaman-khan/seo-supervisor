@@ -32,7 +32,7 @@ export function isNewer(candidate, current) {
   return false;
 }
 
-export async function checkForUpdate({ env = process.env, now = Date.now(), fetchFn = fetch } = {}) {
+async function checkForUpdate({ env = process.env, now = Date.now(), fetchFn = fetch } = {}) {
   const settingsFile = join(dir(), "settings.json"),
     cacheFile = join(dir(), "update-check.json");
   if (env.SEO_SUPERVISOR_NO_UPDATE_CHECK || env.CI || readJson(settingsFile).updateCheck === false) return null;

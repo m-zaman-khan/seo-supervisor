@@ -122,8 +122,7 @@ export function pageNofollow(html, headerLines = []) {
   return null;
 }
 // X-Robots-Tag lines from rawHeaders, kept apart because a `bot:` prefix scopes only its own line.
-export const robotsLines = raw =>
-  raw.flatMap((v, i) => (i % 2 && raw[i - 1].toLowerCase() === "x-robots-tag" ? [v] : []));
+const robotsLines = raw => raw.flatMap((v, i) => (i % 2 && raw[i - 1].toLowerCase() === "x-robots-tag" ? [v] : []));
 
 // Why a page without the link may not really be gone: truncated, behind a consent screen, built by a script, or naming
 // the site without a link. "" when the page was clearly read.

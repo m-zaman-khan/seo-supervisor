@@ -83,7 +83,7 @@ const request = (key, mask, body) => ({
 
 // The first refusal (bad key, API off, no billing, rate limit) stops the run and marks the remaining points "error".
 // Lone 5xx answers aren't retried; add that if Google proves flaky.
-export async function runGrid({
+async function runGrid({
   placeId,
   keywords,
   center = null,

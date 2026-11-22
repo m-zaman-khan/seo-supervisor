@@ -34,7 +34,7 @@ const count = s => Number(String(s).replace(/\D/g, "") || 0); // "1,200", "1.200
 
 // One export: { kind: "sites" | "texts" | "pages", rows } most links first, or { kind: null } when it's none of the
 // three.
-export function readExport(text, site) {
+function readExport(text, site) {
   const rows = parseCsv(text),
     heads = Object.keys(rows[0] || {});
   const numeric = h => rows.some(r => r[h]) && rows.every(r => !r[h] || NUM.test(r[h]));
@@ -334,7 +334,7 @@ export function unlinkedPages(linked, crawl, site) {
 // Latest links' date column (the linking page's last crawl) is never earlier than the day a link was found, so its
 // newest date bounds when any link in it was found. https://support.google.com/webmasters/answer/9049606
 const ISO = /^\d{4}-\d{2}-\d{2}/;
-export function newestLink(text) {
+function newestLink(text) {
   const rows = parseCsv(text),
     heads = Object.keys(rows[0] || {});
   const col = heads.find(h => rows.some(r => r[h]) && rows.every(r => !r[h] || ISO.test(r[h])));
@@ -375,7 +375,7 @@ export function linksChange(before, after) {
 // Linked pages the crawl found broken: 404 or 410, a redirect loop, or a redirect to the home page, which Google may
 // treat as a soft 404. https://developers.google.com/search/docs/crawling-indexing/site-move-with-url-changes
 // Matched by path so a local crawl works; other hosts' pages and pages the crawl didn't reach aren't judged.
-export function brokenLinked(linked, crawl, site) {
+function brokenLinked(linked, crawl, site) {
   const host = bare(site.hostname),
     url = u => {
       try {

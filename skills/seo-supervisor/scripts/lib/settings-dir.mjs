@@ -9,7 +9,7 @@ import { dirname, isAbsolute, join, normalize } from "node:path";
 // ~ is expanded here, since GitHub Actions, .env files and PowerShell don't. A relative path is refused: it would put
 // logins and keys inside whatever folder a script runs from, usually the project, where a commit could take them.
 // Errors carry code SEO_SETTINGS so scripts show them as plain messages: the fix is in the environment, not the code.
-export const settingsError = msg => Object.assign(new Error(msg), { code: "SEO_SETTINGS" });
+const settingsError = msg => Object.assign(new Error(msg), { code: "SEO_SETTINGS" });
 export function settingsDir(env = process.env, home = homedir()) {
   const v = env.SEO_SUPERVISOR_HOME;
   if (!v) return join(home, ".seo-supervisor");

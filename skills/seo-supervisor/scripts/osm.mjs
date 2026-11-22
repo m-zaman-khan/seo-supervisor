@@ -17,8 +17,9 @@ import { BUSINESS_TYPES } from "./checks/business-type.mjs";
 // https://wiki.openstreetmap.org/wiki/Overpass_API
 const NOMINATIM = "https://nominatim.openstreetmap.org/search",
   OVERPASS = "https://overpass-api.de/api/interpreter";
+// Both services require a User-Agent that identifies the application.
 const UA = `seo-supervisor-osm/${VERSION} (+https://github.com/m-zaman-khan/seo-supervisor)`;
-export // The data is ODbL; this credit, linked to the copyright page, is the accepted attribution.
+// The data is ODbL; this credit, linked to the copyright page, is the accepted attribution.
 // https://osmfoundation.org/wiki/Licence/Attribution_Guidelines
 const CREDIT = "© OpenStreetMap contributors";
 const USAGE =
@@ -130,7 +131,7 @@ const same = s =>
 const km = m => (m < 1000 ? `${m} m` : `${+(m / 1000).toFixed(1)} km`);
 
 // A service-area business's street is never sent, only its town, region, postcode and country.
-export function addressOf(local) {
+function addressOf(local) {
   const a = local?.address,
     sab = local?.kind === "service-area";
   if (!a || typeof a !== "object") return null;
@@ -143,7 +144,7 @@ export function addressOf(local) {
 }
 
 // local is the crawl's localBusiness; cached is the last run's geocode, reused for the same address as Nominatim asks.
-export async function lookupOsm({
+async function lookupOsm({
   type,
   near = null,
   address = null,
