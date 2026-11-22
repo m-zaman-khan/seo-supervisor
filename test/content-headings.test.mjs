@@ -6,7 +6,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { serve } from "./serve.mjs";
 import { SCRIPTS, SKILL, node, tmp } from "./helpers.mjs";
-import { CHECKS, CONTENT_RENAMED } from "../skills/seo-supervisor/scripts/crawl/catalog.mjs";
+import { CHECKS, ID_ALIASES, currentIds } from "../skills/seo-supervisor/scripts/crawl/catalog.mjs";
 import { nearPairs } from "../skills/seo-supervisor/scripts/checks/site-pages.mjs";
 import { applyChecks } from "../skills/seo-supervisor/scripts/lib/score.mjs";
 
@@ -96,29 +96,26 @@ test("h1-count is split into h1-missing and h1-multiple, both low; heading-skip 
 });
 
 test("the old id maps to the new ones, for settings.json and the diff", () => {
-  assert.deepEqual(CONTENT_RENAMED["h1-count"], ["h1-missing", "h1-multiple"]);
-  assert.deepEqual(CONTENT_RENAMED.orphan, ["orphan", "nav-only-links"]);
-  for (const ids of Object.values(CONTENT_RENAMED)) for (const id of ids) assert.ok(CHECKS[id], id);
+  assert.deepEqual(ID_ALIASES["h1-count"], ["h1-missing", "h1-multiple"]);
+  assert.deepEqual(currentIds("h1-count"), ["h1-missing", "h1-multiple"]);
+  // orphan (no links at all) keeps its id; nav-only-links is a separate check that an "orphan" setting doesn't reach.
+  assert.ok(!Object.hasOwn(ID_ALIASES, "orphan"));
+  for (const id of currentIds("h1-count")) assert.ok(CHECKS[id], id);
 });
 
-// Passes once applyChecks (lib/score.mjs) reads ID_ALIASES; drop `todo` then.
-test(
-  "a settings.json that turns h1-count off turns off both h1 checks",
-  { todo: "applyChecks reads ID_ALIASES" },
-  () => {
-    const F = check => ({ id: check, check, severity: "low", rule: "CONTENT-01", evidence: [] });
-    const r = applyChecks(
-      [F("h1-missing"), F("h1-multiple"), F("title-short")],
-      { off: ["h1-count"] },
-      new Set(Object.keys(CHECKS)),
-    );
-    assert.deepEqual(
-      r.findings.map(f => f.check),
-      ["title-short"],
-    );
-    assert.deepEqual(r.warnings, []);
-  },
-);
+test("a settings.json that turns h1-count off turns off both h1 checks", () => {
+  const F = check => ({ id: check, check, severity: "low", rule: "CONTENT-01", evidence: [] });
+  const r = applyChecks(
+    [F("h1-missing"), F("h1-multiple"), F("title-short")],
+    { off: ["h1-count"] },
+    new Set(Object.keys(CHECKS)),
+  );
+  assert.deepEqual(
+    r.findings.map(f => f.check),
+    ["title-short"],
+  );
+  assert.deepEqual(r.warnings, []);
+});
 
 test("thin-page and title-long are low and say what Google says", async () => {
   const r = await crawl();

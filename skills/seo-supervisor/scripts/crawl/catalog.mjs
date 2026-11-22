@@ -18,21 +18,22 @@ import { CHECKS as CRAWL_CHECKS } from "../checks/crawl.mjs";
 import { CHECKS as HYGIENE_CHECKS } from "../checks/hygiene.mjs";
 
 // Old check ids -> current ones, so settings.json lists and findings filed before a rename (won't-fix ones too) keep
-// working.
-/** @type {Record<string, string>} */
+// working. A split check maps to all its new ids, and a setting for the old id applies to each.
+/** @type {Record<string, string | string[]>} */
 export const ID_ALIASES = {
   // Not renames: short ids that settings.json files may still use.
   "image-missing": "product-image-missing",
   "adult-unlabelled": "product-adult-unlabelled",
+  // Split because Google treats a missing H1 and several H1s differently.
+  "h1-count": ["h1-missing", "h1-multiple"],
 };
-/** Follows ID_ALIASES through chained renames; an id with no alias comes back as it is. */
-export function currentId(id) {
-  for (const seen = new Set(); Object.hasOwn(ID_ALIASES, id) && !seen.has(id);) {
-    seen.add(id);
-    id = ID_ALIASES[id];
-  }
-  return id;
+/** Follows ID_ALIASES through chained renames and splits; an id with no alias comes back alone. */
+export function currentIds(id, seen = new Set()) {
+  if (!Object.hasOwn(ID_ALIASES, id) || seen.has(id)) return [id];
+  seen.add(id);
+  return [...new Set([ID_ALIASES[id]].flat().flatMap(n => currentIds(n, seen)))];
 }
+export const currentId = id => currentIds(id)[0];
 
 export const RULES = {
   "CRAWL-01": ["robots.txt lets search engines crawl the site", "Crawling & indexing"],
@@ -1176,5 +1177,3 @@ Object.assign(CHECKS, {
     "Add a link from the body of one or two related pages, with link text that says what the page is.",
   ],
 });
-// Content check ids split in two, old -> new, kept for ID_ALIASES.
-export const CONTENT_RENAMED = { "h1-count": ["h1-missing", "h1-multiple"], orphan: ["orphan", "nav-only-links"] };

@@ -185,38 +185,6 @@
       "id": "C-005"
     },
     {
-      "check": "thin-page",
-      "rule": "CONTENT-05",
-      "severity": "medium",
-      "category": "Headings & content",
-      "title": "4 indexable page(s) have fewer than 150 words",
-      "what": "4 cases, for example `http://127.0.0.1:<port>/` (65 words).",
-      "why": "Thin pages rarely rank and can lower the site's overall quality signals.",
-      "fix": "Add useful, specific content, merge the page into a stronger one, or noindex it until it grows.",
-      "count": 4,
-      "evidence": [
-        {
-          "url": "http://127.0.0.1:<port>/",
-          "detail": "65 words"
-        },
-        {
-          "url": "http://127.0.0.1:<port>/pricing/",
-          "detail": "68 words"
-        },
-        {
-          "url": "http://127.0.0.1:<port>/about/",
-          "detail": "66 words"
-        },
-        {
-          "url": "http://127.0.0.1:<port>/docs/",
-          "detail": "66 words"
-        }
-      ],
-      "source": "crawler",
-      "status": "open",
-      "id": "C-006"
-    },
-    {
       "check": "desc-dup",
       "rule": "META-02",
       "severity": "medium",
@@ -246,7 +214,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-007"
+      "id": "C-006"
     },
     {
       "check": "breadcrumb-missing",
@@ -271,7 +239,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-008"
+      "id": "C-007"
     },
     {
       "check": "org-missing",
@@ -290,7 +258,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-009"
+      "id": "C-008"
     },
     {
       "check": "favicon-missing",
@@ -310,7 +278,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-010"
+      "id": "C-009"
     },
     {
       "check": "sec-headers",
@@ -346,7 +314,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-011"
+      "id": "C-010"
     },
     {
       "check": "desc-length",
@@ -378,7 +346,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-012"
+      "id": "C-011"
     },
     {
       "check": "og-missing",
@@ -406,6 +374,38 @@
         {
           "url": "http://127.0.0.1:<port>/docs/",
           "detail": "og:title, og:image"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-012"
+    },
+    {
+      "check": "thin-page",
+      "rule": "CONTENT-05",
+      "severity": "low",
+      "category": "Headings & content",
+      "title": "4 indexable page(s) have fewer than 150 words",
+      "what": "4 cases, for example `http://127.0.0.1:<port>/` (65 words).",
+      "why": "A short page is worth a look, not a problem in itself: Google says there's no word count target, minimum or maximum. 150 words is our own line for a second look. A contact page or a calculator can do its job in few words.",
+      "fix": "If the page does its job, close this finding. If it doesn't, add useful, specific content, merge it into a stronger page, or noindex it until it grows.",
+      "count": 4,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "65 words"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/pricing/",
+          "detail": "68 words"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/",
+          "detail": "66 words"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/docs/",
+          "detail": "66 words"
         }
       ],
       "source": "crawler",

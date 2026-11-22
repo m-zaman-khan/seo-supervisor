@@ -6,7 +6,7 @@
 // finding isn't won't-fix, it stops at 99, so 100 always means nothing is left to fix (rounding alone could reach 100).
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { currentId } from "../crawl/catalog.mjs";
+import { currentId, currentIds } from "../crawl/catalog.mjs";
 export const SEV = ["blocker", "high", "needs-decision", "medium", "low"];
 export const EARN = { blocker: 0, high: 3, "needs-decision": 6, medium: 6, low: 8 };
 export const isOpen = f => f.status !== "fixed";
@@ -113,9 +113,15 @@ export function applyChecks(findings, settings, known = null) {
     void warnings.add(
       `“${id}” isn't a check SEO Supervisor knows, so its setting was ignored. The check names are the "check" values in seo-crawl.json.`,
     );
-  const off = new Map((settings.off || []).filter(valid).map(id => [id, 0]));
+  const off = new Map(
+    (settings.off || [])
+      .flatMap(id => currentIds(id))
+      .filter(valid)
+      .map(id => [id, 0]),
+  ); // an old id applies to the ids it became
   const changed = new Map(
     Object.entries(settings.severity || {})
+      .flatMap(([id, s]) => currentIds(id).map(n => [n, s]))
       .filter(
         ([id, s]) =>
           valid(id) &&
@@ -174,23 +180,23 @@ export function findingsOf(raw, dir) {
       bad = `${basename(dir)}/settings.json isn't valid JSON, so its check settings weren't read.`;
     }
   let checks = plainObj(settings) ? settings.checks : undefined;
+  // applyChecks maps old ids itself; here they only get a note suggesting the rename.
   const renamed = new Set(),
-    now = id => {
-      const n = currentId(id);
-      if (n !== id)
+    note = id => {
+      const n = currentIds(id);
+      if (n.length > 1)
         renamed.add(
-          `“${id}” is now called “${n}”, and its setting still applies. Rename it in settings.json when you can.`,
+          `“${id}” is now ${n.map(x => `“${x}”`).join(" and ")}, and its setting applies to each. Rename it in settings.json when you can.`,
         );
-      return n;
+      else if (n[0] !== id)
+        renamed.add(
+          `“${id}” is now called “${n[0]}”, and its setting still applies. Rename it in settings.json when you can.`,
+        );
     };
-  if (plainObj(checks))
-    checks = {
-      ...checks,
-      ...(Array.isArray(checks.off) && { off: checks.off.map(now) }),
-      ...(plainObj(checks.severity) && {
-        severity: Object.fromEntries(Object.entries(checks.severity).map(([id, s]) => [now(id), s])),
-      }),
-    };
+  if (plainObj(checks)) {
+    if (Array.isArray(checks.off)) checks.off.forEach(note);
+    if (plainObj(checks.severity)) Object.keys(checks.severity).forEach(note);
+  }
   const r = applyChecks(
     normalise(raw?.findings).map(f => (typeof f.check === "string" ? { ...f, check: currentId(f.check) } : f)),
     checks,

@@ -321,26 +321,6 @@
       "id": "C-012"
     },
     {
-      "check": "h1-count",
-      "rule": "CONTENT-01",
-      "severity": "high",
-      "category": "Headings & content",
-      "title": "1 page(s) don't have exactly one H1",
-      "what": "Found on `http://127.0.0.1:<port>/tools/ssl-checker/` (2 H1s).",
-      "why": "The H1 states the page's topic. None leaves it unclear; several dilute it.",
-      "fix": "Give every page one H1 matching its main topic. Logos and card titles are not H1s.",
-      "count": 1,
-      "evidence": [
-        {
-          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
-          "detail": "2 H1s"
-        }
-      ],
-      "source": "crawler",
-      "status": "open",
-      "id": "C-013"
-    },
-    {
       "check": "faq-not-visible",
       "rule": "SCHEMA-04",
       "severity": "high",
@@ -358,7 +338,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-014"
+      "id": "C-013"
     },
     {
       "check": "canonical-query",
@@ -378,7 +358,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-015"
+      "id": "C-014"
     },
     {
       "check": "product-price-mismatch",
@@ -398,7 +378,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-016"
+      "id": "C-015"
     },
     {
       "check": "broken-internal-link",
@@ -418,7 +398,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-017"
+      "id": "C-016"
     },
     {
       "check": "ai-bots-blocked",
@@ -438,7 +418,7 @@
       ],
       "source": "crawler",
       "status": "needs-decision",
-      "id": "C-018"
+      "id": "C-017"
     },
     {
       "check": "rating-review",
@@ -457,7 +437,7 @@
       ],
       "source": "crawler",
       "status": "needs-decision",
-      "id": "C-019"
+      "id": "C-018"
     },
     {
       "check": "doc-basics",
@@ -505,7 +485,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-020"
+      "id": "C-019"
     },
     {
       "check": "breadcrumb-missing",
@@ -545,7 +525,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-021"
+      "id": "C-020"
     },
     {
       "check": "missing-from-sitemap",
@@ -582,7 +562,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-022"
+      "id": "C-021"
     },
     {
       "check": "desc-dup",
@@ -626,47 +606,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-023"
-    },
-    {
-      "check": "thin-page",
-      "rule": "CONTENT-05",
-      "severity": "medium",
-      "category": "Headings & content",
-      "title": "6 indexable page(s) have fewer than 150 words",
-      "what": "6 cases, for example `http://127.0.0.1:<port>/about/` (3 words).",
-      "why": "Thin pages rarely rank and can lower the site's overall quality signals.",
-      "fix": "Add useful, specific content, merge the page into a stronger one, or noindex it until it grows.",
-      "count": 6,
-      "evidence": [
-        {
-          "url": "http://127.0.0.1:<port>/about/",
-          "detail": "3 words"
-        },
-        {
-          "url": "http://127.0.0.1:<port>/legacy/",
-          "detail": "65 words"
-        },
-        {
-          "url": "http://127.0.0.1:<port>/conflict/",
-          "detail": "59 words"
-        },
-        {
-          "url": "http://127.0.0.1:<port>/en/",
-          "detail": "61 words"
-        },
-        {
-          "url": "http://127.0.0.1:<port>/shop/widget/",
-          "detail": "61 words"
-        },
-        {
-          "url": "http://127.0.0.1:<port>/es/",
-          "detail": "60 words"
-        }
-      ],
-      "source": "crawler",
-      "status": "open",
-      "id": "C-024"
+      "id": "C-022"
     },
     {
       "check": "og-image-broken",
@@ -694,31 +634,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-025"
-    },
-    {
-      "check": "title-long",
-      "rule": "META-01",
-      "severity": "medium",
-      "category": "Metadata",
-      "title": "2 title(s) are longer than 60 characters",
-      "what": "2 cases, for example `http://127.0.0.1:<port>/tools/ssl-checker/` (80 chars: SSL Checker - Free Online SSL Certificate Test Tool With Detailed Report | Brand).",
-      "why": "Long titles get cut off in results, often losing the brand or the key phrase.",
-      "fix": "Keep titles under about 60 characters, main keyword first.",
-      "count": 2,
-      "evidence": [
-        {
-          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
-          "detail": "80 chars: SSL Checker - Free Online SSL Certificate Test Tool With Detailed Report | Brand"
-        },
-        {
-          "url": "http://127.0.0.1:<port>/tools/dmarc-checker/",
-          "detail": "80 chars: SSL Checker - Free Online SSL Certificate Test Tool With Detailed Report | Brand"
-        }
-      ],
-      "source": "crawler",
-      "status": "open",
-      "id": "C-026"
+      "id": "C-023"
     },
     {
       "check": "orphan",
@@ -727,8 +643,8 @@
       "category": "Internal linking",
       "title": "2 sitemap page(s) have no internal links pointing to them",
       "what": "2 cases, for example `https://example-security.com/orphan/` (no links at all).",
-      "why": "A page only reachable through the sitemap looks unimportant and gets little authority.",
-      "fix": "Link each one from its hub and from related pages.",
+      "why": "Only the sitemap lists these pages: no page on the site links to them, so visitors can't reach them by browsing. Google asks that every page you care about has a link from at least one other page on the site.",
+      "fix": "Link each one from its hub and from related pages, or take it out of the sitemap if it isn't meant to be found.",
       "count": 2,
       "evidence": [
         {
@@ -742,7 +658,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-027"
+      "id": "C-024"
     },
     {
       "check": "desc-missing",
@@ -761,27 +677,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-028"
-    },
-    {
-      "check": "heading-skip",
-      "rule": "CONTENT-02",
-      "severity": "medium",
-      "category": "Headings & content",
-      "title": "1 page(s) skip heading levels",
-      "what": "Found on `http://127.0.0.1:<port>/tools/ssl-checker/` (H2 → H4 (“Details”)).",
-      "why": "Skipped levels break the outline search engines and screen readers use.",
-      "fix": "Nest headings in order (H1 → H2 → H3). Style with CSS, not heading levels.",
-      "count": 1,
-      "evidence": [
-        {
-          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
-          "detail": "H2 → H4 (“Details”)"
-        }
-      ],
-      "source": "crawler",
-      "status": "open",
-      "id": "C-029"
+      "id": "C-025"
     },
     {
       "check": "meta-refresh",
@@ -801,7 +697,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-030"
+      "id": "C-026"
     },
     {
       "check": "product-aggregate-offer",
@@ -821,7 +717,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-031"
+      "id": "C-027"
     },
     {
       "check": "hreflang-invalid-code",
@@ -841,7 +737,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-032"
+      "id": "C-028"
     },
     {
       "check": "favicon-missing",
@@ -861,7 +757,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-033"
+      "id": "C-029"
     },
     {
       "check": "untranslated-copy",
@@ -881,7 +777,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-034"
+      "id": "C-030"
     },
     {
       "check": "schema-image-broken",
@@ -901,7 +797,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-035"
+      "id": "C-031"
     },
     {
       "check": "no-large-preview",
@@ -956,7 +852,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-036"
+      "id": "C-032"
     },
     {
       "check": "twitter-card-missing",
@@ -999,7 +895,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-037"
+      "id": "C-033"
     },
     {
       "check": "desc-mismatch",
@@ -1051,7 +947,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-038"
+      "id": "C-034"
     },
     {
       "check": "og-image-no-size",
@@ -1091,7 +987,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-039"
+      "id": "C-035"
     },
     {
       "check": "desc-length",
@@ -1135,7 +1031,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-040"
+      "id": "C-036"
     },
     {
       "check": "jsonld-none",
@@ -1172,7 +1068,47 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-041"
+      "id": "C-037"
+    },
+    {
+      "check": "thin-page",
+      "rule": "CONTENT-05",
+      "severity": "low",
+      "category": "Headings & content",
+      "title": "6 indexable page(s) have fewer than 150 words",
+      "what": "6 cases, for example `http://127.0.0.1:<port>/about/` (3 words).",
+      "why": "A short page is worth a look, not a problem in itself: Google says there's no word count target, minimum or maximum. 150 words is our own line for a second look. A contact page or a calculator can do its job in few words.",
+      "fix": "If the page does its job, close this finding. If it doesn't, add useful, specific content, merge it into a stronger page, or noindex it until it grows.",
+      "count": 6,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/about/",
+          "detail": "3 words"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/legacy/",
+          "detail": "65 words"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/conflict/",
+          "detail": "59 words"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/en/",
+          "detail": "61 words"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/shop/widget/",
+          "detail": "61 words"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/es/",
+          "detail": "60 words"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-038"
     },
     {
       "check": "sec-headers",
@@ -1208,7 +1144,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-042"
+      "id": "C-039"
     },
     {
       "check": "og-missing",
@@ -1240,7 +1176,31 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-043"
+      "id": "C-040"
+    },
+    {
+      "check": "title-long",
+      "rule": "META-01",
+      "severity": "low",
+      "category": "Metadata",
+      "title": "2 title(s) are longer than 60 characters",
+      "what": "2 cases, for example `http://127.0.0.1:<port>/tools/ssl-checker/` (80 chars: SSL Checker - Free Online SSL Certificate Test Tool With Detailed Report | Brand).",
+      "why": "Google sets no length limit on titles, but it cuts the title link in results to fit the screen, so the end of a long title (often the brand or the key phrase) may not show. 60 characters is our own rough line.",
+      "fix": "Put the main keyword first and the brand last, so a cut title still makes sense. Shorten it to about 60 characters if the end matters.",
+      "count": 2,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "80 chars: SSL Checker - Free Online SSL Certificate Test Tool With Detailed Report | Brand"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/dmarc-checker/",
+          "detail": "80 chars: SSL Checker - Free Online SSL Certificate Test Tool With Detailed Report | Brand"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-041"
     },
     {
       "check": "content-signal-invalid",
@@ -1260,7 +1220,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-044"
+      "id": "C-042"
     },
     {
       "check": "sitemap-lastmod-future",
@@ -1280,7 +1240,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-045"
+      "id": "C-043"
     },
     {
       "check": "sitemap-lastmod-invalid",
@@ -1300,7 +1260,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-046"
+      "id": "C-044"
     },
     {
       "check": "llms-structure",
@@ -1320,7 +1280,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-047"
+      "id": "C-045"
     },
     {
       "check": "security-txt",
@@ -1340,7 +1300,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-048"
+      "id": "C-046"
     },
     {
       "check": "href-hash",
@@ -1360,7 +1320,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-049"
+      "id": "C-047"
     },
     {
       "check": "generic-anchor",
@@ -1380,7 +1340,7 @@
       ],
       "source": "crawler",
       "status": "open",
-      "id": "C-050"
+      "id": "C-048"
     },
     {
       "check": "title-short",
@@ -1396,6 +1356,46 @@
         {
           "url": "http://127.0.0.1:<port>/about/",
           "detail": "About"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-049"
+    },
+    {
+      "check": "h1-multiple",
+      "rule": "CONTENT-01",
+      "severity": "low",
+      "category": "Headings & content",
+      "title": "1 page(s) have more than one H1",
+      "what": "Found on `http://127.0.0.1:<port>/tools/ssl-checker/` (2 H1s).",
+      "why": "Google says there's no ideal number of headings, so this isn't a Search problem. It can blur which heading is the page's main title, for visitors and for Google when it writes the title link.",
+      "fix": "Keep one H1 for the page's topic, and make logos, card titles and section titles H2s or plain text.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "2 H1s"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-050"
+    },
+    {
+      "check": "heading-skip",
+      "rule": "CONTENT-02",
+      "severity": "low",
+      "category": "Headings & content",
+      "title": "1 page(s) skip heading levels",
+      "what": "Found on `http://127.0.0.1:<port>/tools/ssl-checker/` (H2 → H4 (“Details”)).",
+      "why": "Screen readers use heading levels to move around a page, so a skipped level can confuse the people who use them. Google Search doesn't mind headings out of order.",
+      "fix": "Nest headings in order (H1 → H2 → H3). Style with CSS, not heading levels.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "H2 → H4 (“Details”)"
         }
       ],
       "source": "crawler",
