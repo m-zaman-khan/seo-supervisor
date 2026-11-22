@@ -40,13 +40,21 @@ export function doctor({ env = process.env, cwd = process.cwd(), version = proce
     `Node ${version}${major >= 22 ? "" : ": SEO Supervisor needs Node 22 or later. Install it from https://nodejs.org"}`,
   );
 
-  const browser = findBrowser(env) || installedBrowser(env);
-  add(
-    browser ? "ok" : "off",
-    browser
-      ? `Chrome or Edge: ${browser}`
-      : "Chrome or Edge: not found. The render, phone and lab-speed checks, screenshots, share cards and the PDF report need one. Install Chrome or Edge, set CHROME_PATH to it, or in a container or CI run: npx seo-supervisor --with-browser",
-  );
+  let browser = null,
+    badPath = "";
+  try {
+    browser = findBrowser(env) || installedBrowser(env);
+  } catch (e) {
+    badPath = e.message;
+  } // CHROME_PATH set to a missing file
+  if (badPath) add("bad", badPath);
+  else
+    add(
+      browser ? "ok" : "off",
+      browser
+        ? `Chrome or Edge: ${browser}`
+        : "Chrome or Edge: not found. The render, phone and lab-speed checks, screenshots, share cards and the PDF report need one. Install Chrome or Edge, set CHROME_PATH to it, or in a container or CI run: npx seo-supervisor --with-browser",
+    );
   const lh = findLighthouse(env);
   const lhNode = major > 22 || (major === 22 && minor >= 19);
   add(

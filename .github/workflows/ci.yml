@@ -24,3 +24,15 @@ jobs:
         run: npm ci && npm run typecheck
       - name: Crawl the fixture site, scan content, render the report, test the installer
         run: npm test
+
+  browser:
+    name: Chrome tests (Node 22)
+    # Chrome sandboxing works for the runner user on 22.04; 24.04 limits unprivileged user namespaces.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tests that start Chrome (it is launched with its background contact turned off)
+        run: npm run test:browser
