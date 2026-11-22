@@ -451,9 +451,10 @@ const WRAPPERS = new Set([
   "noglob",
   "xargs",
 ]);
+// A rename (Rename-Item and its aliases rni and ren, cmd's rename) moves a page off its address like mv does.
 const DELETE = new Set(["rm", "del", "erase", "rmdir", "rd", "remove-item", "ri", "unlink"]),
-  MOVE = new Set(["mv", "move", "move-item", "mi"]);
-const NAMED = /^-(path|literalpath|lp|destination|dest|include|exclude|filter)$/i;
+  MOVE = new Set(["mv", "move", "move-item", "mi", "rename-item", "rni", "ren", "rename"]);
+const NAMED = /^-(path|literalpath|lp|destination|dest|newname|include|exclude|filter)$/i;
 // Non-option words; a PowerShell -Destination or -NewName value, and mv's -t or --target-directory, come back as dest.
 function positional(args) {
   const out = [];
@@ -462,7 +463,7 @@ function positional(args) {
     const a = args[i];
     if (NAMED.test(a)) {
       const v = args[++i];
-      if (/^-dest/i.test(a)) dest = v;
+      if (/^-(dest|newname)/i.test(a)) dest = v;
       else if (/^-(path|literalpath|lp)$/i.test(a) && v) out.push(v);
     } else if (!a.startsWith("-")) out.push(a);
   }

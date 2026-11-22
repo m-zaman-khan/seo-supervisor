@@ -31,7 +31,10 @@
         { "type": "command", "if": "Bash(git rm *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
         { "type": "command", "if": "Bash(git mv *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
         { "type": "command", "if": "Bash(mv *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
-        { "type": "command", "if": "Bash(del *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 }
+        { "type": "command", "if": "Bash(del *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Bash(unlink *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Bash(rmdir *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "Bash(git -C *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 }
       ] },
       { "matcher": "PowerShell", "hooks": [
         { "type": "command", "if": "PowerShell(*--yes*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
@@ -55,7 +58,9 @@
         { "type": "command", "if": "PowerShell(Remove-Item *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
         { "type": "command", "if": "PowerShell(Move-Item *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
         { "type": "command", "if": "PowerShell(git rm *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
-        { "type": "command", "if": "PowerShell(git mv *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 }
+        { "type": "command", "if": "PowerShell(git mv *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "PowerShell(Rename-Item *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },
+        { "type": "command", "if": "PowerShell(git -C *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 }
       ] },
       { "matcher": "Edit|Write|MultiEdit", "hooks": [
         { "type": "command", "if": "Edit(**/*.html)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/skills/seo-supervisor/scripts/guard.mjs", "--agent", "claude-code"], "timeout": 10 },

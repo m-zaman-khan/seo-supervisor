@@ -231,3 +231,28 @@ test("an edit that turns the guard off or down, turns outside checks on or widen
   writeFileSync(join(p, f), j({ guard: "ask" }));
   assert.equal(checkAction(bash("rm seo-audit/settings.json"), { cwd: p }).decision, "allow");
 });
+
+test("PowerShell renames and moves of pages ask, and the hook fires for them, unlink, rmdir and git -C", () => {
+  mkdirSync(join(dir, "app", "blog"), { recursive: true });
+  writeFileSync(join(dir, "app", "blog", "page.tsx"), "export default () => null;");
+  for (const c of [
+    "Rename-Item pages\\about.html about-us.html",
+    "Rename-Item -Path app\\blog -NewName posts",
+    "Rename-Item -NewName posts -Path app\\blog",
+    "rni pages\\about.html b.html",
+    "ren pages\\about.html b.html",
+    "move pages\\about.html x.html",
+    "rename pages\\about.html b.html",
+  ])
+    asks(bash(c), "page-remove");
+  allows(bash("Rename-Item notes.txt old-notes.txt"));
+  for (const c of ["Rename-Item -Path app\\blog -NewName posts"]) assert.ok(fires("PowerShell", c), c);
+  for (const c of [
+    "unlink public/robots.txt",
+    "rmdir app/blog",
+    "git -C site mv pages/a.html pages/b.html",
+    "git -C site rm pages/a.html",
+  ])
+    assert.ok(fires("Bash", c), `Bash if: ${c}`);
+  assert.ok(fires("PowerShell", "git -C site mv pages/a.html pages/b.html"));
+});
