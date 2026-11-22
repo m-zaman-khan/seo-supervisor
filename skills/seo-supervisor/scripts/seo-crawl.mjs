@@ -12,7 +12,7 @@ import { parseArgs } from "./lib/args.mjs";
 import { Fail, runMain, warnProxy } from "./lib/cli.mjs";
 import { loopback } from "./lib/net.mjs";
 import { redact, hideSecrets } from "./lib/redact.mjs";
-import { createFindings } from "./lib/findings.mjs";
+import { createFindings, quote } from "./lib/findings.mjs";
 import { RULES, CHECKS } from "./crawl/catalog.mjs";
 import { PAGE_MAX, clean, createFetcher, isLocal, isPublic, mapOrigin, urlOr } from "./crawl/fetch.mjs";
 import { createCrawler } from "./crawl/queue.mjs";
@@ -275,7 +275,7 @@ for (const p of pages.values())
 // Pages a bot challenge answered instead (crawl/queue.mjs): not checked, and not reported as broken either.
 if (crawler.challenges.length)
   notes.push(
-    `${crawler.challenges.length} page(s) answered with a bot challenge (from Cloudflare or AWS WAF) instead of the page, e.g. ${crawler.challenges[0]}, so they weren't checked. Let the crawler through (allow this machine's address, or the user agent ${UA}) or crawl a staging copy, then run it again.`,
+    `${crawler.challenges.length} page(s) answered with a bot challenge (from Cloudflare or AWS WAF) instead of the page, e.g. ${quote(crawler.challenges[0])}, so they weren't checked. Let the crawler through (allow this machine's address, or the user agent ${UA}) or crawl a staging copy, then run it again.`,
   );
 
 // Soft 404, llms.txt, Markdown, security.txt and the home page's security headers.
@@ -736,8 +736,6 @@ if (renderEvery?.note) notes.push(renderEvery.note);
 }
 
 securityHeaders(site);
-// Reasons and redirects recorded so far get the same masking as the findings and notes.
-for (const n of notChecked) n.reason = redact(n.reason);
 for (const r of extra.redirects || []) {
   r.from = hideSecrets(r.from);
   if (r.to) r.to = hideSecrets(r.to);
@@ -842,7 +840,7 @@ if (blocked.size)
       ...blocked,
     ]
       .slice(0, 3)
-      .map(([u, why]) => `${u} (${why})`)
+      .map(([u, why]) => `${quote(u)} (${why})`)
       .join("; ")}. A redirect there is reported as the redirect itself.`,
   );
 const slowed = slowNote(slow);

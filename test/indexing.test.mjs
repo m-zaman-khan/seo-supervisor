@@ -386,18 +386,13 @@ test("many old URLs redirecting to the home page, or to one single page, are fla
   assert.equal(CHECKS["old-urls-same-target"][0], "URL-07");
 });
 
-// Stays todo until crawl/queue.mjs maps anchor links with toCrawl.
-test(
-  "on a local crawl with --site-origin, a link written as a full public URL is followed on the crawl",
-  { todo: "needs the crawl/queue.mjs change in index.md" },
-  async () => {
-    const r = await mapped();
-    assert.ok(
-      r.pages.some(p => new URL(p.url).pathname === "/linked/"),
-      r.pages.map(p => p.url).join(" "),
-    );
-  },
-);
+test("on a local crawl with --site-origin, a link written as a full public URL is followed on the crawl", async () => {
+  const r = await mapped();
+  assert.ok(
+    r.pages.some(p => new URL(p.url).pathname === "/linked/"),
+    r.pages.map(p => p.url).join(" "),
+  );
+});
 
 test("a one-URL check (--max 1 on a deep URL) reads that page alone", async () => {
   const r = await crawlSite(

@@ -1,6 +1,7 @@
 // @ts-check
 // The crawl queue. seo-crawl.mjs runs it twice: the start page first, then the sitemap's URLs and every link found.
 import { FILE_EXT, tagsOf } from "../lib/html.mjs";
+import { quote } from "../lib/findings.mjs";
 import { PAGE_MAX, clean, urlOr } from "./fetch.mjs";
 import { agentRule, analyze, productImages } from "./page.mjs";
 import { challengeHeaders } from "../checks/bots.mjs";
@@ -15,8 +16,9 @@ import { challengeHeaders } from "../checks/bots.mjs";
 export async function pool(items, conc, fn) {
   const out = new Array(items.length);
   let next = 0;
+  // A missing or zero conc means one worker, never none, which would leave every answer empty.
   await Promise.all(
-    Array.from({ length: Math.min(conc, items.length) }, async () => {
+    Array.from({ length: Math.min(Math.max(1, conc || 1), items.length) }, async () => {
       while (next < items.length) {
         const i = next++;
         out[i] = await fn(items[i]);
@@ -111,7 +113,7 @@ export function createCrawler({
         );
       } catch (e) {
         notes.push(
-          `A check couldn't read ${r.finalUrl} (${String(e.message).split("\n")[0].slice(0, 120)}), so that page's checks were skipped.`,
+          `A check couldn't read ${quote(r.finalUrl)} (${quote(String(e.message).split("\n")[0])}), so that page's checks were skipped.`,
         );
         return;
       }
@@ -146,7 +148,7 @@ export function createCrawler({
       // seo-crawl.mjs still flags it as over Googlebot's 2 MB
       rec.over = true;
       notes.push(
-        `${r.finalUrl} is over ${PAGE_MAX / 1048576} MB (once unpacked), our own limit for one page, so it wasn't read or checked.`,
+        `${quote(r.finalUrl)} is over ${PAGE_MAX / 1048576} MB (once unpacked), our own limit for one page, so it wasn't read or checked.`,
       );
     }
   }

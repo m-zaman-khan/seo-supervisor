@@ -5,6 +5,12 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { tmp } from "./helpers.mjs";
 import { doctor } from "../skills/seo-supervisor/scripts/doctor.mjs";
+import { pool } from "../skills/seo-supervisor/scripts/crawl/queue.mjs";
+
+test("pool still runs every item when no concurrency is given (one at a time)", async () => {
+  assert.deepEqual(await pool([1, 2, 3], undefined, async x => x * 2), [2, 4, 6]);
+  assert.deepEqual(await pool([1, 2], 0, async x => x), [1, 2]);
+});
 
 test("doctor reports a CHROME_PATH that points at no file as a plain problem, not a crash", () => {
   const home = tmp();

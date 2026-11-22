@@ -5,6 +5,7 @@ import { RULES } from "../crawl/catalog.mjs";
 import { clean, urlOr } from "../crawl/fetch.mjs";
 import { isBusinessType } from "../lib/business.mjs";
 import { pool } from "../crawl/queue.mjs";
+import { quote } from "../lib/findings.mjs";
 import { imageSize, imageMeta } from "../lib/image-size.mjs";
 import { altProblem, cdnOf, uncached } from "./media.mjs";
 import { medianScores } from "./lighthouse.mjs";
@@ -270,7 +271,7 @@ export async function schemaImages(site) {
   }
   if (away.size)
     notes.push(
-      `${away.size} schema image(s) are on another host (often a CDN) or redirect there, e.g. ${[...away][0]}, so they weren't checked: only the crawled site is fetched.`,
+      `${away.size} schema image(s) are on another host (often a CDN) or redirect there, e.g. ${quote([...away][0])}, so they weren't checked: only the crawled site is fetched.`,
     );
   if (size > 50) notes.push(`Schema images were checked for the first 50 of ${size}.`);
 }
