@@ -1,6 +1,6 @@
 // @ts-check
 // The report's /seo-setup plan section as stats, HTML and Markdown. The plan's shape is in report-format.md.
-import { safeHref } from "./report/format.mjs";
+import { safeHref, cellMd, mdSafe, noteMd } from "./report/format.mjs";
 
 const STATUSES = ["exists", "to-build", "built", "to-create"];
 const LABEL = { exists: "Already right", "to-build": "To build", built: "Built", "to-create": "To create" };
@@ -180,36 +180,35 @@ function fixesLine(plan, count, list, html = true) {
   return html ? `<p class="plan-fixes">${text}</p>` : `${text}.`;
 }
 
-const cell = v =>
-  String(Array.isArray(v) ? v.join(", ") : (v ?? ""))
-    .replace(/\|/g, "\\|")
-    .replace(/\s*\n\s*/g, " ");
+// Escaped like the rest of the report: mdSafe keeps `code` spans as inl does and makes URLs code spans; cellMd also
+// escapes a table cell's pipes and line breaks.
+const cell = v => cellMd(mdSafe(Array.isArray(v) ? v.join(", ") : v));
+const item = (id, what) => `${id ? `${noteMd(id)}: ` : ""}${mdSafe(what)}`;
 
 export function planMarkdown(plan) {
   const pages = Array.isArray(plan?.pages) ? plan.pages : [];
   const s = planStats(plan);
   const L = ["## SEO plan", ""];
   L.push(
-    `Status: ${PLAN_LABEL[plan.status] || plan.status || "?"}${plan.approvedOn ? ` (approved ${plan.approvedOn})` : ""} · Progress: ${s.progress}% · ${
+    `Status: ${noteMd(PLAN_LABEL[plan.status] || plan.status || "?")}${plan.approvedOn ? ` (approved ${noteMd(plan.approvedOn)})` : ""} · Progress: ${s.progress}% · ${
       STATUSES.filter(st => s.byStatus[st])
         .map(st => `${s.byStatus[st]} ${LABEL[st].toLowerCase()}`)
         .join(", ") || "no pages"
     }${s.ownerOpen ? ` · ${s.ownerOpen} need you` : ""}`,
     "",
   );
-  if (plan.summary) L.push(plan.summary, "");
+  if (plan.summary) L.push(mdSafe(plan.summary), "");
   const fixes = fixesLine(plan, String, ids => ids.join(", "), false);
-  if (fixes) L.push(fixes, "");
+  if (fixes) L.push(mdSafe(fixes), "");
   const yes = [
-    ...(plan.yes || []).filter(yesOpen).map(y => `- ${y.id ? `${y.id}: ` : ""}${y.what}${y.why ? ` (${y.why})` : ""}`),
-    ...pages.filter(r => ownerOpen(r) && r.owner.needs === "yes").map(r => `- ${key(r)}: ${r.owner.what || ""}`),
+    ...(plan.yes || []).filter(yesOpen).map(y => `- ${item(y.id, y.what)}${y.why ? ` (${mdSafe(y.why)})` : ""}`),
+    ...pages.filter(r => ownerOpen(r) && r.owner.needs === "yes").map(r => `- ${item(key(r), r.owner.what || "")}`),
   ];
   if (yes.length)
     L.push("### Needs your yes", "", "Each needs its own yes; approving the plan doesn't cover them.", "", ...yes, "");
-  for (const y of (plan.yes || []).filter(y => y.declined === true))
-    L.push(`Declined: ${y.id ? `${y.id}: ` : ""}${y.what}`);
+  for (const y of (plan.yes || []).filter(y => y.declined === true)) L.push(`Declined: ${item(y.id, y.what)}`);
   for (const r of pages.filter(r => r.owner && r.owner.declined === true))
-    L.push(`Declined: ${key(r)}: ${r.owner.what || ""}`);
+    L.push(`Declined: ${item(key(r), r.owner.what || "")}`);
   if ((plan.yes || []).some(y => y.declined === true) || pages.some(r => r.owner && r.owner.declined === true))
     L.push("");
   if (!pages.length) {
@@ -235,7 +234,7 @@ export function planMarkdown(plan) {
     L.push(
       "Intros for new pages (approving the plan approves these words):",
       "",
-      ...intros.map(r => `- ${key(r)}: ${r.intro}`),
+      ...intros.map(r => `- ${item(key(r), r.intro)}`),
       "",
     );
   return L;

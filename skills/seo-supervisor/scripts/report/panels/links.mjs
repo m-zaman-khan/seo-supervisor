@@ -95,12 +95,9 @@ export function linkPanels({ raw }) {
       : "";
   const linksMd = () => {
     if (!(hasSc || bingLinks || linkCheckLine || looks.length)) return [];
-    // The same as markdown()'s mdCode and mdText: other sites' addresses as code, their text escaped.
-    const code = s => "`" + String(s ?? "").replace(/[`\r\n]/g, " ") + "`",
-      text = s =>
-        String(s ?? "")
-          .replace(/\s+/g, " ")
-          .replace(/[\\`*_[\]<>]/g, "\\$&");
+    // Other sites' addresses go in code spans, and their text has Markdown and HTML characters escaped.
+    const code = noteCode,
+      text = noteMd;
     const list = (l, f) => l.slice(0, 5).map(x => `- ${code(x[f])}${scCount(x) ? ` ${scCount(x)}` : ""}`);
     return [
       `## Links from other sites${linkSources ? ` (${linkSources})` : ""}`,

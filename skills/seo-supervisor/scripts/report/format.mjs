@@ -83,7 +83,28 @@ export const notePath = u => {
     return String(u ?? "");
   }
 };
-export const cellMd = s => s.replace(/\|/g, "\\|");
+export const cellMd = s =>
+  String(s ?? "")
+    .replace(/\|/g, "\\|")
+    .replace(/\r?\n/g, " ");
+const urlsCoded = (s, text) =>
+  s
+    .split(/(https?:\/\/[^\s<>"]*[^\s<>".,;:!?)'])/)
+    .map((q, j) => (j % 2 ? noteCode(q) : text(q)))
+    .join("");
+export const mdSafe = (s, text = noteMd) =>
+  String(s ?? "")
+    .replace(/\s+/g, " ")
+    .split(/(`[^`]+`)/)
+    .map((p, i) =>
+      i % 2
+        ? p
+        : p
+            .split(/\*\*([^*]+)\*\*/)
+            .map((q, j) => (j % 2 ? `**${urlsCoded(q, text)}**` : urlsCoded(q, text)))
+            .join(""),
+    )
+    .join("");
 
 // Validators for values read from the audit file.
 export const isCount = x => Number.isInteger(x) && x >= 0;

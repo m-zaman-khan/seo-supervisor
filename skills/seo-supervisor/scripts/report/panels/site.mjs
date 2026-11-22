@@ -1,7 +1,7 @@
 // @ts-check
 // The panels about the site itself: score views, HSTS preload, coverage, rendering, page scores and check settings.
 import { score, OWN_SCORE } from "../../lib/score.mjs";
-import { cellMd, dot, esc, inl, noteCode, noteMd, notePath, num, obj, plural, isCount } from "../format.mjs";
+import { cellMd, dot, esc, inl, mdSafe, noteCode, noteMd, notePath, num, obj, plural, isCount } from "../format.mjs";
 
 export function sitePanels({ raw, mdFile, site, areas, overall, open, buildRules, checkSettings }) {
   // The trust view is found ÷ applicable signals × 100 (checks/trust.mjs); missing signals are suggestions, not
@@ -77,29 +77,33 @@ export function sitePanels({ raw, mdFile, site, areas, overall, open, buildRules
   const viewsMd = () => {
     const v = viewsOf();
     if (!v) return [];
-    const md = s =>
-      String(s ?? "")
-        .replace(/\s+/g, " ")
-        .replace(/[\\`*_[\]<>|]/g, "\\$&"); // crawled text: names, links, dates
+    const cell = s => cellMd(noteMd(s)); // crawled text: names, links, dates
     const found = trustList.filter(s => s.applies && s.found);
     return [
       "## Score views",
       "",
       "| View | Score | What it is |",
       "| --- | ---: | --- |",
-      ...(v.t.value == null ? [] : [`| Trust signals (E-E-A-T) | ${v.t.value}/100 | ${md(v.line)}. ${NOT_GOOGLE} |`]),
-      ...v.list.map(({ label, a }) => `| ${label} | ${a.value}/100 | The ${md(a.name)} area's score |`),
+      ...(v.t.value == null ? [] : [`| Trust signals (E-E-A-T) | ${v.t.value}/100 | ${cell(v.line)}. ${NOT_GOOGLE} |`]),
+      ...v.list.map(({ label, a }) => `| ${label} | ${a.value}/100 | The ${cell(a.name)} area's score |`),
       "",
       ...(v.t.missing.length
         ? [
             "Trust signals to add. They're suggestions, not findings: they never change the score, and not every signal fits every site.",
             "",
-            ...v.t.missing.map(s => `- **${md(labelOf(s))}:** ${s.add || ""}${s.rule ? ` See ${md(s.rule)}.` : ""}`),
+            ...v.t.missing.map(
+              s => `- **${noteMd(labelOf(s))}:** ${mdSafe(s.add || "")}${s.rule ? ` See ${noteMd(s.rule)}.` : ""}`,
+            ),
             "",
           ]
         : []),
       ...(found.length
-        ? ["Trust signals found:", "", ...found.map(s => `- **${md(labelOf(s))}:** ${md(s.evidence || "found")}`), ""]
+        ? [
+            "Trust signals found:",
+            "",
+            ...found.map(s => `- **${noteMd(labelOf(s))}:** ${noteMd(s.evidence || "found")}`),
+            "",
+          ]
         : []),
     ];
   };

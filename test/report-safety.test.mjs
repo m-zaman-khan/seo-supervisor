@@ -227,6 +227,80 @@ test("the page carries a strict Content-Security-Policy that allows exactly its 
   }
 });
 
+// The Markdown lines with a live link, image or HTML tag: outside fenced blocks, backslash escapes and code spans.
+function liveMd(md) {
+  let fence = false;
+  return md.split("\n").filter(l => {
+    if (/^```/.test(l)) {
+      fence = !fence;
+      return false;
+    }
+    const t = l.replace(/\\[\\`*_[\]<>|()!]/g, "").replace(/(`+)[\s\S]*?\1/g, "");
+    return !fence && /\]\(|<[a-z/!]|!\[|^\[|\]\[/i.test(t);
+  });
+}
+// The audit with hostile Markdown and HTML added to every sentence-like string, and to every path and address.
+const walk = (x, f) =>
+  Array.isArray(x)
+    ? x.map(y => walk(y, f))
+    : x && typeof x === "object"
+      ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k, walk(v, f)]))
+      : f(x);
+const HOSTILE = " ![x](https://tracker.invalid/p.png) <img src=x onerror=alert(1)> [z](javascript:a) *x* _y_";
+const hostile = raw =>
+  walk(copy(raw), v =>
+    typeof v !== "string"
+      ? v
+      : / /.test(v)
+        ? v + HOSTILE
+        : /^\/|^https?:\/\//.test(v)
+          ? v + "?a=[z](javascript:a)<b>"
+          : v,
+  );
+
+test("text from the audit file can't become a link, an image or a tag in the Markdown", () => {
+  for (const raw of [KITCHEN, SAMPLE]) assert.deepEqual(liveMd(rend(hostile(raw)).md ?? ""), []);
+  const { md } = rend({
+    site: { name: "S", url: "javascript:alert(1)" },
+    run: { date: "2026-11-17" },
+    findings: [],
+    passed: [{ rule: "R-1", category: "Other", title: "T", detail: "<b>d</b>" }],
+    notes: ["![x](https://tracker.invalid/p.png) <img src=x onerror=alert(1)>"],
+    notChecked: [{ area: "A*", reason: "<img src=x onerror=alert(1)>" }],
+  });
+  assert.ok(
+    md?.includes("- !\\[x\\](`https://tracker.invalid/p.png`) \\<img src=x onerror=alert(1)\\>"),
+    "a note: the image is inert, the address a code span",
+  );
+  assert.ok(md?.includes("- **A\\*:** \\<img src=x onerror=alert(1)\\>"), "a not-checked reason");
+  assert.ok(md?.includes("- **R-1** T (\\<b\\>d\\</b\\>)"), "a passed check's detail");
+});
+
+test("the agent's own `code` and **bold** stay, as the page shows them", () => {
+  const f = {
+    id: "F-001",
+    rule: "R-1",
+    severity: "low",
+    category: "Other",
+    title: "T",
+    status: "fixed",
+    why: "Use **one** `canonical`.",
+    fix: "Set `SITE_URL` in https://example.com/a_b.",
+    fixed: { summary: "Read **SITE_URL**", files: ["src/a`b.ts"], verified: "re-crawl" },
+    decision: { question: "Q?", options: ["Keep `www`", "Drop *it*"], recommendation: "Drop" },
+  };
+  const { md } = rend({ site: { name: "S" }, findings: [f], summary: "Two **blockers** and `noindex`." });
+  for (const s of [
+    "Two **blockers** and `noindex`.",
+    "**Why it matters.** Use **one** `canonical`.",
+    "**How to fix.** Set `SITE_URL` in `https://example.com/a_b`.",
+    "**What was done.** Read **SITE\\_URL** Files: `src/a b.ts`.",
+    "- Keep `www`",
+    "- Drop \\*it\\*",
+  ])
+    assert.ok(md?.includes(s), s);
+});
+
 test("the page's styles have no dead .as.b3-t,.as.b4-t rule", () => {
   const { html } = rend(KITCHEN);
   assert.doesNotMatch(html, /\.as\.b[34]-t/);
