@@ -82,3 +82,24 @@ test("an agent file that's a gzip bomb (1 GB of spaces at /.well-known/agent-car
   t.diagnostic(`peak memory ${Math.round(mb)} MB`);
   assert.ok(mb < 400, `peak memory ${Math.round(mb)} MB`);
 });
+
+test("a site whose / redirects to /en/ still gets the home page's checks there (schema and favicon); a deep start still doesn't", async () => {
+  const before = (req, res) => pathOf(req.url) === "/" && !!res.writeHead(301, { Location: "/en/" }).end();
+  const r = await crawlSite(
+    {
+      "/en/": page("Boiler repairs", '<a href="/en/about/">About</a>'),
+      "/en/about/": page("About us", '<a href="/en/">Home</a>'),
+    },
+    { before },
+  );
+  const at = id => r.findings.find(f => f.check === id)?.evidence.map(e => pathOf(e.url));
+  for (const id of ["org-missing", "website-missing", "favicon-missing"]) assert.deepEqual(at(id), ["/en/"], id);
+  assert.ok(!(r.passed || []).some(p => p.rule === "SCHEMA-02"), "SCHEMA-02 has a finding, so it didn't pass");
+  // Started on a deep page, the crawl's first page isn't the home page.
+  const deep = await crawlSite(
+    { "/": page("Home"), "/guides/deep/": page("A deep guide") },
+    { url: "/guides/deep/", args: ["--max", "1"] },
+  );
+  for (const id of ["org-missing", "website-missing", "favicon-missing"])
+    assert.ok(!deep.findings.some(f => f.check === id), id);
+});

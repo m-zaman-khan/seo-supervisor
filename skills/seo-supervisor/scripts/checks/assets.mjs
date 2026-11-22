@@ -31,7 +31,7 @@ export async function checkAssets(site, { images, shareImages }) {
   } = site;
   // Home page checks run only on the real home page, never on a deep start URL. A crawl started at / judges where /
   // lands, even after a redirect to /en/.
-  const home = site.home?.html && isHome(site.home) ? site.home : null;
+  const home = site.home?.html && (isHome(site.home) || site.start.pathname === "/") ? site.home : null;
   // Only on-site images are read, so no third party is contacted, even through a page that redirected off the site.
   const onSiteImages = [...images].filter(([src]) => new URL(src).origin === START_ORIGIN),
     imageList = onSiteImages.slice(0, 50);
