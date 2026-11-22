@@ -1,5 +1,7 @@
 // @ts-check
 // The report's /seo-setup plan section as stats, HTML and Markdown. The plan's shape is in report-format.md.
+import { safeUrl } from "./lib/recheck.mjs";
+
 const STATUSES = ["exists", "to-build", "built", "to-create"];
 const LABEL = { exists: "Already right", "to-build": "To build", built: "Built", "to-create": "To create" };
 const PLAN_LABEL = {
@@ -13,6 +15,10 @@ const key = r => r.url || r.pattern || "";
 const isDone = r => r.status === "exists" || r.status === "built";
 const ownerOpen = r => r.owner && r.owner.done !== true && r.owner.declined !== true;
 const yesOpen = y => y.approved !== true && y.declined !== true;
+// Only an http(s) URL or a plain relative path (drafts/privacy.md) is linked. Anything else (javascript:, data:,
+// //host, \\server) shows as text, so a click can't run a script in the report. Paths with spaces or non-ASCII letters
+// are text too; widen the pattern if real drafts need them.
+const draftHref = d => (typeof d === "string" ? safeUrl(d) || (/^[\w.~-][\w.~%+/-]*$/.test(d) ? d : null) : null);
 
 export function planStats(plan) {
   const pages = Array.isArray(plan?.pages) ? plan.pages : [];
@@ -112,7 +118,7 @@ export function planHtml(plan, { esc, inl, num, traffic = () => null }) {
     const o = r.owner;
     return `<details class="prow" data-status="${esc(r.status)}">
       <summary><span class="pu"><code>${esc(key(r))}</code>${r.pattern ? ` <span class="pcount">×${num(r.count || 0)}</span>` : ""}</span><span class="pt">${r.target ? esc(r.target) : `<span class="quiet">—</span>`}</span><span class="ptype">${esc(r.type || "")}</span><span class="pst">${chip(r.status)}${ownerOpen(r) ? `<span class="own">Needs you</span>` : ""}</span></summary>
-      <dl class="pd">${field("Intent", r.intent)}${r.url ? field("Search traffic", traffic(r.url)) : ""}${field("Other targets", r.secondary)}${field(r.pattern ? "Title template" : "Title", r.title)}${field(r.pattern ? "Description template" : "Description", r.description)}${field(r.pattern ? "H1 template" : "H1", r.h1)}${field("Intro", r.intro)}${field("Schema", r.schema)}${field("Parent", r.parent)}${field("Links to", r.linksTo)}${r.from ? field("Moves from", `${r.from} → ${key(r)}`) : ""}${r.pattern && r.count ? field("Built", `${num(r.status === "built" || r.status === "exists" ? r.count : Number(r.built) || 0)} of ${num(r.count)}`) : ""}${(r.samples || []).length ? `<dt>Examples</dt><dd><ul class="psamples">${r.samples.map(x => `<li><code>${esc(x.url)}</code>${x.title ? ` ${esc(x.title)}` : ""}</li>`).join("")}</ul></dd>` : ""}${o ? `<dt>${o.done === true ? "Done by you" : "Needs you"}</dt><dd>${esc(NEEDS[o.needs] || o.needs || "")}: ${inl(o.what || "")}${o.draft ? ` · <a href="${esc(o.draft)}">Read the draft</a>` : ""}</dd>` : ""}${r.finding ? `<dt>Finding</dt><dd><a href="#${esc(r.finding)}">${esc(r.finding)}</a></dd>` : ""}</dl>
+      <dl class="pd">${field("Intent", r.intent)}${r.url ? field("Search traffic", traffic(r.url)) : ""}${field("Other targets", r.secondary)}${field(r.pattern ? "Title template" : "Title", r.title)}${field(r.pattern ? "Description template" : "Description", r.description)}${field(r.pattern ? "H1 template" : "H1", r.h1)}${field("Intro", r.intro)}${field("Schema", r.schema)}${field("Parent", r.parent)}${field("Links to", r.linksTo)}${r.from ? field("Moves from", `${r.from} → ${key(r)}`) : ""}${r.pattern && r.count ? field("Built", `${num(r.status === "built" || r.status === "exists" ? r.count : Number(r.built) || 0)} of ${num(r.count)}`) : ""}${(r.samples || []).length ? `<dt>Examples</dt><dd><ul class="psamples">${r.samples.map(x => `<li><code>${esc(x.url)}</code>${x.title ? ` ${esc(x.title)}` : ""}</li>`).join("")}</ul></dd>` : ""}${o ? `<dt>${o.done === true ? "Done by you" : "Needs you"}</dt><dd>${esc(NEEDS[o.needs] || o.needs || "")}: ${inl(o.what || "")}${o.draft ? (draftHref(o.draft) ? ` · <a href="${esc(draftHref(o.draft))}">Read the draft</a>` : ` · Draft: <code>${esc(o.draft)}</code>`) : ""}</dd>` : ""}${r.finding ? `<dt>Finding</dt><dd><a href="#${esc(r.finding)}">${esc(r.finding)}</a></dd>` : ""}</dl>
     </details>`;
   };
   const present = STATUSES.filter(st => s.byStatus[st]);
