@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import { fileCrawl } from "./seo-diff.mjs";
 import { proxyNote, chromeProxyArgs } from "./lib/proxy.mjs";
 import { redact, hideSecrets } from "./lib/redact.mjs";
-import { createFindings, foundOn } from "./lib/findings.mjs";
+import { createFindings } from "./lib/findings.mjs";
 import { RULES, CHECKS } from "./crawl/catalog.mjs";
 import { clean, createFetcher, isLocal, isPublic, mapOrigin, urlOr } from "./crawl/fetch.mjs";
 import { createCrawler } from "./crawl/queue.mjs";
@@ -131,7 +131,11 @@ const CLEAN_SHOTS = !!args["clean-screenshots"];
 // Every finding's URL and detail is scrubbed of secret keys, secret query values and home folders, whichever check adds
 // it, so no secret reaches the crawl file through another check's evidence. Notes and notChecked reasons get the same
 // scrub on output, emails included.
-const { findings, add, evaluated, evalRules } = createFindings(CHECKS, s => redact(maskKeys(s), { emails: false }));
+const { findings, add, evaluated, evalRules, notChecked, skip, list } = createFindings(
+  CHECKS,
+  s => redact(maskKeys(s), { emails: false }),
+  RULES,
+);
 
 // Sitemap <xhtml:link> hreflang by crawl URL, built on first use: `sm` is only read later, before the crawl starts.
 let smHreflang;
@@ -272,7 +276,6 @@ const htmlPages = [...byPage.values()];
 const finalOf = u => pages.get(u)?.finalUrl || u;
 const isHome = p => new URL(p.finalUrl).pathname === "/";
 
-const notChecked = [];
 const canonicalFor = p => {
   const c = p.canonicals && p.canonicals[0];
   return c ? (urlOr(c, p.base)?.href ?? null) : null;
@@ -862,69 +865,44 @@ const NOT_CRAWLABLE = [
     "robots.txt is checked; firewall behaviour toward OAI-SearchBot, Claude-SearchBot and PerplexityBot isn't visible locally.",
   ],
 ];
-for (const [rule, area, reason] of NOT_CRAWLABLE) notChecked.push({ rule, area: `${rule} ${area}`, reason });
+for (const [rule, area, reason] of NOT_CRAWLABLE) skip(rule, reason, `${rule} ${area}`);
 // MAP-01 is half the robots.txt Sitemap: line, so only a sitemap finding settles it while robots.txt is down.
 if (robotsDown)
   for (const rule of ["MAP-01", "MAP-05", "MAP-06"])
     if (![...findings.keys()].some(k => CHECKS[k][0] === rule))
-      notChecked.push({
+      skip(
         rule,
-        area: `${rule} ${RULES[rule][0]}`,
-        reason: `robots.txt answered ${robotsRes.status ? `status ${robotsRes.status}` : "nothing"}, so its ${rule === "MAP-01" ? "Sitemap: line" : "rules"} couldn't be read. Re-run once it returns 200.`,
-      });
+        `robots.txt answered ${robotsRes.status ? `status ${robotsRes.status}` : "nothing"}, so its ${rule === "MAP-01" ? "Sitemap: line" : "rules"} couldn't be read. Re-run once it returns 200.`,
+      );
 // A page missing from the sitemap URLs read may be in the part past SITEMAP_KEEP.
 if (sm.cut && findings.delete("missing-from-sitemap") && evaluated.delete("MAP-03"))
-  notChecked.push({
-    rule: "MAP-03",
-    area: `MAP-03 ${RULES["MAP-03"][0]}`,
-    reason: sm.filesLeft
+  skip(
+    "MAP-03",
+    sm.filesLeft
       ? "Some crawled pages aren't in the first 60 sitemap files, the most this audit reads, so they may still be in the files after them."
       : `Some crawled pages aren't among the first ${SITEMAP_KEEP.toLocaleString("en-US")} sitemap URLs, the most this audit reads, so they may still be in the rest of the sitemap.`,
-  });
+  );
 if (!redirectSources.length)
-  notChecked.push({
-    rule: "URL-07",
-    area: "URL-07 Old-URL redirects",
-    reason: "No redirect list given. Pass --urls (old site URLs) or --next-manifest .next/routes-manifest.json.",
-  });
+  skip(
+    "URL-07",
+    "No redirect list given. Pass --urls (old site URLs) or --next-manifest .next/routes-manifest.json.",
+    "URL-07 Old-URL redirects",
+  );
 if (!BANNED && !VERIFY)
-  notChecked.push({
-    rule: "CONTENT-10",
-    area: "CONTENT-10 Banned and unconfirmed claims",
-    reason: "Pass --banned and --verify with the profile's claim lists.",
-  });
+  skip(
+    "CONTENT-10",
+    "Pass --banned and --verify with the profile's claim lists.",
+    "CONTENT-10 Banned and unconfirmed claims",
+  );
 if (IGNORE_NOINDEX && evaluated.delete("CRAWL-02"))
-  notChecked.push({
-    rule: "CRAWL-02",
-    area: "CRAWL-02 Pages meant to rank are not noindex",
-    reason: "Pre-launch run: noindex is expected now. Re-check after launch (CRAWL-03).",
-  });
+  skip(
+    "CRAWL-02",
+    "Pre-launch run: noindex is expected now. Re-check after launch (CRAWL-03).",
+    "CRAWL-02 Pages meant to rank are not noindex",
+  );
 
 // ---------- output ----------
-const SEV = { blocker: 0, high: 1, "needs-decision": 2, medium: 3, low: 4 };
-const out = [];
-for (const [key, f] of findings) {
-  const [rule, severity, title, why, fix] = CHECKS[key];
-  const what = foundOn(f.count, f.evidence[0]);
-  out.push({
-    check: key,
-    rule,
-    severity,
-    category: RULES[rule][1],
-    title: title(f.count),
-    what,
-    why,
-    fix,
-    count: f.count,
-    evidence: f.evidence,
-    source: "crawler",
-    status: severity === "needs-decision" ? "needs-decision" : "open",
-  });
-}
-out.sort((a, b) => SEV[a.severity] - SEV[b.severity] || b.count - a.count);
-out.forEach((/** @type {Record<string, any>} */ f, i) => {
-  f.id = "C-" + String(i + 1).padStart(3, "0");
-});
+const out = list({ source: "crawler", prefix: "C" });
 const failedRules = new Set(out.map(f => f.rule));
 const passed = [...evaluated]
   .filter(r => !failedRules.has(r))

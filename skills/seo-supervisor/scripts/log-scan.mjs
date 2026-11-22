@@ -11,7 +11,7 @@ import { promises as dns } from "node:dns";
 import { isMain } from "./lib/is-main.mjs";
 import { parseArgs } from "./lib/args.mjs";
 import { Fail, runMain } from "./lib/cli.mjs";
-import { foundOn } from "./lib/findings.mjs";
+import { findingOf, numbered } from "./lib/findings.mjs";
 
 // --site is the other scripts' name for --site-origin.
 async function main(argv) {
@@ -546,22 +546,10 @@ async function main(argv) {
     pct = x => `${Math.round(x * 1000) / 10}%`,
     list = ps => ps.map(([p, n]) => `${p} (${n})`).join(", ");
   const finding = (check, rule, severity, category, title, why, fix, evidence, count = evidence.length) => {
-    if (!evidence.length) return;
-    const ex = evidence[0];
-    findings.push({
-      check,
-      rule,
-      severity,
-      category,
-      title: title(count),
-      what: foundOn(count, ex),
-      why,
-      fix,
-      count,
-      evidence,
-      source: "server-logs",
-      status: severity === "needs-decision" ? "needs-decision" : "open",
-    });
+    if (evidence.length)
+      findings.push(
+        findingOf(check, [rule, severity, title, why, fix], { count, evidence }, { source: "server-logs", category }),
+      );
   };
   const crawlers = Object.values(bots).filter(b => b.requests >= 5);
 
@@ -654,9 +642,7 @@ async function main(argv) {
     "Decide whether these crawlers should reach the site and record it in the profile (MAP-06). To allow them, let the vendor's published IP ranges through the WAF or CDN bot rules (openai.com/searchbot.json, perplexity.ai/perplexitybot.json); to keep them out, a robots.txt rule says so openly.",
     refused,
   );
-  findings.forEach((f, i) => {
-    f.id = "L-" + String(i + 1).padStart(3, "0");
-  });
+  numbered(findings, "L");
 
   notes.unshift(
     ipLists

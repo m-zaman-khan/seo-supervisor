@@ -17,7 +17,7 @@ import {
 import { isMain } from "./lib/is-main.mjs";
 import { parseArgs } from "./lib/args.mjs";
 import { Fail, runMain } from "./lib/cli.mjs";
-import { foundOn } from "./lib/findings.mjs";
+import { createFindings } from "./lib/findings.mjs";
 
 const FLAGS = [
   "in",
@@ -292,17 +292,8 @@ function main(argv) {
       "Get each claim confirmed, or hold it.",
     ],
   };
-  const found = new Map();
-  const add = (k, url, detail) => {
-    let f = found.get(k);
-    if (!f) found.set(k, (f = { count: 0, evidence: [] }));
-    f.count++;
-    if (f.evidence.length < 100) f.evidence.push(detail ? { url, detail } : { url });
-  };
-  const setCount = (k, n) => {
-    const f = found.get(k);
-    if (f) f.count = n;
-  };
+  const store = createFindings(CHECKS),
+    { add, setCount } = store;
 
   const live = typeof args.publish === "string" ? records.filter(r => isLive(get(r, args.publish))) : records;
   const stats = {
@@ -496,30 +487,7 @@ function main(argv) {
     }
   });
 
-  const SEV = { blocker: 0, high: 1, "needs-decision": 2, medium: 3, low: 4 };
-  const findings = [...found]
-    .map(([k, f]) => {
-      const [rule, severity, title, why, fix] = CHECKS[k];
-      const ex = f.evidence[0] || {};
-      return {
-        check: k,
-        rule,
-        severity,
-        category: "Content data",
-        title: title(f.count),
-        what: foundOn(f.count, ex),
-        why,
-        fix,
-        count: f.count,
-        evidence: f.evidence,
-        source: "content-scan",
-        status: severity === "needs-decision" ? "needs-decision" : "open",
-      };
-    })
-    .sort((a, b) => SEV[a.severity] - SEV[b.severity] || b.count - a.count);
-  findings.forEach((/** @type {Record<string, any>} */ f, i) => {
-    f.id = "D-" + String(i + 1).padStart(3, "0");
-  });
+  const findings = store.list({ source: "content-scan", prefix: "D", category: "Content data" });
   stats.claims = { total: claims.length, unsourced: claims.filter(c => !c.sourced).length };
   const notes = [
     `Scanned ${records.length} records from ${source}; compared ${items.length} texts (${distinct.size} distinct after removing names).`,
