@@ -49,6 +49,8 @@ export function buildModel(raw, dir) {
           items: (Array.isArray(a.items) ? a.items : []).filter(s => typeof s === "string" && s).slice(0, 10),
         })),
     }));
+  // The audit's own decisions first, then open ones on findings, deduped by id so the Decisions tab never counts one
+  // twice.
   const decisions = [
     ...(raw.decisions || []).map(d => ({ ...d })),
     ...findings
@@ -60,7 +62,7 @@ export function buildModel(raw, dir) {
         options: f.decision?.options,
         recommendation: f.decision?.recommendation || f.fix,
       })),
-  ];
+  ].filter((d, i, all) => !d.id || all.findIndex(x => x.id === d.id) === i);
   const fixed = findings.filter(f => !isOpen(f));
 
   // The score model is documented in report-format.md.
