@@ -279,8 +279,10 @@ if (opts.uninstall) {
     const dir = join(t.skills, NAME),
       record = readRecord(dir);
     created.push(...record);
-    for (const file of removeExtras(t, { src: SRC, created: record, root })) {
-      console.log(`removed  ${show(file)}`);
+    for (const [what, file] of removeExtras(t, { src: SRC, created: record, root })) {
+      console.log(
+        what === "kept" ? `kept     ${show(file)}  (the guard is out; your own hooks stay)` : `removed  ${show(file)}`,
+      );
       removed++;
     }
     if (ownsSkill(dir)) {

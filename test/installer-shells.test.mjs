@@ -236,6 +236,21 @@ test("owner hook files keep their look: Cursor's version, their indent, a BOM an
   assert.equal(json(cursorFile).version, 1);
 });
 
+test("uninstall says kept for an owner's hook file it took the guard out of, and removed for files it deleted", async () => {
+  const home = tmp(),
+    cwd = tmp();
+  mkdirSync(join(cwd, ".cursor"));
+  writeFileSync(
+    join(cwd, ".cursor", "hooks.json"),
+    JSON.stringify({ version: 1, hooks: { stop: [{ command: "./mine.sh" }] } }),
+  );
+  await node([BIN, "--agent", "cursor,github-copilot", "--project"], { env: env(home), cwd });
+  const { stdout } = await node([BIN, "--uninstall", "--project"], { env: env(home), cwd });
+  const line = f => stdout.split("\n").find(l => l.replace(/\\/g, "/").includes(f)) || "";
+  assert.match(line(".cursor/hooks.json"), /^kept +\S.*hooks\.json +\(the guard is out; your own hooks stay\)/);
+  assert.match(line(".github/hooks/seo-supervisor-guard.json"), /^removed +/);
+});
+
 test("a home folder with letters outside ASCII gets the whole skill (Node 24's cpSync writes to a garbled folder on Windows)", async () => {
   const home = join(tmp(), "José D’Souza"),
     cwd = tmp();

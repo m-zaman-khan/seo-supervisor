@@ -267,28 +267,31 @@ export function addHooks(format, file, guard, created, root, project = false) {
 /** Takes the guard out of one agent's hook file (and Codex's config.toml), deleting a file the install created once
  * nothing else is left. Returns [what, file] pairs: "removed", or "kept" when other hooks remain. */
 export function removeHooks(format, file, created, root) {
-  if (!existsSync(file)) return false;
+  if (!existsSync(file)) return null;
   if (format === "copilot" || format === "cline") {
-    if (!OURS.test(readFileSync(file, "utf8"))) return false;
+    if (!OURS.test(readFileSync(file, "utf8"))) return null;
     rmSync(file);
-    return true;
+    return "removed";
   }
   let r;
   try {
     r = readJson(file);
   } catch {
-    return false;
+    return null;
   }
-  if (!r || !OURS.test(JSON.stringify(r.o))) return false;
+  if (!r || !OURS.test(JSON.stringify(r.o))) return null;
   const o = r.o;
   strip(eventsOf(format, file, o));
   // Devin's user config.json holds other settings too: an emptied "hooks" key goes.
   if (format === "devin" && o.hooks && !Object.keys(o.hooks).length) delete o.hooks;
   const ours = created.includes(rel(root, file)),
     empty = JSON.stringify(o) === JSON.stringify(fresh(format));
-  if (ours && empty) rmSync(file);
-  else writeFileSync(file, writeJson(o, r.look));
-  return true;
+  if (ours && empty) {
+    rmSync(file);
+    return "removed";
+  }
+  writeFileSync(file, writeJson(o, r.look));
+  return "kept";
 }
 
 /** Installs one target's extras. src: { commands: [[file, md]], subagents: [md] }. guard: false skips the hook (and
@@ -339,7 +342,8 @@ export function removeExtras(t, { src, created, root }) {
   const gone = [];
   for (const x of t.extras) {
     if (x.kind === "hooks") {
-      if (removeHooks(x.format, x.path, created, root)) gone.push(x.path);
+      const what = removeHooks(x.format, x.path, created, root);
+      if (what) gone.push([what, x.path]);
       continue;
     }
     const names =
@@ -353,7 +357,7 @@ export function removeExtras(t, { src, created, root }) {
       try {
         if (mine(readFileSync(file, "utf8"))) {
           rmSync(file);
-          gone.push(file);
+          gone.push(["removed", file]);
         }
       } catch {}
     }
