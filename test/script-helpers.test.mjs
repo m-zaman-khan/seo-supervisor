@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { Fail, Refused, runMain } from "../skills/seo-supervisor/scripts/lib/cli.mjs";
 import { parseArgs } from "../skills/seo-supervisor/scripts/lib/args.mjs";
 import { bodyUpTo, retryAfter } from "../skills/seo-supervisor/scripts/lib/http.mjs";
+import * as net from "../skills/seo-supervisor/scripts/lib/net.mjs";
 
 // runMain sets process.exitCode; each test puts it back, so the test run's own exit code stays the runner's.
 async function exitOf(t, main) {
@@ -146,6 +147,73 @@ test("retryAfter: seconds or an HTTP date in any of its three formats, as ms fro
   assert.equal(retryAfter("Sun, 06 Nov 1994 08:00:00 GMT", now), 0, "a date already past is no wait");
   for (const bad of [null, undefined, "", "1.5", "-3", "soon", "5 seconds"])
     assert.equal(retryAfter(bad, now), null, String(bad));
+});
+
+test("lib/net holds the one private-address test; checks/outbound.mjs re-exports the same functions", async () => {
+  const outbound = await import("../skills/seo-supervisor/scripts/checks/outbound.mjs");
+  for (const k of ["privateIp", "isPublic", "guarded"]) assert.equal(outbound[k], net[k], k);
+  assert.ok(
+    net.privateIp("::ffff:10.0.0.1") &&
+      net.privateIp("100.64.0.1") &&
+      net.privateIp("not-an-ip") &&
+      !net.privateIp("8.8.8.8"),
+  );
+  assert.ok(
+    net.isPublic("https://www.example.com/") &&
+      !net.isPublic("http://169.254.169.254/") &&
+      !net.isPublic("http://intranet/") &&
+      !net.isPublic("http://a.internal/") &&
+      !net.isPublic("javascript:alert(1)"),
+  );
+  for (const h of ["localhost", "127.0.0.1", "127.1.2.3", "0.0.0.0", "[::1]", "LOCALHOST"])
+    assert.ok(net.loopback(h), h);
+  for (const h of ["127.0.0.1.example.com", "10.0.0.1", "[::2]", "localhost.example"]) assert.ok(!net.loopback(h), h);
+});
+
+test("pinnedGet: redirects followed by hand, each hop checked; the address each connection uses is checked too", async () => {
+  const { createServer } = await import("node:http");
+  const srv = createServer((req, res) => {
+    if (req.url === "/old") return res.writeHead(301, { Location: "/new" }).end();
+    if (req.url === "/to-private") return res.writeHead(302, { Location: "http://10.0.0.1/admin" }).end();
+    if (req.url === "/loop") return res.writeHead(302, { Location: "/loop" }).end();
+    res.writeHead(200, { "content-type": "text/plain" }).end("hello " + req.method);
+  });
+  await new Promise(ok => srv.listen(0, "127.0.0.1", () => ok(null)));
+  const base = `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}`,
+    allow = async u => new URL(u).hostname === "127.0.0.1";
+  const body = async (r, u) => {
+    let t = "";
+    for await (const c of r) t += c;
+    return { status: r.statusCode, url: u, t };
+  };
+  try {
+    assert.deepEqual(await net.pinnedGet(base + "/old", { allow, read: body }), {
+      status: 200,
+      url: base + "/new",
+      t: "hello GET",
+    });
+    assert.deepEqual(
+      await net.pinnedGet(base + "/old", { allow, method: "HEAD" }),
+      { status: 200 },
+      "by default only the status is read",
+    );
+    assert.match(
+      (await net.pinnedGet(base + "/to-private", { allow })).reason,
+      /redirects to http:\/\/10\.0\.0\.1\/admin, which isn't a public web address/,
+    );
+    assert.match((await net.pinnedGet(base + "/loop", { allow, hops: 2 })).reason, /redirects more than 2 times/);
+    assert.match((await net.pinnedGet("http://10.0.0.2/")).reason, /^it isn't a public web address/);
+    // A public-looking name whose DNS answer is private isn't connected to (DNS rebinding).
+    const dns = (name, opts, cb) =>
+      opts.all ? cb(null, [{ address: "127.0.0.1", family: 4 }]) : cb(null, "127.0.0.1", 4);
+    const port = new URL(base).port;
+    assert.match(
+      (await net.pinnedGet(`http://rebind.example:${port}/`, { dns })).reason,
+      /rebind\.example points at a private or local address \(127\.0\.0\.1\)/,
+    );
+  } finally {
+    srv.close();
+  }
 });
 
 test("bodyUpTo: the body up to the cap, or null past it", async () => {

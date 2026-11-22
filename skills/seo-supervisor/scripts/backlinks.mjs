@@ -3,12 +3,10 @@
 // Checks that known backlinks still exist: opens each linking page and looks for an <a href> to the site.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { lookup } from "node:dns";
-import { get as httpGet } from "node:http";
-import { get as httpsGet } from "node:https";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
 import { parseCsv } from "./lib/csv.mjs";
-import { isPublic, guarded } from "./checks/outbound.mjs";
+import { isPublic, pinnedGet } from "./lib/net.mjs";
 
 const USAGE =
   "usage: node backlinks.mjs --site https://www.example.com (--keys seo-audit/keys.json | --csv links.csv | --urls links.txt) [--out seo-audit/backlinks.json] [--yes]";
@@ -24,8 +22,6 @@ const fail = msg => {
 };
 const obj = x => (x && typeof x === "object" ? x : null);
 const bare = h => h.toLowerCase().replace(/^www\./, "");
-const open = (u, opts) =>
-  new Promise((ok, ko) => (u.startsWith("https:") ? httpsGet : httpGet)(u, opts, ok).on("error", ko));
 
 const ATTR = /([^\s"'=<>/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
 const attrs = tag => {
@@ -159,76 +155,59 @@ function unread(page, cut, moved, host) {
 
 // pinnedGet follows redirects by hand so every hop gets the public-address check. robots.txt isn't read: each visit is
 // one requested page, like opening it in a browser, not a crawl.
-async function visit(url, host, allow, timeout, lookup) {
-  const signal = AbortSignal.timeout(timeout),
-    opts = { signal, lookup, headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml" } };
+async function visit(url, host, allow, timeout, dns) {
   const no = reason => ({ state: "unreachable", reason });
-  let u = url;
-  try {
-    for (let hop = 0; hop <= HOPS; hop++) {
-      if (!(await allow(u)))
-        return no(
-          hop
-            ? `it redirects to ${u}, which isn't a public web address, so that wasn't visited`
-            : "isn't a public web address, so it wasn't visited",
-        );
-      const r = await open(u, opts),
-        status = r.statusCode,
-        ok = status >= 200 && status < 300;
-      const to = status >= 300 && status < 400 && r.headers.location,
-        type = (r.headers["content-type"] || "").split(";")[0].trim();
-      if (to || !ok || (type && !/html/i.test(type))) r.destroy();
-      if (to) {
-        u = new URL(to, u).href;
-        continue;
-      }
-      if (status === 404 || status === 410)
-        return {
-          state: "gone",
-          reason: `the page answered ${status}: ${status === 404 ? "it no longer exists" : "it was removed"}`,
-        };
-      if (!ok)
-        return no(
-          `the site answered ${status}${status === 401 || status === 403 ? ", turning the visit away" : status >= 500 ? ", an error on their side" : ""}`,
-        );
-      if (type && !/html/i.test(type)) return no(`it isn't a web page (${type}), so its links couldn't be read`);
-      const chunks = [];
-      let n = 0;
-      for await (const c of r) {
-        chunks.push(c);
-        if ((n += c.length) > CAP) break;
-      }
-      const page = Buffer.concat(chunks).toString();
-      if (!type && !/<!doctype html|<html[\s>]/i.test(page.slice(0, 1024)))
-        return no(
-          "it didn't say what kind of file it is and doesn't look like a web page, so its links couldn't be read",
-        );
-      const links = linksTo(page, u, host);
-      if (links.length)
-        return {
-          state: "live",
-          rel: links.every(l => l.rel) ? [...new Set(links.flatMap(l => l.rel.split(" ")))].join(" ") : null,
-          links: links.slice(0, 5),
-          page: pageNofollow(page, robotsLines(r.rawHeaders)),
-        };
-      const why = unread(page, n > CAP, u !== url && u, host);
-      return why
-        ? no(why)
-        : {
-            state: "gone",
-            reason: `the page loads but no longer links to your site${u !== url ? `; it now redirects to ${u}` : ""}`,
-          };
+  const read = async (r, u) => {
+    const status = r.statusCode,
+      ok = status >= 200 && status < 300,
+      type = (r.headers["content-type"] || "").split(";")[0].trim();
+    if (!ok || (type && !/html/i.test(type))) r.destroy();
+    if (status === 404 || status === 410)
+      return {
+        state: "gone",
+        reason: `the page answered ${status}: ${status === 404 ? "it no longer exists" : "it was removed"}`,
+      };
+    if (!ok)
+      return no(
+        `the site answered ${status}${status === 401 || status === 403 ? ", turning the visit away" : status >= 500 ? ", an error on their side" : ""}`,
+      );
+    if (type && !/html/i.test(type)) return no(`it isn't a web page (${type}), so its links couldn't be read`);
+    const chunks = [];
+    let n = 0;
+    for await (const c of r) {
+      chunks.push(c);
+      if ((n += c.length) > CAP) break;
     }
-    return no(`it redirects more than ${HOPS} times`);
-  } catch (e) {
-    return no(
-      signal.aborted
-        ? `no answer within ${timeout / 1000} seconds`
-        : e.code === "ENOTPUBLIC"
-          ? e.message
-          : `couldn't connect (${e.code || e.cause?.code || e.message})`,
-    );
-  }
+    const page = Buffer.concat(chunks).toString();
+    if (!type && !/<!doctype html|<html[\s>]/i.test(page.slice(0, 1024)))
+      return no(
+        "it didn't say what kind of file it is and doesn't look like a web page, so its links couldn't be read",
+      );
+    const links = linksTo(page, u, host);
+    if (links.length)
+      return {
+        state: "live",
+        rel: links.every(l => l.rel) ? [...new Set(links.flatMap(l => l.rel.split(" ")))].join(" ") : null,
+        links: links.slice(0, 5),
+        page: pageNofollow(page, robotsLines(r.rawHeaders)),
+      };
+    const why = unread(page, n > CAP, u !== url && u, host);
+    return why
+      ? no(why)
+      : {
+          state: "gone",
+          reason: `the page loads but no longer links to your site${u !== url ? `; it now redirects to ${u}` : ""}`,
+        };
+  };
+  const r = await pinnedGet(url, {
+    allow,
+    timeout,
+    dns,
+    hops: HOPS,
+    read,
+    headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml" },
+  });
+  return r.state ? r : no(r.reason);
 }
 
 // A #fragment is the same page.
@@ -280,14 +259,13 @@ export function allNofollow(live) {
 export async function checkBacklinks(urls, site, { allow = isPublic, timeout = 15000, dns = lookup } = {}) {
   const host = bare(new URL(site).hostname),
     { list, extra } = pick(urls),
-    results = [],
-    connect = guarded(dns);
+    results = [];
   let next = 0;
   await Promise.all(
     Array.from({ length: Math.min(AT_ONCE, list.length) }, async () => {
       while (next < list.length) {
         const i = next++;
-        results[i] = { url: list[i], ...(await visit(list[i], host, allow, timeout, connect)) };
+        results[i] = { url: list[i], ...(await visit(list[i], host, allow, timeout, dns)) };
       }
     }),
   );
