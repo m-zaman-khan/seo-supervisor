@@ -632,8 +632,14 @@ function pathsIn(payload) {
   if (typeof payload?.file_path === "string") out.add(payload.file_path);
   for (const src of [input, obj(payload?.toolArgs)])
     for (const k of ["file_path", "filePath", "path"]) if (typeof src[k] === "string") out.add(src[k]);
-  for (const c of [].concat(input.command ?? []))
-    if (typeof c === "string")
+  // Copilot's apply_patch toolArgs is the patch or an object holding it; its hooks reference doesn't give the type.
+  // Other tools' text fields are written content, never a list of files.
+  const patches = [
+    ...[].concat(input.command ?? []),
+    ...(payload?.toolName === "apply_patch" ? [payload.toolArgs, ...Object.values(obj(payload.toolArgs))] : []),
+  ];
+  for (const c of patches)
+    if (typeof c === "string" && c.includes("*** "))
       for (const m of c.matchAll(/^\*\*\* (?:Add File|Update File|Move to): (.+)$/gm)) out.add(m[1].trim());
   return out;
 }

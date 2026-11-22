@@ -42,6 +42,26 @@ test("schema-check --hook cursor hands structured data errors back to Cursor as 
   assert.match(out.additional_context, /Prodcut/);
 });
 
+test("schema-check --hook copilot finds the file an apply_patch edit touched, whichever field holds the patch", async () => {
+  const { writeFileSync } = await import("node:fs");
+  const { tmp } = await import("./helpers.mjs");
+  const dir = tmp(),
+    file = join(dir, "page.html");
+  writeFileSync(
+    file,
+    '<!doctype html><html><head><script type="application/ld+json">{"@context":"https://schema.org","@type":"Prodcut","name":"Boiler"}</script></head><body></body></html>',
+  );
+  const patch = "*** Begin Patch\n*** Update File: page.html\n@@\n-old\n+new\n*** End Patch";
+  for (const toolArgs of [JSON.stringify({ input: patch }), patch]) {
+    const r = spawnSync(process.execPath, [join(SCRIPTS, "schema-check.mjs"), "--hook", "copilot"], {
+      input: JSON.stringify({ toolName: "apply_patch", toolArgs, cwd: dir }),
+      encoding: "utf8",
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(JSON.parse(r.stdout).additionalContext, /Prodcut/);
+  }
+});
+
 test("an unknown agent after an error stays silent on stdout and allows", () => {
   const r = guard("no-such-agent", "x", "{}");
   assert.equal(r.status, 0);
