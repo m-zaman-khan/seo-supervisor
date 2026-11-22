@@ -32,7 +32,7 @@ import { cellMd, esc, inl, mdSafe, noteCode, noteMd, num } from "./format.mjs";
 // Anything that isn't an object (a string, or a number or nothing read from the audit file) is text.
 /** @param {Text} t */
 const H = t =>
-  typeof t === "string"
+  typeof t !== "object" || t === null
     ? esc(t)
     : Array.isArray(t)
       ? t.map(H).join("")
@@ -47,7 +47,7 @@ const H = t =>
               : t.html;
 /** @param {Text} t */
 const M = t =>
-  typeof t === "string"
+  typeof t !== "object" || t === null
     ? noteMd(t)
     : Array.isArray(t)
       ? t.map(M).join("")

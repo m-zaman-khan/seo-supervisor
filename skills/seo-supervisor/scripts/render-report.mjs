@@ -48,7 +48,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     googleUpdatesText,
     desktopSpeedText,
   } = overviewLines(m);
-  const { linked, linksHtml, linksMd, moreLinks, linkIdeas, queryGaps, linkedOnce, linkStrength } = linkPanels(m);
+  const { linked, links, moreLinks, linkIdeas, queryGaps, linkedOnce, linkStrength } = linkPanels(m);
   const {
     trafficFor,
     trafficOf,
@@ -94,7 +94,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   // The Overview's panels, in order: on the page after the score views and search lines, in the Markdown after the area
   // scores. Each is a [page, Markdown] pair: drawn() makes one from a panel's view model (report/panel.mjs).
   const panels = [
-    [linksHtml, linksMd],
+    drawn(links),
     drawn(agents),
     drawn(writing),
     [audienceHtml, audienceMd],

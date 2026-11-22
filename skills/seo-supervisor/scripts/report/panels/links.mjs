@@ -51,99 +51,52 @@ export function linkPanels({ raw }) {
   const scInfoLine = () =>
     `${scMix ? "A natural mix is mostly your brand, your web address and words that say what the page is about. " : ""}Information only: it doesn't change the score.`;
   const scCount = x => (Number.isFinite(x.links) ? plural(x.links, "link") : "");
-  const scList = (list, f) =>
-    `<ul class="lim">${list
-      .slice(0, 5)
-      .map(x => `<li><b><code>${esc(x[f])}</code></b><span>${scCount(x)}</span></li>`)
-      .join("")}</ul>`;
+  const scList = (list, f) => ({ rows: list.slice(0, 5).map(x => [{ code: x[f] }, scCount(x)]) });
   // worthALook (links-import.mjs): standout links, each with why and what to look at.
   const looks = (Array.isArray(raw.worthALook) ? raw.worthALook : [])
     .filter(x => obj(x) && ["subject", "why", "look"].every(k => typeof x[k] === "string" && x[k]))
     .slice(0, 10);
   const lookEx = x => (Array.isArray(x.examples) ? x.examples.filter(e => typeof e === "string" && e).slice(0, 5) : []);
   const LOOK_INTRO = "Worth a look: links that stand out. It isn't a score or a finding, and most turn out to be fine.";
-  const looksHtml = () =>
-    looks.length
-      ? `<p>${esc(LOOK_INTRO)}</p><ul class="lim">${looks
-          .map(
-            x =>
-              `<li><b>${esc(x.subject)}</b><span>${esc(x.why)} ${esc(x.look)}${
-                lookEx(x).length
-                  ? ` For example: ${lookEx(x)
-                      .map(e => `<code>${esc(e)}</code>`)
-                      .join(", ")}`
-                  : ""
-              }</span></li>`,
-          )
-          .join("")}</ul>`
-      : "";
-  const linksHtml = () =>
-    hasSc || bingLinks || linkCheckLine || looks.length
-      ? `
-    <details class="how links"><summary>Links from other sites${linkSources ? ` (${linkSources})` : ""}</summary>${scLine() ? `<p>${esc(scLine())}</p>` : ""}${scSites.length ? `<p>The sites with the most links to you:</p>${scList(scSites, "domain")}` : ""}${scPages.length ? `<p>Your most-linked pages in Search Console:</p>${scList(scPages, "url")}` : ""}${scMix ? `<p>${esc(scMixLine())}</p>` : ""}${hasSc ? `<p>${esc(scInfoLine())}</p>` : ""}${looksHtml()}${
-      linkCheckLine
-        ? `<p>${esc(linkCheckLine)}</p>${
-            goneLinks.length
-              ? `<ul class="lim">${goneLinks
-                  .slice(0, 10)
-                  .map(g => `<li><b><code>${esc(g.url)}</code></b><span>${esc(g.reason)}</span></li>`)
-                  .join("")}</ul>`
-              : ""
-          }`
-        : ""
-    }${topLinked.length ? `<p>${hasSc ? "Your most-linked pages in Bing:" : "The pages with the most links from other sites:"}</p><ul class="lim">${topLinked.map(p => `<li><b><code>${esc(p.url)}</code></b><span>${linkCount(p)}</span></li>`).join("")}</ul>` : ""}${linkSample.length ? `<p>${hasSc ? "Some of Bing's links to the home page:" : "Some of the links to the home page:"}</p><ul class="lim">${linkSample.map(s => `<li><b><code>${esc(s.url)}</code></b><span>${esc(s.anchorText || "")}</span></li>`).join("")}</ul>` : ""}</details>`
-      : "";
-  const linksMd = () => {
-    if (!(hasSc || bingLinks || linkCheckLine || looks.length)) return [];
-    // Other sites' addresses go in code spans, and their text has Markdown and HTML characters escaped.
-    const code = noteCode,
-      text = noteMd;
-    const list = (l, f) => l.slice(0, 5).map(x => `- ${code(x[f])}${scCount(x) ? ` ${scCount(x)}` : ""}`);
-    return [
-      `## Links from other sites${linkSources ? ` (${linkSources})` : ""}`,
-      "",
-      ...(scLine() ? [scLine(), ""] : []),
-      ...(scSites.length ? ["The sites with the most links to you:", "", ...list(scSites, "domain"), ""] : []),
-      ...(scPages.length ? ["Your most-linked pages in Search Console:", "", ...list(scPages, "url"), ""] : []),
-      ...(scMix ? [scMixLine(), ""] : []),
-      ...(hasSc ? [scInfoLine(), ""] : []),
-      ...(looks.length
-        ? [
-            LOOK_INTRO,
-            "",
-            ...looks.map(
-              x =>
-                `- **${text(x.subject)}**: ${text(x.why)} ${text(x.look)}${lookEx(x).length ? ` For example: ${lookEx(x).map(code).join(", ")}` : ""}`,
-            ),
-            "",
-          ]
-        : []),
-      ...(linkCheckLine
-        ? [
-            linkCheckLine,
-            "",
-            ...goneLinks.slice(0, 10).map(g => `- ${code(g.url)} ${text(g.reason)}`),
-            ...(goneLinks.length ? [""] : []),
-          ]
-        : []),
-      ...(topLinked.length
-        ? [
-            hasSc ? "Your most-linked pages in Bing:" : "The pages with the most links from other sites:",
-            "",
-            ...topLinked.map(p => `- ${code(p.url)} ${linkCount(p)}`),
-            "",
-          ]
-        : []),
-      ...(linkSample.length
-        ? [
-            hasSc ? "Some of Bing's links to the home page:" : "Some of the links to the home page:",
-            "",
-            ...linkSample.map(s => `- ${code(s.url)}${s.anchorText ? ` ${text(s.anchorText)}` : ""}`),
-            "",
-          ]
-        : []),
-    ];
-  };
+  // Other sites' addresses as code, their text escaped. "Bing's" in a label is written into the page as it is.
+  const label = s => ({ p: { html: s, md: s } });
+  const links = () =>
+    (hasSc || bingLinks || linkCheckLine || looks.length) && {
+      cls: "links",
+      title: `Links from other sites${linkSources ? ` (${linkSources})` : ""}`,
+      blocks: [
+        scLine() && { p: scLine() },
+        scSites.length && { p: "The sites with the most links to you:" },
+        scSites.length && scList(scSites, "domain"),
+        scPages.length && { p: "Your most-linked pages in Search Console:" },
+        scPages.length && scList(scPages, "url"),
+        scMix && { p: scMixLine() },
+        hasSc && { p: scInfoLine() },
+        looks.length && { p: LOOK_INTRO },
+        {
+          bold: true,
+          rows: looks.map(x => [
+            x.subject,
+            [
+              x.why,
+              " ",
+              x.look,
+              lookEx(x).length ? [" For example: ", lookEx(x).map((e, i) => [i ? ", " : "", { code: e }])] : "",
+            ],
+            ": ",
+          ]),
+        },
+        linkCheckLine && { p: linkCheckLine },
+        linkCheckLine && { rows: goneLinks.slice(0, 10).map(g => [{ code: g.url }, g.reason ?? ""]) },
+        topLinked.length && {
+          p: hasSc ? "Your most-linked pages in Bing:" : "The pages with the most links from other sites:",
+        },
+        { rows: topLinked.map(p => [{ code: p.url }, linkCount(p)]) },
+        linkSample.length &&
+          label(hasSc ? "Some of Bing's links to the home page:" : "Some of the links to the home page:"),
+        { rows: linkSample.map(s => [{ code: s.url }, s.anchorText || ""]) },
+      ],
+    };
 
   // More about links, in one collapsed panel. Names, addresses and link text come from other sites, so each is escaped
   // (code spans in the Markdown).
@@ -404,5 +357,5 @@ export function linkPanels({ raw }) {
         { rows: strength.weak.map(x => [{ code: x.u }, weakTail(x)]) },
       ],
     };
-  return { linked, linksHtml, linksMd, moreLinks, linkIdeas, queryGaps, linkedOnce: linkedOncePanel, linkStrength };
+  return { linked, links, moreLinks, linkIdeas, queryGaps, linkedOnce: linkedOncePanel, linkStrength };
 }
