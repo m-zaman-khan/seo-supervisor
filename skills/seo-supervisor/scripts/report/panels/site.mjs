@@ -226,26 +226,21 @@ export function sitePanels({ raw, mdFile, site, areas, overall, open, buildRules
   };
   const BROWSER_INTRO =
     "The sample pages loaded again in Chrome at desktop and phone size. Information only; what is a finding is listed with the other findings.";
-  const browserHtml = () => {
+  const browser = () => {
     const s = firstScreenLine(),
       rows = renderRows();
-    if (!s && !rows.length && !chosenPage) return "";
-    return `\n    <details class="how render"><summary>What the browser saw</summary><p>${esc(BROWSER_INTRO)}</p>${s ? `<p>${esc(s)}</p>` : ""}${rows.length ? `<ul class="lim">${rows.map(([u, b]) => `<li><b><code>${esc(notePath(u))}</code></b><span>${esc(b.join(" · "))}</span></li>`).join("")}</ul>` : ""}${chosenPage ? `<p>You chose <code>${esc(notePath(chosenPage.url))}</code>${esc(chosenText())}</p>` : ""}</details>`;
-  };
-  const browserMd = () => {
-    const s = firstScreenLine(),
-      rows = renderRows();
-    if (!s && !rows.length && !chosenPage) return [];
-    return [
-      "## What the browser saw",
-      "",
-      BROWSER_INTRO,
-      "",
-      ...(s ? [s, ""] : []),
-      ...rows.map(([u, b]) => `- ${noteCode(notePath(u))} ${noteMd(b.join(" · "))}`),
-      ...(rows.length ? [""] : []),
-      ...(chosenPage ? [`You chose ${noteCode(notePath(chosenPage.url))}${noteMd(chosenText())}`, ""] : []),
-    ];
+    return (
+      (s || rows.length || chosenPage) && {
+        cls: "render",
+        title: "What the browser saw",
+        blocks: [
+          { p: BROWSER_INTRO },
+          s && { p: s },
+          { rows: rows.map(([u, b]) => [{ code: notePath(u) }, b.join(" · ")]) },
+          chosenPage && { p: ["You chose ", { code: notePath(chosenPage.url) }, chosenText()] },
+        ],
+      }
+    );
   };
 
   // Each page with open findings is scored by the site's model, counting only findings whose examples name it
@@ -364,8 +359,7 @@ export function sitePanels({ raw, mdFile, site, areas, overall, open, buildRules
     viewsMd,
     hstsPreload,
     crawlCoverage,
-    browserHtml,
-    browserMd,
+    browser,
     pageScoresHtml,
     pageScoresMd,
     checkSettingsHtml,
