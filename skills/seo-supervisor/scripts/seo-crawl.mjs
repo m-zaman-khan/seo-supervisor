@@ -65,7 +65,8 @@ import { trustFeatures, trustSignals } from "./checks/trust.mjs";
 import { agentFeatures, agentFiles, bingAiRules, BING_PREFS, VALUED } from "./checks/agents.mjs";
 import { allowedBy, checkRobots, versionedNote, aiBotAccess, aiRobotRules } from "./checks/robots.mjs";
 import { SITEMAP_KEEP, findSitemaps, checkSitemapFiles, checkSitemapEntries } from "./checks/sitemap.mjs";
-import { agentRule, analyze, productImages } from "./crawl/page.mjs";
+import { analyze } from "./crawl/page.mjs";
+import { createCrawler } from "./crawl/queue.mjs";
 import { writingText, writingFeatures } from "./checks/writing.mjs";
 import { checkBusinessType, detectBusinessType } from "./checks/business-type.mjs";
 import { cookieProblems, cspProblems, hstsRead, insecureResources, serverHoles } from "./checks/technical.mjs";
@@ -227,94 +228,19 @@ const sitemapHreflang = u =>
 const page = { start: START, startOrigin: START_ORIGIN, banned: BANNED, verify: VERIFY, toCrawl, sitemapHreflang };
 
 // ---------- crawl ----------
-const pages = new Map(); // requested crawl URL -> record
-const queue = [];
-const seen = new Set();
-let fetched = 0,
-  capped = false;
-function enqueue(u, from) {
-  const c = clean(u, from);
-  if (!c) return;
-  const x = new URL(c);
-  if (x.origin !== START_ORIGIN) return;
-  if (FILE_EXT.test(x.pathname)) return;
-  if (x.search && !INCLUDE_QUERY) return;
-  if (!inSection(x.pathname) && c !== clean(START.href)) return; // the start page is always the way in
-  if (seen.has(c)) return;
-  seen.add(c);
-  queue.push(c);
-}
-async function crawlOne(u) {
-  const r = await follow(u);
-  const rec = {
-    url: u,
-    status: r.status,
-    finalUrl: r.finalUrl,
-    chain: r.chain,
-    error: r.error || null,
-    headers: r.headers,
-    ms: r.ms,
-  };
-  pages.set(u, rec);
-  if (r.status === 200 && /html/.test(r.ct) && r.body) {
-    // Only a crawler prefix makes the joined header ambiguous, so the lines are read apart only then.
-    const xrt = r.headers.get("x-robots-tag");
-    // A check that throws skips this page's checks with a note. The page answered 200, so it's never reported as a
-    // server error or a broken link.
-    let a;
-    try {
-      a = analyze(
-        r.finalUrl,
-        r.body,
-        r.headers,
-        xrt && xrt.toLowerCase().split(",").some(agentRule) ? await xRobotsLines(r.finalUrl) : null,
-        page,
-      );
-    } catch (e) {
-      notes.push(
-        `A check couldn't read ${r.finalUrl} (${String(e.message).split("\n")[0].slice(0, 120)}), so that page's checks were skipped.`,
-      );
-      return;
-    }
-    Object.assign(rec, a, { html: true, productImages: productImages(r.body) });
-    rec.links = [];
-    rec.mainLinks = new Set(a.mainHrefs.map(h => clean(h, a.base)).filter(Boolean));
-    for (const l of a.anchors) {
-      if (!l.href || /^(mailto|tel|javascript|sms):/i.test(l.href)) continue;
-      const c = clean(l.href, a.base);
-      if (!c) continue;
-      if (new URL(c).origin !== START_ORIGIN) continue;
-      rec.links.push({ url: c, text: l.text });
-      enqueue(c, r.finalUrl);
-    }
-    for (const b of a.crumbs) enqueue(toCrawl(b), r.finalUrl);
-    for (const c of a.canonicals.slice(0, 1)) {
-      const x = c && urlOr(c, a.base);
-      if (x) enqueue(toCrawl(x.href), r.finalUrl);
-    }
-  }
-}
-async function runQueue() {
-  await new Promise(done => {
-    let active = 0;
-    const pump = () => {
-      while (active < CONC && queue.length && fetched < MAX) {
-        const u = queue.shift();
-        active++;
-        fetched++;
-        crawlOne(u)
-          .catch(e => pages.set(u, { url: u, status: 0, error: String(e) }))
-          .finally(() => {
-            active--;
-            pump();
-          });
-      }
-      if (fetched >= MAX && queue.length) capped = true;
-      if (active === 0 && (!queue.length || fetched >= MAX)) done();
-    };
-    pump();
-  });
-}
+const crawler = createCrawler({
+  start: START,
+  startOrigin: START_ORIGIN,
+  max: MAX,
+  conc: CONC,
+  includeQuery: INCLUDE_QUERY,
+  inSection,
+  fetcher: { follow, xRobotsLines },
+  page,
+  toCrawl,
+  notes,
+});
+const { pages, queue, seen, enqueue } = crawler;
 
 // ---------- main ----------
 const t0 = Date.now();
@@ -339,7 +265,7 @@ if (!SITE_ORIGIN && sm.entries.length) {
 checkSitemapFiles(sm, smUrls, { add, findings });
 // The home page goes first: its canonical may give the public origin.
 enqueue(START.href);
-await runQueue();
+await crawler.run();
 const home = pages.get(START.href);
 if (!SITE_ORIGIN && home && home.canonicals && home.canonicals[0]) {
   try {
@@ -360,7 +286,8 @@ const smSet = checkSitemapEntries(sm, firstSm, {
   inSection,
   crawler: { seen, queue },
 });
-await runQueue();
+await crawler.run();
+const { fetched, capped } = crawler; // final from here: the queue runs no more
 
 // Probes: soft 404, slash variants, well-known files and security headers.
 evalRules("CRAWL-05", "URL-02", "TRUST-01", "TRUST-02");
