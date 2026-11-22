@@ -173,6 +173,7 @@ function entries(format, guard, project) {
 // https://docs.cline.bot/sdk/plugins
 const clinePlugin =
   guard => `// SEO Supervisor's guard for Cline. Installed by npx ${NAME}; npx ${NAME} --uninstall removes it.
+// Cline runs plugins in its CLI, SDK and Kanban, not yet in the VS Code or JetBrains extension.
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";

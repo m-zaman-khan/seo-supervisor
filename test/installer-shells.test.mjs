@@ -162,6 +162,23 @@ test("Copilot: edits through apply_patch and str_replace_editor are checked, and
   assert.doesNotMatch("view", new RegExp(`^(?:${m})$`));
 });
 
+test("Cline: the help and the install say its guard runs in Cline's CLI, SDK and Kanban, not the VS Code or JetBrains extension", async () => {
+  // Cline's plugins work only in its SDK, CLI and Kanban, not in the VS Code or JetBrains extensions.
+  // https://docs.cline.bot/customization/plugins
+  const says = /Cline[^.]*CLI, SDK and Kanban[^.]*not[^.]*VS Code or JetBrains extension/;
+  assert.match((await node([BIN, "--help"])).stdout.replace(/\s+/g, " "), says);
+  const home = tmp();
+  assert.match(
+    (await node([BIN, "--agent", "cline", "--yes"], { env: env(home), cwd: home })).stdout.replace(/\s+/g, " "),
+    says,
+  );
+  assert.doesNotMatch(
+    (await node([BIN, "--agent", "cline", "--yes", "--no-guard"], { env: env(home), cwd: home })).stdout,
+    /Kanban/,
+    "no guard, no note",
+  );
+});
+
 test("a home folder with letters outside ASCII gets the whole skill (Node 24's cpSync writes to a garbled folder on Windows)", async () => {
   const home = join(tmp(), "José D’Souza"),
     cwd = tmp();

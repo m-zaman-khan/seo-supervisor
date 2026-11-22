@@ -56,6 +56,7 @@ With no options it asks where to install and for which agents.
   --no-guard        Don't add the guard hook (it stops, or asks you first, before risky steps such as submitting
                     sitemaps, editing robots.txt or redirects, or a key pasted in chat). On by default for Codex,
                     Cursor, GitHub Copilot, Devin and Cline; added to their hook files next to any hooks you have.
+                    Cline runs it in its CLI, SDK and Kanban only, not yet in the VS Code or JetBrains extension.
   --force           Replace a skill folder, command or subagent file that isn't SEO Supervisor's
   --with-lighthouse Also install the optional Lighthouse add-on (about 170 MB, in the settings folder's tools: ~/.seo-supervisor/tools, or SEO_SUPERVISOR_HOME; not your project)
   --no-lighthouse   Don't ask about Lighthouse
@@ -466,4 +467,9 @@ console.log(
 // Codex runs a new or changed hook only once it's trusted in /hooks. https://learn.chatgpt.com/docs/hooks
 if (!opts.noGuard && keys.some(k => agentByKey(k).key === "codex"))
   console.log("Codex runs the guard hook once you trust it: type /hooks in Codex.");
+// Cline plugins run only in its SDK, CLI and Kanban. https://docs.cline.bot/customization/plugins
+if (!opts.noGuard && keys.some(k => agentByKey(k).key === "cline"))
+  console.log(
+    "Cline runs the guard in its CLI, SDK and Kanban only, not yet in the VS Code or JetBrains extension (they don't run plugins), so there the guard is off.",
+  );
 process.exit(problems ? 1 : 0);
