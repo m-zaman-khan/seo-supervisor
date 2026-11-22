@@ -419,7 +419,9 @@ for (const scope of ["user", "project"]) {
         read(p),
         agent === "cline"
           ? /guard\.mjs"[\s\S]*"--agent", "cline", "--event", "beforeTool"/
-          : new RegExp(`scripts/guard\\.mjs(\\\\"|')? --agent ${agent} --event \\w+`),
+          : new RegExp(
+              `scripts/guard\\.mjs((\\\\"|')? --agent ${agent} --event \\w+|'.*'--agent','${agent}','--event','\\w+')`,
+            ),
         `${agent} guard in ${p}`,
       );
     if (scope === "project")
@@ -428,8 +430,9 @@ for (const scope of ["user", "project"]) {
         /"node '\.agents\/skills\/seo-supervisor\/scripts\/guard\.mjs' --agent cursor --event beforeShellExecution"/,
         "a committed project install names the guard relative to the project, quoted",
       );
+    // Codex and Devin may start in a subfolder: node finds the guard from there up (installer-shells.test.mjs runs it).
     if (scope === "project")
-      assert.match(read(".codex/hooks.json"), /\$\(git rev-parse --show-toplevel\)\/\.agents\/skills/);
+      assert.match(read(".codex/hooks.json"), /node -e .*'\.agents\/skills\/seo-supervisor\/scripts\/guard\.mjs'/);
     for (const [agent, p] of Object.entries(hooks)) {
       const skill = targetsFor([agentByKey(agent === "copilot" ? "github-copilot" : agent).key], scope, {
         home,

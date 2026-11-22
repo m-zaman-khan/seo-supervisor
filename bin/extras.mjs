@@ -114,11 +114,20 @@ const QUOTE = {
   ps: p => `'${p.replace(/['‘’‚‛]/g, "$&$&")}'`,
   cmd: p => `"${p}"`,
 };
+// A project install is committed and the agent may start in a subfolder. Cursor runs project hooks from the project
+// root and Copilot takes a cwd relative to the repo root, so a relative path works there. Codex runs hooks from the
+// session's folder and Devin sets DEVIN_PROJECT_DIR, each under a shell that varies by machine, so for those two node
+// walks up from DEVIN_PROJECT_DIR or the cwd to the first folder holding the guard. The script has no " $ ` % ! or \,
+// so sh, cmd and PowerShell all pass it to node unchanged.
+// https://docs.devin.ai/cli/extensibility/hooks/overview
+const finder = (rel, format, event) =>
+  `node -e "const p=require('path'),f=require('fs');let d=${format === "devin" ? "process.env.DEVIN_PROJECT_DIR||" : ""}process.cwd(),g;for(;;d=p.dirname(d)){g=p.join(d,'${rel}');if(f.existsSync(g)||p.dirname(d)==d)break}process.exitCode=require('child_process').spawnSync(process.execPath,[g,'--agent','${format}','--event','${event}'],{stdio:'inherit'}).status??1"`;
 /** The hook entries for one agent, by event. guard is absolute, or relative to the project for a project install. */
-function entries(format, guard) {
-  const win = process.platform === "win32";
+function entries(format, guard, project) {
+  const win = process.platform === "win32",
+    found = project && (format === "codex" || format === "devin");
   const run = (event, shell) =>
-    `node ${guard.startsWith("$(") ? `"${guard}"` : QUOTE[shell](guard)} --agent ${format} --event ${event}`;
+    found ? finder(guard, format, event) : `node ${QUOTE[shell](guard)} --agent ${format} --event ${event}`;
   if (format === "cursor") {
     const c = e => ({ command: run(e, win ? "ps" : "sh") });
     return {
@@ -133,6 +142,7 @@ function entries(format, guard) {
       type: "command",
       bash: `${run(event, "sh")} || true`,
       powershell: `${run(event, "ps")}; exit 0`,
+      ...(project ? { cwd: "." } : {}),
       timeoutSec: 10,
     });
     return {
@@ -145,7 +155,7 @@ function entries(format, guard) {
       ? {
           type: "command",
           command: run(event, "sh"),
-          commandWindows: run(event, "cmd"),
+          ...(found ? {} : { commandWindows: run(event, "cmd") }),
           statusMessage: "SEO Supervisor guard",
         }
       : { type: "command", command: run(event, win ? "cmd" : "sh"), timeout: 10 };
@@ -164,16 +174,20 @@ function entries(format, guard) {
 const clinePlugin =
   guard => `// SEO Supervisor's guard for Cline. Installed by npx ${NAME}; npx ${NAME} --uninstall removes it.
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { fileURLToPath } from "node:url";
 const GUARD = ${JSON.stringify(guard)};
-let cwd = process.cwd();
+let cwd = process.cwd(), root = "";
+try { root = fileURLToPath(new URL("../..", import.meta.url)); } catch {}
 export default {
   name: "seo-supervisor-guard",
   manifest: { capabilities: ["hooks"] },
   setup(api, ctx) { if (ctx && ctx.cwd) cwd = ctx.cwd; },
   hooks: {
     beforeTool(context) {
-      const r = spawnSync("node", [isAbsolute(GUARD) ? GUARD : join(cwd, GUARD), "--agent", "cline", "--event", "beforeTool"], { cwd, encoding: "utf8", timeout: 2500,
+      const guard = isAbsolute(GUARD) ? GUARD : [root, cwd].filter(Boolean).map(d => join(d, GUARD)).find(p => existsSync(p)) || GUARD;
+      const r = spawnSync("node", [guard, "--agent", "cline", "--event", "beforeTool"], { cwd, encoding: "utf8", timeout: 2500,
         input: JSON.stringify({ tool: context && context.toolCall && context.toolCall.name, input: context && context.input, cwd }) });
       try { return r.status === 0 && r.stdout.trim() ? JSON.parse(r.stdout) : undefined; } catch { return undefined; }
     },
@@ -208,10 +222,10 @@ const readJson = file => (existsSync(file) ? JSON.parse(readFileSync(file, "utf8
 
 /** Adds the guard for one agent (replacing an older copy). project: guard is relative to the project root.
  * Returns a problem message, or null. */
-export function addHooks(format, file, guard, created, root) {
+export function addHooks(format, file, guard, created, root, project = false) {
   if (format === "copilot")
     return (
-      put(file, JSON.stringify({ version: 1, hooks: entries(format, guard) }, null, 2) + "\n", created, root),
+      put(file, JSON.stringify({ version: 1, hooks: entries(format, guard, project) }, null, 2) + "\n", created, root),
       null
     );
   if (format === "cline") return (put(file, clinePlugin(guard), created, root), null);
@@ -223,7 +237,7 @@ export function addHooks(format, file, guard, created, root) {
   }
   const events = eventsOf(format, file, o);
   strip(events);
-  for (const [event, list] of Object.entries(entries(format, guard)))
+  for (const [event, list] of Object.entries(entries(format, guard, project)))
     events[event] = [...(Array.isArray(events[event]) ? events[event] : []), ...list];
   put(file, JSON.stringify(o, null, 2) + "\n", created, root);
   return null;
@@ -270,14 +284,7 @@ export function installExtras(t, { src, guard, force, scope, root, created, show
           lines.push(`removed  the guard from ${show(x.path)} (--no-guard)`);
         continue;
       }
-      // Codex runs hooks from the session's folder, so a project install names the guard from the repository's root.
-      const err = addHooks(
-        x.format,
-        x.path,
-        scope === "project" && x.format === "codex" ? `$(git rev-parse --show-toplevel)/${guardRef}` : guardRef,
-        created,
-        root,
-      );
+      const err = addHooks(x.format, x.path, guardRef, created, root, scope === "project" && !isAbsolute(guardRef));
       if (err) problems.push(err);
       else lines.push(`guard    ${show(x.path)}`);
       continue;

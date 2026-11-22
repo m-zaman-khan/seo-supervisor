@@ -67,7 +67,12 @@ function hookCommands(at, scope) {
     ...(codex.commandWindows ? [["codex", codex.commandWindows, WIN ? ["cmd", "ps"] : []]] : []),
     // Cursor's desktop app runs hooks through PowerShell on Windows, and project hooks from the project root.
     // https://cursor.com/docs/hooks
-    ["cursor", json(join(at, ".cursor", "hooks.json")).hooks.beforeShellExecution[0].command, WIN ? ["ps"] : ["sh"]],
+    [
+      "cursor",
+      json(join(at, ".cursor", "hooks.json")).hooks.beforeShellExecution[0].command,
+      WIN ? ["ps"] : ["sh"],
+      scope === "project" ? "." : undefined,
+    ],
     ["copilot", copilot.bash, HAS_SH ? ["sh"] : [], copilot.cwd],
     ["copilot", copilot.powershell, WIN ? ["ps"] : [], copilot.cwd],
     ["devin", devin.PreToolUse[0].hooks[0].command, ALL], // Devin's docs don't name its shell
@@ -119,6 +124,52 @@ for (const name of ["D'Souza", "A&B", "x(1)", "D’Souza", "Sam Lee"]) {
     assert.ok(runs >= 4, `${runs} shell runs`);
   });
 }
+
+test("a project install's guard runs when the agent starts in a subfolder, in each shell, and in a teammate's clone", async () => {
+  const home = tmp(),
+    project = join(tmp(), "site"),
+    sub = join(project, "src", "app");
+  mkdirSync(sub, { recursive: true });
+  writeFileSync(join(project, "robots.txt"), "User-agent: *\nAllow: /\n");
+  await node([BIN, "--agent", "codex,cursor,github-copilot,devin,cline", "--project"], {
+    env: env(home),
+    cwd: project,
+  });
+  for (const f of [
+    ".codex/hooks.json",
+    ".cursor/hooks.json",
+    ".github/hooks/seo-supervisor-guard.json",
+    ".devin/hooks.v1.json",
+    ".cline/plugins/seo-supervisor-guard.js",
+  ]) {
+    const t = readFileSync(join(project, f), "utf8");
+    assert.ok(
+      !t.includes(project) && !t.includes(project.split("\\").join("/")) && !t.includes(home),
+      `${f} names no folder of this machine`,
+    );
+  }
+  const clone = join(tmp(), "teammate's copy");
+  cpSync(project, clone, { recursive: true });
+  for (const root of [project, clone]) {
+    const from = join(root, "src", "app");
+    runsEverywhere(hookCommands(root, "project"), from, { root });
+    // Devin sets DEVIN_PROJECT_DIR to the project root. https://docs.devin.ai/cli/extensibility/hooks/overview
+    const dv = hookCommands(root, "project").filter(([a]) => a === "devin");
+    runsEverywhere(dv, tmp(), { root, extraEnv: { DEVIN_PROJECT_DIR: root } });
+
+    // Cline's plugin runs in a worker inside Cline, with the session's folder as ctx.cwd.
+    // https://docs.cline.bot/sdk/plugins
+    const plugin = (
+      await import(pathToFileURL(join(root, ".cline", "plugins", "seo-supervisor-guard.js")).href + `?${Math.random()}`)
+    ).default;
+    plugin.setup({}, { cwd: from });
+    const r = plugin.hooks.beforeTool({
+      toolCall: { name: "editor" },
+      input: { path: join(root, "robots.txt"), old_text: "Allow: /", new_text: "Disallow: /" },
+    });
+    assert.ok(r && (r.skip || r.policy), `Cline's guard answered from a subfolder of ${root}: ${JSON.stringify(r)}`);
+  }
+});
 
 test("Devin: a stop is decision block with exit 0, which every shell passes through (PowerShell turns exit 2 into 1)", () => {
   // A Devin hook blocks by exiting 2 or printing a "decision": "block" object; any other non-zero exit is only logged.
