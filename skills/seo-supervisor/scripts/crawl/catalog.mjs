@@ -17,6 +17,19 @@ import { CHECKS as PAGE_CHECKS } from "../checks/page.mjs";
 import { CHECKS as CRAWL_CHECKS } from "../checks/crawl.mjs";
 import { CHECKS as HYGIENE_CHECKS } from "../checks/hygiene.mjs";
 
+// Old check ids -> current ones, so settings.json lists and findings filed before a rename (won't-fix ones too) keep
+// working.
+/** @type {Record<string, string>} */
+export const ID_ALIASES = {};
+/** Follows ID_ALIASES through chained renames; an id with no alias comes back as it is. */
+export function currentId(id) {
+  for (const seen = new Set(); Object.hasOwn(ID_ALIASES, id) && !seen.has(id);) {
+    seen.add(id);
+    id = ID_ALIASES[id];
+  }
+  return id;
+}
+
 export const RULES = {
   "CRAWL-01": ["robots.txt lets search engines crawl the site", "Crawling & indexing"],
   "CRAWL-02": ["Pages meant to rank are not set to noindex", "Crawling & indexing"],

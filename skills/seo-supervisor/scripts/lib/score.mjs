@@ -6,6 +6,7 @@
 // finding isn't won't-fix, it stops at 99, so 100 always means nothing is left to fix (rounding alone could reach 100).
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { currentId } from "../crawl/catalog.mjs";
 export const SEV = ["blocker", "high", "needs-decision", "medium", "low"];
 export const EARN = { blocker: 0, high: 3, "needs-decision": 6, medium: 6, low: 8 };
 export const isOpen = f => f.status !== "fixed";
@@ -172,8 +173,29 @@ export function findingsOf(raw, dir) {
     } catch {
       bad = `${basename(dir)}/settings.json isn't valid JSON, so its check settings weren't read.`;
     }
-  const r = applyChecks(normalise(raw?.findings), plainObj(settings) ? settings.checks : undefined);
-  return { ...r, warnings: [...(bad ? [bad] : []), ...r.warnings] };
+  let checks = plainObj(settings) ? settings.checks : undefined;
+  const renamed = new Set(),
+    now = id => {
+      const n = currentId(id);
+      if (n !== id)
+        renamed.add(
+          `“${id}” is now called “${n}”, and its setting still applies. Rename it in settings.json when you can.`,
+        );
+      return n;
+    };
+  if (plainObj(checks))
+    checks = {
+      ...checks,
+      ...(Array.isArray(checks.off) && { off: checks.off.map(now) }),
+      ...(plainObj(checks.severity) && {
+        severity: Object.fromEntries(Object.entries(checks.severity).map(([id, s]) => [now(id), s])),
+      }),
+    };
+  const r = applyChecks(
+    normalise(raw?.findings).map(f => (typeof f.check === "string" ? { ...f, check: currentId(f.check) } : f)),
+    checks,
+  );
+  return { ...r, warnings: [...(bad ? [bad] : []), ...renamed, ...r.warnings] };
 }
 
 export const BANDS = [
