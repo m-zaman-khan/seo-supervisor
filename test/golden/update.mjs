@@ -28,8 +28,10 @@ const VERSION = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).ver
 const tmpPaths = [tmpdir(), tmpdir().replaceAll("\\", "/"), JSON.stringify(tmpdir()).slice(1, -1)];
 const common = text => tmpPaths.reduce((t, p) => t.replaceAll(p, "<tmp>"), text).replaceAll(VERSION, "<version>");
 
-async function crawl(fixture, origin) {
-  const site = await serve(join(ROOT, "test", fixture)),
+// origin null: no --site-origin, so the crawler finds the public origin itself and changes it while it crawls; a module
+// that kept an early copy would crawl or map the wrong URLs. served: the fixture server's options.
+async function crawl(fixture, origin, served = {}) {
+  const site = await serve(join(ROOT, "test", fixture), served),
     out = join(tmp(), "seo-crawl.json");
   try {
     await node(
@@ -39,8 +41,7 @@ async function crawl(fixture, origin) {
         join(SCRIPTS, "seo-crawl.mjs"),
         "--url",
         site.url,
-        "--site-origin",
-        origin,
+        ...(origin ? ["--site-origin", origin] : []),
         "--concurrency",
         "1",
         "--out",
@@ -72,14 +73,32 @@ async function report() {
   };
 }
 
+// fixture-site with no Sitemap: line in robots.txt and no /sitemap.xml, so the public origin comes from the home page's
+// canonical, the last place the crawler looks: after the home page is crawled, while the crawl is under way.
+const LATE_ORIGIN = {
+  files: {
+    "/robots.txt": {
+      type: "text/plain; charset=utf-8",
+      body: readFileSync(join(ROOT, "test", "fixture-site", "robots.txt"), "utf8").replace(/^Sitemap:.*\n?/gim, ""),
+    },
+  },
+  before: (req, res) => new URL(req.url, "http://x").pathname === "/sitemap.xml" && !!res.writeHead(404).end(),
+};
+
 /** Every snapshot, by file name in test/golden/. */
 export async function build() {
-  const [site, zero, rendered] = await Promise.all([
+  const [site, zero, found, rendered] = await Promise.all([
     crawl("fixture-site", CRAWLS["fixture-site"]),
     crawl("fixture-zero", CRAWLS["fixture-zero"]),
+    crawl("fixture-site", null, LATE_ORIGIN),
     report(),
   ]);
-  return { "fixture-site.crawl.json": site, "fixture-zero.crawl.json": zero, ...rendered };
+  return {
+    "fixture-site.crawl.json": site,
+    "fixture-zero.crawl.json": zero,
+    "fixture-site-found-origin.crawl.json": found,
+    ...rendered,
+  };
 }
 
 if (isMain(import.meta.url)) {

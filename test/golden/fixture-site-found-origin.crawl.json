@@ -1,0 +1,2708 @@
+{
+  "tool": "seo-supervisor-crawler",
+  "version": "<version>",
+  "crawledAt": "2026-11-20T12:00:00.000Z",
+  "durationMs": 0,
+  "startUrl": "http://127.0.0.1:<port>/",
+  "siteOrigin": "https://example-security.com",
+  "options": {
+    "max": 1000,
+    "concurrency": 1,
+    "ignoreNoindex": false,
+    "banned": null,
+    "verify": null,
+    "redirectSources": 0,
+    "trailingSlash": "auto",
+    "detectedSlashStyle": "always",
+    "includeQuery": false,
+    "brand": null
+  },
+  "stats": {
+    "fetched": 14,
+    "capped": false,
+    "htmlPages": 13,
+    "sitemapUrls": 0,
+    "sitemapFiles": [
+      {
+        "url": "http://127.0.0.1:<port>/sitemap.xml",
+        "status": 404
+      }
+    ],
+    "sitemapComplete": false,
+    "robotsTxt": 200
+  },
+  "notes": [
+    "Public origin https://example-security.com was mapped onto http://127.0.0.1:<port> for crawling.",
+    "Security headers were read from a local server; production headers set by a CDN or proxy may differ.",
+    "No share image (og:image) could be read, so share image sizes weren't checked.",
+    "No Product schema image on the crawled site could be read (they're on another host, missing, or SVG or AVIF), so product image sizes weren't checked."
+  ],
+  "findings": [
+    {
+      "check": "client-rendered",
+      "rule": "REND-01",
+      "severity": "blocker",
+      "category": "Rendering",
+      "title": "1 page(s) have almost no content in the server HTML",
+      "what": "Found on http://127.0.0.1:<port>/spa/ (0 words in server HTML).",
+      "why": "The HTML the server sends is nearly empty, so crawlers that don't run JavaScript (most AI crawlers, and Google's first pass) see a blank page.",
+      "fix": "Server-render or pre-render page content. Only interactive widgets should depend on client JavaScript.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/spa/",
+          "detail": "0 words in server HTML"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-001"
+    },
+    {
+      "check": "near-duplicate",
+      "rule": "CONTENT-04",
+      "severity": "high",
+      "category": "Headings & content",
+      "title": "6 pair(s) of indexable pages share most of their main content",
+      "what": "6 cases, for example http://127.0.0.1:<port>/ (60% shared with http://127.0.0.1:<port>/tools/).",
+      "why": "Pages that differ only by a swapped name (a city, product or tool) look like doorway or scaled content. Google can filter them out or hold down the whole site.",
+      "fix": "Give each page its own substance: specific details, local proof, its own intro and FAQs. Merge or noindex pages that can't be made unique.",
+      "count": 6,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "60% shared with http://127.0.0.1:<port>/tools/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "62% shared with http://127.0.0.1:<port>/snippetless/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/",
+          "detail": "73% shared with http://127.0.0.1:<port>/snippetless/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "80% shared with http://127.0.0.1:<port>/tools/dmarc-checker/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/legacy/",
+          "detail": "89% shared with http://127.0.0.1:<port>/conflict/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/en/",
+          "detail": "92% shared with http://127.0.0.1:<port>/es/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-002"
+    },
+    {
+      "check": "title-dup",
+      "rule": "META-01",
+      "severity": "high",
+      "category": "Metadata",
+      "title": "2 title(s) are shared by more than one page",
+      "what": "2 cases, for example http://127.0.0.1:<port>/tools/ssl-checker/ (SSL Checker - Free Online SSL Certificate Test Tool With Detailed Report | Brand).",
+      "why": "Duplicate titles make pages compete with each other and look templated.",
+      "fix": "Make each title unique, usually by including the page's specific subject.",
+      "count": 2,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "SSL Checker - Free Online SSL Certificate Test Tool With Detailed Report | Brand"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/dmarc-checker/",
+          "detail": "SSL Checker - Free Online SSL Certificate Test Tool With Detailed Report | Brand"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-003"
+    },
+    {
+      "check": "hreflang-no-return",
+      "rule": "META-08",
+      "severity": "high",
+      "category": "Metadata",
+      "title": "2 hreflang link(s) have no return link",
+      "what": "2 cases, for example http://127.0.0.1:<port>/en/ (es → https://example-security.com/es/ doesn't link back).",
+      "why": "Search engines ignore an hreflang pair unless both pages point at each other.",
+      "fix": "Generate hreflang for every language version from one shared list, so each page lists every version, itself included.",
+      "count": 2,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/en/",
+          "detail": "es → https://example-security.com/es/ doesn't link back"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/es/",
+          "detail": "en-uk → https://example-security.com/about/ doesn't link back"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-004"
+    },
+    {
+      "check": "sitemap-missing",
+      "rule": "MAP-01",
+      "severity": "high",
+      "category": "Sitemaps & robots",
+      "title": "No XML sitemap found",
+      "what": "Found on http://127.0.0.1:<port>/sitemap.xml (http://127.0.0.1:<port>/sitemap.xml → 404).",
+      "why": "Without a sitemap, new and deep pages are found slowly.",
+      "fix": "Generate `/sitemap.xml` from the live content data and reference it in robots.txt.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/sitemap.xml",
+          "detail": "http://127.0.0.1:<port>/sitemap.xml → 404"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-005"
+    },
+    {
+      "check": "canonical-missing",
+      "rule": "URL-04",
+      "severity": "high",
+      "category": "URLs & canonicals",
+      "title": "1 indexable page(s) have no canonical tag",
+      "what": "Found on http://127.0.0.1:<port>/about/.",
+      "why": "Without a canonical, Google picks one itself among parameter, slash and tracking variants.",
+      "fix": "Add a self-referencing absolute canonical to every indexable page through the shared metadata helper.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/about/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-006"
+    },
+    {
+      "check": "jsonld-invalid",
+      "rule": "SCHEMA-01",
+      "severity": "high",
+      "category": "Structured data",
+      "title": "1 page(s) have JSON-LD that doesn't parse",
+      "what": "Found on http://127.0.0.1:<port>/about/ (Expected property name or '}' in JSON at position 2 (line 1 column 3)).",
+      "why": "Invalid JSON-LD is ignored completely.",
+      "fix": "Generate JSON-LD with JSON.stringify from data, escape `<`, and validate templates in the Rich Results Test.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/about/",
+          "detail": "Expected property name or '}' in JSON at position 2 (line 1 column 3)"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-007"
+    },
+    {
+      "check": "nosnippet",
+      "rule": "AI-01",
+      "severity": "high",
+      "category": "AI search",
+      "title": "1 indexable page(s) block snippets (nosnippet or max-snippet:0)",
+      "what": "Found on http://127.0.0.1:<port>/snippetless/.",
+      "why": "Pages that block snippets can't appear as text snippets or be used in Google's AI Overviews and AI Mode.",
+      "fix": "Remove nosnippet/max-snippet:0 from pages meant to be found; use data-nosnippet on specific sections instead.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/snippetless/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-008"
+    },
+    {
+      "check": "placeholder-text",
+      "rule": "CONTENT-09",
+      "severity": "high",
+      "category": "Headings & content",
+      "title": "1 page(s) show placeholder, test or broken-encoding text",
+      "what": "Found on http://127.0.0.1:<port>/tools/ssl-checker/ (“Lorem ipsum”).",
+      "why": "Lorem ipsum, TODO, template tokens or mangled characters on a live page look unfinished to visitors and quality reviewers.",
+      "fix": "Replace the text with real content and add a build check that fails on these strings.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "“Lorem ipsum”"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-009"
+    },
+    {
+      "check": "h1-count",
+      "rule": "CONTENT-01",
+      "severity": "high",
+      "category": "Headings & content",
+      "title": "1 page(s) don't have exactly one H1",
+      "what": "Found on http://127.0.0.1:<port>/tools/ssl-checker/ (2 H1s).",
+      "why": "The H1 states the page's topic. None leaves it unclear; several dilute it.",
+      "fix": "Give every page one H1 matching its main topic. Logos and card titles are not H1s.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "2 H1s"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-010"
+    },
+    {
+      "check": "faq-not-visible",
+      "rule": "SCHEMA-04",
+      "severity": "high",
+      "category": "Structured data",
+      "title": "1 page(s) mark up FAQ questions that aren't in the page",
+      "what": "Found on http://127.0.0.1:<port>/tools/ssl-checker/ (1 of 1: “What is an invisible question?”).",
+      "why": "Schema that describes content the page doesn't show breaks Google's guidelines and can bring a manual action.",
+      "fix": "Build FAQPage from the same array that renders the visible FAQ, or remove it.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "1 of 1: “What is an invisible question?”"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-011"
+    },
+    {
+      "check": "canonical-query",
+      "rule": "URL-04",
+      "severity": "high",
+      "category": "URLs & canonicals",
+      "title": "1 canonical(s) contain a query string",
+      "what": "Found on http://127.0.0.1:<port>/tools/dmarc-checker/ (https://example-security.com/tools/dmarc-checker/?utm_source=x).",
+      "why": "Canonicals built from the request URL leak `?utm_` and other parameters, creating duplicates.",
+      "fix": "Build canonicals from the clean path, never from the incoming request URL.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/dmarc-checker/",
+          "detail": "https://example-security.com/tools/dmarc-checker/?utm_source=x"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-012"
+    },
+    {
+      "check": "product-price-mismatch",
+      "rule": "SHOP-05",
+      "severity": "high",
+      "category": "Structured data",
+      "title": "1 product page(s) show a different price from their schema",
+      "what": "Found on http://127.0.0.1:<port>/shop/widget/ (schema 19.99 · page shows 24.99).",
+      "why": "Google checks structured data against the visible page; a price mismatch can remove the product's rich results or get the listing disapproved.",
+      "fix": "Generate the schema price from the same data the page displays.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/shop/widget/",
+          "detail": "schema 19.99 · page shows 24.99"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-013"
+    },
+    {
+      "check": "broken-internal-link",
+      "rule": "CRAWL-07",
+      "severity": "high",
+      "category": "Crawling & indexing",
+      "title": "1 internal link target(s) are broken (4xx/5xx)",
+      "what": "Found on http://127.0.0.1:<port>/broken/ (status 404, linked from http://127.0.0.1:<port>/).",
+      "why": "Every broken link is a dead end for visitors and crawlers and wastes the authority passed through it.",
+      "fix": "Fix or remove each link. Filter generated links (related, next, breadcrumbs) through the set of live pages.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/broken/",
+          "detail": "status 404, linked from http://127.0.0.1:<port>/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-014"
+    },
+    {
+      "check": "ai-bots-blocked",
+      "rule": "MAP-06",
+      "severity": "needs-decision",
+      "category": "Sitemaps & robots",
+      "title": "robots.txt blocks 1 AI crawler(s)",
+      "what": "Found on http://127.0.0.1:<port>/robots.txt (GPTBot).",
+      "why": "Blocking AI crawlers can keep the site out of ChatGPT, Claude, Perplexity and Google AI answers.",
+      "fix": "Confirm this is deliberate. A common middle ground blocks training crawlers and allows search crawlers.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/robots.txt",
+          "detail": "GPTBot"
+        }
+      ],
+      "source": "crawler",
+      "status": "needs-decision",
+      "id": "C-015"
+    },
+    {
+      "check": "rating-review",
+      "rule": "SCHEMA-04",
+      "severity": "needs-decision",
+      "category": "Structured data",
+      "title": "1 page(s) carry ratings or reviews in schema",
+      "what": "Found on http://127.0.0.1:<port>/tools/dmarc-checker/.",
+      "why": "Ratings must come from real reviews that are visible on the page. Invented or unsourced ratings risk a manual action that removes rich results sitewide.",
+      "fix": "Confirm each rating's source. Keep it only if real reviews are shown on the page; otherwise remove it.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/dmarc-checker/"
+        }
+      ],
+      "source": "crawler",
+      "status": "needs-decision",
+      "id": "C-016"
+    },
+    {
+      "check": "breadcrumb-missing",
+      "rule": "SCHEMA-07",
+      "severity": "medium",
+      "category": "Structured data",
+      "title": "7 page(s) below the home page have no BreadcrumbList",
+      "what": "7 cases, for example http://127.0.0.1:<port>/about/.",
+      "why": "Breadcrumb rich results still show in Google and clarify site structure.",
+      "fix": "Render BreadcrumbList from the same array as the visible breadcrumb.",
+      "count": 7,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/about/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/snippetless/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/legacy/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/conflict/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/en/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/shop/widget/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/es/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-017"
+    },
+    {
+      "check": "doc-basics",
+      "rule": "REND-09",
+      "severity": "medium",
+      "category": "Rendering",
+      "title": "6 page(s) lack a doctype, a charset or a mobile viewport",
+      "what": "6 cases, for example http://127.0.0.1:<port>/tools/ (no mobile viewport).",
+      "why": "Without a doctype browsers fall back to quirks mode; without a viewport the page renders as a zoomed-out desktop page on phones, and Google indexes the mobile version.",
+      "fix": "Start every page with `<!doctype html>`, `<meta charset=\"utf-8\">` and `<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">` in the shared layout.",
+      "count": 6,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/",
+          "detail": "no mobile viewport"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/",
+          "detail": "no mobile viewport"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/snippetless/",
+          "detail": "no mobile viewport"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "no mobile viewport"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/legacy/",
+          "detail": "no doctype, no mobile viewport"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/dmarc-checker/",
+          "detail": "no mobile viewport"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-018"
+    },
+    {
+      "check": "thin-page",
+      "rule": "CONTENT-05",
+      "severity": "medium",
+      "category": "Headings & content",
+      "title": "6 indexable page(s) have fewer than 150 words",
+      "what": "6 cases, for example http://127.0.0.1:<port>/about/ (3 words).",
+      "why": "Thin pages rarely rank and can lower the site's overall quality signals.",
+      "fix": "Add useful, specific content, merge the page into a stronger one, or noindex it until it grows.",
+      "count": 6,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/about/",
+          "detail": "3 words"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/legacy/",
+          "detail": "65 words"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/conflict/",
+          "detail": "59 words"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/en/",
+          "detail": "61 words"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/shop/widget/",
+          "detail": "61 words"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/es/",
+          "detail": "60 words"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-019"
+    },
+    {
+      "check": "desc-dup",
+      "rule": "META-02",
+      "severity": "medium",
+      "category": "Metadata",
+      "title": "5 description(s) are shared by more than one page",
+      "what": "5 cases, for example http://127.0.0.1:<port>/ (A perfectly reasonable description for this test page that runs to about one hun).",
+      "why": "Duplicate descriptions signal templated pages.",
+      "fix": "Write a specific description for each page.",
+      "count": 5,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "A perfectly reasonable description for this test page that runs to about one hun"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/",
+          "detail": "A perfectly reasonable description for this test page that runs to about one hun"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/snippetless/",
+          "detail": "A perfectly reasonable description for this test page that runs to about one hun"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "A perfectly reasonable description for this test page that runs to about one hun"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/dmarc-checker/",
+          "detail": "A perfectly reasonable description for this test page that runs to about one hun"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-020"
+    },
+    {
+      "check": "og-image-broken",
+      "rule": "META-04",
+      "severity": "medium",
+      "category": "Metadata",
+      "title": "3 share image(s) don't load",
+      "what": "3 cases, for example http://127.0.0.1:<port>/ (https://example-security.com/og-home.png → 404).",
+      "why": "The og:image URL doesn't return an image, so shared links show no picture and Google can't use it as the page's thumbnail.",
+      "fix": "Point og:image at an absolute URL on the public site that returns the image with status 200. A moved file or the wrong host in the metadata helper is the usual cause.",
+      "count": 3,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "https://example-security.com/og-home.png → 404"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/",
+          "detail": "https://example-security.com/og.png → 404"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/",
+          "detail": "https://example-security.com/missing-share.png → 404"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-021"
+    },
+    {
+      "check": "title-long",
+      "rule": "META-01",
+      "severity": "medium",
+      "category": "Metadata",
+      "title": "2 title(s) are longer than 60 characters",
+      "what": "2 cases, for example http://127.0.0.1:<port>/tools/ssl-checker/ (80 chars: SSL Checker - Free Online SSL Certificate Test Tool With Detailed Report | Brand).",
+      "why": "Long titles get cut off in results, often losing the brand or the key phrase.",
+      "fix": "Keep titles under about 60 characters, main keyword first.",
+      "count": 2,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "80 chars: SSL Checker - Free Online SSL Certificate Test Tool With Detailed Report | Brand"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/dmarc-checker/",
+          "detail": "80 chars: SSL Checker - Free Online SSL Certificate Test Tool With Detailed Report | Brand"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-022"
+    },
+    {
+      "check": "desc-missing",
+      "rule": "META-02",
+      "severity": "medium",
+      "category": "Metadata",
+      "title": "1 page(s) have no meta description",
+      "what": "Found on http://127.0.0.1:<port>/about/.",
+      "why": "Google then writes its own snippet, often from navigation text.",
+      "fix": "Write a unique 120–160 character description per page: what you get and why.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/about/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-023"
+    },
+    {
+      "check": "heading-skip",
+      "rule": "CONTENT-02",
+      "severity": "medium",
+      "category": "Headings & content",
+      "title": "1 page(s) skip heading levels",
+      "what": "Found on http://127.0.0.1:<port>/tools/ssl-checker/ (H2 → H4 (“Details”)).",
+      "why": "Skipped levels break the outline search engines and screen readers use.",
+      "fix": "Nest headings in order (H1 → H2 → H3). Style with CSS, not heading levels.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "H2 → H4 (“Details”)"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-024"
+    },
+    {
+      "check": "meta-refresh",
+      "rule": "CRAWL-08",
+      "severity": "medium",
+      "category": "Crawling & indexing",
+      "title": "1 page(s) redirect with a meta refresh",
+      "what": "Found on http://127.0.0.1:<port>/legacy/ (→ /about/).",
+      "why": "A meta refresh is a slow, client-side redirect. Search engines may treat it as a redirect or may index the empty page; visitors see a flash first.",
+      "fix": "Replace it with a server-side 301/308 redirect to the final URL.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/legacy/",
+          "detail": "→ /about/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-025"
+    },
+    {
+      "check": "product-aggregate-offer",
+      "rule": "SHOP-05",
+      "severity": "medium",
+      "category": "Structured data",
+      "title": "1 product page(s) use AggregateOffer for a single offer",
+      "what": "Found on http://127.0.0.1:<port>/shop/widget/ (Widget security key).",
+      "why": "Merchant listings need an `Offer`. `AggregateOffer` is meant for several sellers, so a shop's own product may not qualify for the shopping features.",
+      "fix": "Emit an `Offer` with `price`, `priceCurrency` and `availability` for products you sell yourself.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/shop/widget/",
+          "detail": "Widget security key"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-026"
+    },
+    {
+      "check": "hreflang-invalid-code",
+      "rule": "META-08",
+      "severity": "medium",
+      "category": "Metadata",
+      "title": "1 hreflang value(s) aren't valid language or region codes",
+      "what": "Found on http://127.0.0.1:<port>/es/ (en-uk).",
+      "why": "Codes search engines can't read are ignored. A common mistake is `en-uk`: the United Kingdom's region code is `gb`.",
+      "fix": "Use an ISO 639-1 language, optionally followed by an ISO 3166-1 alpha-2 region (for example `en-GB`), or `x-default`.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/es/",
+          "detail": "en-uk"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-027"
+    },
+    {
+      "check": "favicon-missing",
+      "rule": "META-10",
+      "severity": "medium",
+      "category": "Metadata",
+      "title": "The site has no favicon that loads",
+      "what": "Found on http://127.0.0.1:<port>/ (no icon link on the home page, and /favicon.ico → 404).",
+      "why": "Google shows the site's favicon next to its name in search results. Without one that loads, results show a generic globe icon, which looks unfinished next to other sites' logos.",
+      "fix": "Add `<link rel=\"icon\" href=\"/favicon.png\">` to the home page's `<head>`, pointing at a square PNG or ICO of at least 48 × 48 px that returns 200. Keep its URL stable and don't block it in robots.txt.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "no icon link on the home page, and /favicon.ico → 404"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-028"
+    },
+    {
+      "check": "untranslated-copy",
+      "rule": "META-08",
+      "severity": "medium",
+      "category": "Metadata",
+      "title": "1 pair(s) of language versions share their main text",
+      "what": "Found on http://127.0.0.1:<port>/es/ (http://127.0.0.1:<port>/es/ (es) and http://127.0.0.1:<port>/en/ (en) share 92% of their main text).",
+      "why": "The versions are listed as different languages, but one wasn't translated. Google works out a page's language from its visible text, so an untranslated version counts as the original language and can't rank for the other one, and the two compete as duplicates.",
+      "fix": "Translate the title and main text of each version, or drop the untranslated page from hreflang (and the language menu) until it's translated.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/es/",
+          "detail": "http://127.0.0.1:<port>/es/ (es) and http://127.0.0.1:<port>/en/ (en) share 92% of their main text"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-029"
+    },
+    {
+      "check": "schema-image-broken",
+      "rule": "SCHEMA-01",
+      "severity": "medium",
+      "category": "Structured data",
+      "title": "1 schema image(s) don't load",
+      "what": "Found on http://127.0.0.1:<port>/shop/widget/ (https://example-security.com/widget.png → 404).",
+      "why": "Structured data points at these images (an article's image, a logo, a video thumbnail), but the URL answers with an error or a web page instead of an image. Google asks for image URLs it can crawl and index, and recipes, movies and vacation rentals show as rich results only with an image.",
+      "fix": "Restore the file, or fix the URL in the data the schema is built from. Use the full https:// URL of an image on the public site.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/shop/widget/",
+          "detail": "https://example-security.com/widget.png → 404"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-030"
+    },
+    {
+      "check": "no-large-preview",
+      "rule": "MEDIA-03",
+      "severity": "low",
+      "category": "Media",
+      "title": "11 indexable page(s) don't allow large image previews",
+      "what": "11 cases, for example http://127.0.0.1:<port>/.",
+      "why": "Without `max-image-preview:large`, Google shows small thumbnails at most, and pages are less likely to appear with large images in Discover.",
+      "fix": "Add `max-image-preview:large` to the robots meta of indexable pages through the metadata helper.",
+      "count": 11,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/snippetless/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/legacy/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/dmarc-checker/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/conflict/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/en/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/shop/widget/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/es/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-031"
+    },
+    {
+      "check": "twitter-card-missing",
+      "rule": "META-04",
+      "severity": "low",
+      "category": "Metadata",
+      "title": "7 page(s) have a share image but no twitter:card",
+      "what": "7 cases, for example http://127.0.0.1:<port>/.",
+      "why": "X shows a large image card only when the page asks for one with twitter:card. Without it, X shows at most a small card with a thumbnail, and only when og:type, og:title and og:description are all set.",
+      "fix": "Add `<meta name=\"twitter:card\" content=\"summary_large_image\">` next to og:image in the metadata helper. X takes the title, description and image from the Open Graph tags.",
+      "count": 7,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/snippetless/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/legacy/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/dmarc-checker/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-032"
+    },
+    {
+      "check": "desc-mismatch",
+      "rule": "META-02",
+      "severity": "low",
+      "category": "Metadata",
+      "title": "7 description(s) barely match their page",
+      "what": "7 cases, for example http://127.0.0.1:<port>/ (“A perfectly reasonable description for this test page that runs to about one hun”: 0 of 9 main words are on the page).",
+      "why": "Fewer than a quarter of the description's main words are on the page. Google uses a description only when it may describe the page better than the page's own text, so this one is likely replaced in results, and visitors who click expect something else. It's usually a copied template or a description left over from an older page.",
+      "fix": "Rewrite the description from what the page actually says and offers.",
+      "count": 7,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "“A perfectly reasonable description for this test page that runs to about one hun”: 0 of 9 main words are on the page"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/",
+          "detail": "“A perfectly reasonable description for this test page that runs to about one hun”: 0 of 9 main words are on the page"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/snippetless/",
+          "detail": "“A perfectly reasonable description for this test page that runs to about one hun”: 0 of 9 main words are on the page"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "“A perfectly reasonable description for this test page that runs to about one hun”: 0 of 9 main words are on the page"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/dmarc-checker/",
+          "detail": "“A perfectly reasonable description for this test page that runs to about one hun”: 0 of 9 main words are on the page"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/conflict/",
+          "detail": "“A page whose robots meta tag says index while the server header says noindex, wh”: 0 of 12 main words are on the page"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/es/",
+          "detail": "“La versión en español de la página de herramientas, que no enlaza de vuelta a la”: 2 of 10 main words are on the page"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-033"
+    },
+    {
+      "check": "og-image-no-size",
+      "rule": "META-04",
+      "severity": "low",
+      "category": "Metadata",
+      "title": "6 page(s) don't declare their share image's size",
+      "what": "6 cases, for example http://127.0.0.1:<port>/tools/.",
+      "why": "Without og:image:width and og:image:height, Facebook and LinkedIn have to download the image before they can lay out the card, so the first share of a page often shows no image.",
+      "fix": "Emit `og:image:width` and `og:image:height` next to og:image in the metadata helper.",
+      "count": 6,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/about/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/snippetless/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/legacy/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/dmarc-checker/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-034"
+    },
+    {
+      "check": "jsonld-none",
+      "rule": "SCHEMA-03",
+      "severity": "low",
+      "category": "Structured data",
+      "title": "6 indexable page(s) have no structured data",
+      "what": "6 cases, for example http://127.0.0.1:<port>/about/.",
+      "why": "Schema tells search and AI engines what each page is.",
+      "fix": "Add the schema type the profile assigns to each page type.",
+      "count": 6,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/about/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/snippetless/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/legacy/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/conflict/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/en/"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/es/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-035"
+    },
+    {
+      "check": "sec-headers",
+      "rule": "TRUST-01",
+      "severity": "low",
+      "category": "Trust & security",
+      "title": "The site is missing 5 recommended security header(s)",
+      "what": "5 cases, for example http://127.0.0.1:<port>/ (X-Content-Type-Options).",
+      "why": "Security headers protect visitors and are a trust signal, especially for technical audiences.",
+      "fix": "Add the missing headers at the server or framework level.",
+      "count": 5,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "X-Content-Type-Options"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "Referrer-Policy"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "Content-Security-Policy"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "X-Frame-Options or CSP frame-ancestors"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "Permissions-Policy"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-036"
+    },
+    {
+      "check": "desc-length",
+      "rule": "META-02",
+      "severity": "low",
+      "category": "Metadata",
+      "title": "5 description(s) are outside 120–160 characters",
+      "what": "5 cases, for example http://127.0.0.1:<port>/ (112 chars).",
+      "why": "Short descriptions undersell the page; long ones get cut off.",
+      "fix": "Aim for 120–160 characters.",
+      "count": 5,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "112 chars"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/",
+          "detail": "112 chars"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/snippetless/",
+          "detail": "112 chars"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "112 chars"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/tools/dmarc-checker/",
+          "detail": "112 chars"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-037"
+    },
+    {
+      "check": "og-missing",
+      "rule": "META-04",
+      "severity": "low",
+      "category": "Metadata",
+      "title": "4 page(s) lack og:title or og:image",
+      "what": "4 cases, for example http://127.0.0.1:<port>/conflict/ (og:title, og:image).",
+      "why": "Without og:title and og:image, shared links on Slack, LinkedIn and X show a bare URL instead of a card. Where og:description is listed too, the page has no description at all, so each platform guesses its text from the page or shows none.",
+      "fix": "Emit Open Graph and Twitter tags from the metadata helper, with a default image and per-page images for key pages, and og:description from the page's meta description.",
+      "count": 4,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/conflict/",
+          "detail": "og:title, og:image"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/en/",
+          "detail": "og:title, og:image"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/shop/widget/",
+          "detail": "og:title, og:image"
+        },
+        {
+          "url": "http://127.0.0.1:<port>/es/",
+          "detail": "og:title, og:image"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-038"
+    },
+    {
+      "check": "sitemap-not-in-robots",
+      "rule": "MAP-01",
+      "severity": "low",
+      "category": "Sitemaps & robots",
+      "title": "robots.txt doesn't reference the sitemap",
+      "what": "Found on http://127.0.0.1:<port>/robots.txt.",
+      "why": "The `Sitemap:` line lets every crawler find it without manual submission.",
+      "fix": "Add `Sitemap: https://…/sitemap.xml` (absolute URL) to robots.txt.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/robots.txt"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-039"
+    },
+    {
+      "check": "content-signal-invalid",
+      "rule": "MAP-06",
+      "severity": "low",
+      "category": "Sitemaps & robots",
+      "title": "robots.txt has 1 invalid Content-Signal value(s)",
+      "what": "Found on http://127.0.0.1:<port>/robots.txt (ai-train=maybe).",
+      "why": "Content-Signal states how AI systems may use the content (search, ai-input, ai-train), each set to yes or no, and Cloudflare is testing a fourth field, use (immediate, reference or full). Anything else is ignored, so the stated preference doesn't apply.",
+      "fix": "Use only `search`, `ai-input` and `ai-train`, each `yes` or `no`, and optionally `use=immediate`, `use=reference` or `use=full`, for example `Content-Signal: search=yes, ai-train=no`.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/robots.txt",
+          "detail": "ai-train=maybe"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-040"
+    },
+    {
+      "check": "llms-structure",
+      "rule": "MAP-07",
+      "severity": "low",
+      "category": "Sitemaps & robots",
+      "title": "llms.txt doesn't follow the llms.txt format",
+      "what": "Found on http://127.0.0.1:<port>/llms.txt (no # heading first, no Markdown links).",
+      "why": "The format starts with a `# Site name` heading, then a short summary and Markdown lists of links. Tools that read llms.txt expect that structure.",
+      "fix": "Start with `# Site name`, add a one-line `>` summary, then sections of `- [Page](url): description` links.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/llms.txt",
+          "detail": "no # heading first, no Markdown links"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-041"
+    },
+    {
+      "check": "security-txt",
+      "rule": "TRUST-02",
+      "severity": "low",
+      "category": "Trust & security",
+      "title": "No /.well-known/security.txt",
+      "what": "Found on http://127.0.0.1:<port>/.well-known/security.txt (status 404).",
+      "why": "security.txt tells researchers how to report vulnerabilities.",
+      "fix": "Publish one following RFC 9116 with Contact and Expires.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/.well-known/security.txt",
+          "detail": "status 404"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-042"
+    },
+    {
+      "check": "href-hash",
+      "rule": "REND-04",
+      "severity": "low",
+      "category": "Rendering",
+      "title": "1 page(s) have links without a real destination (href=\"#\", javascript:, or no href)",
+      "what": "Found on http://127.0.0.1:<port>/ (1 link(s)).",
+      "why": "Crawlers only follow real URLs. Click-handler navigation hides pages from search engines.",
+      "fix": "Use real `<a href>` links for navigation and `<button>` for actions.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "1 link(s)"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-043"
+    },
+    {
+      "check": "generic-anchor",
+      "rule": "LINK-05",
+      "severity": "low",
+      "category": "Internal linking",
+      "title": "1 page(s) use generic link text like “click here” or “read more”",
+      "what": "Found on http://127.0.0.1:<port>/ (1 link(s)).",
+      "why": "Anchor text tells search engines what the target is about.",
+      "fix": "Use descriptive anchors such as “check your DMARC record”.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "1 link(s)"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-044"
+    },
+    {
+      "check": "title-short",
+      "rule": "META-01",
+      "severity": "low",
+      "category": "Metadata",
+      "title": "1 title(s) are shorter than 20 characters",
+      "what": "Found on http://127.0.0.1:<port>/about/ (About).",
+      "why": "Very short titles waste the most visible spot in results.",
+      "fix": "Describe the page: what it is and who it's for, in under 60 characters.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/about/",
+          "detail": "About"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-045"
+    },
+    {
+      "check": "noindex-review",
+      "rule": "CRAWL-02",
+      "severity": "low",
+      "category": "Crawling & indexing",
+      "title": "1 crawled page(s) are noindex",
+      "what": "Found on http://127.0.0.1:<port>/noindexed/.",
+      "why": "Noindex is right for search, filter, account and result pages, and wrong anywhere you want traffic.",
+      "fix": "Check each against the project's SEO profile. Keep noindex only on page types meant to stay hidden.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/noindexed/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-046"
+    },
+    {
+      "check": "img-alt",
+      "rule": "CONTENT-08",
+      "severity": "low",
+      "category": "Headings & content",
+      "title": "1 page(s) have images without an alt attribute",
+      "what": "Found on http://127.0.0.1:<port>/tools/ssl-checker/ (1 image(s)).",
+      "why": "Alt text describes images to screen readers and image search. Decorative images still need `alt=\"\"`.",
+      "fix": "Add descriptive alt text to meaningful images and empty alt to decorative ones.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "1 image(s)"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-047"
+    },
+    {
+      "check": "img-dimensions",
+      "rule": "PERF-04",
+      "severity": "low",
+      "category": "Performance",
+      "title": "1 page(s) have images without width and height",
+      "what": "Found on http://127.0.0.1:<port>/tools/ssl-checker/ (1 image(s)).",
+      "why": "Images without dimensions shift the layout as they load (CLS).",
+      "fix": "Set width and height (or an aspect-ratio box) on every image.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "1 image(s)"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-048"
+    },
+    {
+      "check": "lazy-lcp",
+      "rule": "PERF-03",
+      "severity": "low",
+      "category": "Performance",
+      "title": "1 page(s) lazy-load the first image",
+      "what": "Found on http://127.0.0.1:<port>/tools/ssl-checker/ (/a.png).",
+      "why": "If the first image is the largest element, lazy-loading it delays LCP. A lazy-loading script (an image whose real file is in `data-src` behind a placeholder) delays it even more, as the script has to run first.",
+      "fix": "Load the hero image eagerly with high priority (`priority` / `fetchpriority=\"high\"`). In a lazy-loading plugin (Perfmatters, EWWW, WP Rocket, LiteSpeed), exclude the first images or the hero.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+          "detail": "/a.png"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-049"
+    },
+    {
+      "check": "og-url-mismatch",
+      "rule": "META-04",
+      "severity": "low",
+      "category": "Metadata",
+      "title": "1 page(s) have an og:url that differs from the canonical",
+      "what": "Found on http://127.0.0.1:<port>/legacy/ (og:url https://example-security.com/old-legacy-page/ · canonical https://example-security.com/legacy/).",
+      "why": "Shares then point at a different URL from the one search engines rank, splitting share counts and signals.",
+      "fix": "Build og:url from the same value as the canonical in the metadata helper.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/legacy/",
+          "detail": "og:url https://example-security.com/old-legacy-page/ · canonical https://example-security.com/legacy/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-050"
+    },
+    {
+      "check": "deprecated-schema",
+      "rule": "SCHEMA-05",
+      "severity": "low",
+      "category": "Structured data",
+      "title": "1 page(s) use schema with no rich result (HowTo, SearchAction, SpecialAnnouncement, Occupation)",
+      "what": "Found on http://127.0.0.1:<port>/tools/dmarc-checker/ (HowTo).",
+      "why": "Google ended how-to rich results (2023), the sitelinks search box (2024), special announcement rich results (2025), estimated salary rich results (2025). The markup does no harm but earns nothing.",
+      "fix": "Remove it, or keep it knowingly. Don't promise these rich results.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/tools/dmarc-checker/",
+          "detail": "HowTo"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-051"
+    },
+    {
+      "check": "product-no-shipping",
+      "rule": "SHOP-05",
+      "severity": "low",
+      "category": "Structured data",
+      "title": "1 product page(s) have no shipping details in their schema",
+      "what": "Found on http://127.0.0.1:<port>/shop/widget/ (Widget security key: 1 of 1 offer(s)).",
+      "why": "Shipping costs and delivery times can show in Google's merchant listings; without them the listing is less complete.",
+      "fix": "Add `shippingDetails` to each Offer, or a site-wide shipping policy (`hasShippingService` on the Organization).",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/shop/widget/",
+          "detail": "Widget security key: 1 of 1 offer(s)"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-052"
+    },
+    {
+      "check": "product-no-returns",
+      "rule": "SHOP-05",
+      "severity": "low",
+      "category": "Structured data",
+      "title": "1 product page(s) have no return policy in their schema",
+      "what": "Found on http://127.0.0.1:<port>/shop/widget/ (Widget security key: 1 of 1 offer(s)).",
+      "why": "The return policy can show in merchant listings and helps shoppers choose.",
+      "fix": "Add `hasMerchantReturnPolicy` to each Offer, or once on the Organization.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/shop/widget/",
+          "detail": "Widget security key: 1 of 1 offer(s)"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-053"
+    },
+    {
+      "check": "hreflang-no-xdefault",
+      "rule": "META-08",
+      "severity": "low",
+      "category": "Metadata",
+      "title": "1 page(s) with hreflang have no x-default",
+      "what": "Found on http://127.0.0.1:<port>/es/.",
+      "why": "x-default tells search engines which version to show visitors whose language matches none of the listed ones.",
+      "fix": "Add an x-default entry, usually the main version or a language picker.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/es/"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-054"
+    },
+    {
+      "check": "no-speculation-rules",
+      "rule": "PERF-09",
+      "severity": "low",
+      "category": "Performance",
+      "title": "No page asks the browser to start loading the next page early (speculation rules)",
+      "what": "Found on http://127.0.0.1:<port>/ (none of 13 pages).",
+      "why": "Speculation rules let Chrome and Edge start loading a page as soon as a visitor shows they're about to open it (hovering over or pressing a link), so it appears almost at once. A few lines in the shared layout turn this on for the whole site; other browsers ignore them.",
+      "fix": "Add `<script type=\"speculationrules\">{\"prefetch\":[{\"where\":{\"href_matches\":\"/*\"},\"eagerness\":\"moderate\"}]}</script>` to the shared layout, or send a `Speculation-Rules` header from the server or CDN. Leave out links that change something (log out, add to cart) with a `not` condition.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/",
+          "detail": "none of 13 pages"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-055"
+    },
+    {
+      "check": "link-to-redirect",
+      "rule": "CRAWL-08",
+      "severity": "low",
+      "category": "Crawling & indexing",
+      "title": "1 internal link target(s) point at a redirect",
+      "what": "Found on http://127.0.0.1:<port>/about (→ http://127.0.0.1:<port>/about/ (linked from http://127.0.0.1:<port>/)).",
+      "why": "Linking to a redirecting URL costs a hop on every click and crawl.",
+      "fix": "Update the links to the final URL (often a missing or extra trailing slash).",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/about",
+          "detail": "→ http://127.0.0.1:<port>/about/ (linked from http://127.0.0.1:<port>/)"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-056"
+    },
+    {
+      "check": "img-no-srcset",
+      "rule": "PERF-08",
+      "severity": "low",
+      "category": "Performance",
+      "title": "1 page(s) send large images at full size to every screen (no srcset)",
+      "what": "Found on http://127.0.0.1:<port>/legacy/ (1 image(s) over 1,000 px wide, e.g. /big.png (1200 px)).",
+      "why": "These images are over 1,000 px wide (from their `width` attribute) with no `srcset`, so phones download the full desktop size. web.dev says that can use 2–4 times the data needed, and it slows the page. 1,000 px is this skill's working level, not a Google threshold.",
+      "fix": "Give large images a `srcset` with three to five widths and a `sizes` attribute, or use the framework's image component (such as Next.js `<Image>`), which writes them.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/legacy/",
+          "detail": "1 image(s) over 1,000 px wide, e.g. /big.png (1200 px)"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-057"
+    },
+    {
+      "check": "hreflang-missing-version",
+      "rule": "META-08",
+      "severity": "low",
+      "category": "Metadata",
+      "title": "1 page(s) leave out a language version their other versions list",
+      "what": "Found on http://127.0.0.1:<port>/en/ (en-uk → https://example-security.com/about/ (listed by http://127.0.0.1:<port>/es/)).",
+      "why": "Each version of a page has to list every version, itself included. These pages lack one the pages they link to list, so search engines may not pair it with them and can show visitors the wrong language.",
+      "fix": "Build each page's hreflang from one shared list of the page's versions, so they all list the same set.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/en/",
+          "detail": "en-uk → https://example-security.com/about/ (listed by http://127.0.0.1:<port>/es/)"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-058"
+    },
+    {
+      "check": "head-tags-late",
+      "rule": "REND-08",
+      "severity": "low",
+      "category": "Rendering",
+      "title": "1 page(s) send their title, description, canonical or robots tag after the <head>",
+      "what": "Found on http://127.0.0.1:<port>/snippetless/ (in the body: robots).",
+      "why": "These tags came after the page's `<head>` had ended, in the `<body>`. Google asks for the title, meta tags and canonical early in the HTML, because it reads only the first 2 MB of a page, and it accepts a canonical only inside the `<head>`, so one sent in the body works only if the page's JavaScript moves it there. Google does read a robots tag anywhere in the page. Next.js 15.2 and later send metadata late on purpose when it loads slowly (\"streamed metadata\"): browsers and Googlebot, which runs JavaScript, get it in the body, while the bots on Next.js's own list, such as Bingbot, Applebot and the link previews of X, Slack and Facebook, get it in the head. This crawler (user agent seo-supervisor-crawler) isn't on that list, so it saw what a browser gets.",
+      "fix": "Put these tags in the `<head>`. In Next.js, make `generateMetadata` fast (cache the data it reads), or list the bots that should get the head version in `htmlLimitedBots` in next.config; `/.*/` turns streaming off. Elsewhere, check the template, component or plugin that writes the tags into the body.",
+      "count": 1,
+      "evidence": [
+        {
+          "url": "http://127.0.0.1:<port>/snippetless/",
+          "detail": "in the body: robots"
+        }
+      ],
+      "source": "crawler",
+      "status": "open",
+      "id": "C-059"
+    }
+  ],
+  "passed": [
+    {
+      "rule": "AI-03",
+      "title": "Bing/Copilot preferences use the new directives",
+      "category": "AI search"
+    },
+    {
+      "rule": "CRAWL-01",
+      "title": "robots.txt lets search engines crawl the site",
+      "category": "Crawling & indexing"
+    },
+    {
+      "rule": "CRAWL-05",
+      "title": "Correct HTTP status codes, no soft 404s",
+      "category": "Crawling & indexing"
+    },
+    {
+      "rule": "CRAWL-06",
+      "title": "Sitemap URLs return 200",
+      "category": "Crawling & indexing"
+    },
+    {
+      "rule": "LINK-01",
+      "title": "Pages are within three clicks of the home page",
+      "category": "Internal linking"
+    },
+    {
+      "rule": "LINK-02",
+      "title": "No orphan pages",
+      "category": "Internal linking"
+    },
+    {
+      "rule": "LINK-06",
+      "title": "Link counts per page stay reasonable",
+      "category": "Internal linking"
+    },
+    {
+      "rule": "MAP-02",
+      "title": "Sitemap lists only canonical, indexable URLs on the right host",
+      "category": "Sitemaps & robots"
+    },
+    {
+      "rule": "MAP-03",
+      "title": "Indexable pages are in the sitemap",
+      "category": "Sitemaps & robots"
+    },
+    {
+      "rule": "MAP-04",
+      "title": "Sitemap lastmod dates are real",
+      "category": "Sitemaps & robots"
+    },
+    {
+      "rule": "MAP-05",
+      "title": "robots.txt blocks only junk, never CSS/JS",
+      "category": "Sitemaps & robots"
+    },
+    {
+      "rule": "META-05",
+      "title": "Page language declared",
+      "category": "Metadata"
+    },
+    {
+      "rule": "META-06",
+      "title": "Robots meta depends on page type, using the object form",
+      "category": "Metadata"
+    },
+    {
+      "rule": "META-09",
+      "title": "Each title matches what its page is about",
+      "category": "Metadata"
+    },
+    {
+      "rule": "PERF-06",
+      "title": "HTML documents stay lightweight",
+      "category": "Performance"
+    },
+    {
+      "rule": "REND-10",
+      "title": "No obsolete HTML tags (frames, font, center, marquee)",
+      "category": "Rendering"
+    },
+    {
+      "rule": "SCHEMA-02",
+      "title": "Organization and WebSite schema on the home page",
+      "category": "Structured data"
+    },
+    {
+      "rule": "URL-01",
+      "title": "Clean, lowercase, hyphenated URLs",
+      "category": "URLs & canonicals"
+    },
+    {
+      "rule": "URL-02",
+      "title": "One trailing-slash style, the other variant redirects",
+      "category": "URLs & canonicals"
+    },
+    {
+      "rule": "URL-05",
+      "title": "Every breadcrumb level is a real page",
+      "category": "URLs & canonicals"
+    }
+  ],
+  "notChecked": [
+    {
+      "rule": "TRUST-07",
+      "area": "TRUST-07 The HTTPS certificate is trusted, covers every host and renews in time",
+      "reason": "Pass --check-live once the site is live."
+    },
+    {
+      "rule": "URL-03",
+      "area": "URL-03 One host, HTTPS only",
+      "reason": "Pass --check-live once the site is live."
+    },
+    {
+      "rule": "PERF-01",
+      "area": "PERF-01 Core Web Vitals pass on mobile",
+      "reason": "Outside checks are off. With the owner's go-ahead, --outside fetches real-user speed data from Google PageSpeed Insights."
+    },
+    {
+      "rule": "REND-06",
+      "area": "REND-06 JavaScript doesn't fight the HTML",
+      "reason": "Outside checks are off. With the owner's go-ahead, --outside renders sample pages in headless Chrome (running the site's own scripts) and compares them with the raw HTML."
+    },
+    {
+      "rule": "REND-07",
+      "area": "REND-07 Mobile shows the same content as desktop",
+      "reason": "Outside checks are off. With the owner's go-ahead, --outside loads sample pages in headless Chrome at desktop and phone size (running the site's own scripts) and saves screenshots."
+    },
+    {
+      "rule": "PERF-07",
+      "area": "PERF-07 Popups don't block content or crawlers",
+      "reason": "Outside checks are off. With the owner's go-ahead, --outside loads sample pages in headless Chrome at desktop and phone size (running the site's own scripts) and saves screenshots."
+    },
+    {
+      "rule": "PERF-10",
+      "area": "PERF-10 Back and Forward are instant (back/forward cache)",
+      "reason": "Chrome's back/forward cache test didn't run: outside checks are off (with the owner's go-ahead, --outside runs it in headless Chrome). The HTML hints (Cache-Control: no-store, inline unload handlers) found nothing."
+    },
+    {
+      "rule": "REND-11",
+      "area": "REND-11 Phones get a working menu, and pages that aren't crowded with ads",
+      "reason": "Outside checks are off. With the owner's go-ahead, --outside loads sample pages in headless Chrome at phone size (running the site's own scripts) to try the menu button and measure ads."
+    },
+    {
+      "rule": "CRAWL-09",
+      "area": "CRAWL-09 Bot protection and firewall",
+      "reason": "A Googlebot user agent got the same status, robots tag, canonical, title and text as a visitor on 10 page(s) of the local build, where no CDN or firewall sits in between; crawl the live site to include them. A real Googlebot comes from Google's IP addresses, which a firewall can treat differently; confirm with the live test in Search Console's URL Inspection."
+    },
+    {
+      "rule": "CRAWL-11",
+      "area": "CRAWL-11 Drafts and publish flags",
+      "reason": "The crawler can't see publish flags; check the content layer (scripts/content-scan.mjs)."
+    },
+    {
+      "rule": "SCHEMA-08",
+      "area": "SCHEMA-08 Rich result eligibility",
+      "reason": "Run one URL per template through Google's Rich Results Test."
+    },
+    {
+      "rule": "META-07",
+      "area": "META-07 Search Console and Bing verification",
+      "reason": "Check DNS or ask the owner."
+    },
+    {
+      "rule": "LINK-03",
+      "area": "LINK-03 Circular linking design",
+      "reason": "Needs a read of the related-content code and data."
+    },
+    {
+      "rule": "CONTENT-03",
+      "area": "CONTENT-03 Keyword targeting and cannibalization",
+      "reason": "Needs the content plan or Search Console query data."
+    },
+    {
+      "rule": "CONTENT-11",
+      "area": "CONTENT-11 Spam policies (scaled content, doorways, site reputation, back-button hijacking)",
+      "reason": "Needs a read of content strategy and scripts. The crawler covers parts of it: near-duplicate pages, links in comment sections without rel=\"ugc\" or \"nofollow\", and inline scripts that may trap the Back button; scripts loaded from files aren't read."
+    },
+    {
+      "rule": "AI-02",
+      "area": "AI-02 AI crawler access through the CDN/WAF",
+      "reason": "robots.txt is checked; firewall behaviour toward OAI-SearchBot, Claude-SearchBot and PerplexityBot isn't visible locally."
+    },
+    {
+      "rule": "URL-07",
+      "area": "URL-07 Old-URL redirects",
+      "reason": "No redirect list given. Pass --urls (old site URLs) or --next-manifest .next/routes-manifest.json."
+    },
+    {
+      "rule": "CONTENT-10",
+      "area": "CONTENT-10 Banned and unconfirmed claims",
+      "reason": "Pass --banned and --verify with the profile's claim lists."
+    }
+  ],
+  "agents": {
+    "pages": [],
+    "ucp": null,
+    "wellKnown": []
+  },
+  "writingNotes": [
+    {
+      "url": "http://127.0.0.1:<port>/",
+      "longSentences": 0,
+      "longestSentence": null,
+      "longParagraphs": 1,
+      "stockPhrases": [],
+      "readingEase": 48,
+      "examples": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/conflict/",
+      "longSentences": 1,
+      "longestSentence": "Older pages like this one were moved during a redesign and still carry settings from the previous site, which is exactly the kind of leftover a careful audit should notice and explain before anyone relies on the page again.",
+      "longParagraphs": 0,
+      "stockPhrases": [],
+      "readingEase": null,
+      "examples": [
+        "Older pages like this one were moved during a redesign and still…"
+      ]
+    },
+    {
+      "url": "http://127.0.0.1:<port>/en/",
+      "longSentences": 1,
+      "longestSentence": "This version of the page exists to test language alternates, so it carries enough ordinary text to count as a real page with real content rather than a thin placeholder that the audit would flag for other reasons first.",
+      "longParagraphs": 0,
+      "stockPhrases": [],
+      "readingEase": null,
+      "examples": [
+        "This version of the page exists to test language alternates, so it…"
+      ]
+    },
+    {
+      "url": "http://127.0.0.1:<port>/legacy/",
+      "longSentences": 1,
+      "longestSentence": "Older pages like this one were moved during a redesign and still carry settings from the previous site, which is exactly the kind of leftover a careful audit should notice and explain before anyone relies on the page again.",
+      "longParagraphs": 0,
+      "stockPhrases": [],
+      "readingEase": null,
+      "examples": [
+        "Older pages like this one were moved during a redesign and still…"
+      ]
+    },
+    {
+      "url": "http://127.0.0.1:<port>/snippetless/",
+      "longSentences": 0,
+      "longestSentence": null,
+      "longParagraphs": 1,
+      "stockPhrases": [],
+      "readingEase": 49,
+      "examples": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/tools/",
+      "longSentences": 0,
+      "longestSentence": null,
+      "longParagraphs": 1,
+      "stockPhrases": [],
+      "readingEase": 47,
+      "examples": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/tools/dmarc-checker/",
+      "longSentences": 0,
+      "longestSentence": null,
+      "longParagraphs": 1,
+      "stockPhrases": [],
+      "readingEase": 47,
+      "examples": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+      "longSentences": 0,
+      "longestSentence": null,
+      "longParagraphs": 1,
+      "stockPhrases": [],
+      "readingEase": 48,
+      "examples": []
+    }
+  ],
+  "businessType": {
+    "guess": null,
+    "alternatives": [],
+    "evidence": [],
+    "confidence": "none"
+  },
+  "images": [],
+  "robotsTxt": {
+    "status": 200,
+    "hash": "304c5bef06ba8b776aaf649b7fd5ad17c54a73de21a063b9d0b49958bcb0b00a",
+    "text": "User-agent: *\nAllow: /\nDisallow: /private/\nContent-Signal: search=yes, ai-train=maybe\n\nUser-agent: GPTBot\nDisallow: /\n\n"
+  },
+  "redirects": [
+    {
+      "from": "http://127.0.0.1:<port>/about",
+      "to": "http://127.0.0.1:<port>/about/",
+      "status": 301
+    }
+  ],
+  "sections": [
+    {
+      "path": "/",
+      "pages": 9,
+      "share": 0.692
+    },
+    {
+      "path": "/tools/",
+      "pages": 3,
+      "share": 0.231
+    },
+    {
+      "path": "/shop/",
+      "pages": 1,
+      "share": 0.077
+    }
+  ],
+  "aiBots": [
+    {
+      "bot": "OAI-SearchBot",
+      "vendor": "OpenAI",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Claude-SearchBot",
+      "vendor": "Anthropic",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "PerplexityBot",
+      "vendor": "Perplexity",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "MistralAI-Index",
+      "vendor": "Mistral",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "DuckAssistBot",
+      "vendor": "DuckDuckGo",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Amzn-SearchBot",
+      "vendor": "Amazon",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "YandexAdditionalBot",
+      "vendor": "Yandex",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Applebot",
+      "vendor": "Apple",
+      "kind": "search",
+      "robots": "allowed"
+    },
+    {
+      "bot": "GPTBot",
+      "vendor": "OpenAI",
+      "kind": "training",
+      "robots": "blocked"
+    },
+    {
+      "bot": "ClaudeBot",
+      "vendor": "Anthropic",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Google-Extended",
+      "vendor": "Google",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Applebot-Extended",
+      "vendor": "Apple",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "CCBot",
+      "vendor": "Common Crawl",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Bytespider",
+      "vendor": "ByteDance",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "meta-externalagent",
+      "vendor": "Meta",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "MistralAI-Training",
+      "vendor": "Mistral",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Amazonbot",
+      "vendor": "Amazon",
+      "kind": "training",
+      "robots": "allowed"
+    },
+    {
+      "bot": "ChatGPT-User",
+      "vendor": "OpenAI",
+      "kind": "user",
+      "robots": "allowed",
+      "mayIgnore": true
+    },
+    {
+      "bot": "Claude-User",
+      "vendor": "Anthropic",
+      "kind": "user",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Perplexity-User",
+      "vendor": "Perplexity",
+      "kind": "user",
+      "robots": "allowed",
+      "mayIgnore": true
+    },
+    {
+      "bot": "Google-Agent",
+      "vendor": "Google",
+      "kind": "user",
+      "robots": "allowed",
+      "mayIgnore": true
+    },
+    {
+      "bot": "Google-GeminiNotebook",
+      "vendor": "Google",
+      "kind": "user",
+      "robots": "allowed",
+      "mayIgnore": true
+    },
+    {
+      "bot": "MistralAI-User",
+      "vendor": "Mistral",
+      "kind": "user",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Amzn-User",
+      "vendor": "Amazon",
+      "kind": "user",
+      "robots": "allowed",
+      "mayIgnore": true
+    },
+    {
+      "bot": "Meta-ExternalFetcher",
+      "vendor": "Meta",
+      "kind": "user",
+      "robots": "allowed",
+      "mayIgnore": true
+    },
+    {
+      "bot": "OAI-AdsBot",
+      "vendor": "OpenAI",
+      "kind": "other",
+      "robots": "allowed"
+    },
+    {
+      "bot": "Google-CloudVertexBot",
+      "vendor": "Google",
+      "kind": "other",
+      "robots": "allowed"
+    }
+  ],
+  "trainingOptOut": "not-set",
+  "linkedOnce": {
+    "count": 8,
+    "pages": [
+      {
+        "url": "http://127.0.0.1:<port>/tools/",
+        "from": "http://127.0.0.1:<port>/"
+      },
+      {
+        "url": "http://127.0.0.1:<port>/about/",
+        "from": "http://127.0.0.1:<port>/"
+      },
+      {
+        "url": "http://127.0.0.1:<port>/spa/",
+        "from": "http://127.0.0.1:<port>/"
+      },
+      {
+        "url": "http://127.0.0.1:<port>/snippetless/",
+        "from": "http://127.0.0.1:<port>/"
+      },
+      {
+        "url": "http://127.0.0.1:<port>/legacy/",
+        "from": "http://127.0.0.1:<port>/"
+      },
+      {
+        "url": "http://127.0.0.1:<port>/conflict/",
+        "from": "http://127.0.0.1:<port>/legacy/"
+      },
+      {
+        "url": "http://127.0.0.1:<port>/shop/widget/",
+        "from": "http://127.0.0.1:<port>/legacy/"
+      },
+      {
+        "url": "http://127.0.0.1:<port>/es/",
+        "from": "http://127.0.0.1:<port>/en/"
+      }
+    ]
+  },
+  "linkStrength": {
+    "pages": {
+      "/tools/ssl-checker/": 100,
+      "/tools/dmarc-checker/": 99,
+      "/": 64,
+      "/en/": 30,
+      "/es/": 25,
+      "/tools/": 19,
+      "/about/": 19,
+      "/spa/": 19,
+      "/snippetless/": 19,
+      "/legacy/": 19,
+      "/conflict/": 12,
+      "/shop/widget/": 12
+    },
+    "median": 19
+  },
+  "pageWords": {
+    "file": "seo-crawl.words.json",
+    "stamp": 1795176000000,
+    "pages": 11
+  },
+  "landmarks": {
+    "checked": 11,
+    "count": 11,
+    "pages": [
+      {
+        "url": "http://127.0.0.1:<port>/",
+        "missing": [
+          "nav",
+          "footer"
+        ]
+      },
+      {
+        "url": "http://127.0.0.1:<port>/tools/",
+        "missing": [
+          "nav",
+          "header",
+          "footer"
+        ]
+      },
+      {
+        "url": "http://127.0.0.1:<port>/about/",
+        "missing": [
+          "nav",
+          "header",
+          "footer"
+        ]
+      },
+      {
+        "url": "http://127.0.0.1:<port>/snippetless/",
+        "missing": [
+          "nav",
+          "header",
+          "footer"
+        ]
+      },
+      {
+        "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+        "missing": [
+          "nav",
+          "header",
+          "footer"
+        ]
+      },
+      {
+        "url": "http://127.0.0.1:<port>/legacy/",
+        "missing": [
+          "nav",
+          "header",
+          "footer"
+        ]
+      },
+      {
+        "url": "http://127.0.0.1:<port>/tools/dmarc-checker/",
+        "missing": [
+          "nav",
+          "header",
+          "footer"
+        ]
+      },
+      {
+        "url": "http://127.0.0.1:<port>/conflict/",
+        "missing": [
+          "nav",
+          "header",
+          "footer"
+        ]
+      },
+      {
+        "url": "http://127.0.0.1:<port>/en/",
+        "missing": [
+          "nav",
+          "header",
+          "footer"
+        ]
+      },
+      {
+        "url": "http://127.0.0.1:<port>/shop/widget/",
+        "missing": [
+          "nav",
+          "header",
+          "footer"
+        ]
+      },
+      {
+        "url": "http://127.0.0.1:<port>/es/",
+        "missing": [
+          "nav",
+          "header",
+          "footer"
+        ]
+      }
+    ]
+  },
+  "productFields": {
+    "products": 1,
+    "brand": 0,
+    "gtin": 0,
+    "sku": 0,
+    "color": 0,
+    "size": 0,
+    "material": 0,
+    "category": 0
+  },
+  "media": {
+    "serverTimes": {
+      "pages": 13,
+      "median": 0,
+      "p95": 0,
+      "slow": []
+    }
+  },
+  "keywordUse": {
+    "counts": {
+      "natural": 1,
+      "missing": 4,
+      "repetitive": 0,
+      "forced": 0
+    },
+    "pages": [
+      {
+        "url": "http://127.0.0.1:<port>/tools/",
+        "phrase": "security tools hub",
+        "verdict": "missing",
+        "density": 0,
+        "spots": [
+          "title"
+        ]
+      },
+      {
+        "url": "http://127.0.0.1:<port>/snippetless/",
+        "phrase": "page that blocks",
+        "verdict": "missing",
+        "density": 0,
+        "spots": [
+          "title"
+        ]
+      },
+      {
+        "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+        "phrase": "free online ssl",
+        "verdict": "missing",
+        "density": 0,
+        "spots": [
+          "title"
+        ]
+      },
+      {
+        "url": "http://127.0.0.1:<port>/tools/dmarc-checker/",
+        "phrase": "free online ssl",
+        "verdict": "missing",
+        "density": 0,
+        "spots": [
+          "title"
+        ]
+      }
+    ]
+  },
+  "linksToOtherSites": {
+    "pages": {
+      "http://127.0.0.1:<port>/": 0,
+      "http://127.0.0.1:<port>/tools/": 0,
+      "http://127.0.0.1:<port>/about/": 0,
+      "http://127.0.0.1:<port>/spa/": 0,
+      "http://127.0.0.1:<port>/noindexed/": 0,
+      "http://127.0.0.1:<port>/snippetless/": 0,
+      "http://127.0.0.1:<port>/tools/ssl-checker/": 0,
+      "http://127.0.0.1:<port>/legacy/": 0,
+      "http://127.0.0.1:<port>/tools/dmarc-checker/": 0,
+      "http://127.0.0.1:<port>/conflict/": 0,
+      "http://127.0.0.1:<port>/en/": 0,
+      "http://127.0.0.1:<port>/shop/widget/": 0,
+      "http://127.0.0.1:<port>/es/": 0
+    },
+    "domains": {}
+  },
+  "trustSignals": [
+    {
+      "id": "about",
+      "label": "About page",
+      "rule": "TRUST-04",
+      "applies": true,
+      "found": true,
+      "evidence": "/about on /",
+      "add": "Add an About page that says who runs the site and why visitors can trust it, and link it from the main menu or the footer."
+    },
+    {
+      "id": "contact",
+      "label": "Contact details",
+      "rule": "TRUST-04",
+      "applies": true,
+      "found": false,
+      "evidence": null,
+      "add": "Add a Contact page, or show an email address or phone number, and link it from every page."
+    },
+    {
+      "id": "org-schema",
+      "label": "Organization schema",
+      "rule": "SCHEMA-02",
+      "applies": true,
+      "found": false,
+      "evidence": "the Organization schema has no logo and sameAs",
+      "add": "Add `logo` and `sameAs` to the Organization schema on the home page."
+    },
+    {
+      "id": "author-byline",
+      "label": "Author names",
+      "rule": "CONTENT-07",
+      "applies": false,
+      "found": false,
+      "evidence": null,
+      "add": "Name the author on each article, on the page and as `author` in its Article schema."
+    },
+    {
+      "id": "author-page",
+      "label": "Author pages",
+      "rule": "CONTENT-07",
+      "applies": false,
+      "found": false,
+      "evidence": null,
+      "add": "Link each author's name to a page about them (role, experience, credentials), and give the author a `url` in the schema."
+    },
+    {
+      "id": "dates",
+      "label": "Dates on articles",
+      "rule": "CONTENT-07",
+      "applies": false,
+      "found": false,
+      "evidence": null,
+      "add": "Show when each article was published or last reviewed, and add `datePublished` and `dateModified` to its schema. Change them only with real edits (CONTENT-12)."
+    },
+    {
+      "id": "sources",
+      "label": "Sources cited",
+      "rule": "CONTENT-10",
+      "applies": true,
+      "found": false,
+      "evidence": null,
+      "add": "Link the source next to each fact and figure in your content."
+    },
+    {
+      "id": "customer-proof",
+      "label": "Customer reviews",
+      "rule": "TRUST-05",
+      "applies": true,
+      "found": true,
+      "evidence": "reviews in the schema on /tools/dmarc-checker/",
+      "add": "Show real reviews, testimonials or case studies from customers. Only real ones count: never invent or edit them."
+    },
+    {
+      "id": "policies",
+      "label": "Policies",
+      "rule": "TRUST-03",
+      "applies": true,
+      "found": false,
+      "evidence": "no link to a privacy policy, terms of service and a returns policy",
+      "add": "Add a privacy policy, terms of service and a returns policy and link them from the footer."
+    },
+    {
+      "id": "https",
+      "label": "HTTPS and security headers",
+      "rule": "TRUST-01",
+      "applies": true,
+      "found": false,
+      "evidence": "HTTPS, with open security findings",
+      "add": "Serve every page over HTTPS and fix the open security findings (TRUST-01, TRUST-07)."
+    },
+    {
+      "id": "own-media",
+      "label": "Own images",
+      "rule": null,
+      "applies": true,
+      "found": true,
+      "evidence": "/a.png on /tools/ssl-checker/",
+      "add": "Use your own photos, screenshots or diagrams on content pages, rather than none or stock photos."
+    }
+  ],
+  "errors": [
+    {
+      "url": "http://127.0.0.1:<port>/broken/",
+      "status": 404
+    }
+  ],
+  "pages": [
+    {
+      "url": "http://127.0.0.1:<port>/",
+      "status": 200,
+      "depth": 0,
+      "inSitemap": false,
+      "noindex": false,
+      "canonical": "https://example-security.com/",
+      "title": "Free Security Testing Tools | Brand",
+      "description": "A perfectly reasonable description for this test page that runs to about one hundred and thirty characters long.",
+      "ogTitle": "Free Security Testing Tools | Brand",
+      "ogImage": "https://example-security.com/og-home.png",
+      "h1Text": "Free security tools",
+      "words": 235,
+      "h1": 1,
+      "schema": [
+        "Organization",
+        "WebSite"
+      ],
+      "schemaOther": [],
+      "schemaProps": {
+        "Organization": [
+          "name",
+          "url"
+        ],
+        "WebSite": [
+          "name",
+          "url"
+        ]
+      },
+      "linksOut": 10,
+      "linksIn": 5,
+      "h2s": [],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": null,
+      "hreflang": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/tools/",
+      "status": 200,
+      "depth": 1,
+      "inSitemap": false,
+      "noindex": false,
+      "canonical": "https://example-security.com/tools/",
+      "title": "Security Tools Hub | Brand",
+      "description": "A perfectly reasonable description for this test page that runs to about one hundred and thirty characters long.",
+      "ogTitle": "Security Tools Hub | Brand",
+      "ogImage": "https://example-security.com/og.png",
+      "h1Text": "Tools",
+      "words": 225,
+      "h1": 1,
+      "schema": [
+        "BreadcrumbList"
+      ],
+      "schemaOther": [],
+      "schemaProps": {
+        "BreadcrumbList": [
+          "itemListElement"
+        ]
+      },
+      "linksOut": 2,
+      "linksIn": 1,
+      "h2s": [],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": null,
+      "hreflang": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/about/",
+      "status": 200,
+      "depth": 1,
+      "inSitemap": false,
+      "noindex": false,
+      "canonical": null,
+      "title": "About",
+      "description": null,
+      "ogTitle": "About",
+      "ogImage": "https://example-security.com/missing-share.png",
+      "h1Text": "About",
+      "words": 3,
+      "h1": 1,
+      "schema": [],
+      "schemaOther": [],
+      "schemaProps": {},
+      "linksOut": 0,
+      "linksIn": 1,
+      "h2s": [],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": null,
+      "hreflang": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/spa/",
+      "status": 200,
+      "depth": 1,
+      "inSitemap": false,
+      "noindex": false,
+      "canonical": null,
+      "title": "App Shell Loading Screen | Brand",
+      "description": null,
+      "ogTitle": null,
+      "ogImage": null,
+      "h1Text": null,
+      "words": 0,
+      "h1": 0,
+      "schema": [],
+      "schemaOther": [],
+      "schemaProps": {},
+      "linksOut": 0,
+      "linksIn": 1,
+      "h2s": [],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": null,
+      "hreflang": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/noindexed/",
+      "status": 200,
+      "depth": 1,
+      "inSitemap": false,
+      "noindex": true,
+      "canonical": "https://example-security.com/noindexed/",
+      "title": "Noindexed Page In The Sitemap | Brand",
+      "description": "A perfectly reasonable description for this test page that runs to about one hundred and thirty characters long.",
+      "ogTitle": "Noindexed Page In The Sitemap | Brand",
+      "ogImage": "https://example-security.com/og.png",
+      "h1Text": "Noindexed",
+      "words": 225,
+      "h1": 1,
+      "schema": [
+        "FAQPage"
+      ],
+      "schemaOther": [],
+      "schemaProps": {
+        "FAQPage": [
+          "mainEntity"
+        ]
+      },
+      "linksOut": 0,
+      "linksIn": 1,
+      "h2s": [
+        "How often should I run this check?"
+      ],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": null,
+      "hreflang": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/snippetless/",
+      "status": 200,
+      "depth": 1,
+      "inSitemap": false,
+      "noindex": false,
+      "canonical": "https://example-security.com/snippetless/",
+      "title": "A Page That Blocks Its Own Snippets | Brand",
+      "description": "A perfectly reasonable description for this test page that runs to about one hundred and thirty characters long.",
+      "ogTitle": "A Page That Blocks Its Own Snippets | Brand",
+      "ogImage": "https://cdn.example.invalid/share.png",
+      "h1Text": "Snippetless",
+      "words": 220,
+      "h1": 1,
+      "schema": [],
+      "schemaOther": [],
+      "schemaProps": {},
+      "linksOut": 0,
+      "linksIn": 1,
+      "h2s": [],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": null,
+      "hreflang": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/tools/ssl-checker/",
+      "status": 200,
+      "depth": 1,
+      "inSitemap": false,
+      "noindex": false,
+      "canonical": "https://example-security.com/tools/ssl-checker/",
+      "title": "SSL Checker - Free Online SSL Certificate Test Tool With Detailed Report | Brand",
+      "description": "A perfectly reasonable description for this test page that runs to about one hundred and thirty characters long.",
+      "ogTitle": "SSL Checker - Free Online SSL Certificate Test Tool With Detailed Report | Brand",
+      "ogImage": "https://example-security.com/og.png",
+      "h1Text": "SSL Checker",
+      "words": 250,
+      "h1": 2,
+      "schema": [
+        "BreadcrumbList",
+        "FAQPage"
+      ],
+      "schemaOther": [],
+      "schemaProps": {
+        "BreadcrumbList": [
+          "itemListElement"
+        ],
+        "FAQPage": [
+          "mainEntity"
+        ]
+      },
+      "linksOut": 1,
+      "linksIn": 3,
+      "h2s": [
+        "How it works"
+      ],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": null,
+      "hreflang": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/legacy/",
+      "status": 200,
+      "depth": 1,
+      "inSitemap": false,
+      "noindex": false,
+      "canonical": "https://example-security.com/legacy/",
+      "title": "Legacy security checklist page | Brand",
+      "description": "An older page that still carries settings from the previous site, kept here to test document basics and image weight checks.",
+      "ogTitle": "Legacy page",
+      "ogImage": "https://example-security.com/og.png",
+      "h1Text": "Legacy checklist",
+      "words": 65,
+      "h1": 1,
+      "schema": [],
+      "schemaOther": [],
+      "schemaProps": {},
+      "linksOut": 4,
+      "linksIn": 1,
+      "h2s": [],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": "https://example-security.com/old-legacy-page/",
+      "hreflang": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/tools/dmarc-checker/",
+      "status": 200,
+      "depth": 2,
+      "inSitemap": false,
+      "noindex": false,
+      "canonical": "https://example-security.com/tools/dmarc-checker/?utm_source=x",
+      "title": "SSL Checker - Free Online SSL Certificate Test Tool With Detailed Report | Brand",
+      "description": "A perfectly reasonable description for this test page that runs to about one hundred and thirty characters long.",
+      "ogTitle": "SSL Checker - Free Online SSL Certificate Test Tool With Detailed Report | Brand",
+      "ogImage": "https://example-security.com/og.png",
+      "h1Text": "DMARC Checker",
+      "words": 239,
+      "h1": 1,
+      "schema": [
+        "BreadcrumbList",
+        "WebApplication",
+        "HowTo"
+      ],
+      "schemaOther": [],
+      "schemaProps": {
+        "BreadcrumbList": [
+          "itemListElement"
+        ],
+        "WebApplication": [
+          "aggregateRating",
+          "name"
+        ],
+        "HowTo": [
+          "aggregateRating",
+          "name"
+        ]
+      },
+      "linksOut": 1,
+      "linksIn": 2,
+      "h2s": [],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": null,
+      "hreflang": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/conflict/",
+      "status": 200,
+      "depth": 2,
+      "inSitemap": false,
+      "noindex": false,
+      "canonical": "https://example-security.com/conflict/",
+      "title": "Robots conflict test page | Brand",
+      "description": "A page whose robots meta tag says index while the server header says noindex, which search engines resolve to the stricter one.",
+      "ogTitle": null,
+      "ogImage": null,
+      "h1Text": "Conflict",
+      "words": 59,
+      "h1": 1,
+      "schema": [],
+      "schemaOther": [],
+      "schemaProps": {},
+      "linksOut": 1,
+      "linksIn": 1,
+      "h2s": [],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": null,
+      "hreflang": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/en/",
+      "status": 200,
+      "depth": 2,
+      "inSitemap": false,
+      "noindex": false,
+      "canonical": "https://example-security.com/en/",
+      "title": "Security tools in English | Brand",
+      "description": "The English version of the security tools page, used to check that language alternates point at each other in both directions.",
+      "ogTitle": null,
+      "ogImage": null,
+      "h1Text": "Security tools",
+      "words": 61,
+      "h1": 1,
+      "schema": [],
+      "schemaOther": [],
+      "schemaProps": {},
+      "linksOut": 2,
+      "linksIn": 2,
+      "h2s": [],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": null,
+      "hreflang": [
+        {
+          "lang": "en",
+          "href": "https://example-security.com/en/"
+        },
+        {
+          "lang": "es",
+          "href": "https://example-security.com/es/"
+        },
+        {
+          "lang": "x-default",
+          "href": "https://example-security.com/en/"
+        }
+      ]
+    },
+    {
+      "url": "http://127.0.0.1:<port>/shop/widget/",
+      "status": 200,
+      "depth": 2,
+      "inSitemap": false,
+      "noindex": false,
+      "canonical": "https://example-security.com/shop/widget/",
+      "title": "Widget security key | Brand shop",
+      "description": "A hardware security key with a physical second factor, used to test that product schema matches the price shown on the page.",
+      "ogTitle": null,
+      "ogImage": null,
+      "h1Text": "Widget security key",
+      "words": 61,
+      "h1": 1,
+      "schema": [
+        "Product"
+      ],
+      "schemaOther": [],
+      "schemaProps": {
+        "Product": [
+          "image",
+          "name",
+          "offers"
+        ]
+      },
+      "linksOut": 1,
+      "linksIn": 1,
+      "h2s": [],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": null,
+      "hreflang": []
+    },
+    {
+      "url": "http://127.0.0.1:<port>/es/",
+      "status": 200,
+      "depth": 3,
+      "inSitemap": false,
+      "noindex": false,
+      "canonical": "https://example-security.com/es/",
+      "title": "Herramientas de seguridad | Brand",
+      "description": "La versión en español de la página de herramientas, que no enlaza de vuelta a la versión inglesa y usa un código de región inválido.",
+      "ogTitle": null,
+      "ogImage": null,
+      "h1Text": "Herramientas",
+      "words": 60,
+      "h1": 1,
+      "schema": [],
+      "schemaOther": [],
+      "schemaProps": {},
+      "linksOut": 2,
+      "linksIn": 1,
+      "h2s": [],
+      "h3s": [],
+      "ogDescription": null,
+      "ogUrl": null,
+      "hreflang": [
+        {
+          "lang": "es",
+          "href": "https://example-security.com/es/"
+        },
+        {
+          "lang": "en-uk",
+          "href": "https://example-security.com/about/"
+        }
+      ]
+    }
+  ]
+}
