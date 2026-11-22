@@ -3,6 +3,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { TEMPORARY, isLocal, slashOnly, urlOr } from "../crawl/fetch.mjs";
+import { pool } from "../crawl/queue.mjs";
 import { FILE_EXT } from "../lib/html.mjs";
 import { checkOutbound } from "./outbound.mjs";
 import { hasName } from "./crawl.mjs";
@@ -107,7 +108,7 @@ export async function slashStyle(site, SLASH) {
 // Old URLs and redirect sources (URL-07), from --urls and --next-manifest, each tried with and without a trailing
 // slash; their records join site.all. Returns the sources read.
 export async function oldUrls(site, { urlList: URL_LIST, nextManifest: NEXT_MANIFEST }) {
-  const { pages, all, add, evalRules, notes, startOrigin: START_ORIGIN, follow } = site;
+  const { pages, all, add, evalRules, notes, startOrigin: START_ORIGIN, conc: CONC, follow } = site;
   const redirectSources = [];
   if (URL_LIST) {
     try {
@@ -159,8 +160,9 @@ export async function oldUrls(site, { urlList: URL_LIST, nextManifest: NEXT_MANI
         }
       }
     }
-    for (const u of list.slice(0, 2000)) {
-      const r = await follow(u);
+    const answers = await pool(list.slice(0, 2000), CONC, u => follow(u)); // the crawl's pool, read back in order
+    for (const [i, u] of list.slice(0, 2000).entries()) {
+      const r = answers[i];
       // Kept with the crawl's records so the report lists it; links-import.mjs and seo-diff.mjs read it from there.
       if (!pages.has(u))
         all.push({ url: u, status: r.status, finalUrl: r.finalUrl, chain: r.chain, error: r.error || null });

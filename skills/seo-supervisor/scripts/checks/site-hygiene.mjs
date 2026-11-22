@@ -2,13 +2,26 @@
 // Duplicate analytics, exposed keys, hidden links, review and event schema, app link files, PDFs and Markdown copies.
 import { HIDDEN_MIN, PDF_PAGES, JS_CAPS, APP_FILES, secretsIn, appFile } from "./hygiene.mjs";
 import { pathKey, upTo, urlOr } from "../crawl/fetch.mjs";
+import { pool } from "../crawl/queue.mjs";
 import { NOSPACE_RUN } from "../lib/html.mjs";
 import { mainWords as pickMainWords } from "../keyword-ideas.mjs";
 
 // Analytics and secret keys are checked on every page read, since both matter on pages search engines skip too; the
 // rest only on indexable pages. UA is the crawler's user agent, sent for the app link files.
 export async function hygieneChecks(site, UA) {
-  const { htmlPages, home, add, notes, extra, startOrigin: START_ORIGIN, get, indexable, selfHosts, bareHost } = site;
+  const {
+    htmlPages,
+    home,
+    add,
+    notes,
+    extra,
+    startOrigin: START_ORIGIN,
+    conc: CONC,
+    get,
+    indexable,
+    selfHosts,
+    bareHost,
+  } = site;
   const read = htmlPages.filter(p => p.hygieneSignals);
   // The business nodes at the top of the home page's schema are the site's own; a rated business elsewhere is the same
   // one when its @id or name matches.
@@ -57,28 +70,43 @@ export async function hygieneChecks(site, UA) {
   const scripts = new Map(); // crawl URL -> the pages that load it
   for (const p of read)
     for (const s of p.hygieneSignals.js) (scripts.get(s) || scripts.set(s, []).get(s)).push(p.finalUrl);
+  const sorted = [...scripts].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+  // Fetched in parallel, keeping only size and keys; JS_CAPS.all is then applied in order, as if read one by one. A
+  // file not started once JS_CAPS.all is spent would have gone unread that way too, so it's skipped.
+  let spent = 0;
+  const got = await pool(sorted.slice(0, JS_CAPS.files), CONC, async ([src]) => {
+    if (spent >= JS_CAPS.all) return null;
+    const r = await get(src, { accept: "*/*", text: /^(?!text\/html)/i, max: JS_CAPS.each }),
+      bytes = r.over ? JS_CAPS.each : Buffer.byteLength(r.body);
+    spent += bytes;
+    return {
+      bytes,
+      over: r.over,
+      keys: r.over ? [] : [...new Set(secretsIn(r.body).map(k => `${k.label} (${k.shown})`))],
+    };
+  });
   let jsRead = 0,
     jsBytes = 0,
     jsUnread = 0;
-  for (const [src, from] of [...scripts].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))) {
+  for (const [i, [src, from]] of sorted.entries()) {
     if (jsRead >= JS_CAPS.files || jsBytes >= JS_CAPS.all) {
       jsUnread++;
       continue;
     }
     jsRead++;
     const cap = Math.min(JS_CAPS.each, JS_CAPS.all - jsBytes),
-      r = await get(src, { accept: "*/*", text: /^(?!text\/html)/i, max: cap });
-    jsBytes += r.over ? cap : Buffer.byteLength(r.body);
-    if (r.over) {
+      r = got[i],
+      over = r.over || r.bytes > cap;
+    jsBytes += over ? cap : r.bytes;
+    if (over) {
       jsUnread++;
       continue;
     }
-    const keys = [...new Set(secretsIn(r.body).map(k => `${k.label} (${k.shown})`))];
-    if (keys.length)
+    if (r.keys.length)
       add(
         "secret-key-exposed",
         from.sort()[0],
-        `in the script ${pathKey(src)}${from.length > 1 ? ` (loaded by ${from.length} pages)` : ""}: ${keys.join("; ")}`,
+        `in the script ${pathKey(src)}${from.length > 1 ? ` (loaded by ${from.length} pages)` : ""}: ${r.keys.join("; ")}`,
       );
   }
   if (jsUnread)
@@ -137,27 +165,30 @@ export async function hygieneChecks(site, UA) {
 // https://developers.cloudflare.com/fundamentals/reference/markdown-for-agents/
 // The half-the-words lines and the 50-word minimum are local; a few words would swing the share.
 export async function markdownCheck(site, { mdHome, renderSample }) {
-  const { byPage, add, start: START, get } = site;
-  if (mdHome != null)
-    for (const u of renderSample) {
-      const p = byPage.get(u);
-      if (!p?.markdownWords) continue;
-      const res = u === START.href ? null : await get(u, { accept: "text/markdown", text: /^text\/markdown/i });
-      const text = res ? (res.status === 200 && /^text\/markdown/i.test(res.ct) ? res.body : null) : mdHome;
-      if (text == null) continue;
-      const md = text
-        .replace(/```json[\s\S]*?```|!\[[^\]]*\]\([^)]*\)|<[^>]*>|https?:\/\/\S+/g, " ")
-        .replace(/\]\([^)]*\)/g, "]");
-      const words = new Set(pickMainWords(md.replace(NOSPACE_RUN, " "))),
-        main = p.markdownWords.main.split(" "),
-        pageWords = new Set(p.markdownWords.all.split(" "));
-      const kept = main.filter(w => words.has(w)).length / main.length,
-        unseen = words.size ? [...words].filter(w => !pageWords.has(w)).length / words.size : 0;
-      if (kept < 0.5 || unseen > 0.5)
-        add(
-          "markdown-differs",
-          u,
-          `the Markdown has ${Math.round(100 * kept)}% of the page's main words, and ${Math.round(100 * unseen)}% of its own words aren't on the page; our own limit is half`,
-        );
-    }
+  const { byPage, add, start: START, conc: CONC, get } = site;
+  if (mdHome == null) return;
+  const asked = renderSample.filter(u => byPage.get(u)?.markdownWords);
+  const answers = await pool(asked, CONC, async u =>
+    u === START.href ? null : get(u, { accept: "text/markdown", text: /^text\/markdown/i }),
+  ); // the start page reuses mdHome
+  for (const [i, u] of asked.entries()) {
+    const p = byPage.get(u),
+      res = answers[i];
+    const text = res ? (res.status === 200 && /^text\/markdown/i.test(res.ct) ? res.body : null) : mdHome;
+    if (text == null) continue;
+    const md = text
+      .replace(/```json[\s\S]*?```|!\[[^\]]*\]\([^)]*\)|<[^>]*>|https?:\/\/\S+/g, " ")
+      .replace(/\]\([^)]*\)/g, "]");
+    const words = new Set(pickMainWords(md.replace(NOSPACE_RUN, " "))),
+      main = p.markdownWords.main.split(" "),
+      pageWords = new Set(p.markdownWords.all.split(" "));
+    const kept = main.filter(w => words.has(w)).length / main.length,
+      unseen = words.size ? [...words].filter(w => !pageWords.has(w)).length / words.size : 0;
+    if (kept < 0.5 || unseen > 0.5)
+      add(
+        "markdown-differs",
+        u,
+        `the Markdown has ${Math.round(100 * kept)}% of the page's main words, and ${Math.round(100 * unseen)}% of its own words aren't on the page; our own limit is half`,
+      );
+  }
 }

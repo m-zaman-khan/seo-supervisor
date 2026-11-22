@@ -2,6 +2,7 @@
 // Sitemap reading for the crawler, and the findings on the files and their entries.
 import { attrs, decode, tagsOf } from "../lib/html.mjs";
 import { clean } from "../crawl/fetch.mjs";
+import { pool } from "../crawl/queue.mjs";
 
 const SITEMAP_URLS = 50000; // the protocol's limit per file: Google reads no further
 export const SITEMAP_KEEP = 200000;
@@ -87,17 +88,29 @@ const tagText = (h, t) =>
 // listed is false for the guessed /sitemap.xml, where an HTML page means no sitemap. cut means SITEMAP_KEEP URLs were
 // kept and the rest, with any files after them, went unread. toCrawl(url) maps the public origin onto the crawl.
 /** @typedef {{ url: string, status: number, html?: boolean, invalid?: string, tooBig?: boolean, urls?: number, nestedIn?: string }} SitemapFile */
-async function readSitemaps(urls, listed = true, { fetchSitemap, toCrawl }) {
+async function readSitemaps(urls, listed = true, { fetchSitemap, toCrawl, conc }) {
   const entries = [],
     seen = new Set(),
     files = /** @type {SitemapFile[]} */ ([]);
   let cut = false;
-  const queue = urls.map(u => [u, listed, null]); // [url, named, the sitemap index that lists it]
-  while (queue.length && files.length < 60 && !cut) {
-    const [u, named, parent] = queue.shift();
-    if (seen.has(u)) continue;
-    seen.add(u);
-    const r = await fetchSitemap(toCrawl(u)),
+  const queue = urls.map(u => [u, listed, null]),
+    read = []; // [url, named, the sitemap index that lists it]; [that, answer]
+  while ((read.length || queue.length) && files.length < 60 && !cut) {
+    // The next conc files are fetched at once, then read in queue order. That holds conc whole files in memory (50 MB
+    // each at most); stream them if huge sitemaps turn up.
+    if (!read.length) {
+      const wave = [];
+      while (queue.length && wave.length < conc && files.length + wave.length < 60) {
+        const q = queue.shift();
+        if (!seen.has(q[0])) {
+          seen.add(q[0]);
+          wave.push(q);
+        }
+      }
+      read.push(...(await pool(wave, conc, async q => [q, await fetchSitemap(toCrawl(q[0]))])));
+      continue;
+    }
+    const [[u, named, parent], r] = read.shift(),
       body = r.body || "";
     // urls: 0 marks a file that answered but lists nothing (sitemap-empty).
     if (r.status !== 200 || !(body.trim() || r.broken)) {
@@ -239,8 +252,12 @@ async function readSitemaps(urls, listed = true, { fetchSitemap, toCrawl }) {
 
 // smUrls are robots.txt's sitemaps (smListed) or the guessed /sitemap.xml; the usual index names follow if they list
 // nothing.
-export async function findSitemaps(smUrls, smListed, { startOrigin: START_ORIGIN, notes, fetchSitemap, toCrawl }) {
-  const io = { fetchSitemap, toCrawl };
+export async function findSitemaps(
+  smUrls,
+  smListed,
+  { startOrigin: START_ORIGIN, notes, fetchSitemap, toCrawl, conc = 1 },
+) {
+  const io = { fetchSitemap, toCrawl, conc };
   let sm = await readSitemaps(smUrls, smListed, io);
   // The plugins' index names, then WordPress core's (since 5.5), and /sitemap.xml when robots.txt named other files: a
   // stale Sitemap: line left after a move mustn't hide the real sitemap. The named files stay in files, so a broken one

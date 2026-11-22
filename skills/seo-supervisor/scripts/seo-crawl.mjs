@@ -220,7 +220,13 @@ if (!SITE_ORIGIN) {
   } catch {}
 }
 const smListed = !!(robots && robots.sitemaps.length);
-const sm = await findSitemaps(smUrls, smListed, { startOrigin: START_ORIGIN, notes, fetchSitemap, toCrawl });
+const sm = await findSitemaps(smUrls, smListed, {
+  startOrigin: START_ORIGIN,
+  notes,
+  fetchSitemap,
+  toCrawl,
+  conc: CONC,
+});
 if (!SITE_ORIGIN && sm.entries.length) {
   try {
     const o = new URL(sm.entries[0].loc).origin;
@@ -260,7 +266,7 @@ const mdHome = await probeSite({
   startOrigin: START_ORIGIN,
   expectOrigin: EXPECT_ORIGIN,
   checkLive: CHECK_LIVE,
-  ua: UA,
+  conc: CONC,
   home,
   add,
   evalRules,
