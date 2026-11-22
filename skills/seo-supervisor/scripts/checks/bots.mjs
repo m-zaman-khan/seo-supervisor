@@ -1,7 +1,7 @@
 // @ts-check
 // Sample pages asked again as Googlebot and as AI search crawlers, each compared with a phone visitor.
-import { analyze } from "../crawl/page.mjs";
-import { isLocal, urlOr } from "../crawl/fetch.mjs";
+import { readLight } from "../crawl/page.mjs";
+import { isLocal } from "../crawl/fetch.mjs";
 import { sleep } from "./crawl.mjs";
 import { BOTS } from "./agents.mjs";
 
@@ -14,9 +14,13 @@ const GOOGLEBOT_UA =
 const PHONE_UA = GOOGLEBOT_UA.replace(/ \(compatible; Googlebot.*$/, "");
 // A response as a page, or null when it isn't HTML, with the sitemap's hreflang alternates merged in as analyze()
 // does. page is analyze()'s context (crawl/page.mjs).
-export const readPage = (r, page) =>
-  r.status === 200 && /html/.test(r.ct) && r.body ? analyze(r.finalUrl, r.body, r.headers, undefined, page) : null;
-const canonOf = (p, base) => (p.canonicals[0] ? (urlOr(p.canonicals[0], base)?.href ?? p.canonicals[0]) : "none");
+export const readPage = (r, page) => {
+  if (!(r.status === 200 && /html/.test(r.ct) && r.body)) return null;
+  const p = readLight(r.body, r.finalUrl, r.headers);
+  return { ...p, hreflang: [...p.hreflang, ...page.sitemapHreflang(r.finalUrl)] };
+};
+const noindex = p => p.robots.includes("noindex"),
+  canonOf = p => p.canonical ?? "none";
 // A bot challenge: Cloudflare sets cf-mitigated and loads its challenge platform, AWS WAF sets x-amzn-waf-action.
 // https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/
 // https://docs.aws.amazon.com/waf/latest/developerguide/waf-captcha-and-challenge-actions.html
@@ -57,14 +61,14 @@ export async function compareGooglebot(site, { page, botSample }) {
         if ((challenge || [403, 429, 503].includes(gr.status)) && !NO_FIREWALL)
           return add("googlebot-firewall", at, got);
         if (gr.status >= 400 || gr.status === 0 || challenge) return add("googlebot-blocked", at, got);
-        if (g?.noindex && !v.noindex)
+        if (g && noindex(g) && !noindex(v))
           return add("googlebot-blocked", at, "Googlebot gets a noindex that a visitor doesn't");
         const diffs = !g
           ? [`Googlebot got ${gr.status} ${gr.ct || "with no content type"} instead of the page`]
           : [
               gr.finalUrl !== at && `Googlebot is sent to ${gr.finalUrl}`,
-              v.noindex && !g.noindex && "only a visitor gets noindex",
-              canonOf(g, gr.finalUrl) !== canonOf(v, at) && `canonical: ${canonOf(v, at)} → ${canonOf(g, gr.finalUrl)}`,
+              noindex(v) && !noindex(g) && "only a visitor gets noindex",
+              canonOf(g) !== canonOf(v) && `canonical: ${canonOf(v)} → ${canonOf(g)}`,
               (g.title ?? "") !== (v.title ?? "") && `title: “${v.title ?? "none"}” → “${g.title ?? "none"}”`,
               v.words >= 50 && g.words < v.words / 2 && `${g.words} words for Googlebot, ${v.words} for a visitor`,
             ].filter(Boolean);

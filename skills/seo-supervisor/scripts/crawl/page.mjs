@@ -51,6 +51,38 @@ function googleRobots(s) {
   }
   return out;
 }
+const TITLE = /<title\b[^>]*>([\s\S]*?)<\/title>/i;
+const relIs = (l, r) => (l.rel || "").toLowerCase().split(/\s+/).includes(r);
+// A light read for pages fetched again (the bot comparisons, hreflang return links), each field read as analyze()
+// reads it.
+export function readLight(html, url, headers = new Headers()) {
+  const headEnd = html.search(/<\/head>/i),
+    head = headEnd > 0 ? html.slice(0, headEnd) : html;
+  const bodyStart = html.search(/<body\b/i),
+    body = stripNonContent(bodyStart >= 0 ? html.slice(bodyStart) : html);
+  const titleM = head.match(TITLE) || body.match(TITLE),
+    links = tagsOf(head, "link");
+  const canonical = (links.some(l => relIs(l, "canonical")) ? links : tagsOf(body, "link")).find(l =>
+    relIs(l, "canonical"),
+  )?.href;
+  return {
+    title: titleM ? textOf(titleM[1]) : null,
+    canonical: canonical ? (urlOr(canonical, url)?.href ?? canonical) : null,
+    robots: [
+      ...tagsOf(html, "meta")
+        .filter(m => ["robots", "googlebot"].includes((m.name || "").toLowerCase()))
+        .flatMap(m => googleRobots(m.content)),
+      ...googleRobots(headers.get("x-robots-tag")),
+    ],
+    words: wordsOf(textOf(body)).length,
+    hreflang: [
+      ...links
+        .filter(l => relIs(l, "alternate") && l.hreflang && l.href)
+        .map(l => ({ lang: l.hreflang, href: l.href })),
+      ...linkHreflang(headers.get("link")),
+    ],
+  };
+}
 // Consent managers have to run before anything else, so a blocking script from one is fine.
 const CONSENT_HOST =
   /(^|\.)(cookiebot\.(com|eu)|cookielaw\.org|onetrust\.com|usercentrics\.eu|privacy-center\.org|iubenda\.com|cookieyes\.com|termly\.io|osano\.com)$/i;

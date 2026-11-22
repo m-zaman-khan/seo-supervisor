@@ -2,7 +2,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { attrs, decode } from "../skills/seo-supervisor/scripts/lib/html.mjs";
-import { analyze } from "../skills/seo-supervisor/scripts/crawl/page.mjs";
+import { analyze, readLight } from "../skills/seo-supervisor/scripts/crawl/page.mjs";
+import { readPage } from "../skills/seo-supervisor/scripts/checks/bots.mjs";
 import { trustFeatures } from "../skills/seo-supervisor/scripts/checks/trust.mjs";
 import { agentFeatures } from "../skills/seo-supervisor/scripts/checks/agents.mjs";
 import { hintsOf } from "../skills/seo-supervisor/scripts/checks/media.mjs";
@@ -82,4 +83,45 @@ test("the page modules read attributes alike: decoded, the first one wins, a val
   const a = agentFeatures(html);
   assert.equal(a.controls, 2);
   assert.deepEqual(a.unnamedFields, ['<input type="text">'], "a title of only &nbsp; is no name");
+});
+
+test("readLight: the title, canonical, Google's robots rules, words and hreflang, as analyze reads them", () => {
+  const html = page(
+    `<title>Prices &ndash; Acme</title><link rel=canonical href="/prices/"><link rel="alternate" hreflang="de" href="https://site.example/de/preise/"><meta name="googlebot" content="nofollow">`,
+    `<main><h1>Prices</h1><p>Fixed prices for every repair, agreed before the work starts.</p></main><script>var x = "not words";</script>`,
+  );
+  const headers = {
+    "x-robots-tag": "otherbot: noindex, googlebot: noarchive",
+    link: '<https://site.example/fr/prix/>; rel="alternate"; hreflang="fr"',
+  };
+  const light = readLight(html, "https://site.example/prices/?a=1", new Headers(headers)),
+    full = read(html, "https://site.example/prices/?a=1", headers);
+  assert.deepEqual(light, {
+    title: "Prices – Acme",
+    canonical: "https://site.example/prices/",
+    robots: ["nofollow", "noarchive"],
+    words: full.words,
+    hreflang: [
+      { lang: "de", href: "https://site.example/de/preise/" },
+      { lang: "fr", href: "https://site.example/fr/prix/" },
+    ],
+  });
+  assert.equal(full.words, 11);
+  assert.deepEqual([...full.metaRules, ...full.headerRules], light.robots);
+  // readPage serves the bot comparison and hreflang on other sites; it reads only HTML pages that answered 200.
+  const ctx2 = { ...ctx, sitemapHreflang: () => [{ lang: "es", href: "https://site.example/es/" }] };
+  assert.deepEqual(
+    readPage(
+      { status: 200, ct: "text/html", body: html, finalUrl: "https://site.example/prices/", headers: new Headers() },
+      ctx2,
+    ).hreflang.map(h => h.lang),
+    ["de", "es"],
+  );
+  assert.equal(
+    readPage(
+      { status: 404, ct: "text/html", body: html, finalUrl: "https://site.example/x/", headers: new Headers() },
+      ctx2,
+    ),
+    null,
+  );
 });
