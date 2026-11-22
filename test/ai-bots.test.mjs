@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { SCRIPTS, node, tmp } from "./helpers.mjs";
+import { SCRIPTS, SKILL, node, tmp } from "./helpers.mjs";
 import { AI_BOTS, BOTS } from "../skills/seo-supervisor/scripts/checks/agents.mjs";
 import { aiBotAccess, checkRobots } from "../skills/seo-supervisor/scripts/checks/robots.mjs";
 
@@ -120,4 +120,18 @@ test("log-scan's bots are the data file's bots that visit, with their vendor, gr
       b.name,
     );
   assert.equal(Object.keys(r.bots).length, visiting.length, "robots.txt-only names never match a visit");
+});
+
+test("the AI search lines follow Google's pages, and the rendering line claims nothing vendors don't say", () => {
+  const ai = readFileSync(join(SKILL, "rules", "ai-search.md"), "utf8").split("\n");
+  const training = ai.find(l => l.includes("**Training** crawlers")) || "";
+  assert.match(training, /support\.google\.com\/webmasters\/answer\/16908024/);
+  assert.match(training, /doesn't remove the site from AI Overviews or AI Mode/);
+  const preferred = ai.find(l => l.includes("preferred sources")) || "";
+  assert.match(preferred, /Search generative AI/);
+  assert.match(preferred, /subdomain/);
+  assert.doesNotMatch(
+    readFileSync(join(SKILL, "rules", "rendering.md"), "utf8").split("\n")[2],
+    /don't render it at all/,
+  );
 });

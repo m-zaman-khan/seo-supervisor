@@ -1,6 +1,6 @@
 # Rendering: what crawlers actually see (REND)
 
-Google renders JavaScript, but later and not always. Most AI crawlers (GPTBot, ClaudeBot, PerplexityBot) don't render it at all. Judge pages by the HTML the server sends.
+Google renders JavaScript, but later and not always. OpenAI, Anthropic, Perplexity and Meta don't say whether their crawlers run JavaScript (their crawler pages, read 22 Nov 2026, don't mention it), so don't count on it. Judge pages by the HTML the server sends.
 
 ### REND-01 · Content is in the server HTML, not only in JavaScript · blocker
 - **Check:** crawler `client-rendered`, plus words per page in `seo-crawl.json`. Spot-check the H1, H2s, JSON-LD and an FAQ answer with the curl commands in `examples/snippets.md`.

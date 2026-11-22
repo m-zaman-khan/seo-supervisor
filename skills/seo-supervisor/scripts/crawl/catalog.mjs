@@ -816,7 +816,7 @@ export const CHECKS = {
     "MAP-06",
     "needs-decision",
     n => `robots.txt blocks ${n} AI crawler(s)`,
-    "Blocking AI crawlers can keep the site out of ChatGPT, Claude, Perplexity and Google AI answers.",
+    "Blocking an AI search crawler, or a fetcher for pages a person asks about, can keep the site out of that assistant's answers, such as ChatGPT, Claude or Perplexity. Blocking a training crawler keeps the content out of that vendor's AI training only: Google-Extended, for one, doesn't remove a site from AI Overviews or AI Mode.",
     "Confirm this is deliberate. A common middle ground blocks training crawlers and allows search crawlers.",
   ],
   "content-signal-invalid": [
