@@ -103,17 +103,8 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     settingsSummary,
   } = sitePanels(m);
   const { agents, aiCrawlersHtml, aiCrawlersMd, aiAnswersHtml, aiAnswersMd } = aiPanels(m);
-  const {
-    writingHtml,
-    writingMd,
-    productData,
-    descriptionsHtml,
-    descriptionsMd,
-    appsPdfsHtml,
-    appsPdfsMd,
-    audienceHtml,
-    audienceMd,
-  } = contentPanels(m);
+  const { writing, productData, descriptionsHtml, descriptionsMd, appsPdfsHtml, appsPdfsMd, audienceHtml, audienceMd } =
+    contentPanels(m);
   const {
     imagesHtml,
     imagesMd,
@@ -131,7 +122,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   const panels = [
     [linksHtml, linksMd],
     drawn(agents),
-    [writingHtml, writingMd],
+    drawn(writing),
     [audienceHtml, audienceMd],
     [imagesHtml, imagesMd],
     [lighthouseDetailHtml, lighthouseDetailMd],

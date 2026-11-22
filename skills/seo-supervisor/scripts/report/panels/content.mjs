@@ -1,6 +1,7 @@
 // @ts-check
 // The content panels on the Site & content tab.
 import { esc, noteCode, noteMd, notePath, num, obj, plural, isCount, isText } from "../format.mjs";
+import { listedIn } from "../panel.mjs";
 
 export function contentPanels({ raw, mdFile }) {
   // Writing notes quote crawled sentences and URLs, so they're escaped.
@@ -22,26 +23,16 @@ export function contentPanels({ raw, mdFile }) {
   };
   const WRITING_INTRO =
     "Long sentences, long paragraphs and stock phrases on English pages, with Flesch reading ease (0 to 100, higher is easier) as a rough guide. Code and tables are left out. These notes help the writing; they never change the score.";
-  const writingHtml = () =>
-    writingNotes.length
-      ? `\n    <details class="how writing"><summary>Writing notes</summary><p>${esc(WRITING_INTRO)}</p><ul class="lim">${writingNotes
-          .slice(0, 10)
-          .map(n => `<li><b><code>${esc(notePath(n.url))}</code></b><span>${esc(noteText(n))}</span></li>`)
-          .join(
-            "",
-          )}</ul>${writingNotes.length > 10 && mdFile ? `<p>All ${num(writingNotes.length)} pages are listed in <code>${esc(mdFile)}</code>.</p>` : ""}</details>`
-      : "";
-  const writingMd = () =>
-    writingNotes.length
-      ? [
-          "## Writing notes",
-          "",
-          WRITING_INTRO,
-          "",
-          ...writingNotes.map(n => `- ${noteCode(notePath(n.url))} ${noteMd(noteText(n))}`),
-          "",
-        ]
-      : [];
+  const writing = () =>
+    writingNotes.length && {
+      cls: "writing",
+      title: "Writing notes",
+      blocks: [
+        { p: WRITING_INTRO },
+        { rows: writingNotes.map(n => [{ code: notePath(n.url) }, noteText(n)]), cap: 10 },
+        writingNotes.length > 10 && listedIn(writingNotes.length, mdFile),
+      ],
+    };
 
   // How many Products give each recommended merchant listing field. Numbers only, so nothing crawled is shown.
   const productFields = obj(raw.productFields),
@@ -251,15 +242,5 @@ export function contentPanels({ raw, mdFile }) {
           ]),
         ]
       : [];
-  return {
-    writingHtml,
-    writingMd,
-    productData,
-    descriptionsHtml,
-    descriptionsMd,
-    appsPdfsHtml,
-    appsPdfsMd,
-    audienceHtml,
-    audienceMd,
-  };
+  return { writing, productData, descriptionsHtml, descriptionsMd, appsPdfsHtml, appsPdfsMd, audienceHtml, audienceMd };
 }
