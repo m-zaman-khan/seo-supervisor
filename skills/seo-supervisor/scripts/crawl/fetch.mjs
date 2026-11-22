@@ -199,13 +199,13 @@ export function createFetcher({ startOrigin: START_ORIGIN, ua: UA, toCrawl, dns 
   // for pages and 5 for robots.txt, so seo-crawl.mjs passes 5 there.
   // https://developers.google.com/search/docs/crawling-indexing/http-network-errors
   // https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt
-  async function follow(url, ua) {
+  async function follow(url, ua, hops = 10) {
     const chain = [];
     let cur = url,
       why = await offLimits(cur),
       last = null;
     if (why) return { status: 0, error: why, chain, finalUrl: cur, headers: new Headers(), ct: "", body: "" };
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i <= hops; i++) {
       const r = await get(cur, { ua });
       if (r.refused) {
         blocked.set(cur, r.error);

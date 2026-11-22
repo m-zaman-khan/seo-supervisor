@@ -209,7 +209,7 @@ const { pages, queue, seen, enqueue } = crawler;
 
 // ---------- main ----------
 const t0 = Date.now();
-const robotsRes = await follow(START_ORIGIN + "/robots.txt");
+const robotsRes = await follow(START_ORIGIN + "/robots.txt", undefined, 5); // Google stops after 5 hops here, 10 for pages
 const { robots, robotsDown, star } = checkRobots(robotsRes, { add, evalRules, startOrigin: START_ORIGIN });
 const smUrls = robots && robots.sitemaps.length ? robots.sitemaps : [START_ORIGIN + "/sitemap.xml"];
 const firstSm = smUrls[0];
