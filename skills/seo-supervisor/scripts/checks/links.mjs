@@ -40,12 +40,10 @@ export function checkLinks(site) {
   for (const [u, e] of smSet) {
     const p = pages.get(u);
     if (!p || !p.html || isHome(p)) continue;
-    if (!bodyInbound.get(p.finalUrl))
-      add(
-        "orphan",
-        e.loc,
-        inbound.get(p.finalUrl) ? `only nav/footer links (${inbound.get(p.finalUrl)})` : "no links at all",
-      );
+    if (bodyInbound.get(p.finalUrl)) continue;
+    const n = inbound.get(p.finalUrl);
+    if (n) add("nav-only-links", e.loc, `only menu, footer or sidebar links (${n})`);
+    else add("orphan", e.loc, "no links at all");
   }
   if (home && home.html) {
     const depth = new Map([[home.finalUrl, 0]]);

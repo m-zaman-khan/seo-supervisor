@@ -18,13 +18,14 @@ flowchart LR
 ```
 Inside each group, items chain into a loop. Across content types, each type points to the next and the money pages point back. A central hub links to every section, and every breadcrumb links back to it.
 
-### LINK-01 · Hubs exist, and every page is within three clicks of home · high
-- **Check:** crawler `deep-page` and the `depth` per page. Code: nav, footer, hub pages.
+### LINK-01 · Hubs exist, and every page is within three clicks of home · low
+- **Check:** crawler `deep-page` (low) and the `depth` per page. Code: nav, footer, hub pages.
+- **Why low:** three clicks is our own rough line, not a Google rule. What Google asks is that every page you care about has a link from at least one other page on the site (LINK-02).
 - **Pass:** home → section hubs → items. Each hub has an intro and links to everything in it. Groupings that aren't URLs (e.g. tool families) are sections with H2s on the hub.
 
 ### LINK-02 · No orphan pages · medium
-- **Check:** crawler `orphan` (sitemap pages with no inbound internal links). Code: content-graph checks.
-- **Pass:** every indexable page has at least one link from the **body** of another page. Sitemap, footer and menu links alone don't count.
+- **Check:** crawler `orphan` (medium): sitemap pages that no other page links to. `nav-only-links` (low): sitemap pages linked only from menus, headers, footers or sidebars, never from another page's main content (in 1.x both were `orphan`). Code: content-graph checks.
+- **Pass:** every indexable page has a link from at least one other page on the site. Google asks for exactly that: "Every page you care about should have a link from at least one other page on your site" ("Make your links crawlable", checked 22 Nov 2026). A sitemap entry isn't a link. Menu and footer links are real links and count; a link from the text of a related page helps more, as Google suggests linking pages "in context" so people and Google understand them.
 - **Fix:** add the page to its hub and to the related blocks of its siblings. Add a build check that fails orphans.
 - **Pages with one incoming link:** every whole-site crawl lists pages that can be indexed with exactly one other page linking to them (`linkedOnce`, the first 20; the home page aside). Information only: a page linked from one place is easy to miss, so link it from its hub or related pages too.
 - **Internal link strength:** every whole-site crawl gives each indexable page a 0–100 strength (`linkStrength`), our own measure from the PageRank formula on the site's own links, not Google's PageRank. Information only: pages people find in search with little strength are worth links from the strongest pages.

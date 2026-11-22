@@ -889,8 +889,8 @@ export const CHECKS = {
     "LINK-02",
     "medium",
     n => `${n} sitemap page(s) have no internal links pointing to them`,
-    "A page only reachable through the sitemap looks unimportant and gets little authority.",
-    "Link each one from its hub and from related pages.",
+    "Only the sitemap lists these pages: no page on the site links to them, so visitors can't reach them by browsing. Google asks that every page you care about has a link from at least one other page on the site.",
+    "Link each one from its hub and from related pages, or take it out of the sitemap if it isn't meant to be found.",
   ],
   "generic-anchor": [
     "LINK-05",
@@ -1166,6 +1166,15 @@ Object.assign(CHECKS, {
     "Google says there's no ideal number of headings, so this isn't a Search problem. It can blur which heading is the page's main title, for visitors and for Google when it writes the title link.",
     "Keep one H1 for the page's topic, and make logos, card titles and section titles H2s or plain text.",
   ],
+  // Google wants every page that matters linked in context from at least one other page.
+  // https://developers.google.com/search/docs/crawling-indexing/links-crawlable
+  "nav-only-links": [
+    "LINK-02",
+    "low",
+    n => `${n} sitemap page(s) are linked only from menus, footers or sidebars`,
+    "Menu and footer links are real links that search engines follow, so these pages aren't orphans. Google suggests linking pages in context too, from the text of related pages, which helps people and Google see what each page is about.",
+    "Add a link from the body of one or two related pages, with link text that says what the page is.",
+  ],
 });
 // Content check ids split in two, old -> new, kept for ID_ALIASES.
-export const CONTENT_RENAMED = { "h1-count": ["h1-missing", "h1-multiple"] };
+export const CONTENT_RENAMED = { "h1-count": ["h1-missing", "h1-multiple"], orphan: ["orphan", "nav-only-links"] };
