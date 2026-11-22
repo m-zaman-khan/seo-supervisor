@@ -235,34 +235,30 @@ export function speedPanels({ raw, mdFile, lighthouse }) {
     "Lighthouse's own accessibility checks that failed on each page it ran, with the page elements it names (10 at most). Each check is pass or fail. They're Lighthouse's checks, not SEO Supervisor's, and they can't find everything: some problems, such as keyboard focus that gets trapped, only a person can check. Information only: they don't change the score.";
   const a11yHead = x =>
     `${x.score != null ? `Accessibility ${x.score} · ` : ""}${plural(x.audits.length, "failed check")}`;
-  const a11yHtml = () =>
-    a11yRuns.length
-      ? `\n    <details class="how a11y"><summary>Lighthouse's accessibility checks · ${plural(a11yRuns.length, "page")} with failed checks</summary><p>${esc(A11Y_INTRO)}</p>${a11yRuns
-          .slice(0, 10)
-          .map(
-            x =>
-              `<details><summary><code>${esc(x.path)}</code> · ${esc(a11yHead(x))}</summary><ul class="lim">${x.audits.map(a => `<li><b>${inl(a.title)}</b><span>${a.items.map(s => `<code>${esc(s)}</code>`).join(", ")}</span></li>`).join("")}</ul></details>`,
-          )
-          .join(
-            "",
-          )}${a11yRuns.length > 10 && mdFile ? `<p>All ${num(a11yRuns.length)} pages are listed in <code>${esc(mdFile)}</code>.</p>` : ""}</details>`
-      : "";
-  const a11yMd = () =>
-    a11yRuns.length
-      ? [
-          "## Lighthouse's accessibility checks",
-          "",
-          A11Y_INTRO,
-          "",
-          ...a11yRuns.flatMap(x => [
-            `### ${noteCode(x.path)} (${a11yHead(x)})`,
-            "",
-            ...x.audits.map(
-              a => `- ${noteMd(a.title)}${a.items.length ? `: ${a.items.map(noteCode).join(", ")}` : ""}`,
-            ),
-            "",
-          ]),
-        ]
-      : [];
-  return { images, lighthouseDetail, speedDetails, a11yHtml, a11yMd };
+  // The summary is written into the page as is ("Lighthouse's").
+  const a11y = () =>
+    a11yRuns.length && {
+      cls: "a11y",
+      title: "Lighthouse's accessibility checks",
+      summary: { html: `Lighthouse's accessibility checks · ${plural(a11yRuns.length, "page")} with failed checks` },
+      blocks: [
+        { p: A11Y_INTRO },
+        ...a11yRuns.map((x, i) => ({
+          mdOnly: i >= 10,
+          sub: [{ code: x.path }, ` · ${a11yHead(x)}`],
+          heading: [{ code: x.path }, ` (${a11yHead(x)})`],
+          blocks: [
+            {
+              rows: x.audits.map(a => [
+                auditTitle(a),
+                { html: codesOf(a).html, md: a.items.length ? `: ${codesOf(a).md}` : "" },
+                "",
+              ]),
+            },
+          ],
+        })),
+        a11yRuns.length > 10 && listedIn(a11yRuns.length, mdFile),
+      ],
+    };
+  return { images, lighthouseDetail, speedDetails, a11y };
 }
