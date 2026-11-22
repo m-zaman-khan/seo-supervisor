@@ -185,7 +185,7 @@ The rules in SKILL.md apply throughout, most of all **Plain language (CONTENT-13
    5. What audiences miss on key pages, the busiest pages first.
    6. New pages or sections for the owner's picked targets, starting with a brief.
 2. Keep the to-do list to 10 items. Put the rest under "Later", one line each.
-3. Record the baseline: for each item's page, the clicks, impressions, click rate and position from `traffic`, with the period, plus `positions` for the whole site. Stage 6 compares against it.
+3. Record the baseline: for each item's page, the clicks, impressions, click rate and position from `traffic`, with the period, plus `positions` for the whole site. Stage 6 compares against it. Give each item its **Watch** line from "How to tell it worked" below.
 4. Set "Check again after" to 30 days after today. Stage 5 moves it to 30 days after the last item goes live.
 5. On a later run, keep each item's number, status and baseline. Add new items under the old ones, and never renumber.
 6. Before saving, re-read the plan against CONTENT-13.
@@ -216,6 +216,7 @@ Check again after: {YYYY-MM-DD}
 - **Finding:** {F-012, when there is one}
 - **Effort:** {quick | hours | half-day, when known}
 - **Status:** to do | done {YYYY-MM-DD}, live {YYYY-MM-DD} | skipped ({owner's reason})
+- **Watch:** {the number, where to see it, which way it should move, and the date to look, e.g. "clicks for /pricing/ in Search Console's Performance report, up, after 2026-12-22"}
 
 ## Later
 - {One line per item, with its evidence}
@@ -299,6 +300,34 @@ Google says some changes show in a few hours and others take several months, and
 - Say the work caused a change. Say what happened after it.
 - Compare Google numbers with Bing or Analytics numbers, or periods of different lengths as totals.
 - Leave out a page that went down.
+
+---
+
+## How to tell it worked
+
+Each grow-plan item and each fixed finding gets one **Watch** line, from its rule area's row below: the number, where to see it, which way it should move, and the date to look. Fix mode ends `fixed.summary` with it. A change the next crawl can prove names the check too: "Watch: `title-missing` on the next crawl, down to 0, right after the deploy." Dates are 30 days after the change goes live (Stage 6) unless the row says otherwise.
+
+Timings from Google's Search Console help (checked 22 Nov 2026): a "Validate fix" in the Page indexing report "typically takes up to about two weeks", and one in the Core Web Vitals report watches the site for 28 days. Search Console report names are as Google's help writes them.
+
+| Area | Number to watch | Where | Which way | When |
+| --- | --- | --- | --- | --- |
+| `CRAWL` Crawling and indexing | The finding's count, then the page's indexing status | The next crawl; then Search Console's Page indexing report (start "Validate fix") and URL Inspection for one page | Count down to 0; the page shows as indexed | The crawl right after the deploy; Search Console about two weeks after Validate fix |
+| `URL` URLs and canonicals | The finding's count, and the canonical Google picked | The next crawl; URL Inspection ("Google-selected canonical") | Count down to 0; Google's canonical is the declared one | The crawl right after the deploy; URL Inspection after Google recrawls the page |
+| `REND` Rendering | Words in the server HTML (`words` per page) and the finding's count | The next crawl (with `--outside` for the browser checks); URL Inspection's live test | Words up; count down to 0 | Right after the deploy |
+| `CONTENT` Headings and content | The page's impressions and clicks | Search Console's Performance report, filtered to the page | Up | 30 days after it goes live |
+| `META` Metadata | The page's click rate | Performance report, filtered to the page | Up | 30 days after it goes live |
+| `SCHEMA` Structured data | Errors, then valid items for the feature | `schema-check.mjs` on the built page; Search Console's rich result report for that feature (start "Validate fix") | Errors down to 0; valid items up | `schema-check.mjs` right away; the report after Google recrawls the pages |
+| `MAP` Sitemaps and robots | The sitemap's status and discovered pages, and the finding's count | Search Console's Sitemaps report; the next crawl | "Success", and discovered pages close to the pages listed; count down to 0 | The crawl right after the deploy; the report after its "Last read" date passes the deploy |
+| `LINK` Internal linking | Links into the page (`linksIn`), its depth and `linkStrength` | The next crawl's `seo-crawl.json`; Search Console's Links report (Internal links, Top linked pages) | Links and strength up, depth down; `orphan` down to 0 | The crawl right after the deploy; the Links report after Google recrawls the linking pages |
+| `PERF` Performance | p75 LCP, INP and CLS on phones | Search Console's Core Web Vitals report (start "Validate fix"), or PageSpeed's field data | Down into "Good": LCP 2.5 s or less, INP 200 ms or less, CLS 0.1 or less | 28 days after it goes live (field data covers the last 28 days); Lighthouse lab numbers right away |
+| `TRUST` Trust and security | The finding's count | The next crawl, with `--check-live` for the certificate and headers | Down to 0 | Right after the deploy |
+| `AI` AI search | The finding's count, and requests from the AI crawlers the owner allows | The next crawl (`--ai-bot-probe` for crawler access); `log-scan.mjs` on the server logs | Count down to 0; allowed crawlers' requests up | The crawl right after the deploy; the logs after two weeks (our own wait) |
+| `MEDIA` Media | Image or video impressions, and indexed videos | Performance report with search type Image or Video; Search Console's Video indexing report | Up | 30 days after it goes live |
+| `LAUNCH` Launch and monitoring | Visits recorded, then indexed pages | The analytics tool's real-time view; Page indexing report | Visits show on launch day; indexed pages up | Launch day, then once a week for the first month (our own schedule) |
+| `INTENT` Search intent | The page's position and clicks for its target searches | Performance report, filtered to the page and the search | Position down (towards 1), clicks up | 30 days after it goes live |
+| `LOCAL` Local business | Calls, direction requests and website clicks, and the LOCAL findings' count | The Business Profile's own performance numbers (the owner's account); the next crawl | Up; count down to 0 | The crawl right after the deploy; the profile 30 days after the change |
+| `SHOP` Shops | Valid items, and the SHOP findings' count | Search Console's Merchant listings and Product snippets reports; the next crawl | Valid items up; count down to 0 | The crawl right after the deploy; the reports after Google recrawls the pages |
+| `BLOG`, `SVC`, `TOOL` Blogs, services and tools | The page's clicks and impressions, and the finding's count | Performance report, filtered to the page; the next crawl | Up; count down to 0 | The crawl right after the deploy; Search Console 30 days after it goes live |
 
 ---
 
