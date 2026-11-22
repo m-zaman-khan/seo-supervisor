@@ -71,6 +71,8 @@ const sleep = ms => new Promise(ok => setTimeout(ok, ms));
 
 // Resolves at the load event, or after 15 s for a page that never finishes loading.
 const LOADED = `new Promise(ok => { if (document.readyState === "complete") ok(); addEventListener("load", () => ok()); setTimeout(ok, 15000); })`;
+// Two animation frames: the page has laid itself out and drawn at a new size; 250 ms at most (a page with no frames).
+const DRAWN = `new Promise(ok => { requestAnimationFrame(() => requestAnimationFrame(() => ok())); setTimeout(ok, 250); })`;
 // Words come from the DOM, so a collapsed accordion or closed <details> still counts, as it does for Google. The popup
 // is the biggest fixed layer on top covering half the screen; consent tools are kept apart.
 const MEASURE = `(() => {
@@ -193,9 +195,19 @@ async function visit(chrome, url, { device, userAgent, lab = false, settleMs, de
   page.on("Page.javascriptDialogOpening", () =>
     page.send("Page.handleJavaScriptDialog", { accept: true }).catch(() => {}),
   ); // alert() would stall the page
+  // Chrome sends the events again for the blank tab when they're switched on, so only this load's (its loaderId) count.
+  const idle = new Set();
+  let quiet = () => {};
+  page.on("Page.lifecycleEvent", p => {
+    if (p.name === "networkIdle") {
+      idle.add(p.loaderId);
+      quiet();
+    }
+  });
   const load = async () => {
     await guardTab(page, checkAddress);
     await page.send("Page.enable");
+    await page.send("Page.setLifecycleEventsEnabled", { enabled: true });
     await page.send("Page.bringToFront"); // a background tab gets no animation frames
     await page.send("Emulation.setDeviceMetricsOverride", device);
     await page.send("Emulation.setUserAgentOverride", { userAgent });
@@ -210,7 +222,16 @@ async function visit(chrome, url, { device, userAgent, lab = false, settleMs, de
     const nav = await page.send("Page.navigate", { url });
     if (nav.errorText) throw new Error(nav.errorText);
     await evaluate(page, LOADED).catch(() => sleep(1000)); // a script redirect replaces the document mid-wait
-    await sleep(settleMs);
+    await new Promise(ok => {
+      const t = setTimeout(ok, settleMs);
+      quiet = () => {
+        if (idle.has(nav.loaderId)) {
+          clearTimeout(t);
+          ok(undefined);
+        }
+      };
+      quiet();
+    });
     return await read(page);
   };
   let timer;
@@ -776,7 +797,9 @@ function menuFind(nav) {
         .slice(0, 40) || "the menu button",
   };
 }
-function menuReached(hrefs) {
+// After the tap, the menu links shown: as soon as half of them show (menuVerdict's line for a menu that opens), else
+// what shows after `ms` (menus slide in).
+function menuReached(hrefs, ms) {
   const reach = e => {
     const r = e.getBoundingClientRect();
     return (
@@ -787,8 +810,19 @@ function menuReached(hrefs) {
       r.left < innerWidth
     );
   };
-  const links = [...document.querySelectorAll("a[href]")];
-  return hrefs.filter(h => links.some(a => a.href === h && reach(a))).length;
+  const count = () => {
+    const links = [...document.querySelectorAll("a[href]")];
+    return hrefs.filter(h => links.some(a => a.href === h && reach(a))).length;
+  };
+  const end = Date.now() + ms;
+  return new Promise(ok => {
+    const tick = () => {
+      const n = count();
+      if (n >= hrefs.length / 2 || Date.now() >= end) ok(n);
+      else setTimeout(tick, 50);
+    };
+    tick();
+  });
 }
 // After a load at #id: still at the target, and the #id still in the address? (Google's "Read more" deep links.)
 function landed(id) {
@@ -953,7 +987,7 @@ export async function checkMore(
         if (kind === "desktop")
           for (const [name, size] of SIZES) {
             await page.send("Emulation.setDeviceMetricsOverride", size);
-            await sleep(250);
+            await evaluate(page, DRAWN);
             await shoot(page, join(screenshotDir, `${slug}-${name}.png`));
           }
       };
@@ -994,8 +1028,7 @@ export async function checkMore(
                   button: "left",
                   clickCount: 1,
                 });
-              await sleep(700); // menus slide in
-              x.menu.revealed = await evaluate(p, `(${menuReached})(${JSON.stringify(x.menu.hrefs)})`);
+              x.menu.revealed = await evaluate(p, `(${menuReached})(${JSON.stringify(x.menu.hrefs)}, 700)`);
             }
             return x;
           },
