@@ -144,3 +144,19 @@ test("the secret hider leaves crawled URLs and plain words alone, and still hide
     "a Windows profile folder at the end, space and all",
   );
 });
+
+test("a crawl that gets no pages reports the plain sitemap-missing, not the small, well-linked site's", async () => {
+  const gone = createServer();
+  await new Promise(ok => gone.listen(0, "127.0.0.1", () => ok(null)));
+  const port = /** @type {import("node:net").AddressInfo} */ (gone.address()).port;
+  await new Promise(ok => gone.close(ok));
+  const out = join(tmp(), "crawl.json");
+  await node([join(SCRIPTS, "seo-crawl.mjs"), "--url", `http://127.0.0.1:${port}/`, "--out", out]);
+  const r = JSON.parse(readFileSync(out, "utf8"));
+  assert.equal(r.pages.filter(p => p.status === 200).length, 0);
+  assert.ok(
+    r.findings.some(f => f.check === "sitemap-missing"),
+    r.findings.map(f => f.check).join(", "),
+  );
+  assert.ok(!r.findings.some(f => f.check === "sitemap-missing-small"));
+});

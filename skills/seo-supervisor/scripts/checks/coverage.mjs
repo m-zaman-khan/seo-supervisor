@@ -72,6 +72,7 @@ export function checkCoverage(
     !SECTION &&
     site.start.pathname === "/" &&
     !findings.has("deep-page") &&
+    htmlPages.some(p => indexable(p)) &&
     htmlPages.filter(p => indexable(p)).length <= 500 &&
     !htmlPages.some(p => (p.types || []).some(t => t === "VideoObject" || t === "NewsArticle"))
   ) {
