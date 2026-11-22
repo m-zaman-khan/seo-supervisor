@@ -10,6 +10,7 @@ import { SERVICES, savedKeys } from "./connect-keys.mjs";
 import { googleFile, installedBrowser, loginDir, settingsDir, toolsDir } from "./lib/settings-dir.mjs";
 import { proxyNote } from "./lib/proxy.mjs";
 import { isMain } from "./lib/is-main.mjs";
+import { runMain } from "./lib/cli.mjs";
 
 const writable = p => {
   try {
@@ -148,8 +149,9 @@ export function doctor({ env = process.env, cwd = process.cwd(), version = proce
   };
 }
 
-if (isMain(import.meta.url)) {
-  const r = doctor();
-  console.log(r.text);
-  process.exitCode = r.ready ? 0 : 1;
-}
+if (isMain(import.meta.url))
+  await runMain(() => {
+    const r = doctor();
+    console.log(r.text);
+    return r.ready ? 0 : 1;
+  });

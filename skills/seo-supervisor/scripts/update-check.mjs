@@ -4,6 +4,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
+import { runMain } from "./lib/cli.mjs";
 import { settingsDir } from "./lib/settings-dir.mjs";
 
 export const VERSION = "2.0.0"; // kept equal to package.json by test/update-check.test.mjs
@@ -52,15 +53,18 @@ export async function checkForUpdate({ env = process.env, now = Date.now(), fetc
 
 if (isMain(import.meta.url)) {
   const cmd = process.argv[2];
-  if (cmd === "off" || cmd === "on") {
-    const f = join(dir(), "settings.json");
-    writeJson(f, { ...readJson(f), updateCheck: cmd === "on" });
-    console.log(
-      cmd === "off"
-        ? "Update notices turned off. Turn them on again with: node update-check.mjs on"
-        : "Update notices turned on (npm is checked at most once a week).",
-    );
-  } else {
+  // A bad SEO_SUPERVISOR_HOME can't save the setting; runMain prints one plain line and exits 2.
+  if (cmd === "off" || cmd === "on")
+    await runMain(() => {
+      const f = join(dir(), "settings.json");
+      writeJson(f, { ...readJson(f), updateCheck: cmd === "on" });
+      console.log(
+        cmd === "off"
+          ? "Update notices turned off. Turn them on again with: node update-check.mjs on"
+          : "Update notices turned on (npm is checked at most once a week).",
+      );
+    });
+  else {
     const latest = await checkForUpdate().catch(() => null);
     if (latest)
       console.log(
