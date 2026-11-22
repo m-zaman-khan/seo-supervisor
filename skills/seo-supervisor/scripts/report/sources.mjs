@@ -82,7 +82,7 @@ export const periodOf = (raw, of) => sameSource(raw, of, "trafficPeriod", "perio
  * says "file saved 12 Nov 2026" instead. @param {any} raw @param {string} field */
 export const fromLine = (raw, field) => {
   const f = fromFile(raw, field);
-  return f ? `From ${f.what} (${f.file}, ${fmtDate(f.date)}).` : "";
+  return f ? `From ${f.what} (${f.file}, ${f.saved ? "file saved " : ""}${fmtDate(f.date)}).` : "";
 };
 
 // The site a URL names, www or not; null for a local or missing address, which can't be compared.
@@ -139,10 +139,13 @@ export function loadSources(raw, dir) {
       );
       continue;
     }
-    const date = [j.crawledAt, j.when, j.date].find(isDate) ?? mtime.toISOString();
+    // An undated file is dated by when it was saved, and fromLine says so.
+    const own = [j.crawledAt, j.when, j.date].find(isDate),
+      date = own ?? mtime.toISOString(),
+      saved = !own;
     if (crawled && Date.parse(crawled) - Date.parse(date) > STALE_DAYS * 864e5) {
       note(
-        `It's from ${fmtDate(date)}, more than ${STALE_DAYS} days before this audit's crawl (${fmtDate(crawled)}; our own line), so it's out of date and isn't shown. Run the tool again.`,
+        `${saved ? `The file was saved on ${fmtDate(date)} (it has no date of its own)` : `It's from ${fmtDate(date)}`}, more than ${STALE_DAYS} days before this audit's crawl (${fmtDate(crawled)}; our own line), so it's out of date and isn't shown. Run the tool again.`,
       );
       continue;
     }
@@ -151,7 +154,7 @@ export function loadSources(raw, dir) {
         const v = key === "*" ? j : j[key];
         if (v !== undefined) {
           out[to] = v;
-          from[to] = { file, what, date, json: j };
+          from[to] = { file, what, date, saved, json: j };
         }
       }
   }

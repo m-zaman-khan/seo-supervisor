@@ -154,7 +154,11 @@ test("loadSources fills what the audit lacks from a same-site file (www or not),
   assert.equal(out.logScan.source, "server-logs", "a whole file");
   assert.equal(raw.queries, undefined, "the audit object itself isn't changed");
   assert.equal(fromFile(out, "queries").file, "google.json");
-  assert.match(draw(topSearchesPanel({ raw: out })).md, /From Google Search Console \(google\.json, 17 Nov 2026\)/);
+  assert.match(
+    draw(topSearchesPanel({ raw: out })).md,
+    /From Google Search Console \(google\.json, file saved 17 Nov 2026\)/,
+    "google.json has no date of its own, so its line says the date is when it was saved",
+  );
 });
 
 test("loadSources: the audit wins, a panel's fields come from one source, and nothing touches findings or the score", () => {
