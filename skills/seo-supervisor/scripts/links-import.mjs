@@ -7,10 +7,11 @@ import { basename, dirname, join, resolve } from "node:path";
 import { domainToUnicode } from "node:url";
 import { isMain } from "./lib/is-main.mjs";
 import { parseCsv } from "./lib/csv.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain } from "./lib/cli.mjs";
 
 const USAGE =
   'usage: node links-import.mjs --dir seo-audit/links --site https://www.example.com [--brand "Acme"] [--keys seo-audit/keys.json] [--previous <earlier links.json>] [--crawl seo-audit/seo-crawl.json] [--out seo-audit/links.json]';
-class Fail extends Error {}
 const obj = x => (x && typeof x === "object" ? x : null);
 const bare = h => h.toLowerCase().replace(/^www\./, "");
 
@@ -459,12 +460,7 @@ export function brokenLinked(linked, crawl, site) {
 }
 
 function main(argv) {
-  const args = {};
-  for (let i = 0; i < argv.length; i++)
-    if (argv[i].startsWith("--")) {
-      const k = argv[i].slice(2);
-      args[k] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : true;
-    }
+  const args = parseArgs(argv, { flags: ["dir", "site", "brand", "keys", "previous", "crawl", "out"], positionals: 0 });
   const str = k => (typeof args[k] === "string" ? args[k] : null);
   if (!str("dir") || !str("site")) throw new Fail(USAGE);
   let site;
@@ -599,12 +595,4 @@ function main(argv) {
   return 0;
 }
 
-if (isMain(import.meta.url)) {
-  try {
-    process.exitCode = main(process.argv.slice(2));
-  } catch (e) {
-    if (!(e instanceof Fail)) throw e;
-    console.error(e.message);
-    process.exitCode = 2;
-  }
-}
+if (isMain(import.meta.url)) await runMain(() => main(process.argv.slice(2)));

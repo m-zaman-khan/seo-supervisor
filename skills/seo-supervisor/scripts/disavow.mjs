@@ -5,10 +5,11 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain } from "./lib/cli.mjs";
 
 const USAGE =
   'usage: node disavow.mjs --site https://www.example.com (--domains "a.com,b.com" and/or --urls links.txt) [--existing <the disavow file already in Search Console>] [--reason "…"] [--out seo-audit/disavow.txt]';
-class Fail extends Error {}
 const fail = msg => {
   throw new Fail("disavow: " + msg);
 };
@@ -54,13 +55,7 @@ const lines = f => {
 };
 
 function main(argv) {
-  /** @type {Record<string, any>} */
-  const args = {};
-  for (let i = 0; i < argv.length; i++)
-    if (argv[i].startsWith("--")) {
-      const k = argv[i].slice(2);
-      args[k] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : true;
-    }
+  const args = parseArgs(argv, { flags: ["site", "domains", "urls", "existing", "reason", "out"], positionals: 0 });
   const str = k => (typeof args[k] === "string" ? args[k] : null);
   if (!str("site") || !("domains" in args || "urls" in args)) throw new Fail(USAGE);
   let site;
@@ -174,12 +169,4 @@ function main(argv) {
   return 0;
 }
 
-if (isMain(import.meta.url)) {
-  try {
-    process.exitCode = main(process.argv.slice(2));
-  } catch (e) {
-    if (!(e instanceof Fail)) throw e;
-    console.error(e.message);
-    process.exitCode = 2;
-  }
-}
+if (isMain(import.meta.url)) await runMain(() => main(process.argv.slice(2)));

@@ -5,12 +5,13 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { isMain } from "./lib/is-main.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { Fail, runMain } from "./lib/cli.mjs";
 import { addTraffic } from "./gsc-import.mjs";
 import { classify, withSiteName } from "./links-import.mjs";
 
 const USAGE =
   'usage: node keyword-ideas.mjs --google seo-audit/google.json | --gsc seo-audit/gsc.json [--crawl seo-audit/seo-crawl.json] [--brand "Acme"] [--extra seo-audit/keyword-extra.json] [--out seo-audit/keyword-ideas.json]';
-class Fail extends Error {}
 const MIN_IMPRESSIONS = 10; // as gsc-import's query-competition: under 10 is the long tail
 const MAX = 50; // ideas per group, most impressions first
 
@@ -447,12 +448,7 @@ export function ideasMarkdown(r) {
 }
 
 function main(argv) {
-  const args = {};
-  for (let i = 0; i < argv.length; i++)
-    if (argv[i].startsWith("--")) {
-      const k = argv[i].slice(2);
-      args[k] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : true;
-    }
+  const args = parseArgs(argv, { flags: ["google", "gsc", "crawl", "brand", "extra", "out"], positionals: 0 });
   const str = k => (typeof args[k] === "string" ? args[k] : null);
   const file = str("google") || str("gsc");
   if (!file || (str("google") && str("gsc"))) throw new Fail(USAGE);
@@ -500,12 +496,4 @@ function main(argv) {
   return 0;
 }
 
-if (isMain(import.meta.url)) {
-  try {
-    process.exitCode = main(process.argv.slice(2));
-  } catch (e) {
-    if (!(e instanceof Fail)) throw e;
-    console.error(e.message);
-    process.exitCode = 2;
-  }
-}
+if (isMain(import.meta.url)) await runMain(() => main(process.argv.slice(2)));
