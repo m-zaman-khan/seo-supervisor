@@ -66,16 +66,21 @@ export function analyze(url, html, headers, xRobotsLines, site) {
   const words = wordsOf(text).length;
   // Next.js 15.2+ can stream metadata into <body> for non-bot visitors, so metas after the head count too. Only what
   // follows the head is read: </head> and <body> are optional, and minifiers drop them.
+  const tailStart = Math.max(head.length, bodyStart);
   const metas = [
     ...tagsOf(head, "meta"),
-    ...tagsOf(stripNonContent(html.slice(Math.max(head.length, bodyStart))), "meta"),
+    ...tagsOf(tailStart === bodyStart ? body : stripNonContent(html.slice(tailStart)), "meta"),
   ];
   const meta = n => metas.find(m => (m.name || m.property || "").toLowerCase() === n)?.content;
   const titleM = head.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i) || body.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
   const titleCount = (stripNonContent(head).match(/<title\b/gi) || []).length; // an inline SVG's <title> isn't one, nor is a script's
   const PH =
     /\b[Ll]orem [Ii]psum\b|\bTODO\b|\bTBD\b|\{\{\s*[\w.]+\s*\}\}|\[(?:[A-Z][A-Z _]{2,29})\]|�|\b(?:We|You|They|It|Don|Can|Isn|Won|Doesn|Didn|That|There)\?(?:ve|re|s|t|ll|d)\b/;
-  const robotsTags = tagsOf(html, "meta").filter(m => ["robots", "googlebot"].includes((m.name || "").toLowerCase())); // Google honours robots meta in <body> too
+  const allMetas = tagsOf(html, "meta"),
+    headLinks = tagsOf(head, "link");
+  let bodyLinks;
+  const bodyLinksOf = () => (bodyLinks ??= tagsOf(body, "link"));
+  const robotsTags = allMetas.filter(m => ["robots", "googlebot"].includes((m.name || "").toLowerCase())); // Google honours robots meta in <body> too
   const robotsMeta = robotsTags
     .map(m => m.content || "")
     .join(",")
@@ -84,7 +89,7 @@ export function analyze(url, html, headers, xRobotsLines, site) {
   const metaRules = robotsTags.flatMap(m => googleRobots(m.content)),
     headerRules = (xRobotsLines?.length ? xRobotsLines : [xRobots]).flatMap(googleRobots),
     directives = [...metaRules, ...headerRules];
-  const hreflang = tagsOf(head, "link")
+  const hreflang = headLinks
     .filter(l => (l.rel || "").toLowerCase().split(/\s+/).includes("alternate") && l.hreflang && l.href)
     .map(l => ({ lang: l.hreflang, href: l.href }));
   // Render-blocking: head scripts without async, defer or type="module" (other types don't run, and browsers skip
@@ -114,8 +119,8 @@ export function analyze(url, html, headers, xRobotsLines, site) {
   }).length;
   // The favicon links Google reads, with the body as the fallback.
   // https://developers.google.com/search/docs/appearance/favicon-in-search
-  const iconsIn = h =>
-    tagsOf(h, "link")
+  const iconsIn = links =>
+    links
       .filter(
         l =>
           l.href &&
@@ -125,12 +130,12 @@ export function analyze(url, html, headers, xRobotsLines, site) {
             .some(r => ["icon", "apple-touch-icon", "apple-touch-icon-precomposed"].includes(r)),
       )
       .map(l => l.href);
-  const icons = iconsIn(head).length ? iconsIn(head) : iconsIn(body);
-  const canonIn = h =>
-    tagsOf(h, "link")
-      .filter(l => (l.rel || "").toLowerCase().split(/\s+/).includes("canonical"))
-      .map(l => l.href);
-  const canon = canonIn(head).length ? canonIn(head) : canonIn(body);
+  const headIcons = iconsIn(headLinks),
+    icons = headIcons.length ? headIcons : iconsIn(bodyLinksOf());
+  const canonIn = links =>
+    links.filter(l => (l.rel || "").toLowerCase().split(/\s+/).includes("canonical")).map(l => l.href);
+  const headCanon = canonIn(headLinks),
+    canon = headCanon.length ? headCanon : canonIn(bodyLinksOf());
   const headings = [...body.matchAll(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi)].map(m => ({
     level: +m[1],
     text: textOf(m[2]),
@@ -181,7 +186,8 @@ export function analyze(url, html, headers, xRobotsLines, site) {
   const phMatch = text.match(PH);
   const mainM = body.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
   const mainHtml = mainM ? mainM[1] : body.replace(/<(header|nav|footer|aside)\b[\s\S]*?<\/\1>/gi, " ");
-  const mw = wordsOf(textOf(mainHtml).toLowerCase());
+  const mainText = textOf(mainHtml),
+    mw = wordsOf(mainText.toLowerCase());
   const mainHrefs = [...mainHtml.matchAll(/<a\b([^>]*)>/gi)].map(m => attrs("<a " + m[1] + ">").href).filter(Boolean);
   let shingles = null;
   if (mw.length >= 50) {
@@ -284,7 +290,7 @@ export function analyze(url, html, headers, xRobotsLines, site) {
   const inlineJs = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map(m => m[1]).join("\n");
   const unload = /addEventListener\(\s*["'`]unload["'`]|\bonunload\s*=/.test(inlineJs)
     ? "an unload listener in an inline script"
-    : /<[a-z][^>]*\sonunload\s*=/i.test(html)
+    : /onunload/i.test(html) && /<[a-z][^>]*\sonunload\s*=/i.test(html)
       ? "an onunload attribute"
       : null;
   // Links with no accessible name: no text (an SVG's <title> counts), aria-label, aria-labelledby, title, or alt or
@@ -328,18 +334,22 @@ export function analyze(url, html, headers, xRobotsLines, site) {
       .find(Boolean),
   );
   // Obsolete tags are looked for in the whole document, since a frameset takes the body's place.
+  const noScripts = html.replace(/<(script|style|template)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi, " ");
   const obsolete = [
     ...new Set(
-      [
-        ...html
-          .replace(/<(script|style|template)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi, " ")
-          .matchAll(/<(frameset|frame|marquee|blink|font|center)(?=[\s>\/])/gi),
-      ].map(m => m[1].toLowerCase()),
+      [...noScripts.matchAll(/<(frameset|frame|marquee|blink|font|center)(?=[\s>\/])/gi)].map(m => m[1].toLowerCase()),
     ),
   ];
+  // Relative URLs resolve against the first <base href>, itself resolved against the page URL, as browsers do.
+  // resolve() is memoized because the checks resolve the same address many times.
+  const base = urlOr(tagsOf(head, "base").find(b => b.href)?.href ?? url, url)?.href ?? url;
+  const resolved = new Map(),
+    resolve = s => {
+      if (!resolved.has(s)) resolved.set(s, urlOr(s, base));
+      return resolved.get(s);
+    };
   const rec = {
-    // Relative URLs resolve against the first <base href>, itself resolved against the page URL, as browsers do.
-    base: urlOr(tagsOf(head, "base").find(b => b.href)?.href ?? url, url)?.href ?? url,
+    base,
     title: titleM ? textOf(titleM[1]) : null,
     description: meta("description") ?? null,
     ogTitle: meta("og:title") ?? null,
@@ -417,18 +427,17 @@ export function analyze(url, html, headers, xRobotsLines, site) {
         .match(/<[a-z][\w-]*/gi) || []
     ).length,
   };
-  rec.trust = trustFeatures(html, url, rec.base);
+  rec.trust = trustFeatures(html, url, rec.base, { nodes, bodyRaw, resolve });
 
   rec.agent = agentFeatures(html);
   rec.writing = writingFeatures(writingText(mainHtml), rec.lang);
 
   // The home page's main text feeds the business-type guess, minus post teasers (two or more <article>s).
   if (url === START.href || new URL(url).pathname === "/")
-    rec.bizText = textOf(
+    rec.bizText =
       (mainHtml.match(/<article\b/gi) || []).length > 1
-        ? mainHtml.replace(/<article\b[\s\S]*?<\/article>/gi, " ")
-        : mainHtml,
-    );
+        ? textOf(mainHtml.replace(/<article\b[\s\S]*?<\/article>/gi, " "))
+        : mainText;
 
   // Links with a space or non-ASCII character in the path or query. A non-ASCII host is fine: browsers punycode it.
   const rawPath = h => h.replace(/^(?:[a-z][\w+.-]*:)?\/\/[^/?#]*/i, "").split("#")[0];
@@ -486,9 +495,7 @@ export function analyze(url, html, headers, xRobotsLines, site) {
 
   // Hrefs and srcs no URL parser can read, which the crawl would otherwise skip silently.
   rec.badUrls = [
-    ...new Set(
-      [...anchors.map(a => a.href), ...imgs.map(i => i.src)].filter(h => h?.trim() && !urlOr(h.trim(), rec.base)),
-    ),
+    ...new Set([...anchors.map(a => a.href), ...imgs.map(i => i.src)].filter(h => h?.trim() && !resolve(h.trim()))),
   ];
 
   // Inputs for checks/page.mjs. identity takes the business (not Service) and WebSite nodes' @id and name.
@@ -506,11 +513,7 @@ export function analyze(url, html, headers, xRobotsLines, site) {
 
   // Fragment targets (every id, and <a name>) and the links that jump to one, for checks/crawl.mjs.
   rec.anchorIds = new Set(
-    [
-      ...html
-        .replace(/<(script|style|template)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi, " ")
-        .matchAll(/<([a-z][\w-]*)\s[^>]*\b(?:id|name)\s*=[^>]*>/gi),
-    ]
+    [...noScripts.matchAll(/<([a-z][\w-]*)\s[^>]*\b(?:id|name)\s*=[^>]*>/gi)]
       .flatMap(m => {
         const a = attrs(m[0]);
         return [a.id, m[1].toLowerCase() === "a" ? a.name : null];
@@ -527,14 +530,21 @@ export function analyze(url, html, headers, xRobotsLines, site) {
   {
     const keys = secretsIn(html),
       navHrefs = [...body.matchAll(/<nav\b[\s\S]*?<\/nav>/gi)].flatMap(m => tagsOf(m[0], "a").map(a => a.href));
-    const own = h => {
-      const x = urlOr((h || "").trim(), rec.base),
-        c = x && /^https?:$/.test(x.protocol) ? clean(toCrawl(x.href)) : null;
-      return c && new URL(c).origin === START_ORIGIN ? c : null;
-    };
+    // An own-site link's crawl URL and whether it's a PDF, memoized; null off the site.
+    const owned = new Map(),
+      own = h => {
+        const k = (h || "").trim();
+        if (!owned.has(k)) {
+          const x = resolve(k),
+            y = x && /^https?:$/.test(x.protocol) ? urlOr(toCrawl(x.href)) : null;
+          if (y) y.hash = "";
+          owned.set(k, y && y.origin === START_ORIGIN ? { href: y.href, pdf: /\.pdf$/i.test(y.pathname) } : null);
+        }
+        return owned.get(k);
+      };
     const pdfOf = h => {
-      const c = own(h);
-      return c && /\.pdf$/i.test(new URL(c).pathname) ? c : null;
+      const o = own(h);
+      return o?.pdf ? o.href : null;
     };
     rec.hygieneSignals = {
       analytics: analyticsTwice(html),
@@ -548,7 +558,7 @@ export function analyze(url, html, headers, xRobotsLines, site) {
       js: [
         ...new Set(
           tagsOf(html.replace(/<!--[\s\S]*?-->/g, " "), "script")
-            .map(s => s.src && own(s.src))
+            .map(s => s.src && own(s.src)?.href)
             .filter(Boolean),
         ),
       ],
@@ -559,7 +569,7 @@ export function analyze(url, html, headers, xRobotsLines, site) {
   // as the Markdown sample is picked after the crawl, and joined into strings to save memory.
   {
     const w = s => pickMainWords(s.replace(NOSPACE_RUN, " ")),
-      main = w(textOf(mainHtml));
+      main = w(mainText);
     if (main.length >= 50)
       rec.markdownWords = {
         main: main.join(" "),
@@ -570,7 +580,7 @@ export function analyze(url, html, headers, xRobotsLines, site) {
   // Words of the title, H1s and main text, for keyword-ideas.mjs. Runs of a script written without spaces are dropped
   // (no words to match), and a page mostly in one is marked, so no missing search is claimed for it.
   {
-    const t = [rec.title || "", ...headings.filter(h => h.level === 1).map(h => h.text), textOf(mainHtml)].join(" "),
+    const t = [rec.title || "", ...headings.filter(h => h.level === 1).map(h => h.text), mainText].join(" "),
       ns = (t.match(NOSPACE_RUN) || []).join("").length;
     rec.mainWordsText = pickMainWords(t.replace(NOSPACE_RUN, " ")).join(" ");
     rec.mainNoSpace = ns * 2 > (t.match(/\p{L}/gu) || []).length;
@@ -579,9 +589,7 @@ export function analyze(url, html, headers, xRobotsLines, site) {
   // Bing's AI rules (AI-03), kept only on pages that have any.
   {
     const b = bingAiRules(
-      tagsOf(html, "meta")
-        .filter(m => /^(robots|bingbot)$/i.test(m.name || ""))
-        .map(m => m.content || ""),
+      allMetas.filter(m => /^(robots|bingbot)$/i.test(m.name || "")).map(m => m.content || ""),
       xRobotsLines?.length ? xRobotsLines : [headers.get("x-robots-tag") || ""],
     );
     if (b.legacy.length || b.prefs.length) rec.bingAi = b;
@@ -644,10 +652,10 @@ export function analyze(url, html, headers, xRobotsLines, site) {
   Object.assign(rec, hintsOf(html), { domShape: domShape(bodyRaw) });
 
   // Dates are read from the whole body, not the main text, since an article's <header> often holds them.
-  rec.obsolete.push(...obsoleteMore(html));
+  rec.obsolete.push(...obsoleteMore(html, noScripts));
   rec.guideDate = isGuide(url, rec.title, types) ? newestDate(body, nodes) : null;
   rec.keywordUse = /^en(?![a-z])/i.test(rec.lang || "")
-    ? keywordUse({ title: rec.title, headings, description: rec.description || "", text: textOf(mainHtml) })
+    ? keywordUse({ title: rec.title, headings, description: rec.description || "", text: mainText })
     : null;
 
   // Local business schema, plus "we come to you" wording in the text.

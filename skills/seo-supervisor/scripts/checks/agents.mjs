@@ -80,12 +80,14 @@ const trap = t => {
   return a.tabindex?.trim() === "-1" && TEXTLIKE.test((a.type || "text").trim().toLowerCase()) ? " " : t;
 };
 const VOID = /^(area|br|col|embed|hr|img|input|source|track|wbr)$/i;
-const swap = (html, pick, what) => {
+// Replaces each element pick(attrs) chooses, contents included, with what(element). An element with no balancing
+// close tag (an <input>, a <p> left open) is just its tag. hint skips parsing tags that can't match.
+const swap = (html, pick, what, hint) => {
   const open = /<([a-z][\w-]*)\b[^>]*>/gi;
   let out = "",
     from = 0;
   for (let m; (m = open.exec(html));) {
-    if (!pick(attrs(m[0]))) continue;
+    if (!hint.test(m[0]) || !pick(attrs(m[0]))) continue;
     let end = open.lastIndex;
     if (!VOID.test(m[1]) && !m[0].endsWith("/>")) {
       const tag = new RegExp(`<(/?)${m[1]}(?=[\\s/>])[^>]*>`, "gi");
@@ -134,9 +136,10 @@ export function agentFeatures(html) {
   const labelFor = new Set([...doc.matchAll(/<label\b[^>]*>/gi)].map(m => attrs(m[0]).for).filter(filled));
   // Hidden elements and spam-trap fields are out of visitors' reach, so they're dropped.
   const shown = swap(
-    swap(doc, gone, () => " "),
+    swap(doc, gone, () => " ", /hidden|style/i),
     offScreen,
     el => el.replace(/<input\b[^>]*>/gi, trap),
+    /style/i,
   );
   // A field inside a <label> is named by it, so only fields outside labels are checked one by one.
   const wrapped =
@@ -196,6 +199,7 @@ export function agentFeatures(html) {
     }
   // Click-only: an onclick on a non-interactive tag with no role. A landmark counts as its tag or its ARIA role.
   const clickOnly = [...shown.matchAll(/<([a-z][\w-]*)\b[^>]*>/gi)]
+    .filter(m => /onclick/i.test(m[0]))
     .map(m => /** @type {[string, Record<string, string>]} */ ([m[1].toLowerCase(), attrs(m[0])]))
     .filter(([tag, a]) => "onclick" in a && !("role" in a) && !INTERACTIVE.test(tag))
     .map(([tag, a]) => describe(tag, a));

@@ -57,13 +57,11 @@ export const widthText = t => {
 // Obsolete elements beyond the six the crawler already finds (frameset, frame, marquee, blink, font, center).
 // https://html.spec.whatwg.org/multipage/obsolete.html
 const OBSOLETE_MORE = /<(acronym|applet|basefont|bgsound|big|dir|isindex|nobr|spacer|strike|tt)(?=[\s>\/])/gi;
-export const obsoleteMore = html => [
-  ...new Set(
-    [...html.replace(/<(script|style|template)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi, " ").matchAll(OBSOLETE_MORE)].map(
-      m => m[1].toLowerCase(),
-    ),
-  ),
-];
+// The crawler passes noScripts when it has already stripped scripts, styles, templates and comments.
+export const obsoleteMore = (
+  html,
+  noScripts = html.replace(/<(script|style|template)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi, " "),
+) => [...new Set([...noScripts.matchAll(OBSOLETE_MORE)].map(m => m[1].toLowerCase()))];
 
 // ---------- descriptions ----------
 const SEP = String.raw`(?:[|·•»–—-]|::)`;

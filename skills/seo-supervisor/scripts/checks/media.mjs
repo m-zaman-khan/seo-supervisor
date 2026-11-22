@@ -134,30 +134,29 @@ const AUTO = {
 };
 export function domShape(html) {
   const stack = [],
+    names = [],
     kids = []; // open elements (tag.class), their tag names, and each one's child count
   let depth = 0,
     widest = { tag: null, children: 0 };
   const src = html
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/<(script|style|noscript|template|textarea)\b[^>]*>[\s\S]*?<\/\1>/gi, "<$1></$1>");
-  const name = t => t.split(".")[0];
+  const cut = i => {
+    stack.length = i;
+    names.length = i;
+    kids.length = i;
+  };
   for (const m of src.matchAll(/<(\/?)([a-z][\w-]*)\b([^>]*?)(\/?)>/gi)) {
     const tag = m[2].toLowerCase();
     if (m[1]) {
-      const i = stack.map(name).lastIndexOf(tag);
-      if (i >= 0) {
-        stack.length = i;
-        kids.length = i;
-      }
+      const i = names.lastIndexOf(tag);
+      if (i >= 0) cut(i);
       continue;
     }
     if (AUTO[tag]) {
       const [same, scope] = AUTO[tag],
-        i = Math.max(...same.map(s => stack.map(name).lastIndexOf(s)));
-      if (i >= 0 && !stack.slice(i + 1).some(t => scope.test(name(t)))) {
-        stack.length = i;
-        kids.length = i;
-      }
+        i = Math.max(...same.map(s => names.lastIndexOf(s)));
+      if (i >= 0 && !names.slice(i + 1).some(t => scope.test(t))) cut(i);
     }
     if (kids.length && ++kids[kids.length - 1] > widest.children)
       widest = { tag: stack[stack.length - 1], children: kids[kids.length - 1] };
@@ -167,6 +166,7 @@ export function domShape(html) {
     }
     const cls = /\bclass\s*=\s*["']?([^\s"'>]+)/i.exec(m[3])?.[1];
     stack.push(cls ? `${tag}.${cls}` : tag);
+    names.push(tag);
     kids.push(0);
     depth = Math.max(depth, stack.length);
   }

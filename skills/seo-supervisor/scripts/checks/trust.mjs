@@ -92,13 +92,24 @@ const CITED = /https?:\/\/|\[\d+\]|\bsource:|\baccording to\b/i;
 
 // One page's evidence for each signal. The crawler passes what it already parsed: the JSON-LD nodes, the HTML from
 // <body> on, and resolve(href), which returns a URL against base, or null.
-export function trustFeatures(html, url, base = url) {
-  const nodes = jsonLdNodes(html).nodes,
-    types = nodes.flatMap(typesOf);
-  const body = (i => (i >= 0 ? html.slice(i) : html))(html.search(/<body\b/i)).replace(
-    /<(script|style|template)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi,
-    " ",
-  );
+export function trustFeatures(
+  html,
+  url,
+  base = url,
+  {
+    nodes = jsonLdNodes(html).nodes,
+    bodyRaw = (i => (i >= 0 ? html.slice(i) : html))(html.search(/<body\b/i)),
+    resolve = h => {
+      try {
+        return new URL(h, base);
+      } catch {
+        return null;
+      }
+    },
+  } = {},
+) {
+  const types = nodes.flatMap(typesOf);
+  const body = bodyRaw.replace(/<(script|style|template)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi, " ");
   const main =
     body.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
     body.replace(/<(header|nav|footer|aside)\b[\s\S]*?<\/\1>/gi, " ");
@@ -107,10 +118,7 @@ export function trustFeatures(html, url, base = url) {
     at = h => {
       let r = read.get(h);
       if (!r) {
-        let u = null;
-        try {
-          u = new URL(h, base);
-        } catch {}
+        let u = resolve(h);
         if (u && !/^https?:$/.test(u.protocol)) u = null;
         read.set(
           h,
