@@ -22,8 +22,7 @@ export function findingTabs(
   { trafficHtml, clarityHtml },
 ) {
   const anyRecheck = () => findings.some(f => recheckOf(f));
-  const recheckNoteHtml = () => (anyRecheck() ? `\n    <p class="quiet">${esc(RECHECK_NOTE)}</p>` : "");
-  const recheckNoteMd = () => (anyRecheck() ? ["## Checking a fix yourself", "", RECHECK_NOTE, ""] : []);
+  const recheckNote = () => anyRecheck() && { title: "Checking a fix yourself", blocks: [{ quiet: RECHECK_NOTE }] };
   function evidenceHtml(f) {
     const ev = f.evidence || [];
     if (!ev.length) return "";
@@ -136,5 +135,5 @@ export function findingTabs(
   ${notes.length ? `<section class="panel"><h2>Notes from the audit</h2><ul class="lim">${notes.map(n => `<li><span>${inl(n)}</span></li>`).join("")}</ul></section>` : ""}
 </div>`
       : `<section class="panel empty-state"><h2>No limits recorded</h2><p>Every planned check ran.</p></section>`;
-  return { findingsHtml, decisionsHtml, changesHtml, passedHtml, limitsHtml, recheckNoteHtml, recheckNoteMd };
+  return { findingsHtml, decisionsHtml, changesHtml, passedHtml, limitsHtml, recheckNote };
 }

@@ -83,8 +83,10 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     unknownLines,
     linksDroppedMd,
   } = diffParts(m, { googleUpdatesText });
-  const { findingsHtml, decisionsHtml, changesHtml, passedHtml, limitsHtml, recheckNoteHtml, recheckNoteMd } =
-    findingTabs(m, { trafficHtml, clarityHtml });
+  const { findingsHtml, decisionsHtml, changesHtml, passedHtml, limitsHtml, recheckNote } = findingTabs(m, {
+    trafficHtml,
+    clarityHtml,
+  });
   const {
     viewsHtml,
     viewsMd,
@@ -151,7 +153,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     [appsPdfsHtml, appsPdfsMd],
     drawn(newSearches),
     [checkSettingsHtml, checkSettingsMd],
-    [recheckNoteHtml, recheckNoteMd],
+    drawn(recheckNote),
     [a11yHtml, a11yMd],
     [linkStrengthHtml, linkStrengthMd],
     [aiAnswersHtml, aiAnswersMd],
