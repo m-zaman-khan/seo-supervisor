@@ -202,6 +202,40 @@ test("uninstall also removes the copies v1.x put in Windsurf's and Goose's old s
   assert.match(user.stdout, /removed +~\/\.codeium\/windsurf\/skills\/seo-supervisor/);
 });
 
+test("owner hook files keep their look: Cursor's version, their indent, a BOM and CRLF; uninstall gives them back byte for byte", async () => {
+  const home = tmp(),
+    cwd = tmp();
+  const cursorFile = join(cwd, ".cursor", "hooks.json"),
+    devinFile = join(cwd, ".devin", "hooks.v1.json"),
+    codexFile = join(cwd, ".codex", "hooks.json");
+  for (const f of [cursorFile, devinFile, codexFile]) mkdirSync(join(f, ".."), { recursive: true });
+  const devinText =
+    "﻿" +
+    JSON.stringify({ Stop: [{ matcher: "", hooks: [{ type: "command", command: "./notify.sh" }] }] }, null, 4).replace(
+      /\n/g,
+      "\r\n",
+    ) +
+    "\r\n";
+  const codexText = JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "x" }] }] } }); // one line, no newline
+  writeFileSync(cursorFile, "{}\n");
+  writeFileSync(devinFile, devinText);
+  writeFileSync(codexFile, codexText);
+  await node([BIN, "--agent", "cursor,devin,codex", "--project"], { env: env(home), cwd });
+  // Cursor requires version, a positive integer (1). https://cursor.com/docs/hooks
+  assert.equal(json(cursorFile).version, 1);
+  const d = readFileSync(devinFile, "utf8");
+  assert.ok(
+    d.startsWith('﻿{\r\n    "Stop"') && d.endsWith("}\r\n") && !/[^\r]\n/.test(d),
+    "the BOM, CRLF and four spaces stay",
+  );
+  assert.ok(json(devinFile).PreToolUse);
+  assert.ok(!readFileSync(codexFile, "utf8").includes("\n"), "a one-line file stays one line");
+  await node([BIN, "--uninstall", "--project"], { env: env(home), cwd });
+  assert.equal(readFileSync(devinFile, "utf8"), devinText, "byte for byte");
+  assert.equal(readFileSync(codexFile, "utf8"), codexText);
+  assert.equal(json(cursorFile).version, 1);
+});
+
 test("a home folder with letters outside ASCII gets the whole skill (Node 24's cpSync writes to a garbled folder on Windows)", async () => {
   const home = join(tmp(), "José D’Souza"),
     cwd = tmp();

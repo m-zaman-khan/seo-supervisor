@@ -219,28 +219,48 @@ function strip(events) {
     else delete events[event];
   }
 }
-const readJson = file => (existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : null);
+/** A JSON object file plus its formatting (BOM, indent, line ending, final newline), so a rewrite changes only the
+ * guard's entries. Some Windows editors add a UTF-8 BOM, which JSON.parse alone rejects. */
+function readJson(file) {
+  if (!existsSync(file)) return null;
+  const text = readFileSync(file, "utf8"),
+    body = text.replace(/^﻿/, ""),
+    o = JSON.parse(body);
+  if (!o || typeof o !== "object" || Array.isArray(o)) throw new Error("not a JSON object");
+  // No indented line: a one-line file stays one line, an empty {} gets two spaces.
+  return {
+    o,
+    look: {
+      bom: text === body ? "" : "﻿",
+      indent: /^[ \t]+(?=\S)/m.exec(body)?.[0] ?? (/^\{\s*\}$|\n/.test(body.trim()) ? 2 : 0),
+      eol: body.includes("\r\n") ? "\r\n" : "\n",
+      end: /\n$/.test(body),
+    },
+  };
+}
+const NEW = { bom: "", indent: /** @type {string | number} */ (2), eol: "\n", end: true };
+const writeJson = (o, look = NEW) =>
+  look.bom + JSON.stringify(o, null, look.indent).replaceAll("\n", look.eol) + (look.end ? look.eol : "");
 
 /** Adds the guard for one agent (replacing an older copy). project: guard is relative to the project root.
  * Returns a problem message, or null. */
 export function addHooks(format, file, guard, created, root, project = false) {
   if (format === "copilot")
-    return (
-      put(file, JSON.stringify({ version: 1, hooks: entries(format, guard, project) }, null, 2) + "\n", created, root),
-      null
-    );
+    return (put(file, writeJson({ version: 1, hooks: entries(format, guard, project) }), created, root), null);
   if (format === "cline") return (put(file, clinePlugin(guard), created, root), null);
-  let o;
+  let r;
   try {
-    o = readJson(file) ?? fresh(format);
+    r = readJson(file) ?? { o: fresh(format), look: NEW };
   } catch {
     return `${file} isn't valid JSON, so the guard wasn't added to it`;
   }
-  const events = eventsOf(format, file, o);
+  // Cursor requires "version". https://cursor.com/docs/hooks
+  if (format === "cursor" && r.o.version === undefined) r.o = { version: 1, ...r.o };
+  const events = eventsOf(format, file, r.o);
   strip(events);
   for (const [event, list] of Object.entries(entries(format, guard, project)))
     events[event] = [...(Array.isArray(events[event]) ? events[event] : []), ...list];
-  put(file, JSON.stringify(o, null, 2) + "\n", created, root);
+  put(file, writeJson(r.o, r.look), created, root);
   return null;
 }
 
@@ -253,20 +273,21 @@ export function removeHooks(format, file, created, root) {
     rmSync(file);
     return true;
   }
-  let o;
+  let r;
   try {
-    o = readJson(file);
+    r = readJson(file);
   } catch {
     return false;
   }
-  if (!o || !OURS.test(JSON.stringify(o))) return false;
+  if (!r || !OURS.test(JSON.stringify(r.o))) return false;
+  const o = r.o;
   strip(eventsOf(format, file, o));
   // Devin's user config.json holds other settings too: an emptied "hooks" key goes.
   if (format === "devin" && o.hooks && !Object.keys(o.hooks).length) delete o.hooks;
   const ours = created.includes(rel(root, file)),
     empty = JSON.stringify(o) === JSON.stringify(fresh(format));
   if (ours && empty) rmSync(file);
-  else writeFileSync(file, JSON.stringify(o, null, 2) + "\n");
+  else writeFileSync(file, writeJson(o, r.look));
   return true;
 }
 
