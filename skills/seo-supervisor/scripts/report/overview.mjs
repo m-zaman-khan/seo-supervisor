@@ -39,9 +39,14 @@ export function actions({ raw, open, decisions }) {
     tasks: own.filter(f => !decisions.some(d => d.id === f.id)),
   };
 }
-// The scope line ends in "see": the page adds the Limits tab's name after it, as a link.
-export const scopeText = ({ run, overall, notChecked }) =>
-  `Checked ${run.pagesCrawled != null ? `${plural(Number(run.pagesCrawled) || 0, "page")} against ` : ""}${plural(overall?.rules || 0, "rule")} · ${notChecked.length ? `${plural(notChecked.length, "check")} couldn't run` : "every planned check ran"}: see`;
+// A closed site (over half the pages noindex) is read from the crawler's note, the only place the audit file keeps
+// it, so match any new wording of that note here.
+const closedNote = notes =>
+  (Array.isArray(notes) ? notes : []).map(n => /^(\d+)% of pages are noindex\b/.exec(String(n))?.[1]).find(Boolean);
+export const scopeText = ({ run, overall, notChecked, notes }) => {
+  const closed = closedNote(notes);
+  return `Checked ${run.pagesCrawled != null ? `${plural(Number(run.pagesCrawled) || 0, "page")} against ` : ""}${plural(overall?.rules || 0, "rule")}${closed ? ` · ${closed}% of pages are noindex, so their page checks were skipped: before launch, re-run with --ignore-noindex` : ""} · ${notChecked.length ? `${plural(notChecked.length, "check")} couldn't run` : "every planned check ran"}: see`;
+};
 // Clicks are the property's total, else the pages' sum; Core Web Vitals use origin data, else the first page's.
 export function keyNumbers({ raw }) {
   const t = obj(raw.traffic),
