@@ -45,7 +45,7 @@ export function bingAiPrefs(site) {
   const { htmlPages, add, evalRules, indexable } = site;
   evalRules("AI-03");
   for (const p of htmlPages) {
-    if (!p.bingAi || !indexable(p)) continue;
+    if (!p.bingAi || !indexable(p) || p.noindex) continue;
     const { legacy, prefs } = p.bingAi,
       at = w => [...new Set(legacy.filter(l => l.where === w).map(l => l.rule))].join(" and ");
     if (legacy.length && !prefs.length)
