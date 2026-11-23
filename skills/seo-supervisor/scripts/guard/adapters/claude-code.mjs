@@ -77,9 +77,13 @@ const stateFile = (input, env) =>
 const load = f => {
   try {
     const s = JSON.parse(readFileSync(f, "utf8"));
-    return { changed: [].concat(s.changed || []), noted: [].concat(s.noted || []) };
+    return {
+      changed: [].concat(s.changed || []),
+      noted: [].concat(s.noted || []),
+      pending: s.pending && typeof s.pending === "object" && !Array.isArray(s.pending) ? s.pending : {},
+    };
   } catch {
-    return { changed: [], noted: [] };
+    return { changed: [], noted: [], pending: {} };
   }
 };
 // A note that can't be saved is skipped: the reminder must never stop the guard's own checks.
@@ -100,12 +104,16 @@ const list = a => (a.length > 3 ? `${a.slice(0, 3).join(", ")} and ${a.length - 
 export function session(input, event, cwd, actions, env = process.env) {
   if (!input?.session_id) return event === "Stop" || event === "PostToolUse" ? QUIET : null;
   const f = stateFile(input, env),
-    reviewed = () => save(f, { changed: [], noted: [] });
+    reviewed = () => save(f, { changed: [], noted: [], pending: {} });
+  // An edit's files stay pending until its PostToolUse, which never fires after a denial, so an edit the user, the
+  // guard or a permission rule refused never counts. The tool_use_id pairs the two; without one, the file does.
+  const ti = input.tool_input || {},
+    key = str(input.tool_use_id) || (str(ti.file_path) && shown(resolve(cwd, ti.file_path), cwd));
   if (event === "PreToolUse") {
     const files = actions.filter(a => a.kind === "edit" && seoSensitive(a, cwd)).map(a => shown(a.file, cwd));
-    if (files.length) {
+    if (files.length && key) {
       const s = load(f);
-      s.changed = [...new Set([...s.changed, ...files])];
+      s.pending[key] = files;
       save(f, s);
     }
     return null;
@@ -116,8 +124,17 @@ export function session(input, event, cwd, actions, env = process.env) {
     return null;
   }
   if (event === "PostToolUse") {
-    const ti = input.tool_input || {};
     if (/seo-review/.test(`${str(ti.subagent_type)} ${str(ti.skill)}`)) reviewed();
+    // A failed call's tool_response is the error text, a string, so only an object counts as done.
+    else if (key && input.tool_response && typeof input.tool_response === "object") {
+      const s = load(f),
+        files = [].concat(s.pending[key] || []);
+      if (files.length) {
+        delete s.pending[key];
+        s.changed = [...new Set([...s.changed, ...files])];
+        save(f, s);
+      }
+    }
     return QUIET;
   }
   if (event !== "Stop" || input.stop_hook_active) return event === "Stop" ? QUIET : null;

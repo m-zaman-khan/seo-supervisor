@@ -409,20 +409,14 @@ test("Claude Code: Stop notes SEO changes once, stays quiet after /seo-review an
   const go = input => run("claude-code", { cwd: p, ...input }, { env });
   const stop = (session_id, extra = {}) =>
     go({ hook_event_name: "Stop", session_id, stop_hook_active: false, ...extra });
-  await go(
-    pre(
-      "Write",
-      { file_path: join(p, "public", "robots.txt"), content: "User-agent: *\nAllow: /\n" },
-      { cwd: p, session_id: "a" },
-    ),
-  );
-  await go(
-    pre(
-      "Write",
-      { file_path: join(p, "src", "util.ts"), content: "export const x = 1;\n" },
-      { cwd: p, session_id: "a" },
-    ),
-  );
+  // A change counts once its PostToolUse says the tool did it (guard-limits.test.mjs has the refused case).
+  const write = async (file_path, content, session_id) => {
+    const i = pre("Write", { file_path, content }, { cwd: p, session_id });
+    await go(i);
+    await go({ ...i, hook_event_name: "PostToolUse", tool_response: { filePath: file_path, type: "create" } });
+  };
+  await write(join(p, "public", "robots.txt"), "User-agent: *\nAllow: /\n", "a");
+  await write(join(p, "src", "util.ts"), "export const x = 1;\n", "a");
   assert.equal(
     (await stop("a", { stop_hook_active: true })).stdout,
     "",
@@ -435,16 +429,10 @@ test("Claude Code: Stop notes SEO changes once, stays quiet after /seo-review an
   assert.equal(note.decision, undefined, "it never blocks");
   assert.equal((await stop("a")).stdout, "", "once per change");
   // After a review, no note; a session with no SEO changes gets none.
-  await go(
-    pre(
-      "Write",
-      { file_path: join(p, "app", "layout.tsx"), content: "<meta name='description' content='x' />" },
-      { cwd: p, session_id: "b" },
-    ),
-  );
+  await write(join(p, "app", "layout.tsx"), "<meta name='description' content='x' />", "b");
   await go({ hook_event_name: "UserPromptSubmit", session_id: "b", prompt: "/seo-supervisor:seo-review" });
   assert.equal((await stop("b")).stdout, "");
-  await go(pre("Write", { file_path: join(p, "public", "robots.txt"), content: "x" }, { cwd: p, session_id: "c" }));
+  await write(join(p, "public", "robots.txt"), "x", "c");
   await go({
     hook_event_name: "PostToolUse",
     session_id: "c",
