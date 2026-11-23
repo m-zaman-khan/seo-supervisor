@@ -118,7 +118,8 @@ export function buildModel(raw, dir) {
             possible,
         }),
     );
-    const target = 100 - overall.raw;
+    // Area points add up to what's lost before the blocker cap, lib/score.mjs's stop at 99 included.
+    const target = 100 - (overall.cap ? overall.raw : overall.value);
     lost.forEach(x => {
       x.pts = Math.floor(x.exact);
     });
@@ -133,7 +134,7 @@ export function buildModel(raw, dir) {
       });
     return {
       rows: lost.filter(x => x.exact > 0).sort((x, y) => y.exact - x.exact || x.a.value - y.a.value),
-      cap: overall.raw - overall.value,
+      cap: overall.cap ? overall.raw - overall.value : 0,
     };
   })();
 

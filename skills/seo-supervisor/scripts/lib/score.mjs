@@ -30,18 +30,15 @@ export function buildRules(findings, passed = [], { fixedCountsAsOpen = false, a
   const rules = new Map();
   for (const f of findings) {
     const key = f.rule || f.id;
-    const r = rules.get(key) || { key, area: f.category, worst: null };
-    if (
-      !assume(f) &&
-      (fixedCountsAsOpen || isOpen(f)) &&
-      (r.worst === null || SEV.indexOf(f.severity) < SEV.indexOf(r.worst))
-    )
-      r.worst = f.severity;
+    const r = rules.get(key) || { key, area: f.category, worst: null, todo: false };
+    const counts = !assume(f) && (fixedCountsAsOpen || isOpen(f));
+    if (counts && (r.worst === null || SEV.indexOf(f.severity) < SEV.indexOf(r.worst))) r.worst = f.severity;
+    if (counts && f.status !== "wont-fix") r.todo = true;
     rules.set(key, r);
   }
   for (const p of Array.isArray(passed) ? passed : [])
     if (typeof p?.rule === "string" && !rules.has(p.rule))
-      rules.set(p.rule, { key: p.rule, area: p.category || "Other", worst: null });
+      rules.set(p.rule, { key: p.rule, area: p.category || "Other", worst: null, todo: false });
   return [...rules.values()];
 }
 export function score(rules) {
@@ -51,7 +48,7 @@ export function score(rules) {
   const blockers = rules.filter(r => r.worst === "blocker").length;
   const cap = blockers ? Math.max(9, 69 - 10 * blockers) : 100;
   return {
-    value: Math.min(rawScore, cap),
+    value: Math.min(rawScore, cap, rules.some(r => r.todo) ? 99 : 100),
     raw: rawScore,
     cap: blockers ? cap : null,
     blockers,

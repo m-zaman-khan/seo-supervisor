@@ -60,7 +60,7 @@ export function keyNumbers({ raw }) {
 }
 
 // The health score is a local formula, and the text says so.
-export const SCORE_HOW = `Every checked rule is worth 10 points. A rule that passes, or whose findings are all fixed, earns 10. A rule with open findings earns by its worst one: low 8, medium or decision 6, high 3, blocker 0. The score is the share of points earned. Each open blocker caps it: one at 59, two at 49, three at 39. While a blocker is open, the panel also shows the score you reach once it is fixed. Area scores use the same rules within each area. This is ${OWN_SCORE}: it counts only the rules this audit checked, and search engines don't use it.`;
+export const SCORE_HOW = `Every checked rule is worth 10 points. A rule that passes, or whose findings are all fixed, earns 10. A rule with open findings earns by its worst one: low 8, medium or decision 6, high 3, blocker 0. The score is the share of points earned. Each open blocker caps it: one at 59, two at 49, three at 39. While any finding is open, except one marked won't fix, it stops at 99: 100 means nothing is left to fix. While a blocker is open, the panel also shows the score you reach once it is fixed. Area scores use the same rules within each area. This is ${OWN_SCORE}: it counts only the rules this audit checked, and search engines don't use it.`;
 
 function scoreScale(v) {
   /** @type {[number, number, string][]} */
