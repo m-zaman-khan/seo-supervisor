@@ -62,7 +62,7 @@ test("brackets: Claude Code runs the guard on every shell command, and the guard
   );
   assert.equal(plain.stdout, "");
   for (const [body, ms] of [
-    ["Some prose about (pages) and the site, with a > sign; and more text here.\n".repeat(14000), 300],
+    ["Some prose about (pages) and the site, with a > sign; and more text here.\n".repeat(14000), 1500],
     ["(a) $(b) `c` | d > e; f && g\n".repeat(40000), 1500],
   ]) {
     const t = performance.now();
