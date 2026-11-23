@@ -201,14 +201,6 @@ export function linkPanels({ raw }) {
         `Common Crawl's web graph (${ccRank.release}): ${ccRank.found ? `${ccRank.domain} is #${num(ccRank.harmonicPos)} of ${num(ccRank.domains)} domains by how well linked it is (harmonic centrality)${isCount(ccRank.pageRankPos) ? `, #${num(ccRank.pageRankPos)} by PageRank` : ""}` : `${ccRank.domain} isn't in the top ${num(ccRank.scanned)} of ${num(ccRank.domains)} domains${ccRank.capped ? " (the read stopped there)" : ""}`}. Common Crawl's own number, not Google's, and information only.`,
         [],
       ]);
-    if (outLinks) {
-      const n = outLinks.pages.filter(c => c > 0).length,
-        top = [...outLinks.domains].sort((a, b) => b[1] - a[1]).slice(0, 5);
-      L.push([
-        `${num(n)} of your ${num(outLinks.pages.length)} crawled pages ${n === 1 ? "links" : "link"} to other sites, ${plural(outLinks.domains.length, "site")} in all. Pages that make claims should link to their sources (CONTENT-10).`,
-        top.map(([d, c]) => [d, plural(c, "address", "addresses")]),
-      ]);
-    }
     // How much of the link profile the free sources cover.
     // https://support.google.com/webmasters/answer/9049606
     const cover = [
@@ -235,6 +227,24 @@ export function linkPanels({ raw }) {
         ],
       }
     );
+  };
+  // The site's own outbound links get their own card, apart from the links in; domains escaped.
+  const outLinksPanel = () => {
+    if (!outLinks) return null;
+    const n = outLinks.pages.filter(c => c > 0).length,
+      top = [...outLinks.domains].sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const all = outLinks.domains.length,
+      shown = all > top.length ? `; the top ${top.length} are below` : "";
+    return {
+      cls: "outlinks",
+      title: "Links to other sites",
+      blocks: [
+        {
+          p: `${num(n)} of your ${num(outLinks.pages.length)} crawled pages ${n === 1 ? "links" : "link"} to other sites, ${plural(all, "site")} in all${shown}. Pages that make claims should link to their sources (CONTENT-10). ${MORE_LINKS_INTRO}`,
+        },
+        { rows: top.map(([d, c]) => [{ code: d }, plural(c, "address", "addresses")]) },
+      ],
+    };
   };
 
   // linkIdeas and queryGaps (keyword-ideas.mjs), copied into the audit as they are. Searches and paths are escaped. Up
@@ -357,5 +367,14 @@ export function linkPanels({ raw }) {
         { rows: strength.weak.map(x => [{ code: x.u }, weakTail(x)]) },
       ],
     };
-  return { linked, links, moreLinks, linkIdeas, queryGaps, linkedOnce: linkedOncePanel, linkStrength };
+  return {
+    linked,
+    links,
+    moreLinks,
+    outLinks: outLinksPanel,
+    linkIdeas,
+    queryGaps,
+    linkedOnce: linkedOncePanel,
+    linkStrength,
+  };
 }

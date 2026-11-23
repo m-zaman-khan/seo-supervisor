@@ -595,7 +595,12 @@ test("the report's More about links section shows the imported link data, escape
   assert.match(det, /October 2026 Index/);
   assert.match(det, /1,000 or more/);
   assert.match(det, /1 of 3 known linking pages/);
-  assert.match(det, /1 of your 2 crawled pages links to other sites/);
+  // This site's own links out have their own panel and card.
+  assert.doesNotMatch(det, /crawled pages links? to other sites/);
+  assert.match(
+    html.match(/<details class="how outlinks">[\s\S]*?<\/details>/)?.[0] || "",
+    /1 of your 2 crawled pages links to other sites/,
+  );
   assert.match(det, /isn(&#39;|')t a comprehensive list/, "how much the free data covers");
   assert.doesNotMatch(html, /<img src=x/);
   assert.match(md, /^### More about links$/m);

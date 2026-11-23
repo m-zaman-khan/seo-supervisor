@@ -58,7 +58,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     googleUpdatesText,
     desktopSpeedText,
   } = overviewLines(m);
-  const { linked, links, moreLinks, linkIdeas, queryGaps, linkedOnce, linkStrength } = linkPanels(m);
+  const { linked, links, moreLinks, outLinks, linkIdeas, queryGaps, linkedOnce, linkStrength } = linkPanels(m);
   const {
     trafficFor,
     trafficOf,
@@ -174,6 +174,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     [L, "Links from other sites", authority],
     [L, "Links from other sites", links],
     [L, "Links from other sites", moreLinks],
+    [L, "Links to other sites", outLinks],
     [SC, null, views],
     [SC, "Structured data", () => schemaInventoryPanel(m)],
     [SC, "Local business", local],
