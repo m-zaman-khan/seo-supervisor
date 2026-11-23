@@ -149,6 +149,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
   // [tab, card, panel] rows. Panels that share a card render as one box. "since", "limits" and "findings" add to
   // those existing tabs.
   const [S, SP, L, SC] = ["search-ai", "speed", "links", "site-content"];
+  const SPEED = m.lighthouse.length ? "Speed and Lighthouse" : "Speed"; // the card names Lighthouse only when it ran
   const tabs = byTab([
     [S, "Search traffic", searchGlance],
     [S, "Search traffic", () => topSearchesPanel(m)],
@@ -163,10 +164,10 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     [S, "AI crawlers, agents and answers", agents],
     [S, "AI crawlers, agents and answers", () => logsPanel(m)],
     [S, "AI crawlers, agents and answers", aiAnswers],
-    [SP, "Speed and Lighthouse", speedGlance],
-    [SP, "Speed and Lighthouse", lighthouseDetail],
-    [SP, "Speed and Lighthouse", speedDetails],
-    [SP, "Speed and Lighthouse", images],
+    [SP, SPEED, speedGlance],
+    [SP, SPEED, lighthouseDetail],
+    [SP, SPEED, speedDetails],
+    [SP, SPEED, images],
     [L, "Internal links", linkStrength],
     [L, "Internal links", linkedOnce],
     [L, "Internal links", linkIdeas],
