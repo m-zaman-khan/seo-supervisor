@@ -200,11 +200,14 @@ export function speedPanels({ raw, mdFile, lighthouse }) {
     const ca = obj(m.imageCache),
       unc = (Array.isArray(ca?.uncached) ? ca.uncached : []).filter(str),
       hosts = Object.entries(obj(ca?.otherHosts) || {}).filter(([h, n]) => str(h) && Number.isInteger(n));
+    const uncN = Number.isInteger(ca?.uncachedCount) ? ca.uncachedCount : unc.length;
     if (ca && ((Number.isInteger(ca.checked) && ca.checked > 0) || hosts.length))
       L.push(
         [
           ca.checked > 0 &&
-            `Image caching: ${num(Number.isInteger(ca.uncachedCount) ? ca.uncachedCount : unc.length)} of ${plural(ca.checked, "image")} are sent with no cache lifetime${unc.length ? ` (${mediaList(unc, notePath)})` : ""}, so browsers download them again on every visit.`,
+            (uncN
+              ? `Image caching: ${num(uncN)} of ${plural(ca.checked, "image")} are sent with no cache lifetime${unc.length ? ` (${mediaList(unc, notePath)})` : ""}, so browsers download them again on every visit.`
+              : `Image caching: ${ca.checked === 1 ? "the 1 image checked is" : `all ${num(ca.checked)} images checked are`} sent with a cache lifetime.`),
           str(ca.cdn) && `They come through ${ca.cdn}.`,
           hosts.length && `Images on other hosts: ${mediaList(hosts, ([h, n]) => `${h} (${num(n)})`)}.`,
         ]
