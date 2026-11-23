@@ -314,7 +314,7 @@ test("lab CLS in Chrome is the largest burst of layout shifts, not their sum", {
   // the text 200 px down an 844 px screen. Chrome 157 scores them 0.237 and 0.175; their sum would be 0.412.
   const grow = `document.querySelector(".push").style.height = (parseInt(getComputedStyle(document.querySelector(".push")).height) + 200) + "px"`;
   const page = doc(
-    `<div class="push" style="height:0"></div><main><h1>Shifting</h1><p>${words(300)}</p><img src="/slow.png" width="10" height="10" alt=""></main><script>setTimeout(() => { ${grow} }, 2500); setTimeout(() => { ${grow} }, 4200)</script>`,
+    `<div class="push" style="height:0"></div><main><h1>Shifting</h1><p>${words(300)}</p><img src="/slow.png" width="10" height="10" alt=""></main><script>setTimeout(() => { ${grow}; setTimeout(() => { ${grow} }, 1700); }, 2500)</script>`,
   );
   const dir = tmp();
   mkdirSync(join(dir, "shift"));
