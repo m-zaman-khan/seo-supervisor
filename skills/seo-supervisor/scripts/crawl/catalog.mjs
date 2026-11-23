@@ -74,7 +74,7 @@ export const RULES = {
   "SCHEMA-04": ["Schema matches what the page visibly shows", "Structured data"],
   "SCHEMA-05": ["No schema kept for rich results that no longer exist", "Structured data"],
   "SCHEMA-07": ["BreadcrumbList on every page below the home page", "Structured data"],
-  "LOCAL-05": ["NAP is identical everywhere", "Structured data"],
+  "LOCAL-05": ["NAP is identical everywhere", "Local business"],
   "MAP-01": ["An XML sitemap exists and robots.txt references it", "Sitemaps & robots"],
   "MAP-02": ["The sitemap lists only canonical, indexable URLs on the production host", "Sitemaps & robots"],
   "MAP-03": ["Every indexable page is in the sitemap", "Sitemaps & robots"],
