@@ -302,7 +302,7 @@ footer .wrap{padding-block:20px 40px;display:flex;flex-wrap:wrap;gap:6px 18px;ju
       </div>
       
       <details class="how"><summary>How this score works</summary>
-        <p>Every checked rule is worth 10 points. A rule that passes, or whose findings are all fixed, earns 10. A rule with open findings earns by its worst one: low 8, medium or decision 6, high 3, blocker 0. The score is the share of points earned. Each open blocker caps it: one at 59, two at 49, three at 39. While a blocker is open, the panel also shows the score you reach once it is fixed. Area scores use the same rules within each area. This is SEO Supervisor's own score, not Google's: it counts only the rules this audit checked, and search engines don't use it.</p>
+        <p>Every checked rule is worth 10 points. A rule that passes, or whose findings are all fixed, earns 10. A rule with open findings earns by its worst one: low 8, medium or decision 6, high 3, blocker 0. The score is the share of points earned. Each open blocker caps it: one at 59, two at 49, three at 39. While any finding is open, except one marked won't fix, it stops at 99: 100 means nothing is left to fix. While a blocker is open, the panel also shows the score you reach once it is fixed. Area scores use the same rules within each area. This is SEO Supervisor's own score, not Google's: it counts only the rules this audit checked, and search engines don't use it.</p>
       </details>
     </section>
     <section class="panel fixfirst" aria-labelledby="h-first">
@@ -320,7 +320,7 @@ footer .wrap{padding-block:20px 40px;display:flex;flex-wrap:wrap;gap:6px 18px;ju
     <section class="panel factors" aria-labelledby="h-factors">
       <div class="ph"><h2 id="h-factors">What's moving your score</h2><span class="sub">Points lost, biggest first</span></div>
       <ol class="area-list"><li><a class="area" href="#findings" data-sev="blocker"><i class="dot d-blocker" aria-hidden="true"></i>
-          <span class="an"><b>Blocker cap</b><span class="reason">2 open blockers hold the score at 49 until fixed</span></span>
+          <span class="an"><b>Blocker cap</b><span class="reason">Lifted once the blockers are fixed</span></span>
           <span class="meter" aria-hidden="true"><i style="width:100%"></i></span><span class="as">−31<small>pts</small></span></a></li><li><a class="area" href="#findings" data-area="Interactive tools"><i class="dot d-blocker" aria-hidden="true"></i>
           <span class="an"><b>Interactive tools <span class="ascore">53/100</span></b><span>1,240 shareable scan reports are indexable <span class="more">+1 more</span></span></span>
           <span class="meter" aria-hidden="true"><i style="width:22.580645161290324%"></i></span><span class="as">−7<small>pts</small></span></a></li><li><a class="area" href="#findings" data-area="Headings &amp; content"><i class="dot d-blocker" aria-hidden="true"></i>
@@ -625,7 +625,7 @@ footer .wrap{padding-block:20px 40px;display:flex;flex-wrap:wrap;gap:6px 18px;ju
     <details class="how topsearches"><summary>Top searches and pages</summary><p>Google Search, last 3 months. Google hides searches very few people make, so the searches add up to fewer clicks than the pages. Information only.</p><details><summary>Pages with the most clicks</summary><div class="tablewrap"><table><thead><tr><th scope="col">Page</th><th scope="col">Clicks</th><th scope="col">Impressions</th></tr></thead><tbody><tr><td><code>/</code></td><td>1,840</td><td>52,300</td></tr><tr><td><code>/tools/ssl-checker/</code></td><td>960</td><td>31,200</td></tr><tr><td><code>/tools/mx-lookup/</code></td><td>120</td><td>9,800</td></tr></tbody></table></div></details></details>
   </section></section>
   <section class="tp" id="p-speed" role="tabpanel" aria-labelledby="t-speed" data-title="Speed" hidden><p class="quiet topic-note">Information only: nothing on this tab changes the score.</p>
-  <section class="panel topic"><h2>Speed and Lighthouse</h2>
+  <section class="panel topic"><h2>Speed</h2>
     <p class="quiet">Real-user speed (mobile): LCP 2.4 s (good) · INP 180 ms (good) · CLS 0.05 (good), passes Core Web Vitals</p>
   </section></section>
   <section class="tp" id="p-site-content" role="tabpanel" aria-labelledby="t-site-content" data-title="Site & content" hidden><p class="quiet topic-note">Information only: nothing on this tab changes the score.</p>

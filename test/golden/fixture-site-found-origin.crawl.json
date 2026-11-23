@@ -2318,8 +2318,8 @@
       "label": "HTTPS and security headers",
       "rule": "TRUST-01",
       "applies": true,
-      "found": false,
-      "evidence": "HTTPS, with open security findings",
+      "found": true,
+      "evidence": "https://example-security.com; its missing security headers were read from a local build, which may lack the ones production adds",
       "add": "Serve every page over HTTPS and fix the open security findings (TRUST-01, TRUST-07)."
     },
     {

@@ -936,15 +936,17 @@ Common Crawl (CC-MAIN-2026-44) holds 840 saved copies of your site's pages, the 
 
 Common Crawl's web graph (cc-main-2026-jul-aug-oct): example.com is #1,203,456 of 120,000,000 domains by how well linked it is (harmonic centrality), #2,345,678 by PageRank. Common Crawl's own number, not Google's, and information only.
 
-2 of your 3 crawled pages link to other sites, 6 sites in all. Pages that make claims should link to their sources (CONTENT-10).
+How much this covers: Google says Search Console's Links report “isn't a comprehensive list of every link on your site”, and each of its tables stops at 1,000 rows. Bing's links here are a sample of 2 links to your home page. The backlink check opened 40 known linking pages (100 at most). Common Crawl holds only the pages its monthly crawl reached. Treat the numbers as a sample, not a full count.
+
+### Links to other sites
+
+2 of your 3 crawled pages link to other sites, 6 sites in all; the top 5 are below. Pages that make claims should link to their sources (CONTENT-10). Information only: none of this changes the score.
 
 - `supplier.example.org` 40 addresses
 - `maps.example.net` 30 addresses
 - `standards.example.org` 12 addresses
 - `café.example` 3 addresses
 - `news.example.net` 2 addresses
-
-How much this covers: Google says Search Console's Links report “isn't a comprehensive list of every link on your site”, and each of its tables stops at 1,000 rows. Bing's links here are a sample of 2 links to your home page. The backlink check opened 40 known linking pages (100 at most). Common Crawl holds only the pages its monthly crawl reached. Treat the numbers as a sample, not a full count.
 
 ## Site & content
 
@@ -990,7 +992,7 @@ Trust signals found:
 
 Information only: none of this changes the score. 250 m is our own line for the address check.
 
-Customers come to the business's address, and it also goes to them. Keep the address on the site and in the schema, and list the towns it serves as areaServed (LOCAL-12).
+A business like this (schema.org files Plumber under home and construction) usually goes to its customers, and its schema gives a street address. If customers come to that address too, keep it on the site and in the schema, and list the towns it serves as areaServed (LOCAL-12). If they don't, Google asks a business to hide an address where it doesn't serve customers (LOCAL-06).
 
 - LocalBusiness schema with a street address
 - “We come to you” on /emergency/
@@ -1372,4 +1374,4 @@ Change check, 3 pages changed on 1 Oct 2026, 28 days before and after: Google Se
 
 ## How the score works
 
-Every checked rule is worth 10 points. A rule that passes, or whose findings are all fixed, earns 10. A rule with open findings earns by its worst one: low 8, medium or decision 6, high 3, blocker 0. The score is the share of points earned. Each open blocker caps it: one at 59, two at 49, three at 39. While a blocker is open, the panel also shows the score you reach once it is fixed. Area scores use the same rules within each area. This is SEO Supervisor's own score, not Google's: it counts only the rules this audit checked, and search engines don't use it.
+Every checked rule is worth 10 points. A rule that passes, or whose findings are all fixed, earns 10. A rule with open findings earns by its worst one: low 8, medium or decision 6, high 3, blocker 0. The score is the share of points earned. Each open blocker caps it: one at 59, two at 49, three at 39. While any finding is open, except one marked won't fix, it stops at 99: 100 means nothing is left to fix. While a blocker is open, the panel also shows the score you reach once it is fixed. Area scores use the same rules within each area. This is SEO Supervisor's own score, not Google's: it counts only the rules this audit checked, and search engines don't use it.
