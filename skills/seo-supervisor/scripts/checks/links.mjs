@@ -10,6 +10,14 @@ import { hasName } from "./crawl.mjs";
 import { pageRank, scale as strengthScale } from "./link-strength.mjs";
 import { quote } from "../lib/findings.mjs";
 
+// An HTML sitemap page, by its path, H1 or title. It's a page of links reached from the footer, so the menu-only and
+// too-many-links checks leave it alone.
+const SITEMAP = /^site ?map$/i;
+export const isHtmlSitemap = p =>
+  /^\/sitemap\/?$/i.test(urlOr(p.finalUrl)?.pathname || "") ||
+  SITEMAP.test((p.headings || []).find(h => h.level === 1)?.text?.trim() || "") ||
+  SITEMAP.test((p.title || "").split(/\s[|–—·-]\s/)[0].trim());
+
 // Returns inbound (final URL -> links to it, the pages list's linksIn) and sets each page's depth. A bad link's
 // evidence, here and for other sites below, is the page holding it, the one to fix; the detail names the target. Each
 // target is reported once, from the first page found linking to it.
@@ -43,6 +51,7 @@ export function checkLinks(site) {
     if (!p || !p.html || isHome(p)) continue;
     if (bodyInbound.get(p.finalUrl)) continue;
     const n = inbound.get(p.finalUrl);
+    if (n && isHtmlSitemap(p)) continue;
     if (n) add("nav-only-links", e.loc, `only menu, footer or sidebar links (${n})`);
     else add("orphan", e.loc, "no links at all");
   }

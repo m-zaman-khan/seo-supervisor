@@ -4,6 +4,7 @@ import { allowedBy, groupOf } from "./robots.mjs";
 import { checkHreflang } from "./hreflang.mjs";
 import { titleWidth, widthText } from "./content.mjs";
 import { judgeLocal } from "./local.mjs";
+import { isHtmlSitemap } from "./links.mjs";
 import { KEPT, RULES } from "../crawl/catalog.mjs";
 import { clean, urlOr } from "../crawl/fetch.mjs";
 import { NOSPACE, capsOf, norm } from "../lib/html.mjs";
@@ -392,7 +393,7 @@ export function checkPages(site) {
     const missingQ = p.faqQs.filter(q => !p.normText.includes(norm(q)));
     if (missingQ.length)
       add("faq-not-visible", u, `${missingQ.length} of ${p.faqQs.length}: “${missingQ[0].slice(0, 60)}”`);
-    if (p.links.length > 150) add("too-many-links", u, `${p.links.length} links`);
+    if (p.links.length > 150 && !isHtmlSitemap(p)) add("too-many-links", u, `${p.links.length} links`); // an HTML sitemap is all links
     const generic = p.links.filter(l =>
       /^(click here|here|read more|learn more|more|this|link|details)$/i.test(l.text.trim()),
     ).length;
