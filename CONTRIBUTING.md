@@ -7,10 +7,13 @@ Thanks for helping. The most valuable contributions are rule updates when search
 ```bash
 git clone https://github.com/m-zaman-khan/seo-supervisor
 cd seo-supervisor
-npm test            # Node 22+, no dependencies to install
+npm test               # Node 22+, no dependencies to install
+npm run typecheck      # needs `npm ci` once, for TypeScript (dev only)
 npm run test:browser   # the tests that launch Chrome or Edge (slow; Chrome must be installed)
 npm run test:slow      # npm test plus its slow cases (every shell with odd folder names); run it when you change the installer
 ```
+
+[ARCHITECTURE.md](ARCHITECTURE.md) explains how the pieces fit together and where each one lives.
 
 The tests crawl a small fixture site (`test/fixture-site/`) that has one planted problem per checked rule. They also scan sample content, render the report and run the installer in a temporary home folder. `npm test` runs offline: `test/offline.mjs` refuses any connection or DNS lookup off this machine and any browser start, and fails the run if one is tried. After a change that alters output on purpose, rewrite the golden snapshots with `node test/golden/update.mjs` and check the diff. `node test/bench/run.mjs` times a 500-page crawl.
 
@@ -21,8 +24,9 @@ The tests crawl a small fixture site (`test/fixture-site/`) that has one planted
 | `skills/seo-supervisor/SKILL.md` | The workflow the agent follows |
 | `skills/seo-supervisor/rules/*.md` | Rules by area. Each has an ID, a severity, how to check it and how to fix it |
 | `skills/seo-supervisor/site-types/`, `frameworks/` | Extra rules per site type, and how to apply them per framework |
-| `skills/seo-supervisor/scripts/` | The crawler, the content scanner and the report renderer |
-| `commands/` | The four slash commands |
+| `skills/seo-supervisor/scripts/` | The crawler, the checks, the guard, the report renderer and the other tools |
+| `commands/`, `agents/`, `hooks/` | The slash commands, the subagents and the plugin's hooks |
+| `test/` | One test file per feature; `test/browser/` needs Chrome |
 
 ## Changing a rule
 
@@ -38,7 +42,17 @@ A panel on the Overview is a view model (`{ cls, title, blocks }`) that `report/
 
 Run `npm run demo` afterwards. It refreshes `docs/index.html` (the live demo) and the bundled sample, and a test checks that they're current. Keep the report one offline file: no external scripts, styles or fonts.
 
+## Code style
+
+- **No runtime dependencies.** Use Node's standard library.
+- **Mark new scripts `// @ts-check`,** and keep `npm run typecheck` clean.
+- **Comments say why, not what.** Cite the official source for a rule or a threshold (the page and the date you read it). Leave out anything the code already says.
+- **Use LF line endings and two-space indentation.** `.editorconfig` sets both.
+
 ## Pull requests
 
 - Keep each one focused, and add a line to `CHANGELOG.md`.
+- Write the commit message as a short, plain summary of the change, in the imperative ("Add a check for …").
 - `npm test` must pass (CI runs it on Node 22, 24 and 26). Run `npm run test:browser` when you change Chrome code.
+
+Report security problems privately, as [SECURITY.md](SECURITY.md) describes. Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
