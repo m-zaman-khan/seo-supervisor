@@ -1,6 +1,7 @@
 // @ts-check
 // The local panels on the Site & content tab: the local business and the local rank grid.
 import { esc, fmtDate, noteMd, num, obj, plural } from "../format.mjs";
+import { isA } from "../../lib/business.mjs";
 
 export function localPanels({ raw }) {
   // OpenStreetMap's credit goes wherever its data shows (ODbL). Names, addresses and evidence come from the site or
@@ -16,6 +17,18 @@ export function localPanels({ raw }) {
     hybrid:
       "Customers come to the business's address, and it also goes to them. Keep the address on the site and in the schema, and list the towns it serves as areaServed (LOCAL-12).",
   };
+  // A trade that goes to its customers (HomeAndConstructionBusiness types in data/business-types.json) isn't told they
+  // come to its address when the site shows one: Google says a business that doesn't serve customers there should hide
+  // it.
+  // https://support.google.com/business/answer/3038177
+  const trade =
+    lbRaw &&
+    typeof lbRaw.type === "string" &&
+    lbRaw.kind !== "service-area" &&
+    LOCAL_KIND[lbRaw.kind] &&
+    isA(lbRaw.type, "HomeAndConstructionBusiness");
+  const TRADE = t =>
+    `A business like this (schema.org files ${t} under home and construction) usually goes to its customers, and its schema gives a street address. If customers come to that address too, keep it on the site and in the schema, and list the towns it serves as areaServed (LOCAL-12). If they don't, Google asks a business to hide an address where it doesn't serve customers (LOCAL-06).`;
   const OSM_CREDIT =
     "Map data © OpenStreetMap contributors, under the Open Database License (https://www.openstreetmap.org/copyright).";
   const lcFin = x => typeof x === "number" && Number.isFinite(x);
@@ -26,7 +39,7 @@ export function localPanels({ raw }) {
     const L = [];
     if (lbRaw && LOCAL_KIND[lbRaw.kind])
       L.push([
-        LOCAL_KIND[lbRaw.kind],
+        trade ? TRADE(lbRaw.type) : LOCAL_KIND[lbRaw.kind],
         (Array.isArray(lbRaw.evidence) ? lbRaw.evidence.filter(lcStr) : []).slice(0, 6).map(e => [e, ""]),
       ]);
     const nb = nbRaw && [nbRaw.count, nbRaw.radiusM, nbRaw.perKm2].every(lcFin) ? nbRaw : null;

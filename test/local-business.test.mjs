@@ -476,7 +476,7 @@ test("the report's Local business panel: the kind and its evidence, nearby place
   });
   assert.match(html, /<details class="how local"><summary>Local business<\/summary>/);
   assert.ok(!html.includes(XSS), "third-party text is escaped");
-  assert.match(html, /also goes to them/);
+  assert.match(html, /usually goes to its customers/, "a plumber is a trade that goes to its customers");
   assert.match(html, /3 other places/);
   assert.match(html, /0\.24 per km²/);
   assert.match(html, /Far Pipes/);
