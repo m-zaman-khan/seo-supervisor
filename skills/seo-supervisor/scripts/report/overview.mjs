@@ -162,7 +162,7 @@ export function overviewHtml(m) {
         const rows = [];
         if (impact.cap > 0)
           rows.push(`<li><a class="area" href="#findings" data-sev="blocker">${dot("blocker")}
-          <span class="an"><b>Blocker cap</b><span class="reason">${plural(overall.blockers, "open blocker")} hold${overall.blockers === 1 ? "s" : ""} the score at ${overall.cap} until fixed</span></span>
+          <span class="an"><b>Blocker cap</b><span class="reason">Lifted once the ${overall.blockers === 1 ? "blocker is" : "blockers are"} fixed</span></span>
           ${bar(impact.cap)}<span class="as">−${impact.cap}<small>pts</small></span></a></li>`);
         for (const { a, pts } of impact.rows) {
           const line = a.top.length
