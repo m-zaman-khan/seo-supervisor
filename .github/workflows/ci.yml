@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Node ${{ matrix.node }}
@@ -14,25 +17,25 @@ jobs:
       matrix:
         node: [22, 24, 26]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ matrix.node }}
-      - name: Check script syntax
+      - name: Check syntax
         run: for f in bin/*.mjs skills/seo-supervisor/scripts/*.mjs; do node --check "$f"; done
-      - name: Type-check the files marked // @ts-check (TypeScript is a dev-only tool; nothing is compiled or shipped)
+      - name: Type-check
         run: npm ci && npm run typecheck
-      - name: Crawl the fixture site, scan content, render the report, test the installer
+      - name: Test
         run: npm test
 
   browser:
     name: Chrome tests (Node 22)
-    # Chrome sandboxing works for the runner user on 22.04; 24.04 limits unprivileged user namespaces.
+    # Chrome's sandbox works for the runner user on 22.04; 24.04 restricts unprivileged user namespaces.
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
-      - name: Tests that start Chrome (it is launched with its background contact turned off)
+      - name: Test
         run: npm run test:browser
