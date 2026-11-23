@@ -10,7 +10,8 @@ body{margin:0;background:var(--bg);color:var(--ink2);font:16px/1.65 "Geist",ui-s
 a{color:var(--blue);text-underline-offset:3px}
 .wrap{max-width:760px;margin:0 auto;padding:28px 20px 64px}
 header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:40px}
-.brand{font-family:var(--display);font-weight:700;font-size:19px;color:var(--ink);text-decoration:none;letter-spacing:-.01em}
+.brand{display:inline-flex;align-items:center;gap:10px;font-family:var(--display);font-weight:700;font-size:19px;color:var(--ink);text-decoration:none;letter-spacing:-.01em}
+.brand img{display:block;flex:none}
 .theme-btn{font:inherit;font-size:14px;color:var(--ink2);background:transparent;border:1px solid var(--line);border-radius:999px;padding:6px 14px;cursor:pointer}
 .theme-btn:hover{border-color:var(--mute)}
 h1{font-family:var(--display);font-weight:700;font-size:clamp(30px,5vw,42px);line-height:1.1;letter-spacing:-.02em;color:var(--ink);margin:0 0 14px}

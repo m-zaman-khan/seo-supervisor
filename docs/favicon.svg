@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="SEO Supervisor">
+  <rect width="512" height="512" rx="104" fill="#1c2a39"/>
+  <g fill="none" stroke-width="50">
+    <path d="M278.9 336.8A140.1 140.1 0 0 1 134.8 329.2" stroke="#ef6464"/>
+    <path d="M126.8 323.5A140.1 140.1 0 0 1 75.1 188.8" stroke="#f38b4a"/>
+    <path d="M77.2 179.2A140.1 140.1 0 0 1 179.2 77.2" stroke="#efb93b"/>
+    <path d="M188.8 75.1A140.1 140.1 0 0 1 323.5 126.8" stroke="#86c873"/>
+    <path d="M329.2 134.8A140.1 140.1 0 0 1 336.8 278.9" stroke="#45b97a"/>
+  </g>
+  <circle cx="278.9" cy="336.8" r="25" fill="#ef6464"/>
+  <circle cx="336.8" cy="278.9" r="25" fill="#45b97a"/>
+  <path d="M319.3 319.3L423.2 423.2" stroke="#e9eef5" stroke-width="70" stroke-linecap="round"/>
+  <path d="M150.9 217.6L196.1 262.8L278.6 172.4" fill="none" stroke="#e9eef5" stroke-width="50" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

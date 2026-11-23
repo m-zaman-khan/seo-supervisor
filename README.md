@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo/icon-256.png" width="112" height="112" alt=""></p>
+
 <h1 align="center">SEO Supervisor</h1>
 
 <p align="center">
