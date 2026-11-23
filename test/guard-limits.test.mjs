@@ -19,6 +19,61 @@ const asks = (a, rule) => {
 };
 const allows = a => assert.equal(check(a).decision, "allow", `${JSON.stringify(a).slice(0, 160)} is allowed`);
 
+test("brackets: Claude Code runs the guard on every shell command, and the guard reads ( ), $( ) and backticks", async () => {
+  // No `if` filter on the shell tools: Claude Code's `if` matching of Bash commands is best-effort, and no rule can
+  // name a redirect or a bracket. https://code.claude.com/docs/en/hooks
+  const pre = JSON.parse(readFileSync(join(ROOT, "hooks", "hooks.json"), "utf8")).hooks.PreToolUse;
+  for (const tool of ["Bash", "PowerShell"]) {
+    const groups = pre.filter(g => g.matcher.split("|").includes(tool));
+    assert.ok(
+      groups.some(g => g.hooks.some(h => !h.if && /guard\.mjs$/.test(h.args[0]))),
+      `${tool}: the guard runs for every command`,
+    );
+    assert.ok(
+      groups.every(g => g.hooks.every(h => !h.if)),
+      `${tool}: no if filter left to drift from the rules`,
+    );
+  }
+  for (const c of [
+    "(rm app/blog/page.tsx)",
+    "$(rm app/blog/page.tsx)",
+    "echo $(rm app/blog/page.tsx)",
+    'echo "$(rm app/blog/page.tsx)"',
+    "echo `rm app/blog/page.tsx`",
+    'x="`rm app/blog/page.tsx`"',
+    "( cd app && rm -rf blog/page.tsx )",
+    "{ rm app/blog/page.tsx; }",
+  ])
+    asks(bash(c), "page-remove");
+  for (const c of ["(npm test)", "echo $(date)", "echo `date`", "echo '`rm app/blog/page.tsx`'"]) allows(bash(c));
+  // Every shell command starts the guard, so a plain one is answered quietly, and a long one can't stall it: a 1 MB
+  // note written with a heredoc, and 1 MB of nothing but brackets, pipes and redirects. Reading is linear (about
+  // 110-140 ms per MB alone); the 1.5 s bound leaves room for a busy machine and still catches a stall.
+  const plain = await run(
+    "claude-code",
+    {
+      hook_event_name: "PreToolUse",
+      session_id: "b",
+      cwd: dir,
+      tool_name: "Bash",
+      tool_input: { command: "npm test" },
+    },
+    { env: {} },
+  );
+  assert.equal(plain.stdout, "");
+  for (const [body, ms] of [
+    ["Some prose about (pages) and the site, with a > sign; and more text here.\n".repeat(14000), 300],
+    ["(a) $(b) `c` | d > e; f && g\n".repeat(40000), 1500],
+  ]) {
+    const t = performance.now();
+    allows(bash(`cat > notes.md <<'EOF'\n${body}EOF`));
+    assert.ok(
+      performance.now() - t < ms,
+      `a 1 MB command is read in under ${ms} ms (${(performance.now() - t).toFixed(0)} ms)`,
+    );
+  }
+});
+
 test("key: a bare 32-character hex key next to a key word is refused; a commit hash or an MD5 in prose isn't", () => {
   const HEX = "0123456789abcdef0123456789abcdef";
   for (const [text, service] of [

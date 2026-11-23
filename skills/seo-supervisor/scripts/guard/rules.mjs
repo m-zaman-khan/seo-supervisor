@@ -421,7 +421,8 @@ function subcommands(cmd, depth = 0) {
     cur = "",
     q = "",
     has = false,
-    from = null;
+    from = null,
+    tick = -1;
   const word = () => {
     if (has) words.push(cur);
     cur = "";
@@ -445,6 +446,8 @@ function subcommands(cmd, depth = 0) {
       i = j;
       continue;
     }
+    if (c === "`" && q !== "'" && depth < 8 && i > tick && (tick = cmd.indexOf("`", i + 1)) > i)
+      out.push(...subcommands(cmd.slice(i + 1, tick), depth + 1));
     if (q) {
       if (c === q) q = "";
       else cur += c;
@@ -468,6 +471,7 @@ function subcommands(cmd, depth = 0) {
   end();
   return out;
 }
+// Also the words that open a { } group or a control-flow body (if, then, do, else), so the command after them is read.
 const WRAPPERS = new Set([
   "sudo",
   "time",
@@ -481,6 +485,15 @@ const WRAPPERS = new Set([
   "bunx",
   "noglob",
   "xargs",
+  "{",
+  "!",
+  "if",
+  "then",
+  "do",
+  "else",
+  "elif",
+  "while",
+  "until",
 ]);
 // A rename (Rename-Item and its aliases rni and ren, cmd's rename) moves a page off its address like mv does.
 const DELETE = new Set(["rm", "del", "erase", "rmdir", "rd", "remove-item", "ri", "unlink"]),
@@ -708,12 +721,16 @@ function psArgs(args) {
   }
   return { pos, get: (...names) => named.find(([k]) => names.some(n => n.startsWith(k)))?.[1] };
 }
-/** The files a subcommand leaves empty. @param {string[]} words @param {string[] | undefined} from what's piped into it */
-function emptied(words, from) {
+const EMPTIERS = new Set(["truncate", "clear-content", "clc", "set-content", "sc", "out-file", "tee", ...COPY]);
+/** The files a subcommand leaves empty. @param {string[]} words @param {string[] | undefined} from what's piped into it
+ * @param {string} name its command's name, so most commands are passed over at once */
+function emptied(words, from, name) {
+  if (!EMPTIERS.has(name) && !words.some(w => w.includes(">"))) return [];
   const { targets, rest } = redirects(words),
-    out = writesNothing(rest) ? targets : [];
-  const cmd = nameOf(rest[0] ?? "").replace(/\.exe$/, ""),
-    args = rest.slice(1),
+    cmd = nameOf(rest[0] ?? "").replace(/\.exe$/, ""),
+    out = targets.length && writesNothing(rest) ? targets : [];
+  if (!EMPTIERS.has(cmd)) return out;
+  const args = rest.slice(1),
     none = !from || writesNothing(from);
   if (cmd === "truncate") {
     const size = args
@@ -824,7 +841,7 @@ function bashHit(command, settings, cwd, dir = cwd, depth = 0) {
         };
       continue;
     }
-    for (const f of emptied(words, from)) {
+    for (const f of emptied(words, from, cmd)) {
       const full = resolve(dir, f),
         hit = deleteHit(full, cwd);
       if (hit)

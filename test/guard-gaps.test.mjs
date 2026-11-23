@@ -26,9 +26,9 @@ const on = (...approved) => ({ settings: { outsideChecks: { on: true, approved }
 
 // The hooks.json `if` filters, matched as plugin.test.mjs does.
 const hooks = JSON.parse(readFileSync(join(ROOT, "hooks", "hooks.json"), "utf8")).hooks;
-const handlers = Object.values(hooks)
-  .flat()
-  .flatMap(g => g.hooks);
+const groups = Object.values(hooks).flat(),
+  handlers = groups.flatMap(g => g.hooks),
+  guard = h => /guard\.mjs$/.test(h.args[0]);
 const ruleRe = p =>
   new RegExp(
     `^${p
@@ -38,9 +38,11 @@ const ruleRe = p =>
       .replace(/(?<!\.)\*/g, "[^]*")}$`,
     "i",
   );
+// A guard handler with no if runs for every call of its group's tools (the shell tools: guard-limits.test.mjs).
 const fires = (tool, s) =>
+  groups.some(g => g.matcher?.split("|").includes(tool) && g.hooks.some(h => !h.if && guard(h))) ||
   handlers
-    .filter(h => h.if?.startsWith(`${tool}(`) && /guard\.mjs$/.test(h.args[0]))
+    .filter(h => h.if?.startsWith(`${tool}(`) && guard(h))
     .some(h => ruleRe(h.if.slice(tool.length + 1, -1)).test(s));
 
 test("the crawler's other outside flags ask unless outsideChecks.approved lists that check", () => {

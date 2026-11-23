@@ -24,7 +24,10 @@ const ifs = tool =>
   handlers
     .filter(h => h.event === "PreToolUse" && h.if?.startsWith(`${tool}(`))
     .map(h => ruleRe(h.if.slice(tool.length + 1, -1)));
-const fires = (tool, s) => ifs(tool).some(re => re.test(s));
+// A handler with no if runs for every call of its group's tools (the shell tools: guard-limits.test.mjs).
+const fires = (tool, s) =>
+  handlers.some(h => h.event === "PreToolUse" && !h.if && h.matcher?.split("|").includes(tool)) ||
+  ifs(tool).some(re => re.test(s));
 
 test("hooks.json: the documented shape, and every command runs a real file through node in exec form", () => {
   assert.deepEqual(Object.keys(hooks).sort(), ["PostToolUse", "PreToolUse", "Stop", "UserPromptSubmit"]);
@@ -55,8 +58,8 @@ test("hooks.json: the documented shape, and every command runs a real file throu
     "PostToolUse runs the structured data check",
   );
   assert.ok(
-    handlers.filter(h => h.event === "PreToolUse").every(h => h.if),
-    "PreToolUse never starts Node without an if filter",
+    handlers.filter(h => h.event === "PreToolUse").every(h => h.if || h.matcher === "Bash|PowerShell"),
+    "PreToolUse starts Node without an if filter only for shell commands, which the guard reads whole",
   );
 });
 
@@ -82,15 +85,6 @@ test("hooks.json: the if filters start the guard for what it guards and not for 
     "git rm a.md",
   ])
     assert.ok(fires("PowerShell", c), `PowerShell: ${c}`);
-  for (const c of [
-    "npm test",
-    "git status",
-    "ls -la",
-    "node scripts/seo-crawl.mjs http://localhost:3000",
-    "cat robots.txt",
-    "npm run build",
-  ])
-    assert.ok(!fires("Bash", c), `not for: ${c}`);
   const files = [
     "public/robots.txt",
     "app/robots.ts",
