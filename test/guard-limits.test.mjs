@@ -5,6 +5,102 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, tmp } from "./helpers.mjs";
 import { run } from "../skills/seo-supervisor/scripts/guard.mjs";
+import { checkAction } from "../skills/seo-supervisor/scripts/guard/rules.mjs";
+
+const dir = tmp();
+const check = (a, o = {}) => checkAction(a, { mode: "ask", settings: {}, cwd: dir, ...o });
+const bash = command => ({ kind: "bash", command });
+const asks = (a, rule) => {
+  const r = check(a);
+  assert.equal(r.decision, "ask", `${JSON.stringify(a).slice(0, 160)} asks`);
+  assert.equal(r.rule, rule);
+  assert.ok(r.reason && !/undefined/.test(r.reason));
+  return r;
+};
+const allows = a => assert.equal(check(a).decision, "allow", `${JSON.stringify(a).slice(0, 160)} is allowed`);
+
+test("page-remove: emptying a page or route file from the shell asks; writing real content to it doesn't", () => {
+  for (const c of [
+    "> app/about/page.tsx",
+    ": > page.html",
+    ":>page.html",
+    "true > page.html",
+    `echo "" > page.html`,
+    "echo '' >page.html",
+    "echo > page.html",
+    "echo -n > page.html",
+    `printf '' > page.html`,
+    `printf "" > app/about/page.tsx`,
+    "cat /dev/null > page.html",
+    "type nul > page.html",
+    "'' > page.html",
+    "$null > page.html",
+    "cd app/about && > page.tsx",
+    "sudo truncate -s 0 page.html",
+    "truncate -s0 page.html",
+    "truncate --size=0 pages/a.vue",
+    "truncate --size 0 page.html",
+    "Clear-Content page.html",
+    "Clear-Content -Path app\\about\\page.tsx",
+    "clc page.html",
+    "Set-Content page.html ''",
+    "Set-Content -Path page.html -Value ''",
+    "Set-Content -Value '' -Path page.html",
+    "Set-Content page.html -Value $null",
+    "sc page.html ''",
+    "Out-File page.html",
+    "Out-File -FilePath page.html",
+    "Out-File -FilePath page.html -InputObject ''",
+    "'' | Out-File page.html",
+    "$null | Out-File -FilePath page.html",
+    `echo "" | tee page.html`,
+    "'' | Set-Content page.html",
+    "cp /dev/null page.html",
+    "cp -f /dev/null app/about/page.tsx",
+    "copy nul page.html",
+    "Copy-Item NUL page.html",
+    "Copy-Item -Path /dev/null -Destination page.html",
+    "(> page.html)",
+    "echo $(: > page.html)",
+  ]) {
+    const r = asks(bash(c), "page-remove");
+    assert.match(r.reason, /empties/, c);
+    assert.match(r.reason, /missing page/, c);
+  }
+  // Emptying robots.txt or _redirects from the shell is removing it.
+  asks(bash("> public/robots.txt"), "robots");
+  asks(bash("truncate -s 0 _redirects"), "redirects");
+  // Near-misses: real content, appending, other files, a size that isn't 0, a copy from a real file.
+  for (const c of [
+    `echo "<h1>Hi</h1>" > page.html`,
+    "echo '<h1>Hi</h1>' > page.html",
+    `printf '<p>%s</p>' hi > page.html`,
+    "cat header.html body.html > page.html",
+    "npm run build > page.html",
+    `echo "" >> page.html`,
+    ": >> page.html",
+    "> build.log",
+    ": > notes.txt",
+    `echo "" > notes.txt`,
+    "truncate -s 10 page.html",
+    "truncate -s 0 server.log",
+    "Clear-Content notes.txt",
+    "Set-Content page.html '<h1>Hi</h1>'",
+    "Set-Content -Path page.html -Value '<h1>Hi</h1>'",
+    "'<h1>Hi</h1>' | Out-File page.html",
+    "Get-Content a.html | Out-File page.html",
+    "Out-File page.html -Append",
+    "Out-File -FilePath page.html -InputObject '<h1>Hi</h1>'",
+    "cat a.html | tee page.html",
+    "cp template.html page.html",
+    "cp /dev/null notes.txt",
+    "ls 2>/dev/null",
+    "npm test 2>&1 | tee test.log",
+    "node build.mjs > out/index.html",
+    `echo "> not a redirect" > notes.txt`,
+  ])
+    allows(bash(c));
+});
 
 test("Stop: an edit that was refused leaves no reminder; one that happened does", async () => {
   const data = tmp(),

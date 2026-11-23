@@ -413,12 +413,15 @@ const closing = (s, i) => {
   }
   return s.length;
 };
+/** @type {WeakMap<string[], string[]>} */
+const PIPED = new WeakMap();
 function subcommands(cmd, depth = 0) {
   const out = [];
   let words = [],
     cur = "",
     q = "",
-    has = false;
+    has = false,
+    from = null;
   const word = () => {
     if (has) words.push(cur);
     cur = "";
@@ -426,8 +429,12 @@ function subcommands(cmd, depth = 0) {
   };
   const end = () => {
     word();
-    if (words.length) out.push(words);
+    if (words.length) {
+      if (from) PIPED.set(words, from);
+      out.push(words);
+    }
     words = [];
+    from = null;
   };
   for (let i = 0; i < cmd.length; i++) {
     const c = cmd[i];
@@ -447,8 +454,11 @@ function subcommands(cmd, depth = 0) {
       q = c;
       has = true;
     } else if (c === "&" || c === "|" || c === ";" || c === "\n") {
+      const n = out.length;
       end();
-      if (cmd[i + 1] === c) i++;
+      const two = cmd[i + 1] === c;
+      if (two) i++;
+      if (c === "|" && !two && out.length > n) from = out.at(-1);
     } else if (/\s/.test(c)) word();
     else {
       cur += c;
@@ -651,8 +661,92 @@ function shellString(cmd, words) {
   return at < 1 ? null : SHELL.test(cmd) ? (words[at + 1] ?? "") : words.slice(at + 1).join(" ");
 }
 
+// Emptying a file from the shell removes a page just as deleting it does. Forms (a hand-picked list): a > redirect from
+// a command that writes nothing (none, : or true, '' or $null, empty echo or printf, cat or type of /dev/null or nul);
+// truncate to 0; Clear-Content; Set-Content with an empty value; Out-File, Set-Content or tee with nothing piped in; a
+// copy of /dev/null or nul. Real text written with > or >>, and output that can't be known, aren't emptying.
+const NUL = /^(\/dev\/null|nul:?)$/i,
+  blank = a => !a.trim() || /^\$null$/i.test(a);
+function writesNothing(words) {
+  if (!words.length || (words.length === 1 && blank(words[0]))) return true;
+  const cmd = nameOf(words[0]).replace(/\.exe$/, ""),
+    args = words.slice(1);
+  if (cmd === ":" || cmd === "true") return true;
+  if (/^(echo|printf|write-output)$/.test(cmd)) return args.every(a => blank(a) || /^-[neE]+$/.test(a));
+  return /^(cat|type|get-content|gc)$/.test(cmd) && args.length > 0 && args.every(a => NUL.test(a));
+}
+// A subcommand's words without its redirects, and the files its > (not >>, not a >&1 copy) truncates. A word with a
+// space in it was quoted, and one with a < before its > is a tag (<h1>Hi</h1>), so neither is a redirect.
+function redirects(words) {
+  const targets = [],
+    rest = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i],
+      at = w.indexOf(">");
+    if (at < 0 || /\s/.test(w) || w.slice(0, at).includes("<")) {
+      rest.push(w);
+      continue;
+    }
+    const pre = w.slice(0, at),
+      append = w[at + 1] === ">",
+      to = w.slice(at + (append ? 2 : 1)) || (words[++i] ?? "");
+    if (pre && !/^[\d&]$/.test(pre)) rest.push(pre);
+    if (!append && to && !to.startsWith("&")) targets.push(to);
+  }
+  return { targets, rest };
+}
+// A PowerShell cmdlet's -Name value (or -Name:value) arguments, found by any start of the name (-Val for -Value), and
+// the rest by position. Its switches take no value.
+const PS_SWITCH = /^-(force|nonewline|append|noclobber|whatif|confirm|passthru|verbose|debug)$/i;
+function psArgs(args) {
+  const named = [],
+    pos = [];
+  for (let i = 0; i < args.length; i++) {
+    const m = /^-([a-z]\w*)(?::(.*))?$/i.exec(args[i]);
+    if (!m) pos.push(args[i]);
+    else named.push([m[1].toLowerCase(), m[2] ?? (PS_SWITCH.test(args[i]) ? true : (args[++i] ?? ""))]);
+  }
+  return { pos, get: (...names) => named.find(([k]) => names.some(n => n.startsWith(k)))?.[1] };
+}
+/** The files a subcommand leaves empty. @param {string[]} words @param {string[] | undefined} from what's piped into it */
+function emptied(words, from) {
+  const { targets, rest } = redirects(words),
+    out = writesNothing(rest) ? targets : [];
+  const cmd = nameOf(rest[0] ?? "").replace(/\.exe$/, ""),
+    args = rest.slice(1),
+    none = !from || writesNothing(from);
+  if (cmd === "truncate") {
+    const size = args
+      .map((a, i) => (/^(-s|--size)$/.test(a) ? args[i + 1] : /^(?:-s|--size=)(.+)$/.exec(a)?.[1]))
+      .find(v => v !== undefined);
+    if (size === "0")
+      out.push(...args.filter((a, i) => !a.startsWith("-") && !/^(-s|--size)$/.test(args[i - 1] ?? "")));
+  } else if (cmd === "clear-content" || cmd === "clc") out.push(...positional(args).out);
+  else if (/^(set-content|sc|out-file)$/.test(cmd)) {
+    // Out-File writes its -InputObject or what's piped in; Set-Content its -Value (or second word) or what's piped in.
+    const ps = psArgs(args),
+      named =
+        cmd === "out-file" ? ps.get("filepath", "literalpath", "lp", "path") : ps.get("path", "literalpath", "lp"),
+      path = named ?? ps.pos[0];
+    const value = cmd === "out-file" ? ps.get("inputobject") : (ps.get("value") ?? ps.pos[named === undefined ? 1 : 0]);
+    const empty =
+      typeof value === "string"
+        ? blank(value)
+        : value === undefined && (cmd === "out-file" ? none : !!from && writesNothing(from));
+    if (typeof path === "string" && empty && !ps.get("append") && !ps.get("noclobber")) out.push(path);
+  } else if (cmd === "tee" && none && !args.some(a => /^(-a|--append)$/.test(a))) out.push(...positional(args).out);
+  else if (COPY.has(cmd)) {
+    const p = positional(args),
+      to = p.dest ?? p.out.at(-1),
+      src = p.dest ? p.out : p.out.slice(0, -1);
+    if (to && src.length && src.every(s => NUL.test(s))) out.push(to);
+  }
+  return out;
+}
+
 function bashHit(command, settings, cwd, dir = cwd, depth = 0) {
   for (let words of subcommands(command)) {
+    const from = PIPED.get(words);
     // Wrappers that run the rest: sudo, env and the like; timeout with its options and duration; stdbuf with its modes.
     for (let w; (w = words[0]?.toLowerCase()) !== undefined;) {
       if (w === "timeout" || w === "stdbuf") {
@@ -729,6 +823,17 @@ function bashHit(command, settings, cwd, dir = cwd, depth = 0) {
           reason: `One of the script's arguments is a variable (${v}), which could hold --yes or a flag that contacts an outside service. Write the arguments out in full, so the guard can see what it does.`,
         };
       continue;
+    }
+    for (const f of emptied(words, from)) {
+      const full = resolve(dir, f),
+        hit = deleteHit(full, cwd);
+      if (hit)
+        return hit.rule !== "page-remove"
+          ? hit
+          : {
+              rule: "page-remove",
+              reason: `This empties ${posix(rel(full, cwd))} from the shell, which removes that page. Anyone following a link or a Google result to it would get a missing page.`,
+            };
     }
     // Removing or moving files: rm, git rm, del, Remove-Item; mv, git mv, Move-Item (the last word is where it goes).
     let paths = [],
