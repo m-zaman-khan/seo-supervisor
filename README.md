@@ -212,7 +212,7 @@ Fix, rewrite and setup run only when you type them, never on Claude's own initia
 
 ### The guard
 
-Before an AI agent does something risky for SEO, SEO Supervisor stops it and asks you: a script that contacts an outside service or writes to your accounts, a noindex, a robots.txt or AI crawler rule, a redirect change, a removed page or a changed canonical. Each question says what would happen, for example "Every page would drop out of Google." An API key pasted in chat is stopped before the AI sees it (except in Cline, which has no hook for that). A bare 32-character hex key, like Bing's or Matomo's, has no prefix to spot, so it isn't caught: type keys only at `connect-keys.mjs set <service>`'s hidden prompt.
+Before an AI agent does something risky for SEO, SEO Supervisor stops it and asks you: a script that contacts an outside service or writes to your accounts, a noindex, a robots.txt or AI crawler rule, a redirect change, a removed page or a changed canonical. Each question says what would happen, for example "Every page would drop out of Google." An API key pasted in chat is stopped before the AI sees it (except in Cline, which has no hook for that). A bare 32-character hex key, like Bing's or Matomo's, is caught when a word like "key" or "bing" sits just before it. Still, type keys only at `connect-keys.mjs set <service>`'s hidden prompt.
 
 It comes with the Claude Code plugin, and the npx installer adds it to Codex, Cursor, GitHub Copilot, Devin and Cline (its CLI, SDK and Kanban; not yet its VS Code or JetBrains extension). Where the agent can show a yes/no box (Claude Code, Cursor's shell commands, Copilot CLI, Cline), you're asked there. Elsewhere the step is stopped with the reason, and the AI asks you in chat; if you say yes, do the step yourself, or set `"guard": "off"` in `seo-audit/settings.json` for that one step. Codex runs a new hook only after you trust it in `/hooks`.
 
@@ -371,7 +371,7 @@ Yes, that's the best time. It crawls a local production build. `/seo-launch` the
 Any site it can crawl. Next.js, Rails and SPAs get framework-specific guidance and fixes.
 
 **How is the score calculated?**
-Every checked rule is worth 10 points. Open problems earn fewer points, the worse they are. Each open blocker caps the total at 59, 49, 39 and so on. The full model is in [`report-format.md`](skills/seo-supervisor/report-format.md).
+Every checked rule is worth 10 points. Open problems earn fewer points, the worse they are. Each open blocker caps the total at 59, 49, 39 and so on. While a problem you haven't marked won't fix is open, the score stops at 99, so 100 means nothing is left to fix. The full model is in [`report-format.md`](skills/seo-supervisor/report-format.md).
 
 ## Updating
 

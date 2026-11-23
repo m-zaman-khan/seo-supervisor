@@ -381,12 +381,12 @@ In the Claude Code plugin, and in the agents the installer adds it to (Codex, Cu
 - add a noindex (a robots meta tag, a metadata object or an `X-Robots-Tag`), or change or remove a canonical;
 - edit robots.txt or the code that builds it (it names `Disallow: /`, a Googlebot block, a removed Sitemap line or a change for the AI crawlers);
 - change redirect or URL rules (next.config redirects, `_redirects`, `.htaccess`, `vercel.json`, `netlify.toml` and the like);
-- delete, move or empty a page or route file;
+- delete, move or empty a page or route file, from the shell too (`> page.html`, `truncate -s 0`, `Clear-Content`, `Set-Content` or `Out-File` with nothing, `cp /dev/null`);
 - change `seo-audit/settings.json` so the guard asks less: turning it off or down, turning outside checks on, or adding a check to `approved`, by an edit or from the shell. Writing the owner's outside-checks answer there asks them again; where the agent can't ask, the owner writes it.
 
 A message holding an API key is stopped before you see it (Cline has no hook for that), and `connect-keys.mjs set <service> <key>` is refused: the owner runs `connect-keys.mjs set <service>` in their own terminal, which asks for the key and hides it.
 
-The chat check knows keys by their prefix (sk-, AIza, ghp_ and the like). A bare 32-character hex key, like Bing's or Matomo's, has none, so it isn't caught in chat or when piped into `connect-keys set`. Never paste one in chat: use `connect-keys.mjs set <service>`.
+The chat check knows keys by their prefix (sk-, AIza, ghp_ and the like). It knows a bare 32-character hex key, like Bing's or Matomo's, only when a word like key, token, api, secret, bing or matomo comes just before it, so never paste one in chat: use `connect-keys.mjs set <service>`. A hex key piped into `connect-keys set` is refused.
 
 When the guard asks, wait for the owner's answer. Some agents can't show a yes/no box (Codex, Devin, and Cursor for edits): there the guard stops the step with its reason, and you ask the owner in chat. If they say yes, they do it themselves, or switch the guard off for that one step with `"guard": "off"` in `seo-audit/settings.json` and back to `"ask"` after. When it blocks (block mode), tell the owner what you wanted to do and why, and let them run it or change the mode. Never work around it with another command, another file or another tool that has the same effect. The hook can't see the rest of this file's rules (fix only approved findings, decisions, never inventing facts, edits made through a CMS's website), so those stay yours.
 
