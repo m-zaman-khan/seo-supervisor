@@ -964,13 +964,18 @@ localData(site, localBusiness);
 otherSites(site, outbound);
 
 // E-E-A-T signals for the trust view, never findings or scored; last, so the security findings are in. HTTPS counts
-// with no open TRUST-01 or TRUST-07 finding, and is unknown without a public origin.
+// with no open TRUST-01 or TRUST-07 finding, and is unknown without a public origin. Locally a missing security header
+// is often one a CDN adds in production, so it doesn't count against HTTPS; a header sent but wrong still does.
+const localHeaders = isLocal(START_ORIGIN) && findings.has("sec-headers");
 extra.trustSignals = trustSignals(htmlPages, {
   origin: EXPECT_ORIGIN,
+  localHeaders,
   https: !isPublic(EXPECT_ORIGIN)
     ? null
     : EXPECT_ORIGIN.startsWith("https:") &&
-      ![...findings.keys()].some(k => ["TRUST-01", "TRUST-07"].includes(CHECKS[k][0])),
+      ![...findings.keys()].some(
+        k => !(localHeaders && k === "sec-headers") && ["TRUST-01", "TRUST-07"].includes(CHECKS[k][0]),
+      ),
   orgSchema: (home?.html && home.trust.org) || htmlPages.find(p => p.trust.org)?.trust.org || null,
   unsourcedStats: htmlPages.filter(p => p.trust.unsourcedStat).length,
 });

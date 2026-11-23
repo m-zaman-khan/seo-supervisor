@@ -397,7 +397,9 @@ export function trustSignals(pages, site) {
       site.https == null
         ? { applies: false, evidence: "can't be told from a local crawl: pass --site-origin" }
         : {
-            found: site.https && `${site.origin}, with no open security findings`,
+            found:
+              site.https &&
+              `${site.origin}${site.localHeaders ? "; its missing security headers were read from a local build, which may lack the ones production adds" : ", with no open security findings"}`,
             evidence: /^https:/.test(site.origin)
               ? "HTTPS, with open security findings"
               : "the site isn't served over HTTPS",
