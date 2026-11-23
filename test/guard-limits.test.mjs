@@ -18,6 +18,24 @@ const asks = (a, rule) => {
   return r;
 };
 const allows = a => assert.equal(check(a).decision, "allow", `${JSON.stringify(a).slice(0, 160)} is allowed`);
+// Reading time must grow linearly: 4x the input in under 8x the time (a stall grows by 16x or more). Wall-clock bounds
+// alone fail on a busy machine, so the absolute cap is only a backstop.
+const linear = (make, n, what) => {
+  const time = k => {
+    const a = make(k),
+      t = performance.now();
+    allows(a);
+    return performance.now() - t;
+  };
+  time(n); // warm up
+  const small = Math.max(time(n), 1),
+    big = time(4 * n);
+  assert.ok(
+    big < 8 * small + 50,
+    `${what} reads in linear time (${small.toFixed(0)} ms, then ${big.toFixed(0)} ms for 4x)`,
+  );
+  assert.ok(big < 10000, `${what} never stalls (${big.toFixed(0)} ms)`);
+};
 
 test("brackets: Claude Code runs the guard on every shell command, and the guard reads ( ), $( ) and backticks", async () => {
   // No `if` filter on the shell tools: Claude Code's `if` matching of Bash commands is best-effort, and no rule can
@@ -61,17 +79,11 @@ test("brackets: Claude Code runs the guard on every shell command, and the guard
     { env: {} },
   );
   assert.equal(plain.stdout, "");
-  for (const [body, ms] of [
-    ["Some prose about (pages) and the site, with a > sign; and more text here.\n".repeat(14000), 1500],
-    ["(a) $(b) `c` | d > e; f && g\n".repeat(40000), 1500],
-  ]) {
-    const t = performance.now();
-    allows(bash(`cat > notes.md <<'EOF'\n${body}EOF`));
-    assert.ok(
-      performance.now() - t < ms,
-      `a 1 MB command is read in under ${ms} ms (${(performance.now() - t).toFixed(0)} ms)`,
-    );
-  }
+  for (const [line, n] of [
+    ["Some prose about (pages) and the site, with a > sign; and more text here.\n", 3500],
+    ["(a) $(b) `c` | d > e; f && g\n", 10000],
+  ])
+    linear(k => bash(`cat > notes.md <<'EOF'\n${line.repeat(k)}EOF`), n, "a long heredoc command");
 });
 
 test("key: a bare 32-character hex key next to a key word is refused; a commit hash or an MD5 in prose isn't", () => {
@@ -101,11 +113,10 @@ test("key: a bare 32-character hex key next to a key word is refused; a commit h
     `key ${"0123456789abcdef".repeat(3)}`,
   ])
     allows({ kind: "prompt", text });
-  const t = performance.now();
-  allows({ kind: "prompt", text: `api key token ${"0123456789abcdef".repeat(2)}0 `.repeat(20000) });
-  assert.ok(
-    performance.now() - t < 200,
-    `a 1 MB message full of key words is read in under 200 ms (${(performance.now() - t).toFixed(0)} ms)`,
+  linear(
+    k => ({ kind: "prompt", text: `api key token ${"0123456789abcdef".repeat(2)}0 `.repeat(k) }),
+    5000,
+    "a long message full of key words",
   );
   // The same key piped into connect-keys set, or on its command line.
   const S = "node ~/.claude/skills/seo-supervisor/scripts";
