@@ -170,7 +170,7 @@ export function overviewHtml(m) {
             : "All checks pass";
           rows.push(`<li><a class="area" href="#findings" data-area="${esc(a.name)}">${a.worst ? dot(a.worst) : `<i class="dot d-pass" aria-hidden="true"></i>`}
           <span class="an"><b>${esc(a.name)} <span class="ascore">${a.value}/100</span></b><span>${line}</span></span>
-          ${bar(pts)}<span class="as">${pts ? `−${pts}` : "<1"}<small>pts</small></span></a></li>`);
+          ${bar(pts)}<span class="as">${pts ? `−${pts}` : "&lt;1"}<small>pts</small></span></a></li>`);
         }
         const full = areas.filter(a => a.value === 100);
         if (full.length) {
