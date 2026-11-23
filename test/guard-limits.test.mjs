@@ -19,6 +19,54 @@ const asks = (a, rule) => {
 };
 const allows = a => assert.equal(check(a).decision, "allow", `${JSON.stringify(a).slice(0, 160)} is allowed`);
 
+test("key: a bare 32-character hex key next to a key word is refused; a commit hash or an MD5 in prose isn't", () => {
+  const HEX = "0123456789abcdef0123456789abcdef";
+  for (const [text, service] of [
+    [`my bing key is ${HEX}`, "bing"],
+    [`Matomo token_auth: ${HEX.toUpperCase()}`, "matomo"],
+    [`api=${HEX}`, ""],
+    [`here's the secret\n${HEX} thanks`, ""],
+    [`password "${HEX}"`, ""],
+    [`AUTH ${HEX}`, ""],
+    [`BING_API_KEY=${HEX}`, "bing"],
+  ]) {
+    const r = check({ kind: "prompt", text });
+    assert.equal(r.decision, "deny", text);
+    assert.equal(r.rule, "key", text);
+    assert.doesNotMatch(r.reason, /0123|abcdef/i, "no piece of the key is repeated");
+    assert.match(r.reason, new RegExp(`connect-keys\\.mjs" set ${service || "<service>"}`), text);
+  }
+  for (const text of [
+    `the file's md5 is ${HEX}`,
+    `commit ${HEX} fixed it`,
+    `${HEX} is the hash of the build`,
+    `my bing key is ${HEX}0`,
+    `the key decision, made long ago in ${HEX}`,
+    `token: ${HEX.slice(1)}`,
+    `key ${"0123456789abcdef".repeat(3)}`,
+  ])
+    allows({ kind: "prompt", text });
+  const t = performance.now();
+  allows({ kind: "prompt", text: `api key token ${"0123456789abcdef".repeat(2)}0 `.repeat(20000) });
+  assert.ok(
+    performance.now() - t < 200,
+    `a 1 MB message full of key words is read in under 200 ms (${(performance.now() - t).toFixed(0)} ms)`,
+  );
+  // The same key piped into connect-keys set, or on its command line.
+  const S = "node ~/.claude/skills/seo-supervisor/scripts";
+  for (const c of [
+    `echo ${HEX} | ${S}/connect-keys.mjs set bing`,
+    `printf %s '${HEX}' | ${S}/connect-keys.mjs set matomo --url https://stats.x.com`,
+    `${S}/connect-keys.mjs set bing ${HEX}`,
+  ]) {
+    const r = check(bash(c));
+    assert.equal(r.decision, "deny", c);
+    assert.equal(r.rule, "key", c);
+  }
+  allows(bash(`cat key.txt | ${S}/connect-keys.mjs set bing`));
+  allows(bash(`git show ${HEX.slice(0, 7)} && ${S}/connect-keys.mjs set bing`));
+});
+
 test("page-remove: emptying a page or route file from the shell asks; writing real content to it doesn't", () => {
   for (const c of [
     "> app/about/page.tsx",

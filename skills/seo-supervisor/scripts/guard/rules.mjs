@@ -807,7 +807,7 @@ function bashHit(command, settings, cwd, dir = cwd, depth = 0) {
                 (a, i, all) => !a.startsWith("--") && !(all[i - 1]?.startsWith("--") && !all[i - 1].includes("=")),
               )
           : null;
-      if (setWords && (setWords.length >= 2 || keyPiece(command)))
+      if (setWords && (setWords.length >= 2 || keyPiece(command) || HEX.test(command)))
         return {
           rule: "key",
           reason: `The key would be on the command line, where it stays in the shell's history and this conversation. In your own terminal, run ${KEY_HINT(setWords[0] || "<service>")} instead: it asks for the key and hides it as you type.`,
@@ -873,16 +873,23 @@ const SERVICE_BY_PREFIX = [
   [/^AIza/, "googleplaces"],
 ];
 const keyPiece = text => text.split(/[\s"'`()<>{}[\],=?&#;@|]+/).find(p => p.length > 15 && hideSecrets(p) !== p);
+// A bare 32-character hex key (Bing, Matomo) has no prefix, and commit hashes and MD5s look the same, so in a message
+// it counts only within 20 characters of a key word (a heuristic); in a connect-keys set command, anywhere.
+const HEX = /(?<![0-9a-z])[0-9a-f]{32}(?![0-9a-z])/i,
+  HEX_KEY = new RegExp(`\\b(key|api|token|secret|bing|matomo|password|auth)\\w{0,20}[^]{0,20}?${HEX.source}`, "i");
 function promptHit(text) {
-  const piece = keyPiece(text);
-  if (!piece) return null;
-  const found =
-    piece.match(/(?:sk-|pplx-|phx_|AIza|gh[pousr]_|github_pat_|xox|ya29|GOCSPX|eyJ|AKIA|ASIA|[sr]k_)[\w-]{0,4}/)?.[0] ||
-    piece.slice(0, 4);
-  const service = SERVICE_BY_PREFIX.find(([re]) => re.test(piece.replace(/^.*?(?=sk-|pplx-|phx_|AIza)/, "")))?.[1];
+  const piece = keyPiece(text),
+    hex = piece ? null : HEX_KEY.exec(text);
+  if (!piece && !hex) return null;
+  const found = !piece
+    ? `a 32-character code after "${hex[1]}"`
+    : `it starts "${piece.match(/(?:sk-|pplx-|phx_|AIza|gh[pousr]_|github_pat_|xox|ya29|GOCSPX|eyJ|AKIA|ASIA|[sr]k_)[\w-]{0,4}/)?.[0] || piece.slice(0, 4)}…"`;
+  const service = piece
+    ? SERVICE_BY_PREFIX.find(([re]) => re.test(piece.replace(/^.*?(?=sk-|pplx-|phx_|AIza)/, "")))?.[1]
+    : /bing|matomo/i.exec(hex[0])?.[0].toLowerCase();
   return {
     rule: "key",
-    reason: `Your message looks like it holds an API key (it starts "${found}…"), so the SEO Supervisor guard stopped it before the AI saw it. Keys in chat stay in the conversation's history. To save a key for SEO Supervisor, run ${KEY_HINT(service || "<service>")} in your own terminal: it asks for the key and hides it as you type. Then send your message again without the key. The message may still be in this computer's prompt history, so if that matters, replace the key.`,
+    reason: `Your message looks like it holds an API key (${found}), so the SEO Supervisor guard stopped it before the AI saw it. Keys in chat stay in the conversation's history. To save a key for SEO Supervisor, run ${KEY_HINT(service || "<service>")} in your own terminal: it asks for the key and hides it as you type. Then send your message again without the key. The message may still be in this computer's prompt history, so if that matters, replace the key.`,
   };
 }
 
