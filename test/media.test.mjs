@@ -909,3 +909,30 @@ test("lazy-lcp skips small icons: the likely LCP image is the first one not decl
     "the hero, not the 14 px icon, and only where the hero itself is lazy",
   );
 });
+
+test("lazy-lcp skips images named as icons, whatever size they declare", async () => {
+  const icon =
+    '<a href="/eager/">Hire a plumber <img src="/btn-icon.svg" alt="Arrow Icon" loading="lazy" width="0" height="0"></a>';
+  const r = await crawlSite(
+    {
+      "/": page(
+        "Boiler repairs and servicing in Leeds",
+        `${icon}<img src="/hero.jpg" alt="Engineer fitting a boiler" loading="lazy" width="1200" height="800">`,
+      ),
+      "/eager/": page(
+        "Boiler servicing prices in Leeds",
+        `${icon}<img src="/hero.jpg" alt="Engineer fitting a boiler" width="1200" height="800">`,
+      ),
+    },
+    {
+      files: {
+        "/hero.jpg": { type: "image/jpeg", body: jpeg(1200, 800) },
+        "/btn-icon.svg": { type: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg'/>" },
+      },
+    },
+  );
+  assert.deepEqual(
+    findingOf(r, "lazy-lcp")?.evidence.map(e => [new URL(e.url).pathname, e.detail]),
+    [["/", "/hero.jpg"]],
+  );
+});

@@ -708,7 +708,11 @@ export function analyze(url, html, headers, xRobotsLines, site) {
   // The LCP guess is the fetchpriority="high" image, else the first not declared under 100 × 100 px or named an icon.
   const lazy = imgs.map(lazySrc);
   const small = i => Number(i.width) > 0 && Number(i.height) > 0 && Number(i.width) < 100 && Number(i.height) < 100;
-  rec.lcpIndex = imgs.findIndex(i => !small(i));
+  const icon = (i, k) =>
+    /(?:^|[^a-z])icons?(?:[^a-z]|$)/i.test(
+      `${(lazy[k] || i.src || "").split(/[?#]/)[0].split("/").pop()} ${i.alt || ""}`,
+    );
+  rec.lcpIndex = imgs.findIndex((i, k) => !small(i) && !icon(i, k));
   rec.lcpScriptLazy = rec.lcpIndex >= 0 && !!lazy[rec.lcpIndex];
   imgs.forEach((i, k) => {
     if (lazy[k]) i.src = lazy[k];
