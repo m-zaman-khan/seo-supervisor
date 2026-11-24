@@ -84,7 +84,8 @@ export function checkPages(site) {
   const titleMap = new Map(),
     descMap = new Map(),
     faqMap = new Map();
-  let checkedPages = 0;
+  let checkedPages = 0,
+    drawnByJs = 0;
   const images = new Map(); // same-origin image URL -> first indexable page using it
   const shareImages = new Map(); // og:image on the crawled site (crawl URL) -> { src, page }
   const noindexShare = htmlPages.length ? htmlPages.filter(p => p.noindex).length / htmlPages.length : 0;
@@ -206,6 +207,7 @@ export function checkPages(site) {
     if (p.words < 30 && p.h1Count === 0 && (p.emptyRoot || p.scripts > 0)) {
       add("client-rendered", u, `${p.words} words in server HTML`);
       p.clientOnly = true;
+      drawnByJs++;
       continue;
     }
     const says = rs =>
@@ -452,15 +454,12 @@ export function checkPages(site) {
     "MEDIA-03",
     "PERF-08",
   ];
+  const nothingChecked = drawnByJs
+    ? `No page could be checked: ${drawnByJs === 1 ? "the page the crawler read is" : `the ${drawnByJs} pages the crawler read are`} drawn by JavaScript, with almost no content in the server HTML (see the client-rendered finding, REND-01).`
+    : "No indexable pages were checked (all noindex, non-canonical or failed). For a pre-launch site, re-run with --ignore-noindex.";
   if (checkedPages === 0)
     for (const r of PER_PAGE_RULES)
-      if (evaluated.delete(r))
-        notChecked.push({
-          rule: r,
-          area: `${r} ${RULES[r][0]}`,
-          reason:
-            "No indexable pages were checked (all noindex, non-canonical or failed). For a pre-launch site, re-run with --ignore-noindex.",
-        });
+      if (evaluated.delete(r)) notChecked.push({ rule: r, area: `${r} ${RULES[r][0]}`, reason: nothingChecked });
   for (const [t, us] of titleMap) if (us.length > 1) for (const u of us) add("title-dup", u, t);
   for (const [d, us] of descMap) if (us.length > 1) for (const u of us) add("desc-dup", u, d.slice(0, 80));
   if (htmlPages.some(p => p.products?.length)) evalRules("SHOP-05");
