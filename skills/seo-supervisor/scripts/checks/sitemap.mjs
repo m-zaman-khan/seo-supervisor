@@ -400,6 +400,7 @@ export function checkSitemapEntries(
       file,
       `${ds.length.toLocaleString("en-US")} URL(s) listed more than once, e.g. ${ds[0][0]} ${ds[0][1] === file ? "twice in this file" : `(also in ${ds[0][1]})`}`,
     );
+  const hintedFiles = []; // [file, hinted, total]
   for (const [file, es] of bySitemap) {
     const videos = es.flatMap(e => (e.videos || []).map(missing => ({ loc: e.loc, missing }))),
       badVideos = videos.filter(v => v.missing.length);
@@ -425,12 +426,8 @@ export function checkSitemapEntries(
       future = dated.filter(e => validLastmod(e.lastmod) && Date.parse(e.lastmod) > Date.now() + 864e5);
     if (future.length) add("sitemap-lastmod-future", file, eg(future));
     if (invalid.length) add("sitemap-lastmod-invalid", file, eg(invalid));
-    // <priority> and <changefreq> are ignored, not harmful, so a note rather than a finding.
     const hinted = es.filter(e => e.hints).length;
-    if (hinted)
-      notes.push(
-        `${quote(file)}: ${hinted} of ${es.length} entries use <priority> or <changefreq>. Google and Bing ignore both, so they can go when the sitemap code is next touched; an accurate lastmod is the signal that counts.`,
-      );
+    if (hinted) hintedFiles.push([file, hinted, es.length]);
     // A news sitemap, per Google's rules: the required tags, a full W3C date, articles from the last two days (a day
     // of slack for time zones and date-only values), and at most 1,000 of them.
     const news = es.filter(e => e.news);
@@ -456,6 +453,21 @@ export function checkSitemapEntries(
         say(old, n => n.date),
       );
     if (news.length > 1000) add("news-sitemap-too-many", file, `${news.length.toLocaleString("en-US")} articles`);
+  }
+  // Ignored, not harmful, so one note for all the sitemaps rather than a finding.
+  if (hintedFiles.length) {
+    const n = x => x.toLocaleString("en-US"),
+      [hinted, entries] = hintedFiles.reduce(([h, t], [, a, b]) => [h + a, t + b], [0, 0]);
+    const where =
+      hintedFiles.length === 1
+        ? `${quote(hintedFiles[0][0])}: ${n(hinted)} of ${n(entries)} entries use`
+        : `${hintedFiles.length} sitemap files (${n(hinted)} of ${n(entries)} entries${hintedFiles.length > 3 ? ", e.g." : ":"} ${hintedFiles
+            .slice(0, 3)
+            .map(([f]) => quote(f))
+            .join(", ")}) use`;
+    notes.push(
+      `${where} <priority> or <changefreq>. Google and Bing ignore both, so they can go when the sitemap code is next touched; an accurate lastmod is the signal that counts.`,
+    );
   }
   return smSet;
 }

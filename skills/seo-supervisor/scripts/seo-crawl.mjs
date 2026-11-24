@@ -1057,7 +1057,6 @@ const passed = [...evaluated]
   .filter(r => !failedRules.has(r))
   .sort()
   .map(r => ({ rule: r, title: RULES[r][0], category: RULES[r][1] }));
-if (capped) notes.push(`Crawl stopped at ${MAX} pages (--max). Some pages were not checked; raise --max.`);
 // Every note and every notChecked reason, whichever check wrote it and whenever, through one scrub.
 const scrubText = s => redact(maskKeys(String(s)));
 const noteList = notes.map(scrubText);

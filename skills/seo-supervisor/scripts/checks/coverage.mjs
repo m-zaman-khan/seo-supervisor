@@ -139,7 +139,7 @@ export function checkCoverage(
       n = x => x.toLocaleString("en-US");
     extra.siteSize = { crawled: fetched, known: seen.size, sitemapUrls: listed };
     notes.push(
-      `The crawl stopped at ${n(fetched)} pages (--max). It knew of ${n(seen.size)} URLs on the site from links and sitemaps (the sitemaps list ${n(listed)}${sm.cut ? ", and more past the part read" : ""}), so the site has at least ${n(Math.max(seen.size, listed))} URLs.`,
+      `The crawl stopped at ${n(fetched)} pages (--max). It knew of ${n(seen.size)} URLs on the site from links and sitemaps (the sitemaps list ${n(listed)}${sm.cut ? ", and more past the part read" : ""}), so the site has at least ${n(Math.max(seen.size, listed))} URLs. The pages past the limit weren't checked; raise --max to check them.`,
     );
   }
   // The Page indexing export's Chart.csv is undocumented, so columns are found by the English export's names (Date
