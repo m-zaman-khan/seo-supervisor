@@ -313,8 +313,8 @@ export function checkPages(site) {
       i => !(i.width && i.height) && i["data-nimg"] !== "fill" && !/position:\s*absolute/i.test(i.style || ""),
     ).length;
     if (noDim) add("img-dimensions", u, `${noDim} image(s)`);
-    if (p.imgs[0] && ((p.imgs[0].loading || "").toLowerCase() === "lazy" || p.firstScriptLazy))
-      add("lazy-lcp", u, p.imgs[0].src || "");
+    const lcp = p.imgs[p.lcpIndex];
+    if (lcp && ((lcp.loading || "").toLowerCase() === "lazy" || p.lcpScriptLazy)) add("lazy-lcp", u, lcp.src || "");
     // Counts stylesheets, not sizes: one or two are normal, six or more usually means plugin CSS loaded everywhere.
     const blocking = [
       p.blockingJs.length && `${p.blockingJs.length} script(s) without async or defer, e.g. ${p.blockingJs[0]}`,

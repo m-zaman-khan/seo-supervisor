@@ -707,7 +707,9 @@ export function analyze(url, html, headers, xRobotsLines, site) {
   // A lazy-loading script's image (data-src behind a placeholder) is read as its real file, so it's weighed and named.
   // The LCP guess is the fetchpriority="high" image, else the first not declared under 100 × 100 px or named an icon.
   const lazy = imgs.map(lazySrc);
-  rec.firstScriptLazy = !!lazy[0];
+  const small = i => Number(i.width) > 0 && Number(i.height) > 0 && Number(i.width) < 100 && Number(i.height) < 100;
+  rec.lcpIndex = imgs.findIndex(i => !small(i));
+  rec.lcpScriptLazy = rec.lcpIndex >= 0 && !!lazy[rec.lcpIndex];
   imgs.forEach((i, k) => {
     if (lazy[k]) i.src = lazy[k];
   });

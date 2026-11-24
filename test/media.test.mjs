@@ -881,3 +881,31 @@ test("images.mjs --label-ai with the same file named twice labels it once, no cr
   assert.match(r.stdout, /hero\.jpg/);
   assert.ok(existsSync(join(dir, "hero.original.jpg")));
 });
+
+test("lazy-lcp skips small icons: the likely LCP image is the first one not declared under 100 × 100 px", async () => {
+  const icon = '<img src="/angle-icon.svg" alt="" loading="lazy" width="14" height="14">';
+  const r = await crawlSite(
+    {
+      "/": page(
+        "Boiler repairs and servicing in Leeds",
+        `${icon}<img src="/hero.jpg" alt="Engineer fitting a boiler" loading="lazy" width="1200" height="800"><a href="/eager/">Eager</a>`,
+      ),
+      "/eager/": page(
+        "Boiler servicing prices in Leeds",
+        `${icon}<img src="/hero.jpg" alt="Engineer fitting a boiler" width="1200" height="800">`,
+      ),
+    },
+    {
+      files: {
+        "/hero.jpg": { type: "image/jpeg", body: jpeg(1200, 800) },
+        "/angle-icon.svg": { type: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg'/>" },
+      },
+    },
+  );
+  const lazy = findingOf(r, "lazy-lcp");
+  assert.deepEqual(
+    lazy?.evidence.map(e => [new URL(e.url).pathname, e.detail]),
+    [["/", "/hero.jpg"]],
+    "the hero, not the 14 px icon, and only where the hero itself is lazy",
+  );
+});
