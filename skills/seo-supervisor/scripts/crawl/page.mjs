@@ -712,7 +712,8 @@ export function analyze(url, html, headers, xRobotsLines, site) {
     /(?:^|[^a-z])icons?(?:[^a-z]|$)/i.test(
       `${(lazy[k] || i.src || "").split(/[?#]/)[0].split("/").pop()} ${i.alt || ""}`,
     );
-  rec.lcpIndex = imgs.findIndex((i, k) => !small(i) && !icon(i, k));
+  const hinted = imgs.findIndex(i => (i.fetchpriority || "").toLowerCase() === "high");
+  rec.lcpIndex = hinted >= 0 ? hinted : imgs.findIndex((i, k) => !small(i) && !icon(i, k));
   rec.lcpScriptLazy = rec.lcpIndex >= 0 && !!lazy[rec.lcpIndex];
   imgs.forEach((i, k) => {
     if (lazy[k]) i.src = lazy[k];

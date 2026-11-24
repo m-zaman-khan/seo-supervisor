@@ -936,3 +936,24 @@ test("lazy-lcp skips images named as icons, whatever size they declare", async (
     [["/", "/hero.jpg"]],
   );
 });
+
+test("lazy-lcp takes the image marked fetchpriority=high as the likely LCP, even one named as an icon", async () => {
+  const r = await crawlSite(
+    {
+      "/": page(
+        "Boiler repairs and servicing in Leeds",
+        '<img src="/qs-icon.svg" alt="Boiler repairs" fetchpriority="high" loading="lazy" width="0" height="0"><img src="/faq-1.svg" alt="" loading="lazy" width="0" height="0">',
+      ),
+    },
+    {
+      files: {
+        "/qs-icon.svg": { type: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg'/>" },
+        "/faq-1.svg": { type: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg'/>" },
+      },
+    },
+  );
+  assert.deepEqual(
+    findingOf(r, "lazy-lcp")?.evidence.map(e => [new URL(e.url).pathname, e.detail]),
+    [["/", "/qs-icon.svg"]],
+  );
+});
