@@ -79,7 +79,7 @@ test("the Overview holds, in order: verdict and score, Fix first, Needs you, wha
   );
   assert.match(
     ov,
-    /class="scope">Checked 1,240 pages against 34 rules · 3 checks couldn&#39;t run: see <a href="#limits">Limits<\/a>/,
+    /class="scope">Checked 1,240 pages against 34 rules · 3 checks couldn&#39;t run: see <a href="#p-limits">Limits<\/a>/,
   );
   for (const k of ["Pages checked", "Open issues", "Fixed this run", "Clicks from Google", "Core Web Vitals"])
     assert.ok(ov.includes(`<h3>${k}</h3>`), k);
@@ -115,7 +115,7 @@ test("Fix first holds at most 5 code fixes, each with its /seo-fix line; Needs y
   for (const id of first) assert.ok(ov.includes(`<code>/seo-fix ${id}</code>`), `${id} has its /seo-fix line`);
   assert.deepEqual(you, ["F-008", "F-009", "F-010"], "3 at most: the owner's blockers, then the decision, by severity");
   assert.ok(!first.some(id => you.includes(id)), "nothing in both");
-  assert.match(ov, /<a class="link" href="#decisions">All 5 in Decisions/, "see all points to Decisions");
+  assert.match(ov, /<a class="link" href="#p-decisions">All 5 in Decisions/, "see all points to Decisions");
   // Decisions lists everything Needs you counts, so "see all" is true.
   const dec = tabOf(html, "decisions");
   for (const s of ["Keep the old blog?", 'href="#F-008"', 'href="#F-009"', 'href="#F-011"', "F-010"])

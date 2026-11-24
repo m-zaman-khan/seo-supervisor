@@ -85,7 +85,9 @@ test("every Needs you and Decisions link lands on a tab or a finding card", () =
   });
   const { html } = draw(raw),
     tabs = tabIds(html);
-  const lands = h => tabs.includes(h) || new RegExp(`<article class="f [^"]*" id="${h}"`).test(html);
+  const lands = h =>
+    (h.startsWith("p-") && tabs.includes(h.slice(2)) && html.includes(`id="${h}"`)) ||
+    new RegExp(`<article class="f [^"]*" id="${h}"`).test(html);
   const links = [...list(html, "h-you"), ...[...tabOf(html, "decisions").matchAll(/href="#([^"]+)"/g)].map(x => x[1])];
   assert.ok(links.length >= 3, `${links}`);
   for (const h of links) assert.ok(lands(h), `#${h} goes nowhere`);

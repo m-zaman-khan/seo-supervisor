@@ -56,7 +56,7 @@ export function sitePanels({ raw, mdFile, site, areas, overall, open, buildRules
       ...v.list.map(({ label, a }) =>
         row(
           "a",
-          ` href="#findings" data-area="${esc(a.name)}"`,
+          ` href="#p-findings" data-area="${esc(a.name)}"`,
           a.worst ? dot(a.worst) : pass,
           esc(label),
           `<span>${esc(a.name)} area · ${a.top.length ? inl(a.top[0].title) : "All checks pass"}</span>`,

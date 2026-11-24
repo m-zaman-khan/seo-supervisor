@@ -120,7 +120,7 @@ export function overviewHtml(m) {
   // A row links to the finding's card, or to the Decisions tab for a decision no finding carries: its id (D-1) is no
   // anchor on the page.
   const row = x =>
-    `<a href="#${esc(x.d && !findings.some(f => f.id === x.id) ? "decisions" : x.id || "decisions")}">${dot(x.sev)}<span class="sev-t">${SEV_LABEL[x.sev]}</span><span class="t">${inl(x.title)}</span><span class="c">${esc(x.f?.category || "")}</span>${ICON.arrow}</a>`;
+    `<a href="#${esc(x.d && !findings.some(f => f.id === x.id) ? "p-decisions" : x.id || "p-decisions")}">${dot(x.sev)}<span class="sev-t">${SEV_LABEL[x.sev]}</span><span class="t">${inl(x.title)}</span><span class="c">${esc(x.f?.category || "")}</span>${ICON.arrow}</a>`;
   const stat = (h, n, rest = "") =>
     `\n      <div class="stat">\n        <h3>${h}</h3>\n        <p class="stat-n"><span class="n">${n}</span>${rest}</p>`;
   return `
@@ -141,7 +141,7 @@ export function overviewHtml(m) {
     ${
       fixFirst.length
         ? `<section class="panel fixfirst" aria-labelledby="h-first">
-      <div class="ph"><h2 id="h-first">Fix first</h2><a class="link" href="#findings">All findings ${ICON.arrow}</a></div>
+      <div class="ph"><h2 id="h-first">Fix first</h2><a class="link" href="#p-findings">All findings ${ICON.arrow}</a></div>
       <p class="sub">What the agent can fix in code. Each line fixes one.</p>
       <ol>${fixFirst.map(x => `<li>${row(x)}${x.id ? `<p class="next"><code>/seo-fix ${esc(x.id)}</code></p>` : ""}</li>`).join("")}</ol>
     </section>`
@@ -150,7 +150,7 @@ export function overviewHtml(m) {
     ${
       yours.length
         ? `<section class="panel fixfirst needsyou" aria-labelledby="h-you">
-      <div class="ph"><h2 id="h-you">Needs you</h2><a class="link" href="#decisions">All ${allYours.length} in Decisions ${ICON.arrow}</a></div>
+      <div class="ph"><h2 id="h-you">Needs you</h2><a class="link" href="#p-decisions">All ${allYours.length} in Decisions ${ICON.arrow}</a></div>
       <p class="sub">Your call, your accounts or your go-ahead: the agent won't change these without you.</p>
       <ol>${yours.map(x => `<li>${row(x)}</li>`).join("")}</ol>
     </section>`
@@ -166,28 +166,28 @@ export function overviewHtml(m) {
           `<span class="meter" aria-hidden="true"><i style="width:${Math.max(4, (100 * pts) / maxPts)}%"></i></span>`;
         const rows = [];
         if (impact.cap > 0)
-          rows.push(`<li><a class="area" href="#findings" data-sev="blocker">${dot("blocker")}
+          rows.push(`<li><a class="area" href="#p-findings" data-sev="blocker">${dot("blocker")}
           <span class="an"><b>Blocker cap</b><span class="reason">Lifted once the ${overall.blockers === 1 ? "blocker is" : "blockers are"} fixed</span></span>
           ${bar(impact.cap)}<span class="as">−${impact.cap}<small>pts</small></span></a></li>`);
         for (const { a, pts } of impact.rows) {
           const line = a.top.length
             ? `${inl(a.top[0].title)}${a.top.length > 1 ? ` <span class="more">+${a.top.length - 1} more</span>` : ""}`
             : "All checks pass";
-          rows.push(`<li><a class="area" href="#findings" data-area="${esc(a.name)}">${a.worst ? dot(a.worst) : `<i class="dot d-pass" aria-hidden="true"></i>`}
+          rows.push(`<li><a class="area" href="#p-findings" data-area="${esc(a.name)}">${a.worst ? dot(a.worst) : `<i class="dot d-pass" aria-hidden="true"></i>`}
           <span class="an"><b>${esc(a.name)} <span class="ascore">${a.value}/100</span></b><span>${line}</span></span>
           ${bar(pts)}<span class="as">${pts ? `−${pts}` : "&lt;1"}<small>pts</small></span></a></li>`);
         }
         const full = areas.filter(a => a.value === 100);
         if (full.length) {
           const fx = full.reduce((t, a) => t + a.fixedHere, 0);
-          rows.push(`<li><a class="area" href="#passed"><i class="dot d-pass" aria-hidden="true"></i>
+          rows.push(`<li><a class="area" href="#p-passed"><i class="dot d-pass" aria-hidden="true"></i>
           <span class="an"><b>${plural(full.length, "area")} pass in full</b><span>${esc(full.map(a => a.name).join(", "))}${fx ? ` · ${fx} fixed this run` : ""}</span></span>
           <span class="meter" aria-hidden="true"></span><span class="as ok">0<small>pts</small></span></a></li>`);
         }
         return rows.join("");
       })()}</ol>
     </section>
-    <p class="scope">${esc(scopeText(m))} <a href="#limits">Limits</a></p>
+    <p class="scope">${esc(scopeText(m))} <a href="#p-limits">Limits</a></p>
     <section class="panel stats" aria-labelledby="h-keys">
       <h2 id="h-keys" class="sr">Key numbers</h2>${
         run.pagesCrawled != null
