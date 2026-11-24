@@ -29,7 +29,16 @@ export function checkRobots(robotsRes, { add, evalRules, startOrigin: START_ORIG
       START_ORIGIN + "/robots.txt",
       `${again > 0 ? `a redirect loop: ${[...robotsHops.slice(0, again), robotsHops[again]].join(" → ")}` : `more than 5 redirects: ${robotsHops[0]} → … → ${robotsHops.at(-1)}`}. Google stops after 5 and reads that as no robots.txt`,
     );
-  } else if (!robots) add("robots-missing", START_ORIGIN + "/robots.txt", `status ${robotsRes.status}`);
+  } else if (!robots)
+    add(
+      "robots-missing",
+      START_ORIGIN + "/robots.txt",
+      robotsRes.status !== 200
+        ? `status ${robotsRes.status}`
+        : robotsRes.body
+          ? "returns an HTML page instead (soft 404)"
+          : "an empty file",
+    );
   else {
     // Judged as Googlebot reads it: its own group if it has one, else `User-agent: *`.
     const google = groupOf(robots, "googlebot"),
