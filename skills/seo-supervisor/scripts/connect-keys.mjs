@@ -33,8 +33,8 @@ import { foundOn } from "./lib/findings.mjs";
 
 // Re-exported for the other scripts and the tests.
 export { Fail, Refused, domainOf, submitBing, SERVICES, call, keyFile, savedKeys, setKey, removeKey, activeKeys };
-const USAGE = `usage: node connect-keys.mjs set bing|openpagerank|ahrefs|matomo|posthog|moz|youtube|clarity|perplexity|openai|googleplaces [<key>]   (no key: it asks, hidden)
-       node connect-keys.mjs set matomo [--url <address>] [--site-id <id>] | set posthog [--host us|eu|<address>] [--project-id <id>]
+const USAGE = `usage: node connect-keys.mjs set bing|openpagerank|ahrefs|matomo|posthog|moz|youtube|clarity|perplexity|openai|googleplaces|dataforseo|semrush [<key>]   (no key: it asks, hidden)
+       node connect-keys.mjs set matomo [--url <address>] [--site-id <id>] | set posthog [--host us|eu|<address>] [--project-id <id>] | set dataforseo [--login <email>]
        node connect-keys.mjs status | remove <service> | guide <service> | test matomo|posthog [--yes]
        node connect-keys.mjs fetch --site https://www.example.com [--competitors a.com,b.com] [--days 90] [--out seo-audit/keys.json] [--yes]
             [--topics "topic one, topic two"] [--youtube-channel @handle] [--bing-pages /a,/b] [--bing-sister https://sister.example]

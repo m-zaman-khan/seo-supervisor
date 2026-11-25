@@ -14,6 +14,7 @@ export const posthog = {
       id: "host",
       flag: "host",
       env: "POSTHOG_HOST",
+      address: true,
       ask: "Your PostHog address: us, eu, or your own PostHog's address",
       check: s =>
         /^(us|eu)$/i.test(s)

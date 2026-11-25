@@ -117,6 +117,9 @@ const NO_KEYS = Object.fromEntries(
     "PERPLEXITY_API_KEY",
     "OPENAI_API_KEY",
     "GOOGLE_PLACES_API_KEY",
+    "DATAFORSEO_PASSWORD",
+    "DATAFORSEO_LOGIN",
+    "SEMRUSH_API_KEY",
   ].map(k => [k, ""]),
 );
 const envFor = (home, extra = {}) => ({ ...process.env, HOME: home, USERPROFILE: home, ...NO_KEYS, ...extra });

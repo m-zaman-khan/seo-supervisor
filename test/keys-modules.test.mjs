@@ -54,6 +54,8 @@ test("every name other scripts and the tests import from connect-keys.mjs and go
       "perplexity",
       "openai",
       "googleplaces",
+      "dataforseo",
+      "semrush",
     ],
     "the order status and the dry run list them in",
   );

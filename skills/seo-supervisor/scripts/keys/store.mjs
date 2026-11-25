@@ -61,7 +61,7 @@ export async function ask(id, missing, needKey) {
 // The key from the terminal, without showing it.
 async function readKey(id) {
   const { stdin, stderr } = process;
-  stderr.write(`Paste the ${SERVICES[id].name} key and press Enter (it isn't shown): `);
+  stderr.write(`Paste the ${SERVICES[id].name} ${SERVICES[id].secret || "key"} and press Enter (it isn't shown): `);
   stdin.setRawMode(true);
   stdin.setEncoding("utf8");
   return new Promise((ok, no) => {

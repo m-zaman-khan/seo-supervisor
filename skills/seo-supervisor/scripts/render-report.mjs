@@ -28,6 +28,7 @@ import {
   brandTrendPanel,
   topSearchesPanel,
   keywordIdeasPanel,
+  keywordDataPanel,
   indexVerdictPanel,
 } from "./report/panels/data-search.mjs";
 import { schemaInventoryPanel } from "./report/panels/data-site.mjs";
@@ -159,6 +160,7 @@ export function render(raw, { dir = process.cwd(), mdFile = null } = {}) {
     [S, "Search traffic", connections],
     [S, "Search traffic", posts],
     [S, "Search ideas", () => keywordIdeasPanel(m)],
+    [S, "Search ideas", () => keywordDataPanel(m)],
     [S, "Search ideas", queryGaps],
     [S, "AI crawlers, agents and answers", aiCrawlers],
     [S, "AI crawlers, agents and answers", agents],

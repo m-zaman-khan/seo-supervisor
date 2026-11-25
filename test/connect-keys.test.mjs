@@ -235,7 +235,7 @@ test("set, status and remove keep keys in the home folder, private, and never in
     cli(["set", "majestic", "x"], env),
     e =>
       e.code === 2 &&
-      /bing, openpagerank, ahrefs, matomo, posthog, moz, youtube, clarity, perplexity, openai or googleplaces/.test(
+      /bing, openpagerank, ahrefs, matomo, posthog, moz, youtube, clarity, perplexity, openai, googleplaces, dataforseo or semrush/.test(
         e.stderr,
       ),
   );
@@ -261,7 +261,7 @@ test("names that only exist on every object, like toString, aren't services", as
     cli(["set", "toString", "k-123456"], env),
     e =>
       e.code === 2 &&
-      /bing, openpagerank, ahrefs, matomo, posthog, moz, youtube, clarity, perplexity, openai or googleplaces/.test(
+      /bing, openpagerank, ahrefs, matomo, posthog, moz, youtube, clarity, perplexity, openai, googleplaces, dataforseo or semrush/.test(
         e.stderr,
       ),
   );
@@ -269,7 +269,7 @@ test("names that only exist on every object, like toString, aren't services", as
     cli(["guide", "constructor"], env),
     e =>
       e.code === 2 &&
-      /bing, openpagerank, ahrefs, matomo, posthog, moz, youtube, clarity, perplexity, openai or googleplaces/.test(
+      /bing, openpagerank, ahrefs, matomo, posthog, moz, youtube, clarity, perplexity, openai, googleplaces, dataforseo or semrush/.test(
         e.stderr,
       ),
   );

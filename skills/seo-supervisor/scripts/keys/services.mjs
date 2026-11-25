@@ -11,6 +11,8 @@ import { clarity } from "./clarity.mjs";
 import { perplexity } from "./perplexity.mjs";
 import { openai } from "./openai.mjs";
 import { googleplaces } from "./googleplaces.mjs";
+import { dataforseo } from "./dataforseo.mjs";
+import { semrush } from "./semrush.mjs";
 
 export const SERVICES = {
   bing,
@@ -24,6 +26,8 @@ export const SERVICES = {
   perplexity,
   openai,
   googleplaces,
+  dataforseo,
+  semrush,
 };
 export const serviceOf = id =>
   Object.hasOwn(SERVICES, id)

@@ -12,6 +12,8 @@ export const fail = msg => {
   throw new Fail("connect-keys: " + msg);
 };
 export const setLine = id => `node connect-keys.mjs set ${id}`;
+// HTTP 401 and status 40100 mean the same.
+export const DFS_AUTH = `DataForSEO didn't accept the API login and password. Both are on https://app.dataforseo.com/api-access; the API password isn't your account password. Then run: ${setLine("dataforseo")}`;
 export const PASTE =
   "   Paste the key when it asks and press Enter. It isn't shown, so it stays out of chats and your command history.";
 // A typed address, kept as origin and path ending in "/": https:// added when missing, a page such as index.php and
@@ -29,6 +31,9 @@ export function address(s, what) {
 export function idOf(s, what, where) {
   return /^\d+$/.test(s) ? s : fail(`the ${what} is a number, like 1 or 3 (got "${s}"). Find it ${where}.`);
 }
+
+// ---------- requests ----------
+const typedAddress = s => !!s.fields?.some(f => f.address);
 // https://learn.microsoft.com/dotnet/api/microsoft.bing.webmaster.api.interfaces.apierrorcode
 const BING_ERRORS = { 3: "key", 4: "busy", 5: "busy", 6: "blocked", 7: "url", 14: "site" };
 // Matomo and PostHog live at a typed address, so a wrong address, site or project ID gets its own message.
@@ -63,7 +68,12 @@ function addressed(id, s, status, body, host, moved) {
 }
 // s: the service's entry in SERVICES. retry: the Retry-After header, in seconds or as a date (lib/http.mjs).
 export function refusal(id, s, status, body, retry, host, moved) {
-  if (s.fields) {
+  if (id === "dataforseo" && status === 401) return DFS_AUTH;
+  if (id === "dataforseo" && status === 402)
+    return "DataForSEO says payment is required (402): the balance is too low. Top up at https://app.dataforseo.com, then run again.";
+  if (id === "semrush" && status === 401)
+    return `Semrush didn't accept the key (401): it's mistyped or was deleted, or it's a v3 key, which v4 doesn't take. Get a v4 key at ${s.where}, then run: ${setLine(id)}`;
+  if (typedAddress(s)) {
     const m = addressed(id, s, status, body, host, moved);
     if (m) return m;
   }
@@ -159,7 +169,7 @@ export async function request(id, s, url, init = {}) {
     });
   } catch (e) {
     throw new Refused(
-      `${s.name}: couldn't reach ${host} (${e.cause?.code || e.message}). Check the internet connection${s.fields ? ` and the ${s.name} address (node connect-keys.mjs status shows it)` : ""} and try again.`,
+      `${s.name}: couldn't reach ${host} (${e.cause?.code || e.message}). Check the internet connection${typedAddress(s) ? ` and the ${s.name} address (node connect-keys.mjs status shows it)` : ""} and try again.`,
     );
   }
   const text = await r.text();

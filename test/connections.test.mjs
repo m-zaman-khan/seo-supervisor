@@ -375,7 +375,7 @@ test("set, guide and status know Moz and YouTube; the dry run names the topics a
       cli(KEYS, ["set", "nope", "x"], env),
       e =>
         e.code === 2 &&
-        /bing, openpagerank, ahrefs, matomo, posthog, moz, youtube, clarity, perplexity, openai or googleplaces/.test(
+        /bing, openpagerank, ahrefs, matomo, posthog, moz, youtube, clarity, perplexity, openai, googleplaces, dataforseo or semrush/.test(
           e.stderr,
         ),
     );

@@ -219,32 +219,116 @@ const IDEAS = [
   ["questions", "Questions people search", "Each could be an FAQ entry or a section on the page that fits best."],
 ];
 export function keywordIdeasPanel({ raw }) {
-  const k = obj(raw.keywordIdeas);
+  const k = obj(raw.keywordIdeas),
+    kd = obj(raw.keywordData);
   const groups = IDEAS.map(
     ([key, title, what]) =>
       /** @type {[string, string, any[]]} */ ([title, what, arr(k?.[key]).filter(i => isText(i.phrase))]),
   ).filter(([, , list]) => list.length);
   if (!groups.length) return null;
-  const ev = e =>
-    obj(e) && fin(e.impressions)
-      ? [
-          `${plural(e.impressions, "impression")}${fin(e.position) ? `, position ${e.position}` : ""}`,
-          ...(isText(e.page) ? [", shows ", { code: e.page }] : []),
-        ]
-      : "";
+  const volume = new Map(
+    arr(kd?.keywords)
+      .filter(r => isText(r.keyword) && fin(r.volume))
+      .map(r => [r.keyword.toLowerCase(), r.volume]),
+  );
+  const ev = i => {
+    const e = i.evidence,
+      v = volume.get(i.phrase.toLowerCase());
+    const parts =
+      obj(e) && fin(e.impressions)
+        ? [
+            `${plural(e.impressions, "impression")}${fin(e.position) ? `, position ${e.position}` : ""}`,
+            ...(isText(e.page) ? [", shows ", { code: e.page }] : []),
+          ]
+        : [];
+    return fin(v)
+      ? [`${num(v)} searches a month`, ...(parts.length ? [" · ", ...parts] : [])]
+      : parts.length
+        ? parts
+        : "";
+  };
+  const volumes = volume.size
+    ? `Searches a month are from your ${isText(kd.serviceName) ? kd.serviceName : "keyword data"} account; none are guessed.`
+    : "There are no search volumes: those need paid data, and none are guessed.";
   return {
     tab: "search-ai",
     cls: "keywordideas",
     title: "Keyword ideas",
     blocks: [
       {
-        p: `${fromLine(raw, "keywordIdeas")} From Search Console. You pick which ideas become targets. There are no search volumes: those need paid data, and none are guessed. Information only.`.trim(),
+        p: `${fromLine(raw, "keywordIdeas")} From Search Console. You pick which ideas become targets. ${volumes} Information only.`.trim(),
       },
       ...groups.map(([title, what, list]) => ({
         sub: `${title} (${num(list.length)})`,
         heading: title,
-        blocks: [{ p: what }, { rows: list.slice(0, MD_MAX).map(i => [i.phrase, ev(i.evidence), ": "]), cap: 10 }],
+        blocks: [{ p: what }, { rows: list.slice(0, MD_MAX).map(i => [i.phrase, ev(i), ": "]), cap: 10 }],
       })),
+    ],
+  };
+}
+
+// keywordData is keyword-data.json; text from the service is escaped.
+export function keywordDataPanel({ raw }) {
+  const k = obj(raw.keywordData);
+  const rows = arr(k?.keywords).filter(r => isText(r.keyword)),
+    rivals = arr(k?.competitors).filter(c => isText(c.domain) && arr(c.keywords).length);
+  if (!rows.length && !rivals.length) return null;
+  const n = v => (fin(v) ? num(v) : "–"),
+    name = isText(k.serviceName) ? k.serviceName : "keyword data";
+  const country =
+    isText(k.country) && /^[A-Z]{2}$/.test(k.country)
+      ? new Intl.DisplayNames(["en"], { type: "region" }).of(k.country)
+      : "";
+  const where = [country, isText(k.language) ? `in ${k.language}` : ""].filter(Boolean).join(", ");
+  const missing = (Array.isArray(k.notFound) ? k.notFound : []).filter(isText);
+  const intent = r => (Array.isArray(r.intent) ? r.intent : []).filter(isText).join(", ");
+  return {
+    tab: "search-ai",
+    cls: "keyworddata",
+    title: "Keyword data",
+    blocks: [
+      {
+        p: `${fromLine(raw, "keywordData")} From your ${name} account${where ? `, for ${where}` : ""}: monthly searches, ${name}'s own difficulty score, cost per click in US dollars and search intent. Information only.`.trim(),
+      },
+      ...(rows.length
+        ? [
+            {
+              head: ["Keyword", "Searches a month", "Difficulty", "Cost per click", "Intent"],
+              align: ["---", "--:", "--:", "--:", "---"],
+              cap: 10,
+              rows: rows
+                .slice(0, MD_MAX)
+                .map(r => [
+                  r.keyword,
+                  n(r.volume),
+                  n(r.difficulty),
+                  fin(r.cpc) ? `$${r.cpc.toFixed(2)}` : "–",
+                  intent(r),
+                ]),
+            },
+          ]
+        : []),
+      ...(missing.length
+        ? [{ p: `No data for ${plural(missing.length, "keyword")}: ${missing.slice(0, 20).join(", ")}.` }]
+        : []),
+      ...rivals.map(c => {
+        const list = arr(c.keywords).filter(r => isText(r.keyword)),
+          title = `Keywords ${c.domain} ranks for and you don't`;
+        return {
+          sub: `${title} (${num(list.length)})`,
+          heading: title,
+          blocks: [
+            {
+              head: ["Keyword", "Searches a month", "Their position", "Their page"],
+              align: ["---", "--:", "--:", "---"],
+              cap: 10,
+              rows: list
+                .slice(0, MD_MAX)
+                .map(r => [r.keyword, n(r.volume), n(r.position), isText(r.url) ? { code: notePath(r.url) } : "–"]),
+            },
+          ],
+        };
+      }),
     ],
   };
 }

@@ -14,6 +14,7 @@ export const matomo = {
       id: "url",
       flag: "url",
       env: "MATOMO_URL",
+      address: true,
       ask: "Your Matomo address (the one you open Matomo at, like https://analytics.example.com)",
       check: s => address(s, "The Matomo address"),
     },

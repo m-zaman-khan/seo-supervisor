@@ -54,6 +54,7 @@ const SOURCES = /** @type {[string, string, string[][]][]} */ ([
   ],
   ["log-scan.json", "your server logs", [["logScan=*"]]],
   ["keyword-ideas.json", "keyword ideas", [["keywordIdeas=*"], ["linkIdeas"], ["queryGaps"]]],
+  ["keyword-data.json", "keyword data", [["keywordData=*"]]],
   ["geo-grid.json", "the local rank grid", [["geoGrid=*"]]],
   ["ai-answers.json", "the AI answer check", [["aiAnswers=*"]]],
   ["change-check.json", "the change check", [["changeCheck=*"]]],
