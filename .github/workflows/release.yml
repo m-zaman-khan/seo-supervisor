@@ -17,7 +17,8 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - run: npm install -g npm@^11.5.1 # trusted publishing needs npm 11.5.1+
+      - run: npm install -g npm@^11.15.0 # staged publishing needs npm 11.15.0+
       - run: npm ci
       - run: npm test
-      - run: npm publish
+      # Staged, not live: a maintainer approves it on npmjs.com with 2FA (https://docs.npmjs.com/staged-publishing).
+      - run: npm stage publish
