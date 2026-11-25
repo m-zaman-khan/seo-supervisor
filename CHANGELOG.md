@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.0 (2026-11-18)
+## 2.0.0 (2026-11-25)
 
 Deeper checks, optional real-world data and search intent. Everything still works with no keys, and nothing leaves the machine by default.
 
