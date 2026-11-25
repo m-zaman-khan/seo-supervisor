@@ -315,6 +315,19 @@ export function checkLanguages(pages, { add, origin }) {
   const naming = t => words(t).filter(w => !/\p{N}/u.test(w) && !(inTitles.get(w) > titled.length / 2)).length;
   const pairs = new Set(),
     langs = new Set();
+  // Of two versions sharing their text, the original is the x-default one, else the one in the home page's language,
+  // else the one closer to the home page, else the first by URL; the other is the copy. Never the order pages finished
+  // loading in, which changes from run to run.
+  const xDefault = new Set(
+    pages.flatMap(p =>
+      entriesOf(p, origin)
+        .filter(e => e.lang === "x-default" && e.ours)
+        .map(e => e.path),
+    ),
+  );
+  const home = byPath.get("/"),
+    homeLang = home?.lang && LANG_TAG.test(home.lang) ? primary(home.lang) : null;
+  const rank = (q, l) => (xDefault.has(pathKey(new URL(q.finalUrl))) ? 2 : l === homeLang ? 1 : 0);
   for (const p of pages) {
     const u = p.finalUrl,
       self = pathKey(new URL(u)),
@@ -357,12 +370,18 @@ export function checkLanguages(pages, { add, origin }) {
       // Conservative: 80% of the main text, or the same title of five naming words or more and half the main text.
       const title = flat(p.title) && flat(p.title) === flat(t.title) && naming(p.title) >= 5,
         same = dice(p.shingles, t.shingles);
-      if (same >= 0.8 || (title && same >= 0.5))
+      if (same >= 0.8 || (title && same >= 0.5)) {
+        const pFirst =
+            rank(p, mine) - rank(t, theirs) ||
+            (t.depth ?? Infinity) - (p.depth ?? Infinity) ||
+            (u < t.finalUrl ? 1 : -1),
+          [copy, copyLang, orig, origLang] = pFirst > 0 ? [t, theirs, p, mine] : [p, mine, t, theirs];
         add(
           "untranslated-copy",
-          t.finalUrl,
-          `${t.finalUrl} (${theirs}) and ${u} (${mine}) ${title ? `have the same title “${t.title}” and ` : ""}share ${Math.round(same * 100)}% of their main text`,
+          copy.finalUrl,
+          `${copy.finalUrl} (${copyLang}) and ${orig.finalUrl} (${origLang}) ${title ? `have the same title “${copy.title}” and ` : ""}share ${Math.round(same * 100)}% of their main text`,
         );
+      }
     }
     if (missing.size) add("hreflang-missing-version", u, [...missing.values()].join("; "));
   }

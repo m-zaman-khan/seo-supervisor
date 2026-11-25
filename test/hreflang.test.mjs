@@ -380,6 +380,8 @@ test("a product name kept as the title isn't an untranslated copy; the same titl
         ),
       ),
     ),
+    // The home page is in English, so the English versions are the originals.
+    page("/", [], { lang: "en" }),
     // "Samsung" is in most of the site's titles, so it's a brand word.
     page("/en/", [], { lang: "en", title: "Phones, TVs and home appliances | Samsung" }),
     page("/de/", [], { lang: "de", title: "Handys, Fernseher und Haushaltsgeräte | Samsung" }),
@@ -451,4 +453,30 @@ test("untranslated copies, lang=auto, a Translate widget and inLanguage mismatch
     ["/"],
     "only the widget on the widget site",
   );
+});
+
+test("an untranslated copy is reported on the same page whichever order the crawl finished in", () => {
+  const text = new Set(["boiler repair and heating service", "heating service in your area", "call us for a quote"]);
+  const versions = extra => [{ lang: "en", href: "/en/" }, { lang: "de", href: "/de/" }, ...extra];
+  const copies = pages =>
+    languages(pages)
+      .filter(f => f.key === "untranslated-copy")
+      .map(f => f.path);
+  // The x-default version is the original.
+  const en = page("/en/", versions([{ lang: "x-default", href: "/en/" }]), { lang: "en", shingles: text });
+  const de = page("/de/", versions([{ lang: "x-default", href: "/en/" }]), { lang: "de", shingles: text });
+  for (const order of [
+    [en, de],
+    [de, en],
+  ])
+    assert.deepEqual(copies(order), ["/de/"]);
+  // Without x-default, the version in the home page's language is.
+  const home = page("/", [], { lang: "de", shingles: new Set(["willkommen"]) });
+  const en2 = page("/en/", versions([]), { lang: "en", shingles: text });
+  const de2 = page("/de/", versions([]), { lang: "de", shingles: text });
+  for (const order of [
+    [home, en2, de2],
+    [home, de2, en2],
+  ])
+    assert.deepEqual(copies(order), ["/en/"]);
 });
