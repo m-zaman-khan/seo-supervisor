@@ -16,6 +16,7 @@ Follow the brief format in `strategy.md` exactly, with its headings: Intent · T
 - **Intent first:** state the page's search intent, and get the owner's OK on it before reading any search results.
 - **What ranks:** look at the search results only with outside checks on and `intent` in `outsideChecks.approved` (`seo-audit/settings.json` or the SEO profile; if neither says, ask once). Name the search engine and the date. Never invent volumes or rankings.
 - **Keyword ideas:** when `seo-audit/` has `google.json` or `gsc.json`, run `keyword-ideas.mjs` as SKILL.md's Keyword ideas says, and show the ideas with their sources. Only phrases the owner picks become targets.
+- **Keyword data (optional, the owner pays):** if `connect-keys.mjs status` shows DataForSEO or Semrush, offer `keyword-data.mjs` for the candidate phrases as SKILL.md says: show its dry run, and add `--yes` only after the owner agrees.
 - **Links:** read the site's routes or the last crawl (`seo-audit/seo-crawl.json`) so every internal link in the brief points at a page that exists.
 - **Sources:** use the project's files, its content dump and the last crawl. Don't query a CMS or other API; what you can't find there is a question for the owner.
 - **The URL of an existing page:** start with the One page review in `strategy.md`, and put its wireframe at the top of the brief.

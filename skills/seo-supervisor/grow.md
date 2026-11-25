@@ -111,7 +111,7 @@ The rules in SKILL.md apply throughout, most of all **Plain language (CONTENT-13
 **Adds to the plan:** the "Targets the owner picked" table: phrase, page (or "new page"), source, evidence and the date picked.
 
 **Never:**
-- Give or estimate search volumes, difficulty, cost per click or traffic forecasts. They need paid data.
+- Give or estimate search volumes, difficulty, cost per click or traffic forecasts. They need paid data: only `keyword-data.json` from the owner's own DataForSEO or Semrush account, named as the source.
 - Make a phrase a target without the owner's pick.
 - Use a phrase without a labelled source.
 - Search the web for ideas unless outside checks are on and `intent` is in `outsideChecks.approved` (`settings.json`).
@@ -339,4 +339,4 @@ Timings from Google's Search Console help (checked 22 Nov 2026): a "Validate fix
 
 - Google Business Profile: this skill doesn't edit it. The owner manages it in Google's own tools.
 - Paid search, ads and social posts.
-- Search volumes and keyword difficulty: they need paid data, and grow mode uses only what the site's own accounts show.
+- Search volumes and keyword difficulty: they need paid data, and grow mode uses only what the site's own accounts show, including `keyword-data.json` when the owner ran it.

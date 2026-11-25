@@ -69,7 +69,7 @@ Crawl and run a content scan exactly as an audit does (SKILL.md step 2, pre-laun
 - **Search Console:** when `seo-audit/` holds the Performance export, run `gsc-import.mjs` (SKILL.md step 2). Site-level queries are *suggested* phrases and are labelled as suggestions. A per-page export's queries belong to that page.
 - **A keyword CSV,** only if the owner gives one.
 
-Never state or invent search volumes, difficulty or rankings. Each row also gets an `intent`: who searches this, and what they want. Once the plan is approved, copy the phrases into the profile's "Target phrases" table (page, phrase, source), so later audits know them.
+Never state or invent search volumes, difficulty or rankings; numbers from `keyword-data.json` go in with their source. Each row also gets an `intent`: who searches this, and what they want. Once the plan is approved, copy the phrases into the profile's "Target phrases" table (page, phrase, source), so later audits know them.
 
 **Search intent.** With outside checks on and a web search tool available, check each planned page's phrase as `rules/search-intent.md` says (INTENT-01). If what ranks is a different kind of page, change the row's page type or its phrase. Without them, list intent under Limits.
 
