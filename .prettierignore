@@ -1,0 +1,2 @@
+# Inlined as is into every report, so its bytes are part of the report and its golden snapshots.
+skills/seo-supervisor/scripts/report/client.js

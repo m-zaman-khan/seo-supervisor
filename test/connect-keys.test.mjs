@@ -161,20 +161,18 @@ async function fake({ bing = BING, reply = {} } = {}) {
         if (route === "opr")
           return send(200, {
             status_code: 200,
-            response: u.searchParams
-              .getAll("domains[]")
-              .map((d, i) =>
-                d === "unknown.example"
-                  ? { status_code: 404, error: "Domain not found", domain: d, page_rank_decimal: 0 }
-                  : {
-                      status_code: 200,
-                      error: "",
-                      domain: d,
-                      page_rank_integer: 5 - i,
-                      page_rank_decimal: 5.5 - i,
-                      rank: String(1000 * (i + 1)),
-                    },
-              ),
+            response: u.searchParams.getAll("domains[]").map((d, i) =>
+              d === "unknown.example"
+                ? { status_code: 404, error: "Domain not found", domain: d, page_rank_decimal: 0 }
+                : {
+                    status_code: 200,
+                    error: "",
+                    domain: d,
+                    page_rank_integer: 5 - i,
+                    page_rank_decimal: 5.5 - i,
+                    rank: String(1000 * (i + 1)),
+                  },
+            ),
           });
         if (route === "ahrefs")
           return send(200, {

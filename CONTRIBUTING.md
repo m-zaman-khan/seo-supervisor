@@ -46,8 +46,9 @@ Run `npm run demo` afterwards. It refreshes `docs/index.html` (the live demo) an
 
 - **No runtime dependencies.** Use Node's standard library.
 - **Mark new scripts `// @ts-check`,** and keep `npm run typecheck` clean.
-- **Comments say why, not what.** Cite the official source for a rule or a threshold (the page and the date you read it). Leave out anything the code already says.
+- **Comments say why, not what.** Cite the official source for a rule or a threshold as a link above the code it governs. Leave out anything the code already says.
 - **Use LF line endings and two-space indentation.** `.editorconfig` sets both.
+- **Format with Prettier.** Run `npm run format` before you commit; CI runs `npm run format:check`.
 
 ## Pull requests
 

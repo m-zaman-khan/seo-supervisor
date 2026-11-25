@@ -424,16 +424,14 @@ async function fakeToken() {
     });
     req.on("end", () => {
       hits.push(Object.fromEntries(new URLSearchParams(raw)));
-      res
-        .writeHead(200, { "content-type": "application/json", connection: "close" })
-        .end(
-          JSON.stringify({
-            access_token: "at1",
-            refresh_token: "rt1",
-            expires_in: 3599,
-            scope: "https://www.googleapis.com/auth/webmasters.readonly",
-          }),
-        );
+      res.writeHead(200, { "content-type": "application/json", connection: "close" }).end(
+        JSON.stringify({
+          access_token: "at1",
+          refresh_token: "rt1",
+          expires_in: 3599,
+          scope: "https://www.googleapis.com/auth/webmasters.readonly",
+        }),
+      );
     });
   });
   await new Promise(ok => server.listen(0, "127.0.0.1", ok));
