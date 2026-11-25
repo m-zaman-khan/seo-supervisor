@@ -47,7 +47,7 @@ export function findLighthouse(env = process.env, home = homedir(), platform = p
 // wrappers fail to start; pointing LIGHTHOUSE_PATH at the script itself gets around that.
 function command(bin) {
   const js = /\.cmd$/i.test(bin) ? readFileSync(bin, "utf8").match(/"%~?dp0%?\\([^"]+\.[cm]?js)"/i)?.[1] : null;
-  if (js) return [process.execPath, [join(dirname(bin), js)]];
+  if (js) return [process.execPath, [join(dirname(bin), ...js.split("\\"))]];
   return /\.[cm]?js$/i.test(bin) ? [process.execPath, [bin]] : [bin, []];
 }
 

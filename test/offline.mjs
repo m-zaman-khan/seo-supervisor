@@ -8,7 +8,6 @@
 import cp from "node:child_process";
 import dns from "node:dns";
 import net from "node:net";
-import { basename } from "node:path";
 import { syncBuiltinESMExports } from "node:module";
 
 const SELF = `--import=${import.meta.url}`;
@@ -89,7 +88,7 @@ for (const obj of [dns, dns.promises, dns.Resolver.prototype, dns.promises.Resol
 
 // ---------- child processes: no browser, and every node child loads this guard ----------
 const program = (file, args = []) => {
-  const name = basename(String(file));
+  const name = String(file).split(/[\\/]/).pop(); // a Windows path is caught on Linux too
   if (BROWSER.test(name)) throw refuse(`to start a browser (${file})`);
   if (/^(xdg-open|open)$/i.test(name) || (/^cmd(\.exe)?$/i.test(name) && args.some(x => /^start$/i.test(String(x)))))
     throw refuse(`to open a link with ${[file, ...args].join(" ")}`);

@@ -33,6 +33,8 @@ export function checkAction(action, { mode = "ask", settings = {}, cwd = process
 
 // ---------- files ----------
 const posix = f => String(f || "").replace(/\\/g, "/");
+// A path from a shell command. PowerShell accepts \ as a separator on every OS, so app\blog is app/blog on Linux too.
+const shellPath = (base, f) => resolve(base, posix(f));
 // The path as the project sees it: relative to the working folder when it's inside it, so a parent folder named
 // "pages" never makes every file a page.
 const rel = (f, cwd) => {
@@ -789,7 +791,7 @@ function bashHit(command, settings, cwd, dir = cwd, depth = 0) {
     // A cd earlier in the same command moves where the later paths start.
     if (/^(cd|chdir|pushd|set-location|sl)$/.test(cmd)) {
       const to = positional(words.slice(1)).out.find(w => !/^\/d$/i.test(w));
-      if (to && !/^[~$%]/.test(to)) dir = resolve(dir, to);
+      if (to && !/^[~$%]/.test(to)) dir = shellPath(dir, to);
       continue;
     }
     // The skill's scripts by file name, run by node, bun or deno or directly. The bin's subcommands (seo-supervisor
@@ -842,7 +844,7 @@ function bashHit(command, settings, cwd, dir = cwd, depth = 0) {
       continue;
     }
     for (const f of emptied(words, from, cmd)) {
-      const full = resolve(dir, f),
+      const full = shellPath(dir, f),
         hit = deleteHit(full, cwd);
       if (hit)
         return hit.rule !== "page-remove"
@@ -862,7 +864,7 @@ function bashHit(command, settings, cwd, dir = cwd, depth = 0) {
     } else if (cmd === "git") {
       let i = 1;
       while (i < words.length && words[i].startsWith("-")) {
-        if (words[i] === "-C") base = resolve(base, words[i + 1] ?? "");
+        if (words[i] === "-C") base = shellPath(base, words[i + 1] ?? "");
         i += /^-[Cc]$/.test(words[i]) ? 2 : 1;
       }
       const p = positional(words.slice(i + 1));
@@ -870,7 +872,7 @@ function bashHit(command, settings, cwd, dir = cwd, depth = 0) {
       else if (words[i] === "mv") paths = p.out.slice(0, -1);
     }
     for (const f of paths) {
-      const hit = deleteHit(resolve(base, f), cwd);
+      const hit = deleteHit(shellPath(base, f), cwd);
       if (hit) return hit;
     }
   }
